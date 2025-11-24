@@ -1,0 +1,702 @@
+import React, { useRef, useState, useEffect } from 'react';
+import * as pdfjsLib from 'pdfjs-dist';
+import { VariableSizeList } from 'react-window';
+
+// Set up the PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+// Virtual list row component
+const VirtualRow = ({ index, style, data }) => {
+  const { renderedPages, canvasRefs, visualScale, renderScale } = data;
+  const pageData = renderedPages[index];
+  const canvasRef = useRef(null);
+  const renderTaskRef = useRef(null);
+
+  if (!pageData) return null;
+
+  const { pageNum, viewport, page } = pageData;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvasRefs.current[pageNum - 1] = canvas;
+
+    // Render page on canvas
+    const context = canvas.getContext('2d');
+    const outputScale = window.devicePixelRatio || 1;
+
+    canvas.width = Math.floor(viewport.width * outputScale);
+    canvas.height = Math.floor(viewport.height * outputScale);
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+    context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Start render task
+    renderTaskRef.current = page.render({ canvasContext: context, viewport });
+    renderTaskRef.current.promise.catch(error => {
+      // Ignore errors from cancelled renders
+      if (error.name !== 'RenderingCancelledException') {
+        console.error(`Error rendering page ${pageNum}:`, error);
+      }
+    });
+
+    // Cleanup when component unmounts or re-renders
+    return () => {
+      // Cancel ongoing render task
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+      }
+
+      // Clear canvas to free memory
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+    };
+  }, [pageNum, viewport, page, canvasRefs]);
+
+  return (
+    <div style={{
+      ...style,
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'flex-start',
+      paddingBottom: '20px'
+    }}>
+      <canvas
+        ref={canvasRef}
+        style={{
+          display: 'block',
+          background: '#fff',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          transform: `scale(${visualScale / renderScale})`,
+          transformOrigin: 'center top',
+          transition: 'none'
+        }}
+      />
+    </div>
+  );
+};
+
+// Landing Page Component
+function LandingPage({ onOpenProject }) {
+  return (
+    <div style={{
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#2b2b2b',
+      color: '#fff',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    }}>
+      <div style={{
+        textAlign: 'center',
+        maxWidth: '600px',
+        padding: '40px'
+      }}>
+        <h1 style={{
+          fontSize: '48px',
+          marginBottom: '20px',
+          fontWeight: '300',
+          letterSpacing: '-1px'
+        }}>
+          PDF Viewer
+        </h1>
+        <p style={{
+          fontSize: '16px',
+          marginBottom: '40px',
+          color: '#aaa',
+          fontWeight: '300'
+        }}>
+          View, zoom, and navigate PDF documents
+        </p>
+        <button
+          onClick={onOpenProject}
+          style={{
+            padding: '14px 40px',
+            fontSize: '15px',
+            fontWeight: '400',
+            color: '#fff',
+            background: '#3a3a3a',
+            border: '1px solid #4a4a4a',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+          onMouseOver={(e) => {
+            e.target.style.background = '#444';
+            e.target.style.borderColor = '#555';
+          }}
+          onMouseOut={(e) => {
+            e.target.style.background = '#3a3a3a';
+            e.target.style.borderColor = '#4a4a4a';
+          }}
+        >
+          Open Document
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// PDF Viewer Component
+function PDFViewer({ pdfFile, onBack }) {
+  const containerRef = useRef();
+  const listRef = useRef();
+  const canvasRefs = useRef([]);
+  const pageDimensionsRef = useRef([]);
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const [pageNum, setPageNum] = useState(1);
+  const [numPages, setNumPages] = useState(0);
+  const [scale, setScale] = useState(1.0);
+  const [visualScale, setVisualScale] = useState(1.0); // For instant CSS zoom
+  const [renderScale, setRenderScale] = useState(1.0); // For actual canvas rendering
+  const renderTimeoutRef = useRef(null);
+  const [scrollMode, setScrollMode] = useState('continuous'); // 'single' or 'continuous'
+  const [renderedPages, setRenderedPages] = useState([]);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [containerDimensions, setContainerDimensions] = useState({ width: 800, height: 600 });
+
+  // Measure container dimensions
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const updateDimensions = () => {
+      const rect = containerRef.current.getBoundingClientRect();
+      setContainerDimensions({ width: rect.width, height: rect.height });
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
+
+  // Debounce scale changes for canvas re-rendering
+  useEffect(() => {
+    setVisualScale(scale);
+
+    // Clear existing timeout
+    if (renderTimeoutRef.current) {
+      clearTimeout(renderTimeoutRef.current);
+    }
+
+    // Debounce canvas re-rendering by 200ms
+    renderTimeoutRef.current = setTimeout(() => {
+      setRenderScale(scale);
+    }, 200);
+
+    return () => {
+      if (renderTimeoutRef.current) {
+        clearTimeout(renderTimeoutRef.current);
+      }
+    };
+  }, [scale]);
+
+  // Load PDF
+  useEffect(() => {
+    if (!pdfFile) return;
+
+    const loadPDF = async () => {
+      try {
+        const arrayBuffer = await pdfFile.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        setPdfDoc(pdf);
+        setNumPages(pdf.numPages);
+        setPageNum(1);
+
+        // Initialize canvas refs array
+        canvasRefs.current = Array(pdf.numPages).fill(null);
+
+        // Pre-render all pages for continuous mode
+        if (scrollMode === 'continuous') {
+          renderAllPages(pdf);
+        }
+      } catch (error) {
+        console.error('Error loading PDF:', error);
+      }
+    };
+
+    loadPDF();
+  }, [pdfFile]);
+
+  // Render all pages for continuous scrolling
+  const renderAllPages = async (pdf) => {
+    const pages = [];
+    const dimensions = [];
+
+    // Get all pages and apply consistent scaling
+    for (let i = 1; i <= pdf.numPages; i++) {
+      try {
+        const page = await pdf.getPage(i);
+        // Apply renderScale for actual canvas rendering
+        const viewport = page.getViewport({ scale: renderScale });
+        pages.push({ pageNum: i, viewport, page });
+        // Store dimensions for virtual list (add gap between pages)
+        dimensions.push(viewport.height + 20);
+      } catch (error) {
+        console.error(`Error loading page ${i}:`, error);
+      }
+    }
+
+    pageDimensionsRef.current = dimensions;
+    setRenderedPages(pages);
+
+    // Reset virtual list item sizes when pages change
+    if (listRef.current) {
+      listRef.current.resetAfterIndex(0);
+    }
+  };
+
+  // Re-render all pages when renderScale changes in continuous mode
+  useEffect(() => {
+    if (pdfDoc && scrollMode === 'continuous') {
+      renderAllPages(pdfDoc);
+    }
+  }, [renderScale, scrollMode, pdfDoc]);
+
+  // Get item size for virtual list
+  const getItemSize = (index) => {
+    return pageDimensionsRef.current[index] || 800;
+  };
+
+  // Track visible page for virtual list scroll
+  const handleItemsRendered = ({ visibleStartIndex }) => {
+    setPageNum(visibleStartIndex + 1);
+  };
+
+  // Render single page
+  useEffect(() => {
+    if (!pdfDoc || scrollMode !== 'single') return;
+
+    let renderTask = null;
+
+    const renderPage = async () => {
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        // Get default viewport to calculate proper scaling
+        const defaultViewport = page.getViewport({ scale: 1.0 });
+
+        // Apply renderScale for actual canvas rendering
+        const viewport = page.getViewport({ scale: renderScale });
+        const canvas = canvasRefs.current[0];
+        if (!canvas) return;
+
+        const context = canvas.getContext('2d');
+        const outputScale = window.devicePixelRatio || 1;
+
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+        context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
+        renderTask = page.render({ canvasContext: context, viewport });
+        await renderTask.promise;
+      } catch (error) {
+        if (error.name !== 'RenderingCancelledException') {
+          console.error('Error rendering page:', error);
+        }
+      }
+    };
+
+    renderPage();
+
+    // Cleanup function
+    return () => {
+      if (renderTask) {
+        renderTask.cancel();
+      }
+    };
+  }, [pdfDoc, pageNum, renderScale, scrollMode]);
+
+  // Pan handlers
+  const handleMouseDown = (e) => {
+    if (e.button !== 0) return;
+    setIsPanning(true);
+    setPanStart({
+      x: e.clientX + containerRef.current.scrollLeft,
+      y: e.clientY + containerRef.current.scrollTop
+    });
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isPanning) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.scrollLeft = panStart.x - e.clientX;
+    container.scrollTop = panStart.y - e.clientY;
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
+  };
+
+  const handleWheel = (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setScale(prev => Math.max(0.5, Math.min(5, prev + delta)));
+    }
+  };
+
+  const zoomIn = () => setScale(prev => Math.min(5, prev + 0.25));
+  const zoomOut = () => setScale(prev => Math.max(0.5, prev - 0.25));
+  const resetZoom = () => setScale(1.0);
+
+  const toggleScrollMode = () => {
+    setScrollMode(prev => prev === 'single' ? 'continuous' : 'single');
+  };
+
+  const handlePageInputChange = (e) => {
+    const value = parseInt(e.target.value);
+    if (!isNaN(value) && value >= 1 && value <= numPages) {
+      setPageNum(value);
+    }
+  };
+
+  const handlePageInputKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.target.blur(); // Remove focus to apply the change
+    }
+  };
+
+  const handleZoomInputChange = (e) => {
+    const value = parseInt(e.target.value);
+    if (!isNaN(value) && value >= 10 && value <= 500) {
+      setScale(value / 100);
+    }
+  };
+
+  const handleZoomInputKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.target.blur(); // Remove focus to apply the change
+    }
+  };
+
+  // Scroll to page in continuous mode when pageNum changes (with virtual list)
+  useEffect(() => {
+    if (scrollMode !== 'continuous' || !listRef.current) return;
+
+    listRef.current.scrollToItem(pageNum - 1, 'start');
+  }, [pageNum, scrollMode]);
+
+  return (
+    <div style={{
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      background: '#2b2b2b',
+      color: '#fff',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    }}>
+      {/* Toolbar */}
+      <div style={{
+        padding: '10px 16px',
+        background: '#333',
+        borderBottom: '1px solid #444',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        flexWrap: 'wrap'
+      }}>
+        <button
+          onClick={onBack}
+          style={{
+            padding: '6px 12px',
+            background: '#444',
+            color: '#ddd',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: '400'
+          }}
+        >
+          ← Back
+        </button>
+
+        <div style={{ width: '1px', height: '20px', background: '#444' }} />
+
+        {/* Scroll Mode Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={toggleScrollMode}
+            style={{
+              padding: '6px 14px',
+              background: '#444',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '400'
+            }}
+          >
+            {scrollMode === 'single' ? 'Single' : 'Continuous'}
+          </button>
+        </div>
+
+        <div style={{ width: '1px', height: '20px', background: '#444' }} />
+
+        {/* Page Navigation */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            onClick={() => setPageNum(prev => Math.max(1, prev - 1))}
+            disabled={pageNum <= 1}
+            style={{
+              padding: '5px 10px',
+              background: '#444',
+              color: pageNum <= 1 ? '#666' : '#ddd',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: pageNum <= 1 ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              opacity: pageNum <= 1 ? 0.5 : 1
+            }}
+          >
+            ←
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <input
+              type="number"
+              min="1"
+              max={numPages}
+              value={pageNum}
+              onChange={handlePageInputChange}
+              onKeyDown={handlePageInputKeyDown}
+              style={{
+                width: '50px',
+                padding: '4px 6px',
+                background: '#444',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                textAlign: 'center'
+              }}
+            />
+            <span style={{ fontSize: '12px', color: '#999' }}>/ {numPages}</span>
+          </div>
+          <button
+            onClick={() => setPageNum(prev => Math.min(numPages, prev + 1))}
+            disabled={pageNum >= numPages}
+            style={{
+              padding: '5px 10px',
+              background: '#444',
+              color: pageNum >= numPages ? '#666' : '#ddd',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: pageNum >= numPages ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              opacity: pageNum >= numPages ? 0.5 : 1
+            }}
+          >
+            →
+          </button>
+        </div>
+
+        <div style={{ width: '1px', height: '20px', background: '#444' }} />
+
+        {/* Zoom Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button onClick={zoomOut} style={{
+            padding: '5px 10px',
+            background: '#444',
+            color: '#ddd',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            lineHeight: '1'
+          }}>
+            −
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <input
+              type="number"
+              min="10"
+              max="500"
+              step="25"
+              value={Math.round(scale * 100)}
+              onChange={handleZoomInputChange}
+              onKeyDown={handleZoomInputKeyDown}
+              style={{
+                width: '50px',
+                padding: '4px 6px',
+                background: '#444',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                textAlign: 'center'
+              }}
+            />
+            <span style={{ fontSize: '12px', color: '#999' }}>%</span>
+          </div>
+          <button onClick={zoomIn} style={{
+            padding: '5px 10px',
+            background: '#444',
+            color: '#ddd',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            lineHeight: '1'
+          }}>
+            +
+          </button>
+          <button onClick={resetZoom} style={{
+            padding: '5px 10px',
+            background: '#444',
+            color: '#ddd',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '11px'
+          }}>
+            Reset
+          </button>
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        <div style={{ fontSize: '12px', color: '#aaa', fontWeight: '300' }}>
+          {pdfFile?.name}
+        </div>
+      </div>
+
+      {/* PDF Canvas Container */}
+      <div
+        ref={containerRef}
+        onMouseDown={scrollMode === 'single' ? handleMouseDown : undefined}
+        onMouseMove={scrollMode === 'single' ? handleMouseMove : undefined}
+        onMouseUp={scrollMode === 'single' ? handleMouseUp : undefined}
+        onMouseLeave={scrollMode === 'single' ? handleMouseUp : undefined}
+        onWheel={handleWheel}
+        style={{
+          flex: 1,
+          overflow: scrollMode === 'single' ? 'auto' : 'hidden',
+          cursor: scrollMode === 'single' ? (isPanning ? 'grabbing' : 'grab') : 'default',
+          display: 'flex',
+          flexDirection: scrollMode === 'continuous' ? 'column' : 'row',
+          alignItems: 'center',
+          justifyContent: scrollMode === 'continuous' ? 'flex-start' : 'center',
+          background: '#2b2b2b',
+          padding: scrollMode === 'single' ? '20px' : '0'
+        }}
+      >
+        {scrollMode === 'continuous' ? (
+          // Continuous scrolling with virtual list
+          <VariableSizeList
+            ref={listRef}
+            height={containerDimensions.height}
+            itemCount={renderedPages.length}
+            itemSize={getItemSize}
+            width="100%"
+            overscanCount={2}
+            onItemsRendered={handleItemsRendered}
+            itemData={{
+              renderedPages,
+              canvasRefs,
+              visualScale,
+              renderScale
+            }}
+            style={{ outline: 'none' }}
+          >
+            {VirtualRow}
+          </VariableSizeList>
+        ) : (
+          // Single page scrolling
+          <canvas
+            ref={el => canvasRefs.current[0] = el}
+            style={{
+              display: 'block',
+              background: '#fff',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+              transform: `scale(${visualScale / renderScale})`,
+              transformOrigin: 'center',
+              transition: 'none'
+            }}
+          />
+        )}
+      </div>
+
+      {/* Status Bar */}
+      <div style={{
+        padding: '6px 16px',
+        background: '#333',
+        borderTop: '1px solid #444',
+        fontSize: '11px',
+        color: '#999',
+        display: 'flex',
+        gap: '16px',
+        fontWeight: '300'
+      }}>
+        <span>
+          {scrollMode === 'continuous'
+            ? 'Scroll • Ctrl+Scroll to zoom • Drag to pan'
+            : 'Use arrows • Ctrl+Scroll to zoom • Drag to pan'}
+        </span>
+        {scrollMode === 'continuous' && (
+          <span style={{ marginLeft: 'auto', color: '#aaa' }}>
+            {numPages} pages
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Main App Component
+export default function App() {
+  const [currentView, setCurrentView] = useState('landing'); // 'landing' or 'viewer'
+  const [selectedPDF, setSelectedPDF] = useState(null);
+  const fileInputRef = useRef();
+
+  const handleOpenProject = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = (event) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === 'application/pdf') {
+      setSelectedPDF(file);
+      setCurrentView('viewer');
+    }
+  };
+
+  const handleBack = () => {
+    setCurrentView('landing');
+    setSelectedPDF(null);
+  };
+
+  return (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={handleFileSelect}
+        style={{ display: 'none' }}
+      />
+
+      {currentView === 'landing' ? (
+        <LandingPage onOpenProject={handleOpenProject} />
+      ) : (
+        <PDFViewer pdfFile={selectedPDF} onBack={handleBack} />
+      )}
+    </>
+  );
+}

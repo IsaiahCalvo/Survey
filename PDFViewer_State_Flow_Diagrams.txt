@@ -1,0 +1,303 @@
+================================================================================
+                    PAGE NAVIGATION STATE FLOW DIAGRAM
+================================================================================
+
+EXTERNAL TRIGGERS (User Interactions):
+─────────────────────────────────────
+
+1. USER TYPES IN PAGE INPUT
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ Input Element (lines 8207-8230)                                  │
+   │   - value={pageInputValue}                                       │
+   │   - onChange={handlePageInputChange}                             │
+   │   - onKeyDown={handlePageInputKeyDown}                           │
+   │   - onBlur={handlePageInputBlur}                                 │
+   └─────────────────────────────────────────────────────────────────┘
+                              ↓
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ handlePageInputChange() [lines 7591-7595]                        │
+   │   input: e.target.value (e.g., "42")                            │
+   │   - Filter to digits only: digitsOnly = "42"                    │
+   │   - setPageInputValue("42")                                      │
+   │   - setIsPageInputDirty(true)                                    │
+   └─────────────────────────────────────────────────────────────────┘
+                              ↓
+   (On Enter Key or Blur Event)
+                              ↓
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ commitPageInput() [lines 7597-7610]                              │
+   │   - Parse integer: value = parseInt("42") → 42                  │
+   │   - Validate: 42 >= 1 && 42 <= numPages ?                       │
+   │     YES: goToPage(42)                                           │
+   │     NO: Reset to pageNum                                        │
+   │   - setIsPageInputDirty(false)                                  │
+   └─────────────────────────────────────────────────────────────────┘
+                              ↓
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ goToPage(42) [lines 6811-6888]                                   │
+   │   Continuous Scroll Mode:                                        │
+   │   1. Set isNavigatingRef.current = true                         │
+   │   2. Set targetPageRef.current = 42                             │
+   │   3. container.scrollTo({ top: ..., behavior: 'smooth' })       │
+   │   4. setTimeout(600ms) {                                        │
+   │        setPageNum(42)                                           │
+   │        setPageInputValue("42")                                  │
+   │        setTimeout(300ms) {                                      │
+   │          isNavigatingRef.current = false                        │
+   │          targetPageRef.current = null                           │
+   │        }                                                        │
+   │      }                                                          │
+   └─────────────────────────────────────────────────────────────────┘
+
+
+2. USER CLICKS PREVIOUS/NEXT BUTTON
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ Previous Button [line 8200]                                      │
+   │   onClick={goToPreviousPage}                                    │
+   └─────────────────────────────────────────────────────────────────┘
+                              ↓
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ goToPreviousPage() [lines 7399-7401]                            │
+   │   - goToPage(pageNum - 1)                                       │
+   └─────────────────────────────────────────────────────────────────┘
+                              ↓ (Same as goToPage above)
+
+
+3. USER SCROLLS MANUALLY
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ IntersectionObserver Callback [lines 7232-7280]                 │
+   │   Triggered when page visibility changes:                        │
+   │   - Scroll up/down → different pages become visible              │
+   │   - Check entry.isIntersecting for each page                    │
+   │   - Track visiblePages Map with intersectionRatio               │
+   └─────────────────────────────────────────────────────────────────┘
+                              ↓
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ Guard Check [line 7261]                                          │
+   │   if (visiblePages.size > 0                                     │
+   │       && !isNavigatingRef.current                               │
+   │       && targetPageRef.current === null                         │
+   │       && !isZoomingRef.current)                                 │
+   │   {                                                             │
+   │     Find page with highest intersectionRatio                   │
+   │     setPageNum(mostVisiblePage) [line 7273]                    │
+   │   }                                                             │
+   │   Debounced by 100ms [line 7280]                               │
+   └─────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+                          STATE SYNCHRONIZATION LAYER
+================================================================================
+
+When pageNum State Changes (from any source above):
+─────────────────────────────────────────────────────
+
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ pageNum State Update Triggers useEffect [lines 7626-7650]       │
+   │   Dependencies: [pageNum, isPageInputDirty]                     │
+   │                                                                 │
+   │   prevValue = "old page number"                                │
+   │   currentPageStr = String(pageNum) // new value                │
+   │                                                                 │
+   │   IF prevValue !== currentPageStr {                            │
+   │     IF document.activeElement === inputElement                 │
+   │        && isPageInputDirty {                                   │
+   │       // User is typing, preserve their input                 │
+   │       return prevValue (don't change)                         │
+   │     }                                                          │
+   │     // Update input to reflect new page number                │
+   │     setIsPageInputDirty(false)                                │
+   │     return currentPageStr                                     │
+   │   }                                                            │
+   └─────────────────────────────────────────────────────────────────┘
+                              ↓
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ Component Re-renders with:                                       │
+   │   <input value={pageInputValue} ... />                          │
+   │   (Input field now shows new page number)                       │
+   └─────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+                              REF STATE MACHINE
+================================================================================
+
+isNavigatingRef STATE MACHINE:
+──────────────────────────────
+
+   IDLE (false)
+   │
+   ├─→ User navigates (goToPage)
+   │   │
+   │   └─→ SET: isNavigatingRef.current = true ............... [line 6846]
+   │       SET: targetPageRef.current = desiredPage .......... [line 6847]
+   │       CALL: container.scrollTo({ behavior: 'smooth' }) .. [line 6859]
+   │       │
+   │       └─→ Wait 600ms
+   │           │
+   │           └─→ CALL: setPageNum(desiredPage) ............ [line 6865]
+   │               │
+   │               └─→ Wait 300ms (smooth scroll animation)
+   │                   │
+   │                   └─→ RESET: isNavigatingRef.current = false [line 6873]
+   │                       RESET: targetPageRef.current = null ... [line 6874]
+   │
+   └─→ Back to IDLE
+
+
+Navigation Guard (prevents IntersectionObserver from updating):
+───────────────────────────────────────────────────────────────
+
+   IntersectionObserver detects visibility change
+   │
+   └─→ Check: if (!isNavigatingRef.current && targetPageRef.current === null)
+       │
+       ├─ YES: Update pageNum from scroll (line 7273)
+       │
+       └─ NO: Skip update (page number frozen during navigation)
+
+
+================================================================================
+                              KEY CODE LOCATIONS
+================================================================================
+
+File: /Users/isaiahcalvo/Desktop/Survey/src/App.jsx
+
+State Variables:
+  - pageNum                    [line 5943]
+  - pageInputValue             [line 5944]
+  - isPageInputDirty           [line 5945]
+
+Refs:
+  - containerRef               [line 5901]
+  - pageContainersRef          [line 5903]
+  - pageInputRef               [line 5911]
+  - isNavigatingRef            [line 5906]
+  - targetPageRef              [line 5909]
+  - observerRef                [line 5908]
+  - pageNumRef                 [line 6019]
+
+Input Handlers:
+  - handlePageInputChange      [lines 7591-7595]
+  - commitPageInput            [lines 7597-7610]
+  - handlePageInputKeyDown     [lines 7612-7618]
+  - handlePageInputBlur        [lines 7620-7622]
+
+Navigation:
+  - goToPage                   [lines 6811-6888]
+  - goToPreviousPage           [lines 7399-7401]
+  - goToNextPage               [lines 7403-7405]
+
+IntersectionObserver Setup:
+  - useEffect with observer    [lines 7222-7318]
+  - Observer callback          [lines 7232-7280]
+  - Guard condition            [line 7261]
+  - Debounce timer             [line 7280]
+
+Input Sync:
+  - useEffect to sync pageNum  [lines 7626-7650]
+
+
+================================================================================
+                            TIMING DIAGRAM
+================================================================================
+
+User presses Page Input "42" and hits Enter:
+──────────────────────────────────────────────
+
+  Time    Event                           State Changes
+  ─────   ─────────────────────────────   ──────────────────────────────
+    0ms   Input: "4"                      pageInputValue="4"
+           Input: "42"                    pageInputValue="42"
+  
+   50ms   User presses Enter              handlePageInputKeyDown()
+                                          commitPageInput()
+                                          → goToPage(42)
+                                          isNavigatingRef=true
+                                          targetPageRef=42
+                                          scrollTo({ behavior: 'smooth' })
+  
+  650ms   After 600ms timeout             setPageNum(42)
+                                          setPageInputValue("42")
+                                          isPageInputDirty=false
+  
+  950ms   After 300ms more (total 900ms)  isNavigatingRef=false
+                                          targetPageRef=null
+  
+ 1000ms   User scrolls manually           IntersectionObserver allowed
+          pageNum can be updated again
+
+
+User scrolls manually (Continuous Mode):
+─────────────────────────────────────────
+
+  Time    Event                           State Changes
+  ─────   ─────────────────────────────   ──────────────────────────────
+    0ms   Page 42 comes into view         IntersectionObserver fires
+                                          visiblePages.set(42, 0.8)
+  
+   50ms   Page 41 exits view              visiblePages.delete(41)
+                                          updateTimer cleared
+                                          updateTimer = setTimeout(100ms)
+  
+  150ms   Debounce fires (100ms)          mostVisiblePage = 42
+                                          setPageNum(42)
+  
+  200ms   pageNum changes                 useEffect [7626-7650]
+                                          setPageInputValue("42")
+
+
+================================================================================
+                          PROBLEM SCENARIOS
+================================================================================
+
+SCENARIO 1: Page Input Not Updating During Scroll
+──────────────────────────────────────────────────
+
+Cause 1: isNavigatingRef stuck = true
+  - goToPage() called but timeouts never fire
+  - IntersectionObserver blocked forever
+  Symptom: Page input shows wrong page during scroll
+
+Cause 2: targetPageRef stuck ≠ null
+  - goToPage() called, timeouts fire, but targetPageRef not reset
+  - IntersectionObserver blocked forever
+  Symptom: Page input shows wrong page during scroll
+
+Cause 3: isZoomingRef stuck = true
+  - Zoom operation started but never completed
+  - IntersectionObserver blocked until zoom finishes
+  Symptom: Page input doesn't update after zoom operation
+
+
+SCENARIO 2: Scroll to Page Navigation Incomplete
+──────────────────────────────────────────────────
+
+Cause: Smooth scroll animation takes longer than 600ms + 300ms = 900ms total
+  - Hardcoded timeouts assume fast animation
+  - On slow device or large PDF, animation still running
+  - Navigation flags reset while scroll still animating
+  - IntersectionObserver might interfere mid-scroll
+  Symptom: Page jumps after arriving at target
+
+
+SCENARIO 3: User Typing in Input Not Preserved
+───────────────────────────────────────────────
+
+Cause: Simultaneous scroll and typing
+  - User types "4" (isPageInputDirty = true)
+  - Scroll updates pageNum
+  - useEffect checks: document.activeElement === inputElement ✓
+                      isPageInputDirty === true ✓
+  - Input value preserved, OK
+  
+  - User types "42", presses Backspace, gets "4"
+  - User pauses
+  - Scroll updates pageNum to different page
+  - useEffect checks: isPageInputDirty === false now!
+  - Input overwrites with scroll's page number
+  Symptom: Input loses user's partial number after pause in typing
+
+
+================================================================================

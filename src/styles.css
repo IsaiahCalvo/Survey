@@ -1,0 +1,254 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.App {
+  background-color: #1E1E1E;
+  color: #FFFFFF;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #181818;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3A3A3A;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Slide-in animation for survey panel */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Professional Button System */
+.btn {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  user-select: none;
+  outline: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Button Sizes */
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+  min-height: 26px;
+}
+
+.btn-md {
+  padding: 6px 12px;
+  font-size: 13px;
+  min-height: 28px;
+}
+
+.btn-lg {
+  padding: 8px 16px;
+  font-size: 14px;
+  min-height: 32px;
+}
+
+/* Button Variants */
+.btn-default {
+  background: #3A3A3A;
+  color: #DDD;
+  border: 1px solid #444;
+}
+
+.btn-default:hover:not(:disabled) {
+  background: #444;
+  border-color: #555;
+}
+
+.btn-primary {
+  background: #4A90E2;
+  color: white;
+  border: 1px solid #4A90E2;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #3A7BC8;
+  border-color: #3A7BC8;
+}
+
+.btn-secondary {
+  background: #2D2D2D;
+  color: #C8C8C8;
+  border: 1px solid #3A3A3A;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #363636;
+  border-color: #444;
+}
+
+.btn-success {
+  background: #28A745;
+  color: white;
+  border: 1px solid #28A745;
+}
+
+.btn-success:hover:not(:disabled) {
+  background: #218838;
+  border-color: #218838;
+}
+
+.btn-danger {
+  background: #DC3545;
+  color: white;
+  border: 1px solid #DC3545;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #C82333;
+  border-color: #C82333;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: #DDD;
+  border: 1px solid #3A3A3A;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: #555;
+}
+
+.btn-icon {
+  padding: 6px;
+  min-width: 28px;
+  min-height: 28px;
+  background: #3A3A3A;
+  color: #DDD;
+  border: 1px solid #444;
+  font-size: 14px;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: #444;
+}
+
+.btn-icon-sm {
+  padding: 4px;
+  min-width: 24px;
+  min-height: 24px;
+  font-size: 12px;
+}
+
+/* Icon-only buttons */
+.btn-icon-only {
+  padding: 6px;
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+}
+
+.btn-icon-only.btn-sm {
+  padding: 4px;
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
+}
+
+/* Active state */
+.btn-active,
+.btn-active:hover {
+  background: #4A90E2;
+  color: white;
+  border-color: #4A90E2;
+}
+
+/* Action Card Buttons */
+.btn-card {
+  padding: 16px 24px;
+  background: #252525;
+  border: 1px solid #3A3A3A;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+}
+
+.btn-card:hover {
+  background: #2D2D2D;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-color: #4A90E2;
+}
+
+.btn-card:active {
+  transform: translateY(0);
+}
+
+.btn-card .icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.btn-card .label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #FFFFFF;
+}
