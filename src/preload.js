@@ -1,6 +1,9 @@
 // preload.js
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // safe stubs for future IPC calls (signing, file save dialogs, etc.)
+  saveFile: (options) => ipcRenderer.invoke('dialog:saveFile', options),
+  openPath: (path) => ipcRenderer.invoke('shell:openPath', path),
+  readFile: (path) => ipcRenderer.invoke('fs:readFile', path),
+  writeFile: (path, data) => ipcRenderer.invoke('fs:writeFile', { path, data })
 });

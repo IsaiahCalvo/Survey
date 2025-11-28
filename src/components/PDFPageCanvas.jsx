@@ -1,0 +1,79 @@
+import React, { useEffect, useRef, memo } from 'react';
+
+const PDFPageCanvas = ({ page, scale, onFinishRender }) => {
+    const canvasRef = useRef(null);
+    const renderTaskRef = useRef(null);
+
+    useEffect(() => {
+        if (!page) return;
+
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const viewport = page.getViewport({ scale });
+        const outputScale = window.devicePixelRatio || 1;
+
+        // Cancel any ongoing render
+        if (renderTaskRef.current) {
+            renderTaskRef.current.cancel();
+        }
+
+        // Set canvas dimensions
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+        const context = canvas.getContext('2d');
+
+        // Apply transform for high DPI
+        context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+
+        // Clear canvas
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Render the page
+        renderTaskRef.current = page.render({
+            canvasContext: context,
+            viewport: viewport
+        });
+
+        renderTaskRef.current.promise
+            .then(() => {
+                if (onFinishRender) {
+                    onFinishRender();
+                }
+            })
+            .catch(error => {
+                if (error.name !== 'RenderingCancelledException') {
+                    console.error('Error rendering page:', error);
+                }
+            });
+
+        // Cleanup
+        return () => {
+            if (renderTaskRef.current) {
+                renderTaskRef.current.cancel();
+            }
+        };
+    }, [page, scale]);
+
+    if (!page) return null;
+
+    const viewport = page.getViewport({ scale });
+
+    return (
+        <canvas
+            ref={canvasRef}
+            style={{
+                display: 'block',
+                width: `${Math.floor(viewport.width)}px`,
+                height: `${Math.floor(viewport.height)}px`,
+            }}
+        />
+    );
+};
+
+PDFPageCanvas.displayName = 'PDFPageCanvas';
+
+export default memo(PDFPageCanvas);

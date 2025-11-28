@@ -16,7 +16,7 @@ const isPointNearEraserPath = (point, eraserPath, eraserRadius) => {
 // Helper function to check if a point is near a path object (for click detection)
 const isPointNearPath = (point, pathObj, threshold) => {
   if (pathObj.type !== 'path') return false;
-  
+
   try {
     // First try using Fabric.js's containsPoint method
     if (pathObj.containsPoint && typeof pathObj.containsPoint === 'function') {
@@ -28,33 +28,33 @@ const isPointNearPath = (point, pathObj, threshold) => {
         // Fall through to manual check
       }
     }
-    
+
     // Get path bounds for quick rejection
     const bounds = pathObj.getBoundingRect();
     const strokeWidth = pathObj.strokeWidth || 3;
     const effectiveThreshold = Math.max(threshold, strokeWidth / 2 + 2); // Add small buffer
-    
+
     // Quick bounding box check with threshold
-    if (point.x < bounds.left - effectiveThreshold || 
-        point.x > bounds.left + bounds.width + effectiveThreshold ||
-        point.y < bounds.top - effectiveThreshold || 
-        point.y > bounds.top + bounds.height + effectiveThreshold) {
+    if (point.x < bounds.left - effectiveThreshold ||
+      point.x > bounds.left + bounds.width + effectiveThreshold ||
+      point.y < bounds.top - effectiveThreshold ||
+      point.y > bounds.top + bounds.height + effectiveThreshold) {
       return false;
     }
-    
+
     // For more precise detection, check distance to path segments
     // Extract points from path data
     const pathData = pathObj.path;
     if (!pathData || pathData.length === 0) return false;
-    
+
     let minDistance = Infinity;
     let currentX = 0, currentY = 0;
-    
+
     for (let i = 0; i < pathData.length; i++) {
       const cmd = pathData[i];
       const command = cmd[0];
       let endX, endY;
-      
+
       if (command === 'M' || command === 'm') {
         endX = command === 'M' ? cmd[1] : currentX + cmd[1];
         endY = command === 'M' ? cmd[2] : currentY + cmd[2];
@@ -63,25 +63,25 @@ const isPointNearPath = (point, pathObj, threshold) => {
       } else if (command === 'L' || command === 'l') {
         endX = command === 'L' ? cmd[1] : currentX + cmd[1];
         endY = command === 'L' ? cmd[2] : currentY + cmd[2];
-        
+
         // Check distance to line segment
         const canvasStartX = currentX + (pathObj.left || 0);
         const canvasStartY = currentY + (pathObj.top || 0);
         const canvasEndX = endX + (pathObj.left || 0);
         const canvasEndY = endY + (pathObj.top || 0);
-        
+
         // Distance from point to line segment
         const A = point.x - canvasStartX;
         const B = point.y - canvasStartY;
         const C = canvasEndX - canvasStartX;
         const D = canvasEndY - canvasStartY;
-        
+
         const dot = A * C + B * D;
         const lenSq = C * C + D * D;
         let param = -1;
-        
+
         if (lenSq !== 0) param = dot / lenSq;
-        
+
         let xx, yy;
         if (param < 0) {
           xx = canvasStartX;
@@ -93,12 +93,12 @@ const isPointNearPath = (point, pathObj, threshold) => {
           xx = canvasStartX + param * C;
           yy = canvasStartY + param * D;
         }
-        
+
         const dx = point.x - xx;
         const dy = point.y - yy;
         const distance = Math.sqrt(dx * dx + dy * dy);
         minDistance = Math.min(minDistance, distance);
-        
+
         currentX = endX;
         currentY = endY;
       } else if (command === 'C' || command === 'c' || command === 'Q' || command === 'q') {
@@ -110,19 +110,19 @@ const isPointNearPath = (point, pathObj, threshold) => {
           endX = command === 'Q' ? cmd[3] : currentX + cmd[3];
           endY = command === 'Q' ? cmd[4] : currentY + cmd[4];
         }
-        
+
         const canvasEndX = endX + (pathObj.left || 0);
         const canvasEndY = endY + (pathObj.top || 0);
         const distance = Math.sqrt(
           Math.pow(point.x - canvasEndX, 2) + Math.pow(point.y - canvasEndY, 2)
         );
         minDistance = Math.min(minDistance, distance);
-        
+
         currentX = endX;
         currentY = endY;
       }
     }
-    
+
     return minDistance < effectiveThreshold;
   } catch (e) {
     // Fallback: use bounding box check
@@ -130,9 +130,9 @@ const isPointNearPath = (point, pathObj, threshold) => {
     const strokeWidth = pathObj.strokeWidth || 3;
     const effectiveThreshold = Math.max(threshold, strokeWidth / 2);
     return point.x >= bounds.left - effectiveThreshold &&
-           point.x <= bounds.left + bounds.width + effectiveThreshold &&
-           point.y >= bounds.top - effectiveThreshold &&
-           point.y <= bounds.top + bounds.height + effectiveThreshold;
+      point.x <= bounds.left + bounds.width + effectiveThreshold &&
+      point.y >= bounds.top - effectiveThreshold &&
+      point.y <= bounds.top + bounds.height + effectiveThreshold;
   }
 };
 
@@ -303,7 +303,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
 // Ensure color is in rgba format with specified opacity (default 0.2, but highlights use 1.0)
 const ensureRgbaOpacity = (color, opacity = 0.2) => {
   if (!color) return `rgba(255, 193, 7, ${opacity})`; // Default yellow
-  
+
   // If already rgba, ensure opacity is correct
   if (color.startsWith('rgba')) {
     const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
@@ -311,7 +311,7 @@ const ensureRgbaOpacity = (color, opacity = 0.2) => {
       return `rgba(${rgbaMatch[1]}, ${rgbaMatch[2]}, ${rgbaMatch[3]}, ${opacity})`;
     }
   }
-  
+
   // If hex, convert to rgba
   if (color.startsWith('#')) {
     const hex = color.replace('#', '');
@@ -320,9 +320,38 @@ const ensureRgbaOpacity = (color, opacity = 0.2) => {
     const b = parseInt(hex.substring(4, 6), 16);
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
   }
-  
+
   // Fallback
   return color;
+};
+
+const DEFAULT_SURVEY_HIGHLIGHT_OPACITY = 0.4;
+
+const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIGHT_OPACITY) => {
+  if (!color || typeof color !== 'string') {
+    return null;
+  }
+
+  const trimmed = color.trim();
+  const rgbaMatch = trimmed.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/i);
+
+  if (rgbaMatch) {
+    const [, r, g, b, opacityStr] = rgbaMatch;
+    if (opacityStr !== undefined) {
+      const parsedOpacity = parseFloat(opacityStr);
+      const clampedOpacity = Number.isFinite(parsedOpacity)
+        ? Math.min(1, Math.max(0, parsedOpacity))
+        : fallbackOpacity;
+      return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`;
+    }
+    return `rgba(${r}, ${g}, ${b}, ${fallbackOpacity})`;
+  }
+
+  if (trimmed.startsWith('#')) {
+    return ensureRgbaOpacity(trimmed, fallbackOpacity);
+  }
+
+  return trimmed;
 };
 
 const PageAnnotationLayer = memo(({
@@ -334,12 +363,13 @@ const PageAnnotationLayer = memo(({
   strokeColor = '#DC3545',
   strokeWidth = 3,
   annotations = null,
-  onSaveAnnotations = () => {},
+  onSaveAnnotations = () => { },
   highlightColor = 'rgba(255, 193, 7, 0.3)',
   newHighlights = null, // Array of {x, y, width, height} to add
   highlightsToRemove = null, // Array of {x, y, width, height} to remove
   onHighlightCreated = null, // Callback for when highlight tool creates a rectangle
   onHighlightDeleted = null, // Callback for when highlight is deleted via eraser
+  onHighlightClicked = null, // Callback for when a highlight is clicked (reverse navigation)
   selectedSpaceId = null, // Space ID to filter annotations by
   selectedModuleId = null, // Module ID to filter annotations by
   activeRegions = null,
@@ -356,21 +386,26 @@ const PageAnnotationLayer = memo(({
   const strokeWidthRef = useRef(strokeWidth);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
   const onHighlightDeletedRef = useRef(onHighlightDeleted);
+  const onHighlightClickedRef = useRef(onHighlightClicked);
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const selectedModuleIdRef = useRef(selectedModuleId);
   const showSurveyPanelRef = useRef(showSurveyPanel);
   const eraserModeRef = useRef(eraserMode);
   const isErasingRef = useRef(false);
   const eraserPathRef = useRef(null);
-  
+
   // Keep highlight callback refs in sync
   useEffect(() => {
     onHighlightCreatedRef.current = onHighlightCreated;
   }, [onHighlightCreated]);
-  
+
   useEffect(() => {
     onHighlightDeletedRef.current = onHighlightDeleted;
   }, [onHighlightDeleted]);
+
+  useEffect(() => {
+    onHighlightClickedRef.current = onHighlightClicked;
+  }, [onHighlightClicked]);
 
   // Keep selectedSpaceId ref in sync
   useEffect(() => {
@@ -393,8 +428,8 @@ const PageAnnotationLayer = memo(({
   // Initialize canvas only once
   useEffect(() => {
     if (!canvasRef.current || !width || !height || isInitializedRef.current) return;
-    
-    console.log(`[Page ${pageNumber}] Initializing canvas`);
+
+    // console.log(`[Page ${pageNumber}] Initializing canvas`);
     isInitializedRef.current = true;
 
     const canvas = new Canvas(canvasRef.current, {
@@ -479,9 +514,9 @@ const PageAnnotationLayer = memo(({
         if (selectedSpaceIdRef.current) {
           e.path.set({ spaceId: selectedSpaceIdRef.current });
         }
-      if (selectedModuleIdRef.current) {
-        e.path.set({ moduleId: selectedModuleIdRef.current });
-      }
+        if (selectedModuleIdRef.current) {
+          e.path.set({ moduleId: selectedModuleIdRef.current });
+        }
       }
       saveCanvas();
     };
@@ -494,16 +529,45 @@ const PageAnnotationLayer = memo(({
       const currentStrokeWidth = strokeWidthRef.current;
       const currentEraserMode = eraserModeRef.current;
       const { x, y } = canvas.getPointer(opt.e);
+
+      // Handle highlight clicks for reverse navigation (non-eraser tools)
+      if (currentTool !== 'eraser' && currentTool !== 'highlight') {
+        const pointer = canvas.getPointer(opt.e);
+        const objects = canvas.getObjects();
+
+        for (const obj of objects) {
+          // Check if this is a highlight with a highlightId
+          const hasHighlightId = obj.highlightId != null;
+          const isColoredHighlight = obj.type === 'rect' && (
+            (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
+            (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
+          );
+
+          if ((hasHighlightId || isColoredHighlight) && obj.highlightId) {
+            // Check if click is within highlight bounds
+            const bounds = obj.getBoundingRect();
+            if (pointer.x >= bounds.left && pointer.x <= bounds.left + bounds.width &&
+              pointer.y >= bounds.top && pointer.y <= bounds.top + bounds.height) {
+              // Call the reverse navigation callback
+              if (onHighlightClickedRef.current) {
+                onHighlightClickedRef.current(obj.highlightId);
+              }
+              return; // Don't continue with other click handling
+            }
+          }
+        }
+      }
+
       if (currentTool === 'eraser') {
         // For eraser, we need to find the actual target more precisely
         // canvas.findTarget can be too permissive, so we'll check all objects
         const pointer = canvas.getPointer(opt.e);
         const eraserRadius = currentStrokeWidth || 10;
-        
+
         // Find the closest object that's actually under the cursor
         let target = null;
         let minDistance = Infinity;
-        
+
         const objects = canvas.getObjects();
         for (const obj of objects) {
           // Only check objects from current space
@@ -511,7 +575,7 @@ const PageAnnotationLayer = memo(({
           if (selectedSpaceIdRef.current !== null && objSpaceId !== selectedSpaceIdRef.current) {
             continue;
           }
-          
+
           // Check if this is a highlight (always delete entirely)
           const hasHighlightId = obj.highlightId != null;
           const hasNeedsBICFlag = obj.needsBIC === true;
@@ -519,17 +583,17 @@ const PageAnnotationLayer = memo(({
             (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
             (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
           );
-          const fillIsTransparent = !obj.fill || obj.fill === 'transparent' || 
+          const fillIsTransparent = !obj.fill || obj.fill === 'transparent' ||
             (typeof obj.fill === 'string' && obj.fill === 'transparent');
           const hasStroke = obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent';
           const isNeedsBICHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
           const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
-          
+
           if (isHighlight) {
             // For highlights, check if click is within bounds
             const bounds = obj.getBoundingRect();
             if (pointer.x >= bounds.left && pointer.x <= bounds.left + bounds.width &&
-                pointer.y >= bounds.top && pointer.y <= bounds.top + bounds.height) {
+              pointer.y >= bounds.top && pointer.y <= bounds.top + bounds.height) {
               target = obj;
               break; // Highlights take priority
             }
@@ -551,13 +615,13 @@ const PageAnnotationLayer = memo(({
             // For other objects, check if click is within bounds
             const bounds = obj.getBoundingRect();
             if (pointer.x >= bounds.left && pointer.x <= bounds.left + bounds.width &&
-                pointer.y >= bounds.top && pointer.y <= bounds.top + bounds.height) {
+              pointer.y >= bounds.top && pointer.y <= bounds.top + bounds.height) {
               target = obj;
               break;
             }
           }
         }
-        
+
         if (target) {
           // Check if this is a highlight
           const hasHighlightId = target.highlightId != null;
@@ -566,12 +630,12 @@ const PageAnnotationLayer = memo(({
             (target.fill && typeof target.fill === 'string' && target.fill.includes('rgba')) ||
             (target.fill && typeof target.fill === 'string' && target.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
           );
-          const fillIsTransparent = !target.fill || target.fill === 'transparent' || 
+          const fillIsTransparent = !target.fill || target.fill === 'transparent' ||
             (typeof target.fill === 'string' && target.fill === 'transparent');
           const hasStroke = target.stroke && typeof target.stroke === 'string' && target.stroke !== 'transparent';
           const isNeedsBICHighlight = target.type === 'rect' && fillIsTransparent && hasStroke;
           const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
-          
+
           // Survey Highlights must always be deleted entirely regardless of mode
           if (isHighlight) {
             // Always delete highlights entirely
@@ -585,26 +649,26 @@ const PageAnnotationLayer = memo(({
                 pageNumber
               };
               const highlightId = target.highlightId || null;
-              
+
               if (highlightId && renderedHighlightsRef.current.has(highlightId)) {
                 renderedHighlightsRef.current.delete(highlightId);
               }
-              
+
               const highlightKey = highlightId || `${bounds.x}-${bounds.y}-${bounds.width}-${bounds.height}`;
               processedHighlightsRef.current.delete(highlightKey);
-              
+
               canvas.discardActiveObject();
               canvas.remove(target);
               canvas.requestRenderAll();
               saveCanvas();
-              
+
               if (onHighlightDeletedRef.current) {
                 onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
               }
             }
             return;
           }
-          
+
           // For non-highlight objects, check eraser mode
           if (currentEraserMode === 'entire') {
             // Entire mode: Remove object immediately on touch
@@ -665,14 +729,14 @@ const PageAnnotationLayer = memo(({
       let temp = null;
       if (currentTool === 'highlight') {
         // Highlight tool: create a clear selection rectangle (transparent fill, visible border)
-        temp = new Rect({ 
-          left: x, 
-          top: y, 
-          width: 1, 
-          height: 1, 
-          fill: 'transparent', 
-          stroke: '#4A90E2', 
-          strokeWidth: 2, 
+        temp = new Rect({
+          left: x,
+          top: y,
+          width: 1,
+          height: 1,
+          fill: 'transparent',
+          stroke: '#4A90E2',
+          strokeWidth: 2,
           strokeDashArray: [5, 5],
           strokeUniform: true,
           selectable: false,
@@ -741,24 +805,24 @@ const PageAnnotationLayer = memo(({
     const handleMouseMove = (opt) => {
       const currentTool = toolRef.current;
       const currentEraserMode = eraserModeRef.current;
-      
+
       // Handle partial erasing
       if (currentTool === 'eraser' && currentEraserMode === 'partial' && isErasingRef.current && eraserPathRef.current) {
         const { x, y } = canvas.getPointer(opt.e);
         const eraserPath = eraserPathRef.current;
         eraserPath.points.push({ x, y });
-        
+
         // Find objects that intersect with the eraser path
         const eraserRadius = strokeWidthRef.current || 10;
         const objects = canvas.getObjects();
-        
+
         objects.forEach(obj => {
           // Skip if not from current space
           const objSpaceId = obj.spaceId || null;
           if (selectedSpaceIdRef.current !== null && objSpaceId !== selectedSpaceIdRef.current) {
             return;
           }
-          
+
           // Skip highlights (they're handled separately)
           const hasHighlightId = obj.highlightId != null;
           const hasNeedsBICFlag = obj.needsBIC === true;
@@ -766,16 +830,16 @@ const PageAnnotationLayer = memo(({
             (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
             (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
           );
-          const fillIsTransparent = !obj.fill || obj.fill === 'transparent' || 
+          const fillIsTransparent = !obj.fill || obj.fill === 'transparent' ||
             (typeof obj.fill === 'string' && obj.fill === 'transparent');
           const hasStroke = obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent';
           const isNeedsBICHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
           const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
-          
+
           if (isHighlight) {
             return; // Highlights are handled separately
           }
-          
+
           // Check if eraser path intersects with object
           // For paths (pen/highlighter strokes), use partial erasing
           if (obj.type === 'path') {
@@ -795,7 +859,7 @@ const PageAnnotationLayer = memo(({
               );
               return distance < eraserRadius + Math.max(objBounds.width, objBounds.height) / 2;
             });
-            
+
             if (isNear) {
               canvas.remove(obj);
               canvas.requestRenderAll();
@@ -806,11 +870,11 @@ const PageAnnotationLayer = memo(({
             const objBounds = obj.getBoundingRect();
             const isTouching = eraserPath.points.some(point => {
               return point.x >= objBounds.left - eraserRadius &&
-                     point.x <= objBounds.left + objBounds.width + eraserRadius &&
-                     point.y >= objBounds.top - eraserRadius &&
-                     point.y <= objBounds.top + objBounds.height + eraserRadius;
+                point.x <= objBounds.left + objBounds.width + eraserRadius &&
+                point.y >= objBounds.top - eraserRadius &&
+                point.y <= objBounds.top + objBounds.height + eraserRadius;
             });
-            
+
             if (isTouching) {
               canvas.remove(obj);
               canvas.requestRenderAll();
@@ -818,10 +882,10 @@ const PageAnnotationLayer = memo(({
             }
           }
         });
-        
+
         return;
       }
-      
+
       // Handle shape drawing
       const ds = drawingStateRef.current;
       if (!ds.isDrawingShape || !ds.tempObj) return;
@@ -845,7 +909,7 @@ const PageAnnotationLayer = memo(({
     const handleMouseUp = (opt) => {
       const currentTool = toolRef.current;
       const currentEraserMode = eraserModeRef.current;
-      
+
       // Handle partial erasing end
       if (currentTool === 'eraser' && currentEraserMode === 'partial' && isErasingRef.current) {
         isErasingRef.current = false;
@@ -853,11 +917,11 @@ const PageAnnotationLayer = memo(({
         canvas.requestRenderAll();
         return;
       }
-      
+
       const currentStrokeColor = strokeColorRef.current;
       const ds = drawingStateRef.current;
       if (!ds.isDrawingShape || !ds.tempObj) return;
-      
+
       // Handle highlight tool: create rectangle and call callback
       if (currentTool === 'highlight' && ds.tempObj.type === 'rect') {
         const rect = ds.tempObj;
@@ -866,7 +930,7 @@ const PageAnnotationLayer = memo(({
         const rectWidth = rect.width;
         const rectHeight = rect.height;
         const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
-        console.log('[Survey Debug] Highlight drag capture', {
+        /* console.log('[Survey Debug] Highlight drag capture', {
           pageNumber,
           rectLeft,
           rectTop,
@@ -877,11 +941,11 @@ const PageAnnotationLayer = memo(({
           viewportTransform: canvas.viewportTransform,
           selectedModuleId: selectedModuleIdRef.current,
           selectedSpaceId: selectedSpaceIdRef.current
-        });
-        
+        }); */
+
         // Remove the temporary selection rectangle from canvas
         canvas.remove(ds.tempObj);
-        
+
         // Only call callback if rectangle has meaningful size (user actually dragged)
         if (rectWidth > 5 && rectHeight > 5 && onHighlightCreatedRef.current) {
           // Canvas has zoom applied via setZoom(), so coordinates are in canvas space
@@ -936,7 +1000,7 @@ const PageAnnotationLayer = memo(({
     canvas.on('mouse:dblclick', handleDblClick);
 
     return () => {
-      console.log(`[Page ${pageNumber}] Cleanup`);
+      // console.log(`[Page ${pageNumber}] Cleanup`);
       isInitializedRef.current = false;
       if (fabricRef.current) {
         fabricRef.current.off();
@@ -954,12 +1018,12 @@ const PageAnnotationLayer = memo(({
   const scaleUpdateTimerRef = useRef(null);
   useEffect(() => {
     if (!fabricRef.current || !width || !height) return;
-    
+
     // Clear any pending scale update
     if (scaleUpdateTimerRef.current) {
       clearTimeout(scaleUpdateTimerRef.current);
     }
-    
+
     // Throttle scale updates to avoid excessive renders during zoom
     scaleUpdateTimerRef.current = setTimeout(() => {
       if (fabricRef.current) {
@@ -970,7 +1034,7 @@ const PageAnnotationLayer = memo(({
       }
       scaleUpdateTimerRef.current = null;
     }, 50); // Wait 50ms after last scale change
-    
+
     return () => {
       if (scaleUpdateTimerRef.current) {
         clearTimeout(scaleUpdateTimerRef.current);
@@ -1004,13 +1068,13 @@ const PageAnnotationLayer = memo(({
       const matchesSpace = selectedSpaceIdRef.current === null || objSpaceId === selectedSpaceIdRef.current;
       const matchesModule = selectedModuleIdRef.current === null || objModuleId === selectedModuleIdRef.current;
       const isVisible = matchesSpace && matchesModule;
-      
+
       if (isVisible) {
         // Only make visible objects interactive based on tool
-        obj.set({ 
+        obj.set({
           visible: true,
-          selectable: tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight', 
-          evented: tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight' 
+          selectable: tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight',
+          evented: tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight'
         });
       } else {
         // Keep hidden objects non-interactive and invisible
@@ -1026,16 +1090,16 @@ const PageAnnotationLayer = memo(({
   // Add highlights when newHighlights prop changes
   useEffect(() => {
     if (!fabricRef.current || !newHighlights || newHighlights.length === 0) return;
-    
+
     const canvas = fabricRef.current;
     const currentZoom = canvas.getZoom();
     let addedAny = false;
-    
+
     newHighlights.forEach((highlight, index) => {
       // Create a unique key for this highlight to avoid duplicates
       // Use highlightId if available, otherwise use coordinates
       const highlightKey = highlight.highlightId || `${highlight.x}-${highlight.y}-${highlight.width}-${highlight.height}`;
-      console.log('[Survey Debug] Applying highlight to canvas', {
+      /* console.log('[Survey Debug] Applying highlight to canvas', {
         pageNumber,
         highlightId: highlight.highlightId || null,
         highlightKey,
@@ -1050,8 +1114,8 @@ const PageAnnotationLayer = memo(({
         canvasSpaceId: selectedSpaceIdRef.current,
         canvasModuleId: highlight.moduleId || selectedModuleIdRef.current || null,
         canvasZoom: currentZoom
-      });
-      
+      }); */
+
       // Remove any existing highlights with the same highlightId
       if (highlight.highlightId) {
         const existingRect = renderedHighlightsRef.current.get(highlight.highlightId);
@@ -1062,7 +1126,7 @@ const PageAnnotationLayer = memo(({
           processedHighlightsRef.current.delete(highlightKey);
         }
       }
-      
+
       // Also remove any existing highlights with matching bounds (regardless of highlightId)
       // This ensures old colors are removed when ball in court changes
       const tolerance = 1.0; // Tolerance for floating point precision and coordinate system differences
@@ -1075,30 +1139,30 @@ const PageAnnotationLayer = memo(({
       const highlightCanvasHeight = highlight.height * renderScale;
       const matchingRects = canvas.getObjects('rect').filter(obj => {
         // Check if this is a highlight rectangle (has fill with rgba or transparent with stroke)
-        const isHighlight = (obj.fill && typeof obj.fill === 'string' && 
+        const isHighlight = (obj.fill && typeof obj.fill === 'string' &&
           (obj.fill.includes('rgba') || obj.fill.includes('transparent'))) ||
           (obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent');
-        
+
         if (!isHighlight) return false;
-        
+
         // Match by bounds with tolerance
         // Compare canvas coordinates (obj is in canvas coords, highlight converted to canvas coords)
-        const boundsMatch = 
+        const boundsMatch =
           Math.abs(obj.left - highlightCanvasX) < tolerance &&
           Math.abs(obj.top - highlightCanvasY) < tolerance &&
           Math.abs(obj.width - highlightCanvasWidth) < tolerance &&
           Math.abs(obj.height - highlightCanvasHeight) < tolerance;
-        
+
         return boundsMatch;
       });
-      
+
       // Remove matching highlights
       matchingRects.forEach(rect => {
         // Don't remove if it's the same one we already removed by highlightId
         if (highlight.highlightId && rect.highlightId === highlight.highlightId) {
           return; // Already handled above
         }
-        
+
         // Remove the old highlight
         canvas.remove(rect);
         // Clean up refs if it had a highlightId
@@ -1109,7 +1173,7 @@ const PageAnnotationLayer = memo(({
         const oldKey = rect.highlightId || `${rect.left}-${rect.top}-${rect.width}-${rect.height}`;
         processedHighlightsRef.current.delete(oldKey);
       });
-      
+
       // Check if we've already processed this highlight (by coordinates if no ID)
       if (!processedHighlightsRef.current.has(highlightKey)) {
         // Check if this highlight needs BIC assignment (transparent with dashed outline)
@@ -1147,10 +1211,9 @@ const PageAnnotationLayer = memo(({
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
         } else {
-          // Use color from highlight data if provided, otherwise use default
-          // Ensure all highlight colors use 100% opacity
+          // Use color from highlight data if provided, otherwise use default, and preserve stored opacity
           const rawColor = highlight.color || highlightColor;
-          const color = ensureRgbaOpacity(rawColor, 1.0);
+          const color = normalizeHighlightColor(rawColor) || highlightColor;
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
@@ -1183,10 +1246,10 @@ const PageAnnotationLayer = memo(({
         }
       }
     });
-    
+
     if (addedAny) {
       canvas.renderAll();
-      
+
       // Save annotations
       try {
         const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC']);
@@ -1277,13 +1340,13 @@ const PageAnnotationLayer = memo(({
     objects.forEach(obj => {
       const objSpaceId = obj.spaceId || null;
       const objModuleId = obj.moduleId || null;
-      
+
       // Check if this is a survey highlight (has moduleId)
       const isSurveyHighlight = objModuleId !== null;
-      
+
       // Filter by space: if selectedSpaceId is set, object must match
       const matchesSpace = selectedSpaceId === null || objSpaceId === selectedSpaceId;
-      
+
       // Filter by module: if selectedModuleId is set, object must match
       const matchesModule = selectedModuleId === null || objModuleId === selectedModuleId;
 
@@ -1315,7 +1378,7 @@ const PageAnnotationLayer = memo(({
       }
     });
 
-    console.log('[Survey Debug] Canvas visibility update', {
+    /* console.log('[Survey Debug] Canvas visibility update', {
       pageNumber,
       selectedSpaceId,
       selectedModuleId,
@@ -1328,15 +1391,16 @@ const PageAnnotationLayer = memo(({
         type: obj.type,
         spaceId: obj.spaceId || null,
         moduleId: obj.moduleId || null,
-        visible: obj.visible
+        visible: obj.visible,
+        selectable: obj.selectable
       }))
-    });
+    }); */
 
     canvas.renderAll();
   }, [selectedSpaceId, selectedModuleId, showSurveyPanel, activeRegions, scale]);
 
   return (
-    <div 
+    <div
       style={{
         position: 'absolute',
         top: 0,
