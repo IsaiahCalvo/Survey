@@ -134,11 +134,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
       onRequestRegionEdit?.(space.id, pageId);
     }
   }, [editingRegionId, editingRegionValue, onRenameRegion, onRequestRegionEdit, space.id]);
-  React.useEffect(() => {
-    if (!isRegionSelectionActive && editingRegionId !== null) {
-      commitRegionRename(editingRegionId, false);
-    }
-  }, [isRegionSelectionActive, editingRegionId, commitRegionRename]);
+
 
   const cancelRegionRename = useCallback(() => {
     setEditingRegionId(null);
@@ -254,9 +250,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             title={isExpanded ? 'Collapse' : 'Expand'}
           >
-            <Icon 
-              name={isExpanded ? 'chevronDown' : 'chevronRight'} 
-              size={12} 
+            <Icon
+              name={isExpanded ? 'chevronDown' : 'chevronRight'}
+              size={12}
             />
           </button>
 
@@ -632,7 +628,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             borderRadius: '6px'
                           }}
                         >
-                          <div style={{ flex: 1 }}>
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {isEditingRegion ? (
                               <input
                                 ref={editingRegionInputRef}
@@ -668,9 +664,39 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 }}
                               />
                             ) : (
-                              <div style={{ color: '#ddd', fontWeight: 500 }}>
-                                {regionLabel}
-                              </div>
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRegionEditClick(page.pageId, regionLabel);
+                                  }}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    padding: '4px',
+                                    cursor: 'pointer',
+                                    borderRadius: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#666'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#333';
+                                    e.currentTarget.style.color = '#ddd';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.color = '#666';
+                                  }}
+                                  title="Rename Region"
+                                >
+                                  <Icon name="edit" size={12} />
+                                </button>
+                                <div style={{ color: '#ddd', fontWeight: 500 }}>
+                                  {regionLabel}
+                                </div>
+                              </>
                             )}
                           </div>
                           <div style={{ display: 'flex', gap: '4px' }}>
@@ -680,7 +706,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 if (isEditingRegion) {
                                   commitRegionRename(page.pageId, true);
                                 } else {
-                                  handleRegionEditClick(page.pageId, regionLabel);
+                                  // Only trigger geometry edit, NOT rename
                                   onRequestRegionEdit?.(space.id, page.pageId);
                                 }
                               }}
@@ -964,7 +990,7 @@ const SpacesPanel = ({
         }}>
           Spaces
         </h3>
-        
+
         {/* Create Space Input */}
         <div style={{
           display: 'flex',

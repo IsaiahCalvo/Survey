@@ -5,41 +5,41 @@
 
 /* CSS Variables for consistent theming - Modern Dark Purple/Blue Theme */
 :root {
-  --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", 
-                   "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif;
-  --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, 
-                "Courier New", monospace;
-  
+  --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif;
+  --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas,
+    "Courier New", monospace;
+
   /* Dark theme for PDF viewer - Professional gray palette */
   --bg-primary: #1E1E1E;
   --bg-secondary: #252525;
   --bg-tertiary: #2D2D2D;
   --bg-hover: #363636;
-  
+
   /* Dark theme for dashboard - Professional gray palette */
   --bg-light: #1E1E1E;
   --bg-white: #252525;
   --bg-sidebar: #181818;
-  
+
   /* Text colors - High contrast */
   --text-primary: #FFFFFF;
   --text-secondary: #C8C8C8;
   --text-muted: #9A9A9A;
   --text-dim: #707070;
   --text-dark: #FFFFFF;
-  
+
   /* Professional accent colors */
   --accent-primary: #4A90E2;
   --accent-blue: #4A90E2;
   --accent-red: #DC3545;
   --accent-purple: #6C757D;
-  
+
   /* Border colors - Neutral gray tones */
   --border-primary: #3A3A3A;
   --border-secondary: #2D2D2D;
   --border-light: #252525;
   --border-lighter: #1E1E1E;
-  
+
   /* Professional shadows */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
@@ -79,7 +79,10 @@ body {
 }
 
 /* Ensure no Times New Roman appears */
-input, button, select, textarea {
+input,
+button,
+select,
+textarea {
   font-family: inherit;
   font-size: inherit;
   font-weight: inherit;
@@ -105,7 +108,12 @@ input, button, select, textarea {
 }
 
 /* Typography classes */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-primary);
   font-weight: 300;
   letter-spacing: -0.02em;
@@ -162,12 +170,15 @@ input[type="text"]:focus {
 
 /* Hide number input spinner arrows */
 input[type="number"] {
-  -moz-appearance: textfield; /* Firefox */
+  -moz-appearance: textfield;
+  /* Firefox */
+  appearance: textfield;
 }
 
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none; /* Chrome, Safari, Edge */
+  -webkit-appearance: none;
+  /* Chrome, Safari, Edge */
   margin: 0;
 }
 
@@ -272,7 +283,7 @@ canvas {
 
 /* High DPI screen optimizations */
 @media screen and (-webkit-min-device-pixel-ratio: 2),
-       screen and (min-resolution: 192dpi) {
+screen and (min-resolution: 192dpi) {
   body {
     -webkit-font-smoothing: subpixel-antialiased;
   }
@@ -392,4 +403,54 @@ canvas {
   width: 0;
   height: 0;
   margin: 0;
+}
+
+/* Selection Mode Buttons */
+.selection-mode-button {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #4A90E2;
+  border-radius: 50px;
+  padding: 6px 16px;
+  font-family: var(--font-primary);
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  white-space: nowrap;
+}
+
+.selection-mode-button:hover {
+  background: rgba(74, 144, 226, 0.1);
+  box-shadow: 0 0 8px rgba(74, 144, 226, 0.3);
+  transform: translateY(-1px);
+}
+
+.selection-mode-button:active {
+  transform: translateY(0);
+}
+
+.selection-mode-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  border-color: #555;
+  color: #888;
+}
+
+
+
+.selection-mode-button.danger {
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+
+.selection-mode-button.danger:hover {
+  background: rgba(231, 76, 60, 0.1);
+  box-shadow: 0 0 8px rgba(231, 76, 60, 0.3);
 }

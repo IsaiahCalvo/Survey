@@ -167,7 +167,6 @@ const KeyboardShortcutsOverlay = () => {
               <h3
                 style={{
                   margin: '0 0 16px 0',
-                  fontSize: TYPOGRAPHY.fontSize.lg,
                   fontWeight: TYPOGRAPHY.fontWeight.semibold,
                   color: COLORS.text.tertiary,
                   fontFamily: TYPOGRAPHY.fontFamily.default,

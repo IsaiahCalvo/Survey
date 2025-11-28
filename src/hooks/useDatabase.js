@@ -171,6 +171,8 @@ export const useDocuments = (projectId = null) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // console.log('useDocuments render. projectId:', projectId, 'documents count:', documents.length);
+
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) {
       setLoading(false);
@@ -215,6 +217,7 @@ export const useDocuments = (projectId = null) => {
         .single();
 
       if (error) throw error;
+      console.log('createDocument success, updating state with:', data);
       setDocuments([data, ...documents]);
       return data;
     } catch (err) {
