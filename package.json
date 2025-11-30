@@ -11,9 +11,16 @@
     "dist": "npm run build && electron-builder"
   },
   "dependencies": {
+    "@azure/msal-browser": "^4.26.2",
+    "@azure/msal-node": "^3.8.3",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@stripe/stripe-js": "^8.5.3",
     "@supabase/supabase-js": "^2.81.1",
+    "chokidar": "^5.0.0",
+    "exceljs": "^4.4.0",
+    "isomorphic-fetch": "^3.0.0",
     "martinez-polygon-clipping": "^0.7.4",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^3.11.174",

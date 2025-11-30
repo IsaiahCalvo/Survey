@@ -5,6 +5,7 @@ import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import { AuthProvider } from './contexts/AuthContext';
+import { MSGraphProvider } from './contexts/MSGraphContext';
 import './styles.css';
 
 // Suppress PDF.js "TT: undefined function" warnings
@@ -17,8 +18,10 @@ console.warn = (...args) => {
 createRoot(document.getElementById('root')).render(
   <ErrorBoundary>
     <AuthProvider>
-      <App />
-      <KeyboardShortcutsOverlay />
+      <MSGraphProvider>
+        <App />
+        <KeyboardShortcutsOverlay />
+      </MSGraphProvider>
     </AuthProvider>
   </ErrorBoundary>
 );

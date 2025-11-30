@@ -31,6 +31,7 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -41,6 +42,7 @@
     transform: translateY(24px) scale(0.98);
     opacity: 0;
   }
+
   to {
     transform: translateY(0) scale(1);
     opacity: 1;
@@ -494,4 +496,202 @@
   .account-delete-confirm-actions button {
     width: 100%;
   }
+}
+
+/* Connected Accounts Section */
+.account-connected-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.account-connected-account:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.account-connected-account-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.account-connected-account-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.account-connected-account-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.account-connected-account-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.2px;
+}
+
+.account-connected-account-status {
+  font-size: 12px;
+  color: #888;
+}
+
+.account-connected-account-status-connected {
+  color: #81c784;
+}
+
+.account-connected-account-actions {
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .account-connected-account {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .account-connected-account-actions {
+    width: 100%;
+  }
+
+  .account-connected-account-actions button {
+    width: 100%;
+  }
+}
+
+/* Subscription Tab Styles */
+.account-subscription-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.account-subscription-card {
+  background: #1E1E1E;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.account-subscription-header {
+  margin-bottom: 24px;
+}
+
+.account-plan-info-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.account-plan-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.account-plan-badge-text {
+  font-size: 14px;
+  color: #888;
+}
+
+.account-subscription-price {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.price-amount {
+  font-size: 32px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -1px;
+}
+
+.price-period {
+  font-size: 16px;
+  color: #888;
+  font-weight: 400;
+}
+
+.account-subscription-features {
+  flex: 1;
+  margin-bottom: 32px;
+}
+
+.account-subscription-features ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.account-subscription-features li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.account-subscription-features li::before {
+  content: "•";
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.account-subscription-actions {
+  margin-top: auto;
+}
+
+.account-btn-outline-green {
+  width: 100%;
+  background: transparent;
+  border: 1px solid #4CAF50;
+  color: #4CAF50;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: default;
+  text-align: center;
+}
+
+.account-btn-purple {
+  width: 100%;
+  background: #6200EE;
+  border: none;
+  color: #fff;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.account-btn-purple:hover {
+  background: #7C4DFF;
 }

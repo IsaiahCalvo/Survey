@@ -29,6 +29,15 @@ function createWindow() {
 const { ipcMain, dialog, shell } = require('electron');
 const fs = require('fs');
 
+// File watchers storage
+const fileWatchers = new Map();
+let chokidar = null;
+
+// Dynamically import chokidar (ES module)
+(async () => {
+  chokidar = await import('chokidar');
+})();
+
 ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, data }) => {
   const { canceled, filePath } = await dialog.showSaveDialog({
     title,
@@ -74,8 +83,69 @@ ipcMain.handle('fs:writeFile', async (event, { path, data }) => {
   }
 });
 
+// File watcher handlers
+ipcMain.handle('fileWatcher:start', async (event, { filePath, watchId }) => {
+  try {
+    if (!chokidar) {
+      throw new Error('File watcher not initialized');
+    }
+
+    // Stop existing watcher if any
+    if (fileWatchers.has(watchId)) {
+      fileWatchers.get(watchId).close();
+    }
+
+    // Create new watcher with debouncing
+    const watcher = chokidar.default.watch(filePath, {
+      persistent: true,
+      ignoreInitial: true,
+      awaitWriteFinish: {
+        stabilityThreshold: 500,
+        pollInterval: 100
+      }
+    });
+
+    // Handle file changes
+    watcher.on('change', (path) => {
+      event.sender.send('fileWatcher:changed', { watchId, filePath: path });
+    });
+
+    watcher.on('error', (error) => {
+      console.error('File watcher error:', error);
+      event.sender.send('fileWatcher:error', { watchId, error: error.message });
+    });
+
+    fileWatchers.set(watchId, watcher);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to start file watcher:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('fileWatcher:stop', async (event, watchId) => {
+  try {
+    if (fileWatchers.has(watchId)) {
+      await fileWatchers.get(watchId).close();
+      fileWatchers.delete(watchId);
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to stop file watcher:', error);
+    throw error;
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
+});
+
+app.on('before-quit', () => {
+  // Clean up all file watchers
+  fileWatchers.forEach((watcher) => {
+    watcher.close();
+  });
+  fileWatchers.clear();
 });
 
 app.on('window-all-closed', () => {

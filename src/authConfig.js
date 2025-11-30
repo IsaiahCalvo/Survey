@@ -19,7 +19,7 @@ export const msalConfig = {
         redirectUri: "http://localhost:5173", // Must match the one registered in Azure
     },
     cache: {
-        cacheLocation: "sessionStorage", // This configures where your cache will be stored
+        cacheLocation: "localStorage", // This configures where your cache will be stored
         storeAuthStateInCookie: false, // Set this to "true" if you are having issues on IE11 or Edge
     },
     system: {

@@ -93,8 +93,7 @@ export const MSGraphProvider = ({ children }) => {
         if (!msalInstance) return;
         try {
             await msalInstance.logoutPopup({
-                postLogoutRedirectUri: window.location.origin,
-                mainWindowRedirectUri: window.location.origin
+                postLogoutRedirectUri: window.location.origin
             });
             setAccount(null);
             setIsAuthenticated(false);
