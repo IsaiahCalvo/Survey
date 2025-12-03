@@ -9,9 +9,18 @@ import { MSGraphProvider } from './contexts/MSGraphContext';
 import './styles.css';
 
 // Suppress PDF.js "TT: undefined function" warnings
+// Suppress PDF.js "TT: undefined function" warnings
 const originalWarn = console.warn;
 console.warn = (...args) => {
-  if (args[0] && typeof args[0] === 'string' && args[0].includes('TT: undefined function')) return;
+  // Check all arguments for the specific warning string
+  const isPdfWarning = args.some(arg =>
+    typeof arg === 'string' && (
+      arg.includes('TT: undefined function') ||
+      arg.includes('Warning: TT: undefined function')
+    )
+  );
+
+  if (isPdfWarning) return;
   originalWarn(...args);
 };
 

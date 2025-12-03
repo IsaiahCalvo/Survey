@@ -15,7 +15,10 @@ self.onmessage = async (e) => {
             console.log('Loading document:', payload.docId);
             const { docId, data } = payload;
             // data is an ArrayBuffer
-            const loadingTask = pdfjsLib.getDocument({ data });
+            const loadingTask = pdfjsLib.getDocument({
+                data,
+                verbosity: pdfjsLib.VerbosityLevel.ERRORS
+            });
             const pdfDoc = await loadingTask.promise;
             loadedDocs.set(docId, pdfDoc);
             console.log('Document loaded successfully, sending DOC_LOADED message');

@@ -83,6 +83,14 @@ ipcMain.handle('fs:writeFile', async (event, { path, data }) => {
   }
 });
 
+ipcMain.handle('fs:fileExists', async (event, filePath) => {
+  try {
+    return fs.existsSync(filePath);
+  } catch (error) {
+    return false;
+  }
+});
+
 // File watcher handlers
 ipcMain.handle('fileWatcher:start', async (event, { filePath, watchId }) => {
   try {
@@ -107,7 +115,12 @@ ipcMain.handle('fileWatcher:start', async (event, { filePath, watchId }) => {
 
     // Handle file changes
     watcher.on('change', (path) => {
-      event.sender.send('fileWatcher:changed', { watchId, filePath: path });
+      event.sender.send('fileWatcher:changed', { watchId, filePath: path, event: 'change' });
+    });
+
+    // Handle file deletion
+    watcher.on('unlink', (path) => {
+      event.sender.send('fileWatcher:changed', { watchId, filePath: path, event: 'unlink' });
     });
 
     watcher.on('error', (error) => {

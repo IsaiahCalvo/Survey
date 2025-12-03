@@ -22,6 +22,9 @@ const TextLayer = memo(({
 
     const loadTextContent = async () => {
       try {
+        const startTime = performance.now();
+
+
         // Only reload text content if scale changed significantly (avoid reload on tiny changes)
         const scaleChanged = Math.abs(scale - lastScaleRef.current) > 0.01;
 
@@ -95,6 +98,8 @@ const TextLayer = memo(({
           textLayerDiv.style.userSelect = 'text';
           textLayerDiv.style.webkitUserSelect = 'text';
         }
+
+
 
       } catch (error) {
         console.error(`Error loading text content for page ${pageNumber}:`, error);

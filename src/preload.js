@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPath: (path) => ipcRenderer.invoke('shell:openPath', path),
   readFile: (path) => ipcRenderer.invoke('fs:readFile', path),
   writeFile: (path, data) => ipcRenderer.invoke('fs:writeFile', { path, data }),
+  fileExists: (path) => ipcRenderer.invoke('fs:fileExists', path),
 
   // File watcher APIs
   startFileWatcher: (filePath, watchId) => ipcRenderer.invoke('fileWatcher:start', { filePath, watchId }),

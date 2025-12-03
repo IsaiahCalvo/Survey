@@ -372,6 +372,7 @@ const PageAnnotationLayer = memo(({
   onHighlightClicked = null, // Callback for when a highlight is clicked (reverse navigation)
   selectedSpaceId = null, // Space ID to filter annotations by
   selectedModuleId = null, // Module ID to filter annotations by
+  selectedCategoryId = null, // Category ID to keep highlights visible when panel is hidden
   activeRegions = null,
   eraserMode = 'partial', // 'partial' | 'entire'
   showSurveyPanel = false // Whether survey mode is active
@@ -663,6 +664,7 @@ const PageAnnotationLayer = memo(({
               saveCanvas();
 
               if (onHighlightDeletedRef.current) {
+                console.log('[PageAnnotationLayer] Calling onHighlightDeleted', { pageNumber, bounds, highlightId });
                 onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
               }
             }
@@ -1099,30 +1101,59 @@ const PageAnnotationLayer = memo(({
       // Create a unique key for this highlight to avoid duplicates
       // Use highlightId if available, otherwise use coordinates
       const highlightKey = highlight.highlightId || `${highlight.x}-${highlight.y}-${highlight.width}-${highlight.height}`;
-      /* console.log('[Survey Debug] Applying highlight to canvas', {
-        pageNumber,
-        highlightId: highlight.highlightId || null,
-        highlightKey,
-        bounds: {
-          x: highlight.x,
-          y: highlight.y,
-          width: highlight.width,
-          height: highlight.height
-        },
-        needsBIC: !!highlight.needsBIC,
-        color: highlight.color || null,
-        canvasSpaceId: selectedSpaceIdRef.current,
-        canvasModuleId: highlight.moduleId || selectedModuleIdRef.current || null,
-        canvasZoom: currentZoom
-      }); */
 
-      // Remove any existing highlights with the same highlightId
-      if (highlight.highlightId) {
+      // Check if we already have this highlight rendered
+      if (highlight.highlightId && renderedHighlightsRef.current.has(highlight.highlightId)) {
         const existingRect = renderedHighlightsRef.current.get(highlight.highlightId);
-        if (existingRect && canvas.getObjects().includes(existingRect)) {
+
+        // Verify it's still on the canvas
+        if (canvas.getObjects().includes(existingRect)) {
+          // Check if properties match (color, needsBIC, bounds)
+          const rawColor = highlight.color || highlightColor;
+          const color = normalizeHighlightColor(rawColor) || highlightColor;
+          const renderScale = currentZoom || scale;
+
+          // Check bounds
+          const currentLeft = existingRect.left;
+          const currentTop = existingRect.top;
+          const currentWidth = existingRect.width;
+          const currentHeight = existingRect.height;
+
+          const targetLeft = highlight.x * renderScale;
+          const targetTop = highlight.y * renderScale;
+          const targetWidth = highlight.width * renderScale;
+          const targetHeight = highlight.height * renderScale;
+
+          const tolerance = 1.0;
+          const boundsMatch =
+            Math.abs(currentLeft - targetLeft) < tolerance &&
+            Math.abs(currentTop - targetTop) < tolerance &&
+            Math.abs(currentWidth - targetWidth) < tolerance &&
+            Math.abs(currentHeight - targetHeight) < tolerance;
+
+          // Check visual style
+          const needsBIC = !!highlight.needsBIC;
+          const existingNeedsBIC = !!existingRect.needsBIC;
+
+          // If everything matches, skip update
+          if (boundsMatch && needsBIC === existingNeedsBIC) {
+            // For solid highlights, check color
+            if (!needsBIC) {
+              if (existingRect.fill === color) {
+                return; // Skip, already rendered correctly
+              }
+            } else {
+              return; // Skip, already rendered correctly (BIC style is constant)
+            }
+          }
+
+          // If we get here, something changed. Remove the old one and let it be re-added.
           canvas.remove(existingRect);
           renderedHighlightsRef.current.delete(highlight.highlightId);
-          // Also remove from processedHighlightsRef so it can be re-added
+          processedHighlightsRef.current.delete(highlightKey);
+        } else {
+          // Reference exists but object not on canvas (weird), clean up
+          renderedHighlightsRef.current.delete(highlight.highlightId);
           processedHighlightsRef.current.delete(highlightKey);
         }
       }
@@ -1137,7 +1168,11 @@ const PageAnnotationLayer = memo(({
       const highlightCanvasY = highlight.y * renderScale;
       const highlightCanvasWidth = highlight.width * renderScale;
       const highlightCanvasHeight = highlight.height * renderScale;
+
       const matchingRects = canvas.getObjects('rect').filter(obj => {
+        // Don't match the object we just verified as correct above (if any)
+        if (highlight.highlightId && obj.highlightId === highlight.highlightId) return false;
+
         // Check if this is a highlight rectangle (has fill with rgba or transparent with stroke)
         const isHighlight = (obj.fill && typeof obj.fill === 'string' &&
           (obj.fill.includes('rgba') || obj.fill.includes('transparent'))) ||
@@ -1158,11 +1193,6 @@ const PageAnnotationLayer = memo(({
 
       // Remove matching highlights
       matchingRects.forEach(rect => {
-        // Don't remove if it's the same one we already removed by highlightId
-        if (highlight.highlightId && rect.highlightId === highlight.highlightId) {
-          return; // Already handled above
-        }
-
         // Remove the old highlight
         canvas.remove(rect);
         // Clean up refs if it had a highlightId
@@ -1269,6 +1299,7 @@ const PageAnnotationLayer = memo(({
     let removedAny = false;
 
     highlightsToRemove.forEach((boundsToRemove) => {
+      console.log('[PageAnnotationLayer] Processing removal', boundsToRemove);
       // Create a unique key for this removal to avoid processing twice
       const removalKey = `${boundsToRemove.x}-${boundsToRemove.y}-${boundsToRemove.width}-${boundsToRemove.height}`;
 
@@ -1309,6 +1340,14 @@ const PageAnnotationLayer = memo(({
       objectsToRemove.forEach(obj => {
         canvas.remove(obj);
         removedAny = true;
+
+        // Clean up refs
+        if (obj.highlightId) {
+          renderedHighlightsRef.current.delete(obj.highlightId);
+        }
+        // Remove from processedHighlightsRef
+        const key = obj.highlightId || `${obj.left}-${obj.top}-${obj.width}-${obj.height}`;
+        processedHighlightsRef.current.delete(key);
       });
 
       processedRemovalsRef.current.add(removalKey);
@@ -1351,7 +1390,8 @@ const PageAnnotationLayer = memo(({
       const matchesModule = selectedModuleId === null || objModuleId === selectedModuleId;
 
       // Survey highlights should only be visible when survey mode is active AND a module is selected
-      const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanel && selectedModuleId !== null);
+      // Also keep them visible if a category is selected (even if panel is hidden)
+      const surveyHighlightVisible = !isSurveyHighlight || ((showSurveyPanel || selectedCategoryId !== null) && selectedModuleId !== null);
 
       let withinRegions = true;
       if (regions) {
@@ -1397,7 +1437,7 @@ const PageAnnotationLayer = memo(({
     }); */
 
     canvas.renderAll();
-  }, [selectedSpaceId, selectedModuleId, showSurveyPanel, activeRegions, scale]);
+  }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale]);
 
   return (
     <div

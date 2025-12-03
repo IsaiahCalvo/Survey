@@ -883,6 +883,29 @@ const saveHighlightAnnotations = (pdfId, highlightAnnotations) => {
   }
 };
 
+const saveAnnotationsByPage = (pdfId, annotationsByPage) => {
+  if (!pdfId) return;
+  try {
+    const key = `annotationsByPage_${pdfId}`;
+    const data = JSON.stringify(annotationsByPage);
+    localStorage.setItem(key, data);
+  } catch (e) {
+    console.error('Error saving annotationsByPage:', e);
+  }
+};
+
+const loadAnnotationsByPage = (pdfId) => {
+  if (!pdfId) return {};
+  try {
+    const data = localStorage.getItem(`annotationsByPage_${pdfId}`);
+    if (!data) return {};
+    return JSON.parse(data);
+  } catch (e) {
+    console.error('Error loading annotationsByPage:', e);
+    return {};
+  }
+};
+
 const loadHighlightAnnotations = (pdfId) => {
   if (!pdfId) return {};
   try {
@@ -9821,6 +9844,11 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
     // Load highlightAnnotations from localStorage
     const loadedHighlights = loadHighlightAnnotations(id);
     setHighlightAnnotations(loadedHighlights);
+    // Load annotationsByPage from localStorage
+    const loadedAnnotationsByPage = loadAnnotationsByPage(id);
+    setAnnotationsByPage(loadedAnnotationsByPage);
+    savedAnnotationsByPageRef.current = loadedAnnotationsByPage; // Track as saved
+    setHasUnsavedAnnotations(false); // Reset unsaved flag
   }, [pdfFile]);
 
   // Save items and annotations to localStorage when they change
@@ -9838,6 +9866,38 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
     // console.log('Saving highlightAnnotations to localStorage:', { pdfId, count: Object.keys(highlightAnnotations).length });
     saveHighlightAnnotations(pdfId, highlightAnnotations);
   }, [pdfId, highlightAnnotations]);
+
+  // Track unsaved annotation changes
+  const [hasUnsavedAnnotations, setHasUnsavedAnnotations] = useState(false);
+  const savedAnnotationsByPageRef = useRef({});
+
+  // Mark annotations as dirty when they change
+  useEffect(() => {
+    if (!pdfId) return;
+
+    // Compare current with saved to detect changes
+    const currentJson = JSON.stringify(annotationsByPage);
+    const savedJson = JSON.stringify(savedAnnotationsByPageRef.current);
+
+    if (currentJson !== savedJson && Object.keys(annotationsByPage).length > 0) {
+      setHasUnsavedAnnotations(true);
+    }
+  }, [pdfId, annotationsByPage]);
+
+  // Manual save function for annotations (triggered by Cmd/Ctrl+S)
+  const handleSaveDocument = useCallback(() => {
+    if (!pdfId) return;
+
+    // Save annotationsByPage to localStorage
+    saveAnnotationsByPage(pdfId, annotationsByPage);
+    savedAnnotationsByPageRef.current = { ...annotationsByPage };
+    setHasUnsavedAnnotations(false);
+
+    console.log('Document saved successfully');
+
+    // Optional: Show toast notification
+    // TODO: Add toast notification "Document saved"
+  }, [pdfId, annotationsByPage]);
 
   // Load note content when note dialog opens
   useEffect(() => {
@@ -10532,6 +10592,12 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
         const key = e.key.toLowerCase();
 
         if (!e.altKey) {
+          // Save document (Cmd/Ctrl+S)
+          if (key === 's') {
+            e.preventDefault();
+            handleSaveDocument();
+            return;
+          }
           if (key === '0') {
             e.preventDefault();
             zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_PAGE);
@@ -10576,7 +10642,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut]);
+  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument]);
 
   // Mode toggle
   const toggleScrollMode = useCallback(() => {
@@ -10747,7 +10813,11 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
 
   // Handle highlight deletion from PDF (via eraser tool)
   const handleHighlightDeleted = useCallback((pageNumber, bounds, highlightId = null) => {
-    if (!selectedModuleId || !selectedTemplate) return;
+    console.log('[App] handleHighlightDeleted called', { pageNumber, bounds, highlightId, selectedModuleId, selectedTemplate });
+    if (!selectedModuleId || !selectedTemplate) {
+      console.warn('[App] handleHighlightDeleted aborted: Missing module or template');
+      return;
+    }
 
     // Find matching highlights in highlightAnnotations
     const matchingHighlightIds = [];
@@ -10891,11 +10961,133 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
     }
   }, [selectedModuleId, selectedTemplate, highlightAnnotations, items]);
 
+  // Handle deletion of a highlight item (from survey panel)
+  const handleDeleteHighlightItem = useCallback((highlightId) => {
+    console.log('[App] handleDeleteHighlightItem called', { highlightId });
+    const highlight = highlightAnnotations[highlightId];
+    if (!highlight) {
+      console.warn('[App] handleDeleteHighlightItem aborted: Highlight not found', highlightId);
+      return;
+    }
+
+    // 1. Remove from canvas
+    if (highlight.pageNumber && highlight.bounds) {
+      setHighlightsToRemoveByPage(prev => ({
+        ...prev,
+        [highlight.pageNumber]: [...(prev[highlight.pageNumber] || []), highlight.bounds]
+      }));
+    }
+
+    // 2. Delete from highlightAnnotations
+    setHighlightAnnotations(prev => {
+      const updated = { ...prev };
+      delete updated[highlightId];
+      return updated;
+    });
+
+    // 2.5. Remove from newHighlightsByPage to prevent re-adding to canvas
+    setNewHighlightsByPage(prev => {
+      if (!highlight.pageNumber) return prev;
+
+      const updated = { ...prev };
+      const pageHighlights = updated[highlight.pageNumber] || [];
+
+      // Remove highlight by highlightId or by bounds match
+      const filtered = pageHighlights.filter(h => {
+        if (h.highlightId === highlightId) return false;
+        if (highlight.bounds && h.x !== undefined && h.y !== undefined) {
+          return !boundsMatch(
+            { x: h.x, y: h.y, width: h.width, height: h.height },
+            highlight.bounds
+          );
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        delete updated[highlight.pageNumber];
+      } else {
+        updated[highlight.pageNumber] = filtered;
+      }
+
+      return updated;
+    });
+
+    // 3. Delete associated items and annotations (reusing logic from handleHighlightDeleted would be ideal, but for now duplicating for safety/clarity)
+    if (selectedTemplate) {
+      const highlightModuleId = highlight.moduleId || highlight.spaceId;
+      const categoryName = getCategoryName(selectedTemplate, highlightModuleId, highlight.categoryId);
+      const matchingItem = Object.values(items).find(item =>
+        item.name === highlight.name &&
+        item.itemType === categoryName
+      );
+
+      if (matchingItem) {
+        // Delete annotations
+        setAnnotations(prev => {
+          const updated = { ...prev };
+          Object.values(updated).forEach(ann => {
+            if (ann.itemId === matchingItem.itemId && (ann.spaceId === highlightModuleId || ann.moduleId === highlightModuleId)) {
+              if (ann.pdfCoordinates && highlight.bounds && boundsMatch(ann.pdfCoordinates, highlight.bounds)) {
+                delete updated[ann.annotationId];
+              }
+            }
+          });
+          return updated;
+        });
+
+        // Update/Delete Item
+        const moduleName = getModuleName(selectedTemplate, highlightModuleId);
+        const dataKey = getModuleDataKey(moduleName);
+        const item = items[matchingItem.itemId];
+
+        if (item) {
+          const updatedItem = { ...item };
+          delete updatedItem[dataKey];
+
+          const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+          const hasOtherModuleData = allModules.some(module => {
+            const moduleId = module.id;
+            if (moduleId === highlightModuleId) return false;
+            const otherModuleName = getModuleName(selectedTemplate, moduleId);
+            const otherDataKey = getModuleDataKey(otherModuleName);
+            return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
+          });
+
+          if (hasOtherModuleData) {
+            setItems(prev => ({
+              ...prev,
+              [matchingItem.itemId]: updatedItem
+            }));
+          } else {
+            setItems(prev => {
+              const updated = { ...prev };
+              delete updated[matchingItem.itemId];
+              return updated;
+            });
+          }
+        }
+      }
+    }
+  }, [highlightAnnotations, selectedTemplate, items]);
+
   // Handle highlight creation from annotation tool
   const handleHighlightCreated = useCallback((pageNumber, bounds) => {
-    // Only handle if survey mode is active and a module is selected
-    if (!selectedModuleId || !selectedTemplate) {
+    // Only handle if survey mode is active
+    if (!selectedTemplate) {
       return;
+    }
+
+    // If no module is selected, try to default to the first one
+    let effectiveModuleId = selectedModuleId;
+    if (!effectiveModuleId) {
+      const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
+      if (modules.length > 0) {
+        effectiveModuleId = modules[0].id;
+        setSelectedModuleId(effectiveModuleId);
+      } else {
+        return;
+      }
     }
 
     // Handle locating a pending item (from "Locate" button on unlocated item)
@@ -10913,7 +11105,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
             ...existing, // Override with any existing annotation data
             pageNumber,
             bounds,
-            moduleId: selectedModuleId,
+            moduleId: effectiveModuleId,
             spaceId: activeSpaceId ?? selectedSpaceId // Ensure spaceId is set
           }
         };
@@ -10927,7 +11119,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
           {
             ...bounds,
             highlightId,
-            moduleId: selectedModuleId,
+            moduleId: effectiveModuleId,
             color: pendingLocationItem.ballInCourtColor, // Use BIC color if available
             needsBIC: !pendingLocationItem.ballInCourtColor // Dashed if no color
           }
@@ -10945,7 +11137,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
             id: highlightId,
             pageNumber,
             bounds,
-            moduleId: selectedModuleId
+            moduleId: effectiveModuleId
           },
           categoryId: pendingLocationItem.categoryId
         });
@@ -10957,13 +11149,13 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
 
     // Create a unique ID for this highlight
     const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+    const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
     const debugSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
     /* console.log('[Survey Debug] Highlight created', {
       highlightId,
       pageNumber,
       bounds,
-      moduleId: selectedModuleId,
+      moduleId: effectiveModuleId,
       moduleName,
       activeSpaceId,
       selectedSpaceId,
@@ -10976,7 +11168,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
       // Filter previous highlights to only keep ones from the current module
       const filteredPrev = {};
       Object.entries(prev).forEach(([page, highlights]) => {
-        const filteredHighlights = highlights.filter(h => h.moduleId === selectedModuleId);
+        const filteredHighlights = highlights.filter(h => h.moduleId === effectiveModuleId);
         if (filteredHighlights.length > 0) {
           filteredPrev[page] = filteredHighlights;
         }
@@ -10989,7 +11181,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
           {
             ...bounds,
             highlightId: highlightId,
-            moduleId: selectedModuleId,
+            moduleId: effectiveModuleId,
             needsCategory: !selectedCategoryId, // Flag to indicate it needs category selection
             needsBIC: true // Use needsBIC rendering style (transparent with dashed outline) initially
           }
@@ -11008,7 +11200,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
             id: highlightId,
             pageNumber,
             bounds,
-            moduleId: selectedModuleId
+            moduleId: effectiveModuleId
           },
           categoryId: selectedCategoryId
         });
@@ -11019,7 +11211,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
             id: highlightId,
             pageNumber,
             bounds,
-            moduleId: selectedModuleId
+            moduleId: effectiveModuleId
           },
           categoryId: selectedCategoryId
         });
@@ -11028,6 +11220,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
 
       // Reset selected category
       setSelectedCategoryId(null);
+      setShowSurveyPanel(true);
     } else {
       // No category selected, show category selection modal (only if survey panel is visible)
       if (showSurveyPanel) {
@@ -11035,7 +11228,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
           id: highlightId,
           pageNumber,
           bounds,
-          moduleId: selectedModuleId
+          moduleId: effectiveModuleId
         });
       }
     }
@@ -11609,9 +11802,24 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
             color: '#999',
             fontFamily: FONT_FAMILY,
             fontWeight: '400',
-            letterSpacing: '-0.1px'
+            letterSpacing: '-0.1px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
           }}>
             {pdfFile.name}
+            {hasUnsavedAnnotations && (
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: '#4A90E2',
+                  display: 'inline-block'
+                }}
+                title="Unsaved changes (Cmd/Ctrl+S to save)"
+              />
+            )}
           </div>
 
           <div style={{ width: '1px', height: '24px', background: '#555' }} />
@@ -11861,6 +12069,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                                 onHighlightClicked={handleHighlightClicked}
                                 selectedSpaceId={annotationSpaceId}
                                 selectedModuleId={selectedModuleId}
+                                selectedCategoryId={selectedCategoryId}
                                 activeRegions={pageRegions}
                                 eraserMode={eraserMode}
                                 showSurveyPanel={showSurveyPanel}
@@ -11974,6 +12183,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                             onHighlightClicked={handleHighlightClicked}
                             selectedSpaceId={annotationSpaceId}
                             selectedModuleId={selectedModuleId}
+                            selectedCategoryId={selectedCategoryId}
                             activeRegions={pageRegions}
                             eraserMode={eraserMode}
                             showSurveyPanel={showSurveyPanel}
@@ -14392,85 +14602,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
 
                                                   // Delete selected items
                                                   selectedItemIds.forEach(highlightId => {
-                                                    const highlight = highlightAnnotations[highlightId];
-                                                    if (!highlight) return;
-
-                                                    // Remove from canvas
-                                                    if (highlight.pageNumber && highlight.bounds) {
-                                                      setHighlightsToRemoveByPage(prev => ({
-                                                        ...prev,
-                                                        [highlight.pageNumber]: [...(prev[highlight.pageNumber] || []), highlight.bounds]
-                                                      }));
-                                                    }
-
-                                                    // Delete from highlightAnnotations
-                                                    setHighlightAnnotations(prev => {
-                                                      const updated = { ...prev };
-                                                      delete updated[highlightId];
-                                                      return updated;
-                                                    });
-
-                                                    // Find and delete associated items and annotations (same logic as handleHighlightDeleted)
-                                                    if (selectedTemplate && highlight) {
-                                                      const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
-                                                      const categoryName = getCategoryName(selectedTemplate, highlightModuleId, highlight.categoryId);
-                                                      const matchingItem = Object.values(items).find(item =>
-                                                        item.name === highlight.name &&
-                                                        item.itemType === categoryName
-                                                      );
-
-                                                      if (matchingItem) {
-                                                        // Find and delete annotations for this item in this space
-                                                        setAnnotations(prev => {
-                                                          const updated = { ...prev };
-                                                          Object.values(updated).forEach(ann => {
-                                                            if (ann.itemId === matchingItem.itemId && ann.spaceId === highlight.spaceId) {
-                                                              // Also check if coordinates match
-                                                              if (ann.pdfCoordinates && highlight.bounds && boundsMatch(ann.pdfCoordinates, highlight.bounds)) {
-                                                                delete updated[ann.annotationId];
-                                                              }
-                                                            }
-                                                          });
-                                                          return updated;
-                                                        });
-
-                                                        // Check if item has data in other modules - if not, delete the item
-                                                        const moduleName = getModuleName(selectedTemplate, highlightModuleId);
-                                                        const dataKey = getModuleDataKey(moduleName);
-                                                        const item = items[matchingItem.itemId];
-
-                                                        if (item) {
-                                                          // Remove the module-specific data
-                                                          const updatedItem = { ...item };
-                                                          delete updatedItem[dataKey];
-
-                                                          // Check if item has any module data left
-                                                          const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
-                                                          const hasOtherModuleData = allModules.some(module => {
-                                                            const moduleId = module.id;
-                                                            if (moduleId === highlightModuleId) return false;
-                                                            const otherModuleName = getModuleName(selectedTemplate, moduleId);
-                                                            const otherDataKey = getModuleDataKey(otherModuleName);
-                                                            return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
-                                                          });
-
-                                                          if (hasOtherModuleData) {
-                                                            // Item exists in other modules, just remove this module's data
-                                                            setItems(prev => ({
-                                                              ...prev,
-                                                              [matchingItem.itemId]: updatedItem
-                                                            }));
-                                                          } else {
-                                                            // Item doesn't exist in other spaces, delete it entirely
-                                                            setItems(prev => {
-                                                              const updated = { ...prev };
-                                                              delete updated[matchingItem.itemId];
-                                                              return updated;
-                                                            });
-                                                          }
-                                                        }
-                                                      }
-                                                    }
+                                                    handleDeleteHighlightItem(highlightId);
                                                   });
 
                                                   // Clear selection and exit item select mode if no items left
@@ -14561,7 +14693,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                                                 overflow: 'hidden'
                                               }}>
                                                 {/* Highlight header - clickable to expand */}
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                                                   {/* Checkbox for selection - show in copy mode or item select mode */}
                                                   {(copyModeActive || isItemSelectModeActiveForCategory) && (
                                                     <input
@@ -14780,7 +14912,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                                                         border: 'none',
                                                         color: '#999',
                                                         cursor: 'pointer',
-                                                        padding: '8px',
+                                                        padding: '4px',
                                                         fontSize: '12px',
                                                         opacity: 0.7,
                                                         flexShrink: 0
@@ -14819,7 +14951,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                                                       border: 'none',
                                                       color: highlightAnnotations[highlightId]?.note?.text ? '#4A90E2' : '#999',
                                                       cursor: 'pointer',
-                                                      padding: '8px',
+                                                      padding: '4px',
                                                       fontSize: '12px',
                                                       opacity: 0.7,
                                                       flexShrink: 0
@@ -14854,7 +14986,7 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                                                       cursor: 'pointer',
                                                       color: (highlight.bounds && highlight.pageNumber) ? '#4A90E2' : '#F5A623', // Blue if located, Orange if not
                                                       transition: 'background 0.2s, color 0.2s',
-                                                      marginLeft: '4px'
+                                                      marginLeft: '0'
                                                     }}
                                                     onMouseEnter={(e) => {
                                                       e.currentTarget.style.background = '#444';
@@ -14865,6 +14997,48 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                                                     title={highlight.bounds && highlight.pageNumber ? "Locate on PDF" : "Click to set location on PDF"}
                                                   >
                                                     <Icon name="search" size={14} />
+                                                  </div>
+
+                                                  {/* Delete Button */}
+                                                  <div
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      if (confirm('Are you sure you want to delete this item?')) {
+                                                        handleDeleteHighlightItem(highlightId);
+                                                      }
+                                                    }}
+                                                    style={{
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      justifyContent: 'center',
+                                                      padding: '4px',
+                                                      borderRadius: '4px',
+                                                      cursor: 'pointer',
+                                                      color: '#FF6666',
+                                                      transition: 'background 0.2s, color 0.2s',
+                                                      marginLeft: '0'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                      e.currentTarget.style.background = '#444';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      e.currentTarget.style.background = 'transparent';
+                                                    }}
+                                                    title="Delete item"
+                                                  >
+                                                    <svg
+                                                      width="14"
+                                                      height="14"
+                                                      viewBox="0 0 24 24"
+                                                      fill="none"
+                                                      stroke="currentColor"
+                                                      strokeWidth="2"
+                                                      strokeLinecap="round"
+                                                      strokeLinejoin="round"
+                                                    >
+                                                      <polyline points="3 6 5 6 21 6"></polyline>
+                                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                    </svg>
                                                   </div>
                                                 </div>
 
