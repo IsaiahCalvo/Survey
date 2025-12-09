@@ -12,6 +12,11 @@ const PDFSidebar = ({
   numPages,
   pageNum,
   onNavigateToPage,
+  onNavigateToMatch,
+  searchResults,
+  currentMatchIndex,
+  onSearchResultsChange,
+  onCurrentMatchIndexChange,
   onDuplicatePage,
   onDeletePage,
   onCutPage,
@@ -209,6 +214,11 @@ const PDFSidebar = ({
                 pdfDoc={pdfDoc}
                 numPages={numPages}
                 onNavigateToPage={onNavigateToPage}
+                onNavigateToMatch={onNavigateToMatch}
+                searchResults={searchResults}
+                currentMatchIndex={currentMatchIndex}
+                onSearchResultsChange={onSearchResultsChange}
+                onCurrentMatchIndexChange={onCurrentMatchIndexChange}
               />
             )}
             {activeTab === 'bookmarks' && (

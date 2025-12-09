@@ -32,7 +32,11 @@ The application follows Electron's standard architecture:
    - Handles app lifecycle events
    - Loads dev server (http://localhost:5173) in development
    - Loads built files from dist/ in production
-   - Uses preload script for secure IPC (currently minimal)
+   - **IPC Handlers**:
+     - `fs:readFile`, `fs:writeFile`, `fs:fileExists`: File system operations
+     - `fileWatcher:start`, `fileWatcher:stop`: Real-time file monitoring via chokidar
+     - `dialog:saveFile`: Native save dialogs
+     - `shell:openPath`: Open files/folders in default OS app
 
 2. **Renderer Process** (React app):
    - Runs the React UI
@@ -41,47 +45,38 @@ The application follows Electron's standard architecture:
 
 3. **Preload Script** (`src/preload.js`):
    - Bridges main and renderer processes
-   - Exposes safe APIs via contextBridge
-   - Currently has placeholder stubs for future features
+   - Exposes safe APIs via contextBridge (`window.electronAPI`)
 
 ### Frontend Architecture
 
-**Entry Point**: `src/main.jsx` → renders `App.jsx` into root div
+**Entry Point**: `src/main.jsx` → renders `App.jsx` wrapped in `AuthProvider`
 
-**Main Components**:
-
-- `App.jsx`: Main application component with view routing
-  - `LandingPage`: Initial screen with "Open Document" button
-  - `PDFViewer`: Full-featured PDF viewing interface
+**Key Directories**:
+- `src/components/`: Reusable UI components (Modals, Tools, Layers)
+- `src/contexts/`: Global state (AuthContext)
+- `src/workers/`: Web Workers for heavy tasks (PDF rendering)
+- `src/sidebar/`: Sidebar panel components
+- `src/utils/`: Helper functions (OneDrive, Geometry, Zoom)
 
 **PDF Rendering System**:
 
 The application uses `pdfjs-dist` (Mozilla's PDF.js library) for rendering:
 
 1. PDF loading: File selected via file input → converted to ArrayBuffer → loaded by PDF.js
-2. Worker configuration: Uses CDN-hosted worker (`pdf.worker.min.js`)
+2. Worker configuration: Uses local worker (`src/workers/pdfRender.worker.js`)
 3. Canvas rendering: Each page rendered to HTML canvas with device pixel ratio support
 4. Two rendering modes:
-   - **Single page mode**: Renders one page at a time, navigation via arrow buttons
-   - **Continuous mode**: Pre-renders all pages in vertical scroll layout
+   - **Single page mode**: Renders one page at a time
+   - **Continuous mode**: Virtualized list of pages
 
 **Key Features**:
 
-- Zoom controls: +/- buttons, manual input (10-500%), Ctrl+Scroll
-- Pan/drag: Click and drag to pan (cursor changes to grab/grabbing)
-- Page navigation: Arrow buttons, direct page input, auto-tracking in continuous mode
-- Responsive toolbar with file name display
-- Status bar with keyboard shortcuts and page count
-
-### Unused/Legacy Components
-
-The following files exist but are not currently used in the active application:
-
-- `src/PageAnnotationLayer.js`: Fabric.js-based annotation layer (not integrated)
-- `src/utils/pdfCache.js`: Advanced caching utilities (LRU, ImageBitmap, IndexedDB)
-- `src/TestPDFSlick.js`, `test-pdfslick.js`: Test files for @pdfslick/react (library not used)
-- `src/App.test.js`, `src/setupTests.js`, `src/reportWebVitals.js`: CRA boilerplate
-- `public/paintWorker.js`: Custom worker (not currently utilized)
+- **Authentication**: Supabase-powered auth (Email, Google, SSO) via `AuthContext`
+- **Cloud Integration**: OneDrive file sync and management
+- **Zoom controls**: +/- buttons, manual input (10-500%), Ctrl+Scroll
+- **Pan/drag**: Click and drag to pan (cursor changes to grab/grabbing)
+- **Page navigation**: Arrow buttons, direct page input, auto-tracking in continuous mode
+- **Responsive toolbar**: With file name display and user account menu
 
 ### Build Configuration
 
@@ -97,8 +92,12 @@ The following files exist but are not currently used in the active application:
 
 ## Important Implementation Details
 
+### State Management
+- **Global User State**: Managed via `AuthContext` (User, Session, Loading)
+- **Local State**: React hooks (useState, useEffect, useRef) for component-level logic
+
 ### PDF.js Worker Setup
-The worker is loaded from CDN in `App.jsx:5`. For offline/production use, consider bundling the worker locally from `public/pdf.worker.min.mjs`.
+The worker is now bundled locally in `src/workers/pdfRender.worker.js` to ensure offline capability and consistent versioning.
 
 ### Canvas Rendering
 - Uses device pixel ratio for sharp rendering on high-DPI displays
@@ -110,15 +109,6 @@ The worker is loaded from CDN in `App.jsx:5`. For offline/production use, consid
 - Tracks visible page via scroll event listener
 - Auto-scrolls to page when page number changes programmatically
 
-### State Management
-All state is managed via React hooks (useState, useEffect, useRef) - no external state library.
-
-## File Structure Notes
-
-- `src/electron-main.js` and `src/preload.js` are Electron-specific (should stay in src/ for build process)
-- `public/` contains static assets and manifest.json (PWA-related, not fully implemented)
-- `index.html` in root is the Vite entry point (references /src/main.jsx)
-
 ## Development Notes
 
 ### Adding Electron IPC Features
@@ -127,8 +117,7 @@ When adding IPC communication:
 2. Expose safe APIs in `src/preload.js` via contextBridge
 3. Access via `window.electronAPI` in React components
 
-### PDF Worker Configuration
-If switching from CDN to local worker:
-1. Update worker path in `App.jsx` to point to local file
-2. Ensure worker file is included in Vite build output
-3. Update electron-builder files configuration if needed
+### Authentication
+- Ensure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set in `.env`
+- `AuthContext` provides `user`, `signIn`, `signOut`, etc. to the entire app
+

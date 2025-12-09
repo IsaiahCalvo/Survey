@@ -8,6 +8,7 @@ import { useMSGraph } from './contexts/MSGraphContext';
 import { uploadExcelFile, getFileMetadata } from './services/excelGraphService';
 import PageAnnotationLayer from './PageAnnotationLayer';
 import TextLayer from './TextLayer';
+import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
@@ -38,6 +39,8 @@ import { AuthModal } from './components/AuthModal';
 import { UserMenu } from './components/UserMenu';
 import { AccountSettings } from './components/AccountSettings';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
+import BallInCourtIndicator from './components/BallInCourtIndicator';
+import SearchHighlightLayer from './components/SearchHighlightLayer';
 import { useProjects, useDocuments, useTemplates, useStorage } from './hooks/useDatabase';
 import { supabase } from './supabaseClient';
 
@@ -565,6 +568,7 @@ const BallInCourtSortableRow = React.memo(function BallInCourtSortableRow({
                     inset: 0,
                     background: currentHex || '#E3D1FB',
                     opacity: currentOpacity / 100,
+                    mixBlendMode: 'multiply',
                     borderRadius: '5px'
                   }}
                 />
@@ -1339,7 +1343,7 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
 }
 
 // Dashboard Component with document management
-const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal }, ref) {
+const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, ballInCourtEntities, setBallInCourtEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
@@ -1392,18 +1396,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     refetch: refetchTemplates
   } = useTemplates();
 
-  const { uploadDocument: uploadToStorage, deleteDocumentFile: deleteFromStorage, downloadDocument: downloadFromStorage, getDocumentUrl } = useStorage();
+  const { uploadDocument: uploadToStorage, uploadDataFile, deleteDocumentFile: deleteFromStorage, downloadDocument: downloadFromStorage, getDocumentUrl } = useStorage();
 
-  const [ballInCourtEntities, setBallInCourtEntities] = useState([
-    { id: `entity-${Date.now()}-1`, name: 'GC', color: '#E3D1FB' },
-    { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: '#FFF5C3' },
-    { id: `entity-${Date.now()}-3`, name: 'My Company', color: '#CBDCFF' },
-    { id: `entity-${Date.now()}-4`, name: '100% Complete', color: '#B2FFB2' },
-    { id: `entity-${Date.now()}-5`, name: 'Removed', color: '#BBBBBB' }
-  ].map(entity => ({
-    ...entity,
-    color: hexToRgba(entity.color, 0.2)
-  })));
+
   const [selectedColorPickerId, setSelectedColorPickerId] = useState(null); // Track which color picker is selected
   const [colorPickerMode, setColorPickerMode] = useState('grid'); // 'grid' or 'advanced'
   const [tempColor, setTempColor] = useState(null); // Temporary color while picking
@@ -1551,6 +1546,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Fetch all documents for file count display in project list
   const {
     documents: allDocuments,
+    refetch: refetchAllDocuments
   } = useDocuments(null);
 
   const navIconWrapperStyle = {
@@ -1648,6 +1644,97 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     setSelectedTemplateCategoryId(null);
   }, [selectedModuleId]);
 
+  // Handle file upload via Electron dialog (preserves file path)
+  const handleUploadClick = async () => {
+    // In Electron, use dialog to get file path
+    if (window.electronAPI && window.electronAPI.openFile) {
+      try {
+        const result = await window.electronAPI.openFile({
+          title: 'Open PDF Document',
+          filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
+        });
+
+        if (result.canceled) {
+          return;
+        }
+
+        if (!user) {
+          alert('Please sign in to upload documents');
+          onShowAuthModal();
+          return;
+        }
+
+        // Create File object
+        const fileData = new Uint8Array(result.data);
+        const file = new File([fileData], result.fileName, { type: 'application/pdf' });
+        // Store the file path separately (File.path is read-only)
+        const filePath = result.filePath;
+
+        // Determine Project ID
+        let projectId = null;
+        if (selectedProjectId && activeSection === 'projects') {
+          projectId = selectedProjectId;
+        }
+
+        // OPTIMISTIC UPLOAD: Open immediately
+        file.uploadStartTime = performance.now();
+        onDocumentSelect(file, filePath);
+
+        // OPTIMISTIC LIST UPDATE
+        const tempDoc = {
+          id: `temp-${Date.now()}`,
+          name: file.name,
+          size: file.size,
+          uploadedAt: new Date().toISOString(),
+          type: 'application/pdf',
+          filePath: filePath,
+          projectId: projectId,
+          file: file
+        };
+        setDocuments(prev => [tempDoc, ...prev]);
+
+        // Background Upload Process
+        (async () => {
+          try {
+            // Upload file to Supabase Storage
+            const uploadPromise = uploadToStorage(file, projectId || 'general');
+            const pageCountPromise = (async () => {
+              const arrayBuffer = await file.arrayBuffer();
+              const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+              return pdfDoc.numPages;
+            })();
+
+            const [filePath, pageCount] = await Promise.all([uploadPromise, pageCountPromise]);
+
+            // Create document record in Supabase
+            const newDoc = await createSupabaseDocument({
+              name: file.name,
+              file_path: filePath,
+              file_size: file.size,
+              page_count: pageCount,
+              project_id: projectId || null
+            });
+
+            // Refresh global document list to update counts
+            refetchAllDocuments();
+
+            console.log('Background upload completed for:', file.name, 'New Doc:', newDoc);
+          } catch (err) {
+            console.error('Error uploading file in background:', err);
+            alert('Failed to save document to cloud: ' + (err.message || 'Unknown error'));
+          }
+        })();
+
+      } catch (error) {
+        console.error('Error opening file:', error);
+        alert('Failed to open file: ' + error.message);
+      }
+    } else {
+      // Fallback to browser file input
+      fileInputRef.current?.click();
+    }
+  };
+
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     console.log('handleFileUpload called, file:', file);
@@ -1709,6 +1796,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             page_count: pageCount,
             project_id: projectId || null
           });
+
+          // Refresh global document list to update counts
+          refetchAllDocuments();
 
           console.log('Background upload completed for:', file.name, 'New Doc:', newDoc);
         } catch (err) {
@@ -1846,6 +1936,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
       throw error;
     }
+
+    // Refresh global document list to update counts
+    refetchAllDocuments();
 
     // Warn if some files failed but others succeeded
     if (uploadErrors.length > 0) {
@@ -4632,7 +4725,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           />
 
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleUploadClick}
             className="btn-card"
             style={{ borderColor: '#4A90E2' }}
           >
@@ -4665,7 +4758,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           display: 'flex',
           gap: '8px',
           alignItems: 'center',
-          justifyContent: 'flex-end'
+          justifyContent: 'flex-start'
         }}>
           {!isSelectionMode && (activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates') && (
             <button
@@ -4713,13 +4806,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                   top: '100%',
                   left: 0,
                   marginTop: '4px',
-                  background: '#FFFFFF',
+                  background: '#1b1b1b',
                   borderRadius: '6px',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
                   padding: '4px',
                   minWidth: '140px',
                   zIndex: 1000,
-                  border: '1px solid #E0E0E0'
+                  border: '1px solid #333'
                 }}>
                   <button
                     onClick={() => {
@@ -4729,13 +4822,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     style={{
                       width: '100%',
                       padding: '8px 12px',
-                      background: viewMode === 'grid' ? '#F5F5F5' : 'transparent',
+                      background: viewMode === 'grid' ? 'rgba(74, 144, 226, 0.15)' : 'transparent',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: 'pointer',
                       fontSize: '14px',
                       fontWeight: '400',
-                      color: '#252525',
+                      color: '#eaeaea',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '10px',
@@ -4745,7 +4838,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     }}
                     onMouseEnter={(e) => {
                       if (viewMode !== 'grid') {
-                        e.currentTarget.style.background = '#F9F9F9';
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
                       }
                     }}
                     onMouseLeave={(e) => {
@@ -4754,7 +4847,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                       }
                     }}
                   >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0, opacity: 0.8 }}>
                       <rect x="2" y="2" width="5" height="5" stroke="currentColor" strokeWidth="1.2" fill="none" />
                       <rect x="9" y="2" width="5" height="5" stroke="currentColor" strokeWidth="1.2" fill="none" />
                       <rect x="2" y="9" width="5" height="5" stroke="currentColor" strokeWidth="1.2" fill="none" />
@@ -4765,19 +4858,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
                   <button
                     onClick={() => {
-                      setViewMode('table');
+                      setViewMode('list');
                       setIsViewDropdownOpen(false);
                     }}
                     style={{
                       width: '100%',
                       padding: '8px 12px',
-                      background: viewMode === 'table' ? '#F5F5F5' : 'transparent',
+                      background: viewMode === 'list' ? 'rgba(74, 144, 226, 0.15)' : 'transparent',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: 'pointer',
                       fontSize: '14px',
                       fontWeight: '400',
-                      color: '#252525',
+                      color: '#eaeaea',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '10px',
@@ -4786,17 +4879,17 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                       transition: 'background 0.15s'
                     }}
                     onMouseEnter={(e) => {
-                      if (viewMode !== 'table') {
-                        e.currentTarget.style.background = '#F9F9F9';
+                      if (viewMode !== 'list') {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (viewMode !== 'table') {
+                      if (viewMode !== 'list') {
                         e.currentTarget.style.background = 'transparent';
                       }
                     }}
                   >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0, opacity: 0.8 }}>
                       <circle cx="3" cy="4" r="1" fill="currentColor" />
                       <line x1="6" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                       <circle cx="3" cy="8" r="1" fill="currentColor" />
@@ -4804,7 +4897,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                       <circle cx="3" cy="12" r="1" fill="currentColor" />
                       <line x1="6" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                     </svg>
-                    <span>Table</span>
+                    Table
                   </button>
                 </div>
               )}
@@ -4813,193 +4906,57 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         </div>
 
         {/* Selection Mode Actions */}
-        {isSelectionMode && (
-          <div style={{
-            padding: '0 32px 16px 32px',
-            display: 'flex',
-            gap: '8px',
-            justifyContent: 'flex-end'
-          }}>
-            <button
-              onClick={selectAllCurrent}
-              className="btn btn-secondary btn-md"
-            >
-              Select All
-            </button>
-            <button
-              onClick={handleBulkCopy}
-              className="btn btn-default btn-md"
-            >
-              Copy
-            </button>
-            <button
-              onClick={handleBulkShare}
-              className="btn btn-success btn-md"
-            >
-              Share
-            </button>
-            <button
-              onClick={handleBulkMove}
-              className="btn btn-primary btn-md"
-            >
-              Move
-            </button>
-            <button
-              onClick={handleBulkDelete}
-              className="btn btn-danger btn-md"
-            >
-              Delete
-            </button>
-            <button
-              onClick={exitSelectionMode}
-              className="btn btn-secondary btn-md"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-
-        {isProjectModalOpen && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999
-          }}>
+        {
+          isSelectionMode && (
             <div style={{
-              width: '560px',
-              background: '#1f1f1f',
-              color: '#eaeaea',
-              borderRadius: '16px',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
-              border: '1px solid #2a2a2a',
-              padding: '24px'
+              padding: '0 32px 16px 32px',
+              display: 'flex',
+              gap: '8px',
+              justifyContent: 'flex-start'
             }}>
-              <div style={{
-                fontSize: '24px',
-                fontWeight: 700,
-                textAlign: 'center',
-                marginBottom: '20px'
-              }}>Create New Project</div>
-
-              <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>Project Name</div>
-              <input
-                type="text"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                placeholder="Enter a descriptive name for your project"
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: '1px solid #333',
-                  outline: 'none',
-                  background: '#141414',
-                  color: '#eaeaea',
-                  fontFamily: FONT_FAMILY,
-                  marginBottom: '18px'
-                }}
-              />
-
-              <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>Upload PDFs</div>
-              <div
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                style={{
-                  padding: '24px',
-                  borderRadius: '12px',
-                  border: `2px dashed ${isDragOver ? '#4A90E2' : '#3a3a3a'}`,
-                  background: isDragOver ? 'rgba(74, 144, 226, 0.08)' : '#161616',
-                  textAlign: 'center',
-                  transition: 'all 0.15s'
-                }}
+              <button
+                onClick={selectAllCurrent}
+                className="btn btn-secondary btn-md"
               >
-                <button
-                  onClick={() => projectFileInputRef.current?.click()}
-                  style={{
-                    padding: '10px 14px',
-                    background: '#2a2a2a',
-                    color: '#eaeaea',
-                    border: '1px solid #3a3a3a',
-                    borderRadius: '10px',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                    display: 'inline-flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  <Icon name="document" size={24} style={{ marginRight: '8px' }} /> Select Files
-                </button>
-                <div style={{ color: '#9a9a9a', fontSize: '13px', marginTop: '10px' }}>
-                  or drag and drop PDFs here
-                </div>
-                <div style={{ color: '#6f6f6f', fontSize: '12px', marginTop: '4px' }}>
-                  You can add multiple files
-                </div>
-
-                {projectFiles.length > 0 && (
-                  <div style={{
-                    marginTop: '14px',
-                    textAlign: 'left',
-                    maxHeight: '160px',
-                    overflow: 'auto',
-                    borderTop: '1px solid #2a2a2a',
-                    paddingTop: '10px'
-                  }}>
-                    {projectFiles.map((f, i) => (
-                      <div key={`${f.name}-${i}`} style={{ fontSize: '13px', color: '#cfcfcf', marginBottom: '6px' }}>
-                        <Icon name="document" size={14} style={{ marginRight: '6px', display: 'inline-block', verticalAlign: 'middle' }} /> {f.name}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '22px' }}>
-                <button
-                  onClick={handleCancelCreateProject}
-                  style={{
-                    padding: '10px 14px',
-                    background: '#2a2a2a',
-                    color: '#eaeaea',
-                    border: '1px solid #3a3a3a',
-                    borderRadius: '10px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmCreateProject}
-                  style={{
-                    padding: '10px 14px',
-                    background: '#4A90E2',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '10px',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                    opacity: projectName.trim() && projectFiles.length > 0 ? 1 : 0.7
-                  }}
-                >
-                  Create Project
-                </button>
-              </div>
+                Select All
+              </button>
+              <button
+                onClick={handleBulkCopy}
+                className="btn btn-default btn-md"
+              >
+                Copy
+              </button>
+              <button
+                onClick={handleBulkShare}
+                className="btn btn-success btn-md"
+              >
+                Share
+              </button>
+              <button
+                onClick={handleBulkMove}
+                className="btn btn-primary btn-md"
+              >
+                Move
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="btn btn-danger btn-md"
+              >
+                Delete
+              </button>
+              <button
+                onClick={exitSelectionMode}
+                className="btn btn-secondary btn-md"
+              >
+                Cancel
+              </button>
             </div>
-          </div>
-        )}
+          )
+        }
 
-        {isTemplateModalOpen && (
-          <div
-            onMouseDown={handleTemplateOverlayClick}
-            style={{
+        {
+          isProjectModalOpen && (
+            <div style={{
               position: 'fixed',
               top: 0,
               left: 0,
@@ -5011,225 +4968,1484 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               justifyContent: 'center',
               zIndex: 9999
             }}>
-            <div style={{
-              width: '700px',
-              maxHeight: '90vh',
-              overflow: 'auto',
-              background: '#1f1f1f',
-              color: '#eaeaea',
-              borderRadius: '12px',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
-              border: '1px solid #2a2a2a',
-              padding: '16px'
-            }}>
-              <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>
-                {editingTemplateId ? 'Edit Template' : 'Create Template'}
-              </div>
+              <div style={{
+                width: '560px',
+                background: '#1f1f1f',
+                color: '#eaeaea',
+                borderRadius: '16px',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
+                border: '1px solid #2a2a2a',
+                padding: '24px'
+              }}>
+                <div style={{
+                  fontSize: '24px',
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  marginBottom: '20px'
+                }}>Create New Project</div>
 
-              {/* Template Name and Save Options - Inline */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', marginBottom: '16px', alignItems: 'end' }}>
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px', color: '#aaa' }}>Template Name</div>
-                  <input
-                    type="text"
-                    value={templateName}
-                    onChange={(e) => setTemplateName(e.target.value)}
-                    placeholder="e.g., Security"
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #333', outline: 'none', background: '#141414', color: '#eaeaea', fontFamily: FONT_FAMILY, fontSize: '13px' }}
-                  />
+                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>Project Name</div>
+                <input
+                  type="text"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  placeholder="Enter a descriptive name for your project"
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    border: '1px solid #333',
+                    outline: 'none',
+                    background: '#141414',
+                    color: '#eaeaea',
+                    fontFamily: FONT_FAMILY,
+                    marginBottom: '18px'
+                  }}
+                />
+
+                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>Upload PDFs</div>
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  style={{
+                    padding: '24px',
+                    borderRadius: '12px',
+                    border: `2px dashed ${isDragOver ? '#4A90E2' : '#3a3a3a'}`,
+                    background: isDragOver ? 'rgba(74, 144, 226, 0.08)' : '#161616',
+                    textAlign: 'center',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  <button
+                    onClick={() => projectFileInputRef.current?.click()}
+                    style={{
+                      padding: '10px 14px',
+                      background: '#2a2a2a',
+                      color: '#eaeaea',
+                      border: '1px solid #3a3a3a',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <Icon name="document" size={24} style={{ marginRight: '8px' }} /> Select Files
+                  </button>
+                  <div style={{ color: '#9a9a9a', fontSize: '13px', marginTop: '10px' }}>
+                    or drag and drop PDFs here
+                  </div>
+                  <div style={{ color: '#6f6f6f', fontSize: '12px', marginTop: '4px' }}>
+                    You can add multiple files
+                  </div>
+
+                  {projectFiles.length > 0 && (
+                    <div style={{
+                      marginTop: '14px',
+                      textAlign: 'left',
+                      maxHeight: '160px',
+                      overflow: 'auto',
+                      borderTop: '1px solid #2a2a2a',
+                      paddingTop: '10px'
+                    }}>
+                      {projectFiles.map((f, i) => (
+                        <div key={`${f.name}-${i}`} style={{ fontSize: '13px', color: '#cfcfcf', marginBottom: '6px' }}>
+                          <Icon name="document" size={14} style={{ marginRight: '6px', display: 'inline-block', verticalAlign: 'middle' }} /> {f.name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px', color: '#aaa' }}>Visibility</div>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                      onClick={() => setTemplateVisibility('personal')}
-                      style={{ padding: '8px 12px', background: templateVisibility === 'personal' ? '#3498db' : '#2a2a2a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '12px' }}
-                    >
-                      Personal
-                    </button>
-                    <button
-                      onClick={() => setTemplateVisibility('shared')}
-                      title="Shared is a placeholder for team sharing"
-                      style={{ padding: '8px 12px', background: templateVisibility === 'shared' ? '#6C757D' : '#2a2a2a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '12px', opacity: 0.9 }}
-                    >
-                      Shared
-                    </button>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '22px' }}>
+                  <button
+                    onClick={handleCancelCreateProject}
+                    style={{
+                      padding: '10px 14px',
+                      background: '#2a2a2a',
+                      color: '#eaeaea',
+                      border: '1px solid #3a3a3a',
+                      borderRadius: '10px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmCreateProject}
+                    style={{
+                      padding: '10px 14px',
+                      background: '#4A90E2',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      opacity: projectName.trim() && projectFiles.length > 0 ? 1 : 0.7
+                    }}
+                  >
+                    Create Project
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {
+          isTemplateModalOpen && (
+            <div
+              onMouseDown={handleTemplateOverlayClick}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999
+              }}>
+              <div style={{
+                width: '700px',
+                maxHeight: '90vh',
+                overflow: 'auto',
+                background: '#1f1f1f',
+                color: '#eaeaea',
+                borderRadius: '12px',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
+                border: '1px solid #2a2a2a',
+                padding: '16px'
+              }}>
+                <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>
+                  {editingTemplateId ? 'Edit Template' : 'Create Template'}
+                </div>
+
+                {/* Template Name and Save Options - Inline */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', marginBottom: '16px', alignItems: 'end' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px', color: '#aaa' }}>Template Name</div>
+                    <input
+                      type="text"
+                      value={templateName}
+                      onChange={(e) => setTemplateName(e.target.value)}
+                      placeholder="e.g., Security"
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #333', outline: 'none', background: '#141414', color: '#eaeaea', fontFamily: FONT_FAMILY, fontSize: '13px' }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px', color: '#aaa' }}>Visibility</div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        onClick={() => setTemplateVisibility('personal')}
+                        style={{ padding: '8px 12px', background: templateVisibility === 'personal' ? '#3498db' : '#2a2a2a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '12px' }}
+                      >
+                        Personal
+                      </button>
+                      <button
+                        onClick={() => setTemplateVisibility('shared')}
+                        title="Shared is a placeholder for team sharing"
+                        style={{ padding: '8px 12px', background: templateVisibility === 'shared' ? '#6C757D' : '#2a2a2a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '12px', opacity: 0.9 }}
+                      >
+                        Shared
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Spaces - Visible after template name */}
-              {templateName.trim() && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Modules</div>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    {!editingModules ? (
-                      <>
-                        <select
-                          value={selectedModuleId || ''}
-                          onChange={(e) => handleModuleSelect(e.target.value || null)}
-                          disabled={modules.length === 0}
-                          style={{
-                            flex: 1,
-                            padding: '8px 10px',
-                            paddingRight: '30px',
-                            borderRadius: '6px',
-                            border: '1px solid #333',
-                            outline: 'none',
-                            background: '#141414',
-                            backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'8\' viewBox=\'0 0 12 8\'%3E%3Cpath fill=\'none\' stroke=\'%23eaeaea\' stroke-width=\'1.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\' d=\'M1 1l5 5 5-5\'/%3E%3C/svg%3E")',
-                            backgroundRepeat: 'no-repeat',
-                            backgroundPosition: 'right 12px center',
-                            backgroundSize: '12px',
-                            color: '#eaeaea',
-                            fontFamily: FONT_FAMILY,
-                            cursor: 'pointer',
-                            fontSize: '13px',
-                            appearance: 'none',
-                            WebkitAppearance: 'none',
-                            MozAppearance: 'none'
-                          }}
-                        >
-                          <option value="">Select a module...</option>
-                          {modules.map(module => (
-                            <option key={module.id} value={module.id}>{module.name}</option>
-                          ))}
-                        </select>
-                        <button
-                          onClick={handleAddModuleClick}
-                          className="btn btn-secondary"
-                          style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
-                        >
-                          Add
-                        </button>
-                        {modules.length > 0 && (
+                {/* Spaces - Visible after template name */}
+                {templateName.trim() && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Modules</div>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      {!editingModules ? (
+                        <>
+                          <select
+                            value={selectedModuleId || ''}
+                            onChange={(e) => handleModuleSelect(e.target.value || null)}
+                            disabled={modules.length === 0}
+                            style={{
+                              flex: 1,
+                              padding: '8px 10px',
+                              paddingRight: '30px',
+                              borderRadius: '6px',
+                              border: '1px solid #333',
+                              outline: 'none',
+                              background: '#141414',
+                              backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'8\' viewBox=\'0 0 12 8\'%3E%3Cpath fill=\'none\' stroke=\'%23eaeaea\' stroke-width=\'1.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\' d=\'M1 1l5 5 5-5\'/%3E%3C/svg%3E")',
+                              backgroundRepeat: 'no-repeat',
+                              backgroundPosition: 'right 12px center',
+                              backgroundSize: '12px',
+                              color: '#eaeaea',
+                              fontFamily: FONT_FAMILY,
+                              cursor: 'pointer',
+                              fontSize: '13px',
+                              appearance: 'none',
+                              WebkitAppearance: 'none',
+                              MozAppearance: 'none'
+                            }}
+                          >
+                            <option value="">Select a module...</option>
+                            {modules.map(module => (
+                              <option key={module.id} value={module.id}>{module.name}</option>
+                            ))}
+                          </select>
                           <button
-                            onClick={handleEditModules}
+                            onClick={handleAddModuleClick}
                             className="btn btn-secondary"
                             style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
                           >
-                            Edit
+                            Add
                           </button>
-                        )}
-                      </>
-                    ) : (
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <DndContext
-                          sensors={moduleSensors}
-                          collisionDetection={closestCenter}
-                          onDragStart={handleModuleDragStart}
-                          onDragEnd={handleModuleDragEnd}
-                          onDragCancel={handleModuleDragCancel}
-                        >
-                          <SortableContext
-                            items={modules.map((module) => module.id)}
-                            strategy={verticalListSortingStrategy}
+                          {modules.length > 0 && (
+                            <button
+                              onClick={handleEditModules}
+                              className="btn btn-secondary"
+                              style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <DndContext
+                            sensors={moduleSensors}
+                            collisionDetection={closestCenter}
+                            onDragStart={handleModuleDragStart}
+                            onDragEnd={handleModuleDragEnd}
+                            onDragCancel={handleModuleDragCancel}
                           >
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              {modules.map((module) => (
-                                <TemplateModuleSortableRow
-                                  key={module.id}
-                                  module={module}
-                                  isSelected={selectedModuleIds.includes(module.id)}
-                                  nameValue={
-                                    editingModuleName[module.id] !== undefined
-                                      ? editingModuleName[module.id]
-                                      : module.name
-                                  }
-                                  onToggleSelect={toggleModuleSelection}
-                                  onNameChange={handleModuleNameChange}
-                                  onNameKeyDown={handleModuleInputKeyDown}
-                                  disabled={!editingModules}
-                                />
-                              ))}
-                            </div>
-                          </SortableContext>
-                          <DragOverlay>
-                            {activeModule && <TemplateDragOverlayItem label={activeModule.name} />}
-                          </DragOverlay>
-                        </DndContext>
-                        <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                          <button
-                            onClick={handleDuplicateModules}
-                            disabled={selectedModuleIds.length === 0}
-                            className="btn btn-secondary"
-                            style={{
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              opacity: selectedModuleIds.length === 0 ? 0.5 : 1,
-                              cursor: selectedModuleIds.length === 0 ? 'not-allowed' : 'pointer'
-                            }}
-                          >
-                            Duplicate
-                          </button>
-                          <button
-                            onClick={handleMoveCopyModules}
-                            className="btn btn-secondary"
-                            style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
-                          >
-                            Move/Copy
-                          </button>
-                          <button
-                            onClick={handleSaveEditModules}
-                            className="btn btn-secondary"
-                            style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (selectedModuleIds.length === 0) return;
+                            <SortableContext
+                              items={modules.map((module) => module.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {modules.map((module) => (
+                                  <TemplateModuleSortableRow
+                                    key={module.id}
+                                    module={module}
+                                    isSelected={selectedModuleIds.includes(module.id)}
+                                    nameValue={
+                                      editingModuleName[module.id] !== undefined
+                                        ? editingModuleName[module.id]
+                                        : module.name
+                                    }
+                                    onToggleSelect={toggleModuleSelection}
+                                    onNameChange={handleModuleNameChange}
+                                    onNameKeyDown={handleModuleInputKeyDown}
+                                    disabled={!editingModules}
+                                  />
+                                ))}
+                              </div>
+                            </SortableContext>
+                            <DragOverlay>
+                              {activeModule && <TemplateDragOverlayItem label={activeModule.name} />}
+                            </DragOverlay>
+                          </DndContext>
+                          <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                            <button
+                              onClick={handleDuplicateModules}
+                              disabled={selectedModuleIds.length === 0}
+                              className="btn btn-secondary"
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                opacity: selectedModuleIds.length === 0 ? 0.5 : 1,
+                                cursor: selectedModuleIds.length === 0 ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              Duplicate
+                            </button>
+                            <button
+                              onClick={handleMoveCopyModules}
+                              className="btn btn-secondary"
+                              style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
+                            >
+                              Move/Copy
+                            </button>
+                            <button
+                              onClick={handleSaveEditModules}
+                              className="btn btn-secondary"
+                              style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (selectedModuleIds.length === 0) return;
 
-                              const moduleNames = modules
-                                .filter(m => selectedModuleIds.includes(m.id))
-                                .map(m => m.name)
-                                .join(', ');
+                                const moduleNames = modules
+                                  .filter(m => selectedModuleIds.includes(m.id))
+                                  .map(m => m.name)
+                                  .join(', ');
 
-                              const confirmMessage = selectedModuleIds.length === 1
-                                ? `Are you sure you want to delete the module "${moduleNames}"? This will also delete all categories and checklist items within it.`
-                                : `Are you sure you want to delete ${selectedModuleIds.length} modules (${moduleNames})? This will also delete all categories and checklist items within them.`;
+                                const confirmMessage = selectedModuleIds.length === 1
+                                  ? `Are you sure you want to delete the module "${moduleNames}"? This will also delete all categories and checklist items within it.`
+                                  : `Are you sure you want to delete ${selectedModuleIds.length} modules (${moduleNames})? This will also delete all categories and checklist items within them.`;
 
-                              if (window.confirm(confirmMessage)) {
-                                deleteModules(selectedModuleIds);
-                                setSelectedModuleIds([]);
-                              }
-                            }}
-                            disabled={selectedModuleIds.length === 0}
-                            className="btn btn-danger"
-                            style={{
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              opacity: selectedModuleIds.length === 0 ? 0.5 : 1,
-                              cursor: selectedModuleIds.length === 0 ? 'not-allowed' : 'pointer'
-                            }}
-                          >
-                            Delete
-                          </button>
+                                if (window.confirm(confirmMessage)) {
+                                  deleteModules(selectedModuleIds);
+                                  setSelectedModuleIds([]);
+                                }
+                              }}
+                              disabled={selectedModuleIds.length === 0}
+                              className="btn btn-danger"
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                opacity: selectedModuleIds.length === 0 ? 0.5 : 1,
+                                cursor: selectedModuleIds.length === 0 ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
+                      )}
+                    </div>
+
+                    {/* Add Space Input */}
+                    {addingModule && !editingModules && (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '6px' }}>
+                        <input
+                          type="text"
+                          value={newModuleName}
+                          onChange={(e) => setNewModuleName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSaveModule();
+                            } else if (e.key === 'Escape') {
+                              handleCancelAddModule();
+                            }
+                          }}
+                          placeholder="Enter module name..."
+                          autoFocus
+                          style={{
+                            flex: 1,
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #4A90E2',
+                            outline: 'none',
+                            background: '#141414',
+                            color: '#eaeaea',
+                            fontFamily: FONT_FAMILY,
+                            fontSize: '13px'
+                          }}
+                        />
+                        <button
+                          onClick={handleSaveModule}
+                          className="btn btn-secondary"
+                          style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={handleCancelAddModule}
+                          className="btn btn-secondary"
+                          style={{ padding: '8px 12px', borderRadius: '6px', background: '#2a2a2a', fontSize: '12px' }}
+                        >
+                          Cancel
+                        </button>
                       </div>
                     )}
                   </div>
+                )}
 
-                  {/* Add Space Input */}
-                  {addingModule && !editingModules && (
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '6px' }}>
+                {/* Categories - Visible only after module is selected */}
+                {templateName.trim() && selectedModuleId && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Categories</div>
+                    {(() => {
+                      const selectedModule = modules.find(m => m.id === selectedModuleId);
+                      if (!selectedModule) return null;
+
+                      return (
+                        <>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            {!editingCategories ? (
+                              <>
+                                <select
+                                  value={selectedTemplateCategoryId || ''}
+                                  onChange={(e) => handleCategorySelect(e.target.value || null)}
+                                  disabled={(selectedModule.categories || []).length === 0}
+                                  style={{
+                                    flex: 1,
+                                    padding: '8px 10px',
+                                    paddingRight: '30px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #333',
+                                    outline: 'none',
+                                    background: '#141414',
+                                    backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'8\' viewBox=\'0 0 12 8\'%3E%3Cpath fill=\'none\' stroke=\'%23eaeaea\' stroke-width=\'1.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\' d=\'M1 1l5 5 5-5\'/%3E%3C/svg%3E")',
+                                    backgroundRepeat: 'no-repeat',
+                                    backgroundPosition: 'right 12px center',
+                                    backgroundSize: '12px',
+                                    color: '#eaeaea',
+                                    fontFamily: FONT_FAMILY,
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    appearance: 'none',
+                                    WebkitAppearance: 'none',
+                                    MozAppearance: 'none'
+                                  }}
+                                >
+                                  <option value="">Select a category...</option>
+                                  {(selectedModule.categories || []).map(cat => (
+                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={handleAddCategoryClick}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
+                                >
+                                  Add
+                                </button>
+                                {(selectedModule.categories || []).length > 0 && (
+                                  <button
+                                    onClick={handleEditCategories}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                              </>
+                            ) : (
+                              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <DndContext
+                                  sensors={categorySensors}
+                                  collisionDetection={closestCenter}
+                                  onDragStart={handleCategoryDragStart}
+                                  onDragEnd={handleCategoryDragEnd}
+                                  onDragCancel={handleCategoryDragCancel}
+                                >
+                                  <SortableContext
+                                    items={(selectedModule.categories || []).map((cat) => cat.id)}
+                                    strategy={verticalListSortingStrategy}
+                                  >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      {(selectedModule.categories || []).map((cat) => (
+                                        <TemplateCategorySortableRow
+                                          key={cat.id}
+                                          category={cat}
+                                          isSelected={selectedCategoryIds.includes(cat.id)}
+                                          nameValue={
+                                            editingCategoryName[cat.id] !== undefined
+                                              ? editingCategoryName[cat.id]
+                                              : cat.name
+                                          }
+                                          onToggleSelect={toggleCategorySelection}
+                                          onNameChange={handleCategoryNameChange}
+                                          onNameKeyDown={handleCategoryInputKeyDown}
+                                          disabled={!editingCategories}
+                                        />
+                                      ))}
+                                    </div>
+                                  </SortableContext>
+                                  <DragOverlay>
+                                    {activeCategory && <TemplateDragOverlayItem label={activeCategory.name} />}
+                                  </DragOverlay>
+                                </DndContext>
+                                <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                  <button
+                                    onClick={handleDuplicateCategories}
+                                    disabled={selectedCategoryIds.length === 0}
+                                    className="btn btn-secondary"
+                                    style={{
+                                      padding: '6px 12px',
+                                      borderRadius: '6px',
+                                      fontSize: '12px',
+                                      opacity: selectedCategoryIds.length === 0 ? 0.5 : 1,
+                                      cursor: selectedCategoryIds.length === 0 ? 'not-allowed' : 'pointer'
+                                    }}
+                                  >
+                                    Duplicate
+                                  </button>
+                                  <button
+                                    onClick={handleMoveCopyCategories}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
+                                  >
+                                    Move/Copy
+                                  </button>
+                                  <button
+                                    onClick={handleSaveEditCategories}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      if (selectedCategoryIds.length === 0 || !selectedModuleId) return;
+
+                                      const selectedModule = modules.find(m => m.id === selectedModuleId);
+                                      if (!selectedModule) return;
+
+                                      const categoryNames = (selectedModule.categories || [])
+                                        .filter(c => selectedCategoryIds.includes(c.id))
+                                        .map(c => c.name)
+                                        .join(', ');
+
+                                      const confirmMessage = selectedCategoryIds.length === 1
+                                        ? `Are you sure you want to delete the category "${categoryNames}"? This will also delete all checklist items within it.`
+                                        : `Are you sure you want to delete ${selectedCategoryIds.length} categories (${categoryNames})? This will also delete all checklist items within them.`;
+
+                                      if (window.confirm(confirmMessage)) {
+                                        deleteCategories(selectedModuleId, selectedCategoryIds);
+                                        setSelectedCategoryIds([]);
+                                      }
+                                    }}
+                                    disabled={selectedCategoryIds.length === 0}
+                                    className="btn btn-danger"
+                                    style={{
+                                      padding: '6px 12px',
+                                      borderRadius: '6px',
+                                      fontSize: '12px',
+                                      opacity: selectedCategoryIds.length === 0 ? 0.5 : 1,
+                                      cursor: selectedCategoryIds.length === 0 ? 'not-allowed' : 'pointer'
+                                    }}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Add Category Input */}
+                          {addingCategory && !editingCategories && (
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '6px' }}>
+                              <input
+                                type="text"
+                                value={newCategoryName}
+                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleSaveCategory();
+                                  } else if (e.key === 'Escape') {
+                                    handleCancelAddCategory();
+                                  }
+                                }}
+                                placeholder="Enter category name..."
+                                autoFocus
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #4A90E2',
+                                  outline: 'none',
+                                  background: '#141414',
+                                  color: '#eaeaea',
+                                  fontFamily: FONT_FAMILY,
+                                  fontSize: '13px'
+                                }}
+                              />
+                              <button
+                                onClick={handleSaveCategory}
+                                className="btn btn-secondary"
+                                style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={handleCancelAddCategory}
+                                className="btn btn-secondary"
+                                style={{ padding: '8px 12px', borderRadius: '6px', background: '#2a2a2a', fontSize: '12px' }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Checklist Items - Visible only after template + space + category are all selected */}
+                {templateName.trim() && selectedModuleId && selectedTemplateCategoryId && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Checklist Items</div>
+                    {(() => {
+                      const selectedModule = modules.find(m => m.id === selectedModuleId);
+                      if (!selectedModule) return null;
+                      const selectedCategory = (selectedModule.categories || []).find(cat => cat.id === selectedTemplateCategoryId);
+                      if (!selectedCategory) return null;
+
+                      return (
+                        <div style={{ padding: '10px', background: '#141414', borderRadius: '8px', border: '1px solid #2a2a2a' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '8px', color: '#cfcfcf' }}>
+                            {selectedCategory.name}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                            {(selectedCategory.checklist || []).map(item => (
+                              <div key={item.id} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <input
+                                  type="text"
+                                  value={item.text}
+                                  onChange={(e) => updateChecklistItem(selectedModuleId, selectedCategory.id, item.id, e.target.value)}
+                                  placeholder="Checklist item (e.g., Cable pulled)"
+                                  style={{
+                                    flex: 1,
+                                    padding: '6px 8px',
+                                    background: '#1b1b1b',
+                                    color: '#ddd',
+                                    border: '1px solid #2f2f2f',
+                                    borderRadius: '6px',
+                                    outline: 'none',
+                                    fontFamily: FONT_FAMILY,
+                                    fontSize: '13px'
+                                  }}
+                                />
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`Are you sure you want to delete the checklist item "${item.text || 'Untitled Item'}"?`)) {
+                                      deleteChecklistItem(selectedModuleId, selectedCategory.id, item.id);
+                                    }
+                                  }}
+                                  title="Delete"
+                                  className="btn btn-danger btn-icon-only btn-sm"
+                                  style={{ padding: '6px', minWidth: '28px', minHeight: '28px' }}
+                                >
+                                  <Icon name="close" size={11} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => addChecklistItem(selectedModuleId, selectedCategory.id)}
+                            className="btn btn-secondary"
+                            style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
+                          >
+                            + Add Item
+                          </button>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Ball in Court Section */}
+                <div style={{ marginTop: '16px', padding: '12px', background: '#141414', border: '1px solid #2a2a2a', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600 }}>Ball in Court</div>
+                    <button onClick={addBallInCourtEntity} className="btn btn-secondary btn-sm" style={{ padding: '6px 10px', fontSize: '12px' }}>+ Add Entity</button>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#888', marginBottom: '10px' }}>
+                    Define entities and their highlight colors for responsibility tracking
+                  </div>
+                  <style>{`
+                  body.ball-in-court-dragging [data-ball-delete] {
+                    display: none !important;
+                  }
+                `}</style>
+                  <DndContext
+                    sensors={ballSensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleBallDragStart}
+                    onDragEnd={handleBallDragEnd}
+                    onDragCancel={handleBallDragCancel}
+                  >
+                    <SortableContext
+                      items={ballInCourtEntities.map((entity) => entity.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {ballInCourtEntities.map((entity) => (
+                          <BallInCourtSortableRow
+                            key={entity.id}
+                            entity={entity}
+                            selectedColorPickerId={selectedColorPickerId}
+                            onOpenColorPicker={handleBallColorPickerOpen}
+                            onNameChange={handleBallEntityNameChange}
+                            onDelete={() => handleBallEntityDelete(entity.id)}
+                            isAnyDragging={isAnyBallEntityDragging}
+                          />
+                        ))}
+                        {ballInCourtEntities.length === 0 && (
+                          <div style={{ color: '#888', fontSize: '13px', fontStyle: 'italic', padding: '12px' }}>
+                            No entities defined. Add at least one entity for Ball in Court tracking.
+                          </div>
+                        )}
+                      </div>
+                    </SortableContext>
+                    <DragOverlay>
+                      {activeBallEntity && <BallInCourtDragOverlayItem entity={activeBallEntity} />}
+                    </DragOverlay>
+                  </DndContext>
+                </div>
+
+                {/* Color Picker Dialog */}
+                {selectedColorPickerId && (() => {
+                  const entity = ballInCourtEntities.find(e => e.id === selectedColorPickerId);
+                  if (!entity) return null;
+
+                  const getHexFromColor = (color) => {
+                    if (color.startsWith('rgba')) {
+                      const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+                      if (match) {
+                        const r = parseInt(match[1]).toString(16).padStart(2, '0');
+                        const g = parseInt(match[2]).toString(16).padStart(2, '0');
+                        const b = parseInt(match[3]).toString(16).padStart(2, '0');
+                        return `#${r}${g}${b}`;
+                      }
+                    }
+                    if (color.startsWith('#')) return color;
+                    return '#E3D1FB';
+                  };
+
+                  const currentHex = tempColor ? tempColor.hex : getHexFromColor(entity.color);
+                  const currentOpacity = tempColor ? tempColor.opacity : getOpacityFromBallColor(entity.color);
+                  const rgb = hexToRgb(currentHex);
+                  const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+
+                  // Update temp color when HSL changes
+                  const updateColorFromHsl = (h, s, l, opacity = currentOpacity) => {
+                    const newRgb = hslToRgb(h, s, l);
+                    const newHex = `#${newRgb.r.toString(16).padStart(2, '0')}${newRgb.g.toString(16).padStart(2, '0')}${newRgb.b.toString(16).padStart(2, '0')}`;
+                    setTempColor({ hex: newHex, opacity });
+                  };
+
+                  const swatches = generateColorSwatches();
+
+                  return (
+                    <div
+                      onClick={(e) => {
+                        // Only close if clicking directly on the overlay background (not any child elements)
+                        if (e.target === e.currentTarget) {
+                          setSelectedColorPickerId(null);
+                          setTempColor(null);
+                          setOpacityInputValue(null);
+                          setOpacityInputFocused(false);
+                        }
+                      }}
+                      style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.7)',
+                        zIndex: 10004,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        data-color-picker-dialog
+                        style={{
+                          background: '#2b2b2b',
+                          border: '1px solid #444',
+                          borderRadius: '8px',
+                          padding: '20px',
+                          width: colorPickerMode === 'grid' ? '520px' : '420px',
+                          maxWidth: '90vw',
+                          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
+                        }}
+                      >
+                        {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                          <div style={{ fontSize: '16px', fontWeight: '600', color: '#fff', fontFamily: FONT_FAMILY }}>
+                            Choose Color
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              onClick={() => {
+                                setColorPickerMode('grid');
+                                setOpacityInputValue(null);
+                                setOpacityInputFocused(false);
+                              }}
+                              style={{
+                                width: '32px',
+                                height: '32px',
+                                background: colorPickerMode === 'grid' ? '#555' : '#333',
+                                border: '1px solid #444',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: 0
+                              }}
+                              title="Grid View"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <rect x="2" y="2" width="5" height="5" fill="#fff" />
+                                <rect x="9" y="2" width="5" height="5" fill="#fff" />
+                                <rect x="2" y="9" width="5" height="5" fill="#fff" />
+                                <rect x="9" y="9" width="5" height="5" fill="#fff" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setColorPickerMode('advanced');
+                                setOpacityInputValue(null);
+                                setOpacityInputFocused(false);
+                              }}
+                              style={{
+                                width: '32px',
+                                height: '32px',
+                                background: colorPickerMode === 'advanced' ? '#555' : '#333',
+                                border: '1px solid #444',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: 0
+                              }}
+                              title="Advanced Picker"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 2L10 6L14 8L10 10L8 14L6 10L2 8L6 6L8 2Z" fill="#fff" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Grid Mode */}
+                        {colorPickerMode === 'grid' && (
+                          <div>
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(8, 1fr)',
+                              gap: '4px',
+                              marginBottom: '20px'
+                            }}>
+                              {swatches.map((swatch, idx) => {
+                                const isSelected = currentHex.toLowerCase() === swatch.toLowerCase();
+                                return (
+                                  <div
+                                    key={idx}
+                                    onClick={() => {
+                                      // Use current opacity from slider
+                                      const finalOpacity = tempColor ? tempColor.opacity : currentOpacity;
+                                      const newRgba = hexToRgba(swatch, finalOpacity / 100);
+                                      updateBallInCourtEntity(entity.id, { color: newRgba });
+                                      setSelectedColorPickerId(null);
+                                      setTempColor(null);
+                                    }}
+                                    style={{
+                                      width: '100%',
+                                      aspectRatio: '1',
+                                      background: swatch,
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      border: isSelected ? '2px solid #4A90E2' : '1px solid #444',
+                                      boxSizing: 'border-box',
+                                      transition: 'border 0.2s'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (!isSelected) {
+                                        e.currentTarget.style.border = '2px solid #666';
+                                      }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (!isSelected) {
+                                        e.currentTarget.style.border = '1px solid #444';
+                                      }
+                                    }}
+                                  />
+                                );
+                              })}
+                            </div>
+
+                            {/* Opacity Slider */}
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                              <label style={{ fontSize: '13px', color: '#999', minWidth: '60px' }}>
+                                Opacity:
+                              </label>
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={currentOpacity}
+                                onChange={(e) => {
+                                  const newOpacity = parseFloat(e.target.value);
+                                  setTempColor({ hex: currentHex, opacity: newOpacity });
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                style={{
+                                  flex: 1,
+                                  height: '4px',
+                                  background: `linear-gradient(to right, transparent, ${currentHex})`,
+                                  borderRadius: '2px',
+                                  outline: 'none',
+                                  cursor: 'pointer'
+                                }}
+                              />
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={opacityInputFocused ? (opacityInputValue !== null ? opacityInputValue.toString() : '') : Math.round(currentOpacity).toString()}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  // Allow empty string for clearing
+                                  if (value === '') {
+                                    setOpacityInputValue('');
+                                    return;
+                                  }
+                                  // Only allow digits
+                                  if (/^\d+$/.test(value)) {
+                                    const numValue = parseInt(value, 10);
+                                    if (!isNaN(numValue)) {
+                                      const newOpacity = Math.max(0, Math.min(100, numValue));
+                                      setOpacityInputValue(value); // Keep the typed value as string
+                                      setTempColor({ hex: currentHex, opacity: newOpacity });
+                                    }
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  setOpacityInputFocused(false);
+                                  const value = e.target.value.trim();
+                                  if (value === '' || isNaN(parseInt(value, 10))) {
+                                    // Reset to current opacity on blur if empty/invalid
+                                    setOpacityInputValue(null);
+                                    const final = tempColor ? tempColor.opacity : currentOpacity;
+                                    setTempColor({ hex: currentHex, opacity: final });
+                                  } else {
+                                    const numValue = parseInt(value, 10);
+                                    const newOpacity = Math.max(0, Math.min(100, numValue));
+                                    setOpacityInputValue(null);
+                                    setTempColor({ hex: currentHex, opacity: newOpacity });
+                                  }
+                                }}
+                                onFocus={(e) => {
+                                  e.stopPropagation();
+                                  setOpacityInputFocused(true);
+                                  e.target.select();
+                                  // Set to current opacity value when focused
+                                  const current = tempColor ? tempColor.opacity : currentOpacity;
+                                  setOpacityInputValue(Math.round(current).toString());
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.target.select();
+                                }}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation();
+                                  // Allow delete, backspace, arrow keys, etc.
+                                  if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                                    return;
+                                  }
+                                  // Allow digits
+                                  if (/^\d$/.test(e.key)) {
+                                    return;
+                                  }
+                                  // Allow Ctrl/Cmd combinations
+                                  if (e.ctrlKey || e.metaKey) {
+                                    return;
+                                  }
+                                  // Prevent other keys
+                                  e.preventDefault();
+                                }}
+                                style={{
+                                  width: '60px',
+                                  padding: '6px 8px',
+                                  background: '#141414',
+                                  color: '#ddd',
+                                  border: '1px solid #2f2f2f',
+                                  borderRadius: '6px',
+                                  outline: 'none',
+                                  fontSize: '13px',
+                                  fontFamily: 'monospace',
+                                  textAlign: 'center'
+                                }}
+                              />
+                              <span style={{ color: '#ddd', fontWeight: '500', fontSize: '13px' }}>
+                                %
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Advanced Mode */}
+                        {colorPickerMode === 'advanced' && (
+                          <div>
+                            {/* Saturation/Lightness Square */}
+                            <div style={{ position: 'relative', marginBottom: '16px' }}>
+                              <div
+                                style={{
+                                  width: '100%',
+                                  aspectRatio: '1',
+                                  borderRadius: '6px',
+                                  position: 'relative',
+                                  cursor: 'crosshair',
+                                  border: '1px solid #444',
+                                  overflow: 'hidden'
+                                }}
+                                onMouseDown={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const x = (e.clientX - rect.left) / rect.width;
+                                  const y = (e.clientY - rect.top) / rect.height;
+                                  const s = Math.max(0, Math.min(100, x * 100));
+                                  const l = Math.max(0, Math.min(100, (1 - y) * 100));
+                                  updateColorFromHsl(hsl.h, s, l, currentOpacity);
+                                }}
+                                onMouseMove={(e) => {
+                                  if (e.buttons === 1) {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const x = (e.clientX - rect.left) / rect.width;
+                                    const y = (e.clientY - rect.top) / rect.height;
+                                    const s = Math.max(0, Math.min(100, x * 100));
+                                    const l = Math.max(0, Math.min(100, (1 - y) * 100));
+                                    updateColorFromHsl(hsl.h, s, l, currentOpacity);
+                                  }
+                                }}
+                              >
+                                {/* Base hue color */}
+                                <div style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: `hsl(${hsl.h}, 100%, 50%)`
+                                }} />
+                                {/* White to transparent (saturation) */}
+                                <div style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: `linear-gradient(to right, white, transparent)`,
+                                  mixBlendMode: 'multiply'
+                                }} />
+                                {/* Transparent to black (lightness) */}
+                                <div style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: `linear-gradient(to bottom, transparent, black)`
+                                }} />
+                                {/* Selection indicator */}
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    left: `${hsl.s}%`,
+                                    top: `${100 - hsl.l}%`,
+                                    width: '12px',
+                                    height: '12px',
+                                    borderRadius: '50%',
+                                    border: '2px solid white',
+                                    background: currentHex,
+                                    transform: 'translate(-50%, -50%)',
+                                    pointerEvents: 'none',
+                                    boxShadow: '0 0 0 1px rgba(0,0,0,0.3)'
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Hue Slider */}
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '16px' }}>
+                              <div style={{ width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                  <path d="M8 2L10 6L14 8L10 10L8 14L6 10L2 8L6 6L8 2Z" fill={currentHex} stroke="#fff" strokeWidth="1" />
+                                </svg>
+                              </div>
+                              <div style={{ flex: 1, position: 'relative', height: '24px', background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)', borderRadius: '4px', border: '1px solid #444' }}>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="360"
+                                  step="1"
+                                  value={hsl.h}
+                                  onChange={(e) => {
+                                    const newH = parseFloat(e.target.value);
+                                    updateColorFromHsl(newH, hsl.s, hsl.l, currentOpacity);
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    background: 'transparent',
+                                    outline: 'none',
+                                    cursor: 'pointer',
+                                    WebkitAppearance: 'none',
+                                    appearance: 'none',
+                                    margin: 0,
+                                    padding: 0
+                                  }}
+                                />
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    left: `${(hsl.h / 360) * 100}%`,
+                                    top: '50%',
+                                    transform: 'translate(-50%, -50%)',
+                                    width: '4px',
+                                    height: '24px',
+                                    background: 'white',
+                                    borderRadius: '2px',
+                                    pointerEvents: 'none',
+                                    boxShadow: '0 0 2px rgba(0,0,0,0.5)'
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Hex Input */}
+                            <div style={{ marginBottom: '16px' }}>
+                              <input
+                                type="text"
+                                value={currentHex.toUpperCase()}
+                                onChange={(e) => {
+                                  let hexValue = e.target.value.trim().toUpperCase();
+                                  // Allow typing partial hex values
+                                  if (!hexValue.startsWith('#')) {
+                                    hexValue = '#' + hexValue;
+                                  }
+                                  // Allow any valid hex characters while typing
+                                  if (/^#[0-9A-F]{0,6}$/.test(hexValue)) {
+                                    // If it's a complete 6-digit hex, update the color
+                                    if (hexValue.length === 7) {
+                                      try {
+                                        const newRgb = hexToRgb(hexValue);
+                                        const newHsl = rgbToHsl(newRgb.r, newRgb.g, newRgb.b);
+                                        setTempColor({ hex: hexValue, opacity: currentOpacity });
+                                      } catch (e) {
+                                        // Invalid hex, keep current
+                                      }
+                                    } else {
+                                      // Store partial hex for display
+                                      setTempColor(prev => ({ ...prev, hex: hexValue, opacity: currentOpacity }));
+                                    }
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  // On blur, ensure we have a valid hex
+                                  let hexValue = e.target.value.trim().toUpperCase();
+                                  if (!hexValue.startsWith('#')) {
+                                    hexValue = '#' + hexValue;
+                                  }
+                                  if (/^#[0-9A-F]{6}$/.test(hexValue)) {
+                                    try {
+                                      const newRgb = hexToRgb(hexValue);
+                                      const newHsl = rgbToHsl(newRgb.r, newRgb.g, newRgb.b);
+                                      setTempColor({ hex: hexValue, opacity: currentOpacity });
+                                    } catch (e) {
+                                      // Invalid, reset to current
+                                      setTempColor({ hex: currentHex, opacity: currentOpacity });
+                                    }
+                                  } else {
+                                    // Invalid, reset to current
+                                    setTempColor({ hex: currentHex, opacity: currentOpacity });
+                                  }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                onFocus={(e) => e.stopPropagation()}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  background: '#141414',
+                                  color: '#ddd',
+                                  border: '1px solid #2f2f2f',
+                                  borderRadius: '6px',
+                                  outline: 'none',
+                                  fontFamily: 'monospace',
+                                  fontSize: '14px'
+                                }}
+                                placeholder="#00FF00"
+                              />
+                            </div>
+
+                            {/* Opacity Slider */}
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                              <label style={{ fontSize: '13px', color: '#999', minWidth: '60px' }}>
+                                Opacity:
+                              </label>
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={currentOpacity}
+                                onChange={(e) => {
+                                  const newOpacity = parseFloat(e.target.value);
+                                  setTempColor({ hex: currentHex, opacity: newOpacity });
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                style={{
+                                  flex: 1,
+                                  height: '4px',
+                                  background: `linear-gradient(to right, rgba(128,128,128,0.3), ${currentHex})`,
+                                  borderRadius: '2px',
+                                  outline: 'none',
+                                  cursor: 'pointer',
+                                  WebkitAppearance: 'none',
+                                  appearance: 'none'
+                                }}
+                              />
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={opacityInputFocused ? (opacityInputValue !== null ? opacityInputValue.toString() : '') : Math.round(currentOpacity).toString()}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  // Allow empty string for clearing
+                                  if (value === '') {
+                                    setOpacityInputValue('');
+                                    return;
+                                  }
+                                  // Only allow digits
+                                  if (/^\d+$/.test(value)) {
+                                    const numValue = parseInt(value, 10);
+                                    if (!isNaN(numValue)) {
+                                      const newOpacity = Math.max(0, Math.min(100, numValue));
+                                      setOpacityInputValue(value); // Keep the typed value as string
+                                      setTempColor({ hex: currentHex, opacity: newOpacity });
+                                    }
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  setOpacityInputFocused(false);
+                                  const value = e.target.value.trim();
+                                  if (value === '' || isNaN(parseInt(value, 10))) {
+                                    // Reset to current opacity on blur if empty/invalid
+                                    setOpacityInputValue(null);
+                                    const final = tempColor ? tempColor.opacity : currentOpacity;
+                                    setTempColor({ hex: currentHex, opacity: final });
+                                  } else {
+                                    const numValue = parseInt(value, 10);
+                                    const newOpacity = Math.max(0, Math.min(100, numValue));
+                                    setOpacityInputValue(null);
+                                    setTempColor({ hex: currentHex, opacity: newOpacity });
+                                  }
+                                }}
+                                onFocus={(e) => {
+                                  e.stopPropagation();
+                                  setOpacityInputFocused(true);
+                                  e.target.select();
+                                  // Set to current opacity value when focused
+                                  const current = tempColor ? tempColor.opacity : currentOpacity;
+                                  setOpacityInputValue(Math.round(current).toString());
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.target.select();
+                                }}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation();
+                                  // Allow delete, backspace, arrow keys, etc.
+                                  if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                                    return;
+                                  }
+                                  // Allow digits
+                                  if (/^\d$/.test(e.key)) {
+                                    return;
+                                  }
+                                  // Allow Ctrl/Cmd combinations
+                                  if (e.ctrlKey || e.metaKey) {
+                                    return;
+                                  }
+                                  // Prevent other keys
+                                  e.preventDefault();
+                                }}
+                                style={{
+                                  width: '60px',
+                                  padding: '6px 8px',
+                                  background: '#141414',
+                                  color: '#ddd',
+                                  border: '1px solid #2f2f2f',
+                                  borderRadius: '6px',
+                                  outline: 'none',
+                                  fontSize: '13px',
+                                  fontFamily: 'monospace',
+                                  textAlign: 'center'
+                                }}
+                              />
+                              <span style={{ color: '#ddd', fontWeight: '500', fontSize: '13px' }}>
+                                %
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                          <button
+                            onClick={() => {
+                              setSelectedColorPickerId(null);
+                              setTempColor(null);
+                              setOpacityInputValue(null);
+                              setOpacityInputFocused(false);
+                            }}
+                            style={{
+                              padding: '8px 16px',
+                              background: '#333',
+                              color: '#fff',
+                              border: '1px solid #444',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '14px',
+                              fontFamily: FONT_FAMILY
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              const finalOpacity = tempColor ? tempColor.opacity : currentOpacity;
+                              const newRgba = hexToRgba(currentHex, finalOpacity / 100);
+                              updateBallInCourtEntity(entity.id, { color: newRgba });
+                              setSelectedColorPickerId(null);
+                              setTempColor(null);
+                              setOpacityInputValue(null);
+                              setOpacityInputFocused(false);
+                            }}
+                            style={{
+                              padding: '8px 16px',
+                              background: '#4A90E2',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '14px',
+                              fontFamily: FONT_FAMILY,
+                              fontWeight: '500'
+                            }}
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #2a2a2a' }}>
+                  <button onClick={cancelTemplateModal} className="btn btn-secondary" style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}>Cancel</button>
+                  <button onClick={saveTemplate} className="btn btn-primary" disabled={!templateName.trim()} style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}>
+                    {editingTemplateId ? 'Save Changes' : 'Save Template'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {/* Move/Copy Modal */}
+        {
+          isMoveCopyModalOpen && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000
+            }}>
+              <div style={{
+                width: '600px',
+                maxHeight: '85vh',
+                overflow: 'auto',
+                background: '#1f1f1f',
+                color: '#eaeaea',
+                borderRadius: '12px',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
+                border: '1px solid #2a2a2a',
+                padding: '16px'
+              }}>
+                <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>
+                  {moveCopyType === 'module' ? 'Move/Copy Modules' : moveCopyType === 'category' ? 'Move/Copy Categories' : 'Move/Copy Checklist Items'}
+                </div>
+
+                {/* Move/Copy Mode Selection */}
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Action</div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => setMoveCopyMode('copy')}
+                      style={{
+                        padding: '8px 16px',
+                        background: moveCopyMode === 'copy' ? '#4A90E2' : '#2a2a2a',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                        fontSize: '12px'
+                      }}
+                    >
+                      Copy
+                    </button>
+                    <button
+                      onClick={() => setMoveCopyMode('move')}
+                      style={{
+                        padding: '8px 16px',
+                        background: moveCopyMode === 'move' ? '#4A90E2' : '#2a2a2a',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                        fontSize: '12px'
+                      }}
+                    >
+                      Move
+                    </button>
+                  </div>
+                </div>
+
+                {/* Destination Selection */}
+                {moveCopyType === 'module' && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Destination Template</div>
+                    <select
+                      value={moveCopyDestinationTemplateId || ''}
+                      onChange={(e) => {
+                        setMoveCopyDestinationTemplateId(e.target.value);
+                        setMoveCopyNewTemplateName('');
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #333',
+                        outline: 'none',
+                        background: '#141414',
+                        color: '#eaeaea',
+                        fontFamily: FONT_FAMILY,
+                        cursor: 'pointer',
+                        fontSize: '13px'
+                      }}
+                    >
+                      <option value="">Select destination template...</option>
+                      <option value="new">Create New Template</option>
+                      {templates.filter(t => editingTemplateId ? t.id !== editingTemplateId : true).map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                    {moveCopyDestinationTemplateId === 'new' && (
                       <input
                         type="text"
-                        value={newModuleName}
-                        onChange={(e) => setNewModuleName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            handleSaveModule();
-                          } else if (e.key === 'Escape') {
-                            handleCancelAddModule();
-                          }
-                        }}
-                        placeholder="Enter module name..."
-                        autoFocus
+                        value={moveCopyNewTemplateName}
+                        onChange={(e) => setMoveCopyNewTemplateName(e.target.value)}
+                        placeholder="New template name..."
                         style={{
-                          flex: 1,
+                          width: '100%',
                           padding: '8px 10px',
                           borderRadius: '6px',
                           border: '1px solid #4A90E2',
@@ -5237,1403 +6453,290 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                           background: '#141414',
                           color: '#eaeaea',
                           fontFamily: FONT_FAMILY,
-                          fontSize: '13px'
+                          fontSize: '13px',
+                          marginTop: '8px'
                         }}
                       />
-                      <button
-                        onClick={handleSaveModule}
-                        className="btn btn-secondary"
-                        style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={handleCancelAddModule}
-                        className="btn btn-secondary"
-                        style={{ padding: '8px 12px', borderRadius: '6px', background: '#2a2a2a', fontSize: '12px' }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
 
-              {/* Categories - Visible only after module is selected */}
-              {templateName.trim() && selectedModuleId && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Categories</div>
-                  {(() => {
-                    const selectedModule = modules.find(m => m.id === selectedModuleId);
-                    if (!selectedModule) return null;
-
-                    return (
-                      <>
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                          {!editingCategories ? (
-                            <>
-                              <select
-                                value={selectedTemplateCategoryId || ''}
-                                onChange={(e) => handleCategorySelect(e.target.value || null)}
-                                disabled={(selectedModule.categories || []).length === 0}
-                                style={{
-                                  flex: 1,
-                                  padding: '8px 10px',
-                                  paddingRight: '30px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #333',
-                                  outline: 'none',
-                                  background: '#141414',
-                                  backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'8\' viewBox=\'0 0 12 8\'%3E%3Cpath fill=\'none\' stroke=\'%23eaeaea\' stroke-width=\'1.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\' d=\'M1 1l5 5 5-5\'/%3E%3C/svg%3E")',
-                                  backgroundRepeat: 'no-repeat',
-                                  backgroundPosition: 'right 12px center',
-                                  backgroundSize: '12px',
-                                  color: '#eaeaea',
-                                  fontFamily: FONT_FAMILY,
-                                  cursor: 'pointer',
-                                  fontSize: '13px',
-                                  appearance: 'none',
-                                  WebkitAppearance: 'none',
-                                  MozAppearance: 'none'
-                                }}
-                              >
-                                <option value="">Select a category...</option>
-                                {(selectedModule.categories || []).map(cat => (
-                                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                ))}
-                              </select>
-                              <button
-                                onClick={handleAddCategoryClick}
-                                className="btn btn-secondary"
-                                style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
-                              >
-                                Add
-                              </button>
-                              {(selectedModule.categories || []).length > 0 && (
-                                <button
-                                  onClick={handleEditCategories}
-                                  className="btn btn-secondary"
-                                  style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
-                                >
-                                  Edit
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <DndContext
-                                sensors={categorySensors}
-                                collisionDetection={closestCenter}
-                                onDragStart={handleCategoryDragStart}
-                                onDragEnd={handleCategoryDragEnd}
-                                onDragCancel={handleCategoryDragCancel}
-                              >
-                                <SortableContext
-                                  items={(selectedModule.categories || []).map((cat) => cat.id)}
-                                  strategy={verticalListSortingStrategy}
-                                >
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    {(selectedModule.categories || []).map((cat) => (
-                                      <TemplateCategorySortableRow
-                                        key={cat.id}
-                                        category={cat}
-                                        isSelected={selectedCategoryIds.includes(cat.id)}
-                                        nameValue={
-                                          editingCategoryName[cat.id] !== undefined
-                                            ? editingCategoryName[cat.id]
-                                            : cat.name
-                                        }
-                                        onToggleSelect={toggleCategorySelection}
-                                        onNameChange={handleCategoryNameChange}
-                                        onNameKeyDown={handleCategoryInputKeyDown}
-                                        disabled={!editingCategories}
-                                      />
-                                    ))}
-                                  </div>
-                                </SortableContext>
-                                <DragOverlay>
-                                  {activeCategory && <TemplateDragOverlayItem label={activeCategory.name} />}
-                                </DragOverlay>
-                              </DndContext>
-                              <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                                <button
-                                  onClick={handleDuplicateCategories}
-                                  disabled={selectedCategoryIds.length === 0}
-                                  className="btn btn-secondary"
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: '6px',
-                                    fontSize: '12px',
-                                    opacity: selectedCategoryIds.length === 0 ? 0.5 : 1,
-                                    cursor: selectedCategoryIds.length === 0 ? 'not-allowed' : 'pointer'
-                                  }}
-                                >
-                                  Duplicate
-                                </button>
-                                <button
-                                  onClick={handleMoveCopyCategories}
-                                  className="btn btn-secondary"
-                                  style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
-                                >
-                                  Move/Copy
-                                </button>
-                                <button
-                                  onClick={handleSaveEditCategories}
-                                  className="btn btn-secondary"
-                                  style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (selectedCategoryIds.length === 0 || !selectedModuleId) return;
-
-                                    const selectedModule = modules.find(m => m.id === selectedModuleId);
-                                    if (!selectedModule) return;
-
-                                    const categoryNames = (selectedModule.categories || [])
-                                      .filter(c => selectedCategoryIds.includes(c.id))
-                                      .map(c => c.name)
-                                      .join(', ');
-
-                                    const confirmMessage = selectedCategoryIds.length === 1
-                                      ? `Are you sure you want to delete the category "${categoryNames}"? This will also delete all checklist items within it.`
-                                      : `Are you sure you want to delete ${selectedCategoryIds.length} categories (${categoryNames})? This will also delete all checklist items within them.`;
-
-                                    if (window.confirm(confirmMessage)) {
-                                      deleteCategories(selectedModuleId, selectedCategoryIds);
-                                      setSelectedCategoryIds([]);
-                                    }
-                                  }}
-                                  disabled={selectedCategoryIds.length === 0}
-                                  className="btn btn-danger"
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: '6px',
-                                    fontSize: '12px',
-                                    opacity: selectedCategoryIds.length === 0 ? 0.5 : 1,
-                                    cursor: selectedCategoryIds.length === 0 ? 'not-allowed' : 'pointer'
-                                  }}
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Add Category Input */}
-                        {addingCategory && !editingCategories && (
-                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '6px' }}>
-                            <input
-                              type="text"
-                              value={newCategoryName}
-                              onChange={(e) => setNewCategoryName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleSaveCategory();
-                                } else if (e.key === 'Escape') {
-                                  handleCancelAddCategory();
-                                }
-                              }}
-                              placeholder="Enter category name..."
-                              autoFocus
-                              style={{
-                                flex: 1,
-                                padding: '8px 10px',
-                                borderRadius: '6px',
-                                border: '1px solid #4A90E2',
-                                outline: 'none',
-                                background: '#141414',
-                                color: '#eaeaea',
-                                fontFamily: FONT_FAMILY,
-                                fontSize: '13px'
-                              }}
-                            />
-                            <button
-                              onClick={handleSaveCategory}
-                              className="btn btn-secondary"
-                              style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={handleCancelAddCategory}
-                              className="btn btn-secondary"
-                              style={{ padding: '8px 12px', borderRadius: '6px', background: '#2a2a2a', fontSize: '12px' }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-
-              {/* Checklist Items - Visible only after template + space + category are all selected */}
-              {templateName.trim() && selectedModuleId && selectedTemplateCategoryId && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Checklist Items</div>
-                  {(() => {
-                    const selectedModule = modules.find(m => m.id === selectedModuleId);
-                    if (!selectedModule) return null;
-                    const selectedCategory = (selectedModule.categories || []).find(cat => cat.id === selectedTemplateCategoryId);
-                    if (!selectedCategory) return null;
-
-                    return (
-                      <div style={{ padding: '10px', background: '#141414', borderRadius: '8px', border: '1px solid #2a2a2a' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '8px', color: '#cfcfcf' }}>
-                          {selectedCategory.name}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
-                          {(selectedCategory.checklist || []).map(item => (
-                            <div key={item.id} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                              <input
-                                type="text"
-                                value={item.text}
-                                onChange={(e) => updateChecklistItem(selectedModuleId, selectedCategory.id, item.id, e.target.value)}
-                                placeholder="Checklist item (e.g., Cable pulled)"
-                                style={{
-                                  flex: 1,
-                                  padding: '6px 8px',
-                                  background: '#1b1b1b',
-                                  color: '#ddd',
-                                  border: '1px solid #2f2f2f',
-                                  borderRadius: '6px',
-                                  outline: 'none',
-                                  fontFamily: FONT_FAMILY,
-                                  fontSize: '13px'
-                                }}
-                              />
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`Are you sure you want to delete the checklist item "${item.text || 'Untitled Item'}"?`)) {
-                                    deleteChecklistItem(selectedModuleId, selectedCategory.id, item.id);
-                                  }
-                                }}
-                                title="Delete"
-                                className="btn btn-danger btn-icon-only btn-sm"
-                                style={{ padding: '6px', minWidth: '28px', minHeight: '28px' }}
-                              >
-                                <Icon name="close" size={11} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        <button
-                          onClick={() => addChecklistItem(selectedModuleId, selectedCategory.id)}
-                          className="btn btn-secondary"
-                          style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
-                        >
-                          + Add Item
-                        </button>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-
-              {/* Ball in Court Section */}
-              <div style={{ marginTop: '16px', padding: '12px', background: '#141414', border: '1px solid #2a2a2a', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600 }}>Ball in Court</div>
-                  <button onClick={addBallInCourtEntity} className="btn btn-secondary btn-sm" style={{ padding: '6px 10px', fontSize: '12px' }}>+ Add Entity</button>
-                </div>
-                <div style={{ fontSize: '11px', color: '#888', marginBottom: '10px' }}>
-                  Define entities and their highlight colors for responsibility tracking
-                </div>
-                <style>{`
-                  body.ball-in-court-dragging [data-ball-delete] {
-                    display: none !important;
-                  }
-                `}</style>
-                <DndContext
-                  sensors={ballSensors}
-                  collisionDetection={closestCenter}
-                  onDragStart={handleBallDragStart}
-                  onDragEnd={handleBallDragEnd}
-                  onDragCancel={handleBallDragCancel}
-                >
-                  <SortableContext
-                    items={ballInCourtEntities.map((entity) => entity.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {ballInCourtEntities.map((entity) => (
-                        <BallInCourtSortableRow
-                          key={entity.id}
-                          entity={entity}
-                          selectedColorPickerId={selectedColorPickerId}
-                          onOpenColorPicker={handleBallColorPickerOpen}
-                          onNameChange={handleBallEntityNameChange}
-                          onDelete={() => handleBallEntityDelete(entity.id)}
-                          isAnyDragging={isAnyBallEntityDragging}
-                        />
-                      ))}
-                      {ballInCourtEntities.length === 0 && (
-                        <div style={{ color: '#888', fontSize: '13px', fontStyle: 'italic', padding: '12px' }}>
-                          No entities defined. Add at least one entity for Ball in Court tracking.
-                        </div>
-                      )}
-                    </div>
-                  </SortableContext>
-                  <DragOverlay>
-                    {activeBallEntity && <BallInCourtDragOverlayItem entity={activeBallEntity} />}
-                  </DragOverlay>
-                </DndContext>
-              </div>
-
-              {/* Color Picker Dialog */}
-              {selectedColorPickerId && (() => {
-                const entity = ballInCourtEntities.find(e => e.id === selectedColorPickerId);
-                if (!entity) return null;
-
-                const getHexFromColor = (color) => {
-                  if (color.startsWith('rgba')) {
-                    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
-                    if (match) {
-                      const r = parseInt(match[1]).toString(16).padStart(2, '0');
-                      const g = parseInt(match[2]).toString(16).padStart(2, '0');
-                      const b = parseInt(match[3]).toString(16).padStart(2, '0');
-                      return `#${r}${g}${b}`;
-                    }
-                  }
-                  if (color.startsWith('#')) return color;
-                  return '#E3D1FB';
-                };
-
-                const currentHex = tempColor ? tempColor.hex : getHexFromColor(entity.color);
-                const currentOpacity = tempColor ? tempColor.opacity : getOpacityFromBallColor(entity.color);
-                const rgb = hexToRgb(currentHex);
-                const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
-
-                // Update temp color when HSL changes
-                const updateColorFromHsl = (h, s, l, opacity = currentOpacity) => {
-                  const newRgb = hslToRgb(h, s, l);
-                  const newHex = `#${newRgb.r.toString(16).padStart(2, '0')}${newRgb.g.toString(16).padStart(2, '0')}${newRgb.b.toString(16).padStart(2, '0')}`;
-                  setTempColor({ hex: newHex, opacity });
-                };
-
-                const swatches = generateColorSwatches();
-
-                return (
-                  <div
-                    onClick={(e) => {
-                      // Only close if clicking directly on the overlay background (not any child elements)
-                      if (e.target === e.currentTarget) {
-                        setSelectedColorPickerId(null);
-                        setTempColor(null);
-                        setOpacityInputValue(null);
-                        setOpacityInputFocused(false);
-                      }
-                    }}
-                    style={{
-                      position: 'fixed',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      background: 'rgba(0, 0, 0, 0.7)',
-                      zIndex: 10004,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      data-color-picker-dialog
+                {moveCopyType === 'category' && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Destination Space</div>
+                    <select
+                      value={moveCopyDestinationModuleId || ''}
+                      onChange={(e) => {
+                        setMoveCopyDestinationModuleId(e.target.value);
+                        setMoveCopyNewModuleName('');
+                        setMoveCopyNewCategoryName('');
+                      }}
                       style={{
-                        background: '#2b2b2b',
-                        border: '1px solid #444',
-                        borderRadius: '8px',
-                        padding: '20px',
-                        width: colorPickerMode === 'grid' ? '520px' : '420px',
-                        maxWidth: '90vw',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #333',
+                        outline: 'none',
+                        background: '#141414',
+                        color: '#eaeaea',
+                        fontFamily: FONT_FAMILY,
+                        cursor: 'pointer',
+                        fontSize: '13px'
                       }}
                     >
-                      {/* Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                        <div style={{ fontSize: '16px', fontWeight: '600', color: '#fff', fontFamily: FONT_FAMILY }}>
-                          Choose Color
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            onClick={() => {
-                              setColorPickerMode('grid');
-                              setOpacityInputValue(null);
-                              setOpacityInputFocused(false);
-                            }}
-                            style={{
-                              width: '32px',
-                              height: '32px',
-                              background: colorPickerMode === 'grid' ? '#555' : '#333',
-                              border: '1px solid #444',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: 0
-                            }}
-                            title="Grid View"
-                          >
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                              <rect x="2" y="2" width="5" height="5" fill="#fff" />
-                              <rect x="9" y="2" width="5" height="5" fill="#fff" />
-                              <rect x="2" y="9" width="5" height="5" fill="#fff" />
-                              <rect x="9" y="9" width="5" height="5" fill="#fff" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => {
-                              setColorPickerMode('advanced');
-                              setOpacityInputValue(null);
-                              setOpacityInputFocused(false);
-                            }}
-                            style={{
-                              width: '32px',
-                              height: '32px',
-                              background: colorPickerMode === 'advanced' ? '#555' : '#333',
-                              border: '1px solid #444',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: 0
-                            }}
-                            title="Advanced Picker"
-                          >
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                              <path d="M8 2L10 6L14 8L10 10L8 14L6 10L2 8L6 6L8 2Z" fill="#fff" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Grid Mode */}
-                      {colorPickerMode === 'grid' && (
-                        <div>
-                          <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(8, 1fr)',
-                            gap: '4px',
-                            marginBottom: '20px'
-                          }}>
-                            {swatches.map((swatch, idx) => {
-                              const isSelected = currentHex.toLowerCase() === swatch.toLowerCase();
-                              return (
-                                <div
-                                  key={idx}
-                                  onClick={() => {
-                                    // Use current opacity from slider
-                                    const finalOpacity = tempColor ? tempColor.opacity : currentOpacity;
-                                    const newRgba = hexToRgba(swatch, finalOpacity / 100);
-                                    updateBallInCourtEntity(entity.id, { color: newRgba });
-                                    setSelectedColorPickerId(null);
-                                    setTempColor(null);
-                                  }}
-                                  style={{
-                                    width: '100%',
-                                    aspectRatio: '1',
-                                    background: swatch,
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    border: isSelected ? '2px solid #4A90E2' : '1px solid #444',
-                                    boxSizing: 'border-box',
-                                    transition: 'border 0.2s'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    if (!isSelected) {
-                                      e.currentTarget.style.border = '2px solid #666';
-                                    }
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    if (!isSelected) {
-                                      e.currentTarget.style.border = '1px solid #444';
-                                    }
-                                  }}
-                                />
-                              );
-                            })}
-                          </div>
-
-                          {/* Opacity Slider */}
-                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                            <label style={{ fontSize: '13px', color: '#999', minWidth: '60px' }}>
-                              Opacity:
-                            </label>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              step="1"
-                              value={currentOpacity}
-                              onChange={(e) => {
-                                const newOpacity = parseFloat(e.target.value);
-                                setTempColor({ hex: currentHex, opacity: newOpacity });
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              style={{
-                                flex: 1,
-                                height: '4px',
-                                background: `linear-gradient(to right, transparent, ${currentHex})`,
-                                borderRadius: '2px',
-                                outline: 'none',
-                                cursor: 'pointer'
-                              }}
-                            />
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              value={opacityInputFocused ? (opacityInputValue !== null ? opacityInputValue.toString() : '') : Math.round(currentOpacity).toString()}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                // Allow empty string for clearing
-                                if (value === '') {
-                                  setOpacityInputValue('');
-                                  return;
-                                }
-                                // Only allow digits
-                                if (/^\d+$/.test(value)) {
-                                  const numValue = parseInt(value, 10);
-                                  if (!isNaN(numValue)) {
-                                    const newOpacity = Math.max(0, Math.min(100, numValue));
-                                    setOpacityInputValue(value); // Keep the typed value as string
-                                    setTempColor({ hex: currentHex, opacity: newOpacity });
-                                  }
-                                }
-                              }}
-                              onBlur={(e) => {
-                                setOpacityInputFocused(false);
-                                const value = e.target.value.trim();
-                                if (value === '' || isNaN(parseInt(value, 10))) {
-                                  // Reset to current opacity on blur if empty/invalid
-                                  setOpacityInputValue(null);
-                                  const final = tempColor ? tempColor.opacity : currentOpacity;
-                                  setTempColor({ hex: currentHex, opacity: final });
-                                } else {
-                                  const numValue = parseInt(value, 10);
-                                  const newOpacity = Math.max(0, Math.min(100, numValue));
-                                  setOpacityInputValue(null);
-                                  setTempColor({ hex: currentHex, opacity: newOpacity });
-                                }
-                              }}
-                              onFocus={(e) => {
-                                e.stopPropagation();
-                                setOpacityInputFocused(true);
-                                e.target.select();
-                                // Set to current opacity value when focused
-                                const current = tempColor ? tempColor.opacity : currentOpacity;
-                                setOpacityInputValue(Math.round(current).toString());
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                e.target.select();
-                              }}
-                              onKeyDown={(e) => {
-                                e.stopPropagation();
-                                // Allow delete, backspace, arrow keys, etc.
-                                if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                                  return;
-                                }
-                                // Allow digits
-                                if (/^\d$/.test(e.key)) {
-                                  return;
-                                }
-                                // Allow Ctrl/Cmd combinations
-                                if (e.ctrlKey || e.metaKey) {
-                                  return;
-                                }
-                                // Prevent other keys
-                                e.preventDefault();
-                              }}
-                              style={{
-                                width: '60px',
-                                padding: '6px 8px',
-                                background: '#141414',
-                                color: '#ddd',
-                                border: '1px solid #2f2f2f',
-                                borderRadius: '6px',
-                                outline: 'none',
-                                fontSize: '13px',
-                                fontFamily: 'monospace',
-                                textAlign: 'center'
-                              }}
-                            />
-                            <span style={{ color: '#ddd', fontWeight: '500', fontSize: '13px' }}>
-                              %
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Advanced Mode */}
-                      {colorPickerMode === 'advanced' && (
-                        <div>
-                          {/* Saturation/Lightness Square */}
-                          <div style={{ position: 'relative', marginBottom: '16px' }}>
-                            <div
-                              style={{
-                                width: '100%',
-                                aspectRatio: '1',
-                                borderRadius: '6px',
-                                position: 'relative',
-                                cursor: 'crosshair',
-                                border: '1px solid #444',
-                                overflow: 'hidden'
-                              }}
-                              onMouseDown={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                const x = (e.clientX - rect.left) / rect.width;
-                                const y = (e.clientY - rect.top) / rect.height;
-                                const s = Math.max(0, Math.min(100, x * 100));
-                                const l = Math.max(0, Math.min(100, (1 - y) * 100));
-                                updateColorFromHsl(hsl.h, s, l, currentOpacity);
-                              }}
-                              onMouseMove={(e) => {
-                                if (e.buttons === 1) {
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  const x = (e.clientX - rect.left) / rect.width;
-                                  const y = (e.clientY - rect.top) / rect.height;
-                                  const s = Math.max(0, Math.min(100, x * 100));
-                                  const l = Math.max(0, Math.min(100, (1 - y) * 100));
-                                  updateColorFromHsl(hsl.h, s, l, currentOpacity);
-                                }
-                              }}
-                            >
-                              {/* Base hue color */}
-                              <div style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                background: `hsl(${hsl.h}, 100%, 50%)`
-                              }} />
-                              {/* White to transparent (saturation) */}
-                              <div style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                background: `linear-gradient(to right, white, transparent)`,
-                                mixBlendMode: 'multiply'
-                              }} />
-                              {/* Transparent to black (lightness) */}
-                              <div style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                background: `linear-gradient(to bottom, transparent, black)`
-                              }} />
-                              {/* Selection indicator */}
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: `${hsl.s}%`,
-                                  top: `${100 - hsl.l}%`,
-                                  width: '12px',
-                                  height: '12px',
-                                  borderRadius: '50%',
-                                  border: '2px solid white',
-                                  background: currentHex,
-                                  transform: 'translate(-50%, -50%)',
-                                  pointerEvents: 'none',
-                                  boxShadow: '0 0 0 1px rgba(0,0,0,0.3)'
-                                }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Hue Slider */}
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '16px' }}>
-                            <div style={{ width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                <path d="M8 2L10 6L14 8L10 10L8 14L6 10L2 8L6 6L8 2Z" fill={currentHex} stroke="#fff" strokeWidth="1" />
-                              </svg>
-                            </div>
-                            <div style={{ flex: 1, position: 'relative', height: '24px', background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)', borderRadius: '4px', border: '1px solid #444' }}>
-                              <input
-                                type="range"
-                                min="0"
-                                max="360"
-                                step="1"
-                                value={hsl.h}
-                                onChange={(e) => {
-                                  const newH = parseFloat(e.target.value);
-                                  updateColorFromHsl(newH, hsl.s, hsl.l, currentOpacity);
-                                }}
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  background: 'transparent',
-                                  outline: 'none',
-                                  cursor: 'pointer',
-                                  WebkitAppearance: 'none',
-                                  appearance: 'none',
-                                  margin: 0,
-                                  padding: 0
-                                }}
-                              />
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: `${(hsl.h / 360) * 100}%`,
-                                  top: '50%',
-                                  transform: 'translate(-50%, -50%)',
-                                  width: '4px',
-                                  height: '24px',
-                                  background: 'white',
-                                  borderRadius: '2px',
-                                  pointerEvents: 'none',
-                                  boxShadow: '0 0 2px rgba(0,0,0,0.5)'
-                                }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Hex Input */}
-                          <div style={{ marginBottom: '16px' }}>
-                            <input
-                              type="text"
-                              value={currentHex.toUpperCase()}
-                              onChange={(e) => {
-                                let hexValue = e.target.value.trim().toUpperCase();
-                                // Allow typing partial hex values
-                                if (!hexValue.startsWith('#')) {
-                                  hexValue = '#' + hexValue;
-                                }
-                                // Allow any valid hex characters while typing
-                                if (/^#[0-9A-F]{0,6}$/.test(hexValue)) {
-                                  // If it's a complete 6-digit hex, update the color
-                                  if (hexValue.length === 7) {
-                                    try {
-                                      const newRgb = hexToRgb(hexValue);
-                                      const newHsl = rgbToHsl(newRgb.r, newRgb.g, newRgb.b);
-                                      setTempColor({ hex: hexValue, opacity: currentOpacity });
-                                    } catch (e) {
-                                      // Invalid hex, keep current
-                                    }
-                                  } else {
-                                    // Store partial hex for display
-                                    setTempColor(prev => ({ ...prev, hex: hexValue, opacity: currentOpacity }));
-                                  }
-                                }
-                              }}
-                              onBlur={(e) => {
-                                // On blur, ensure we have a valid hex
-                                let hexValue = e.target.value.trim().toUpperCase();
-                                if (!hexValue.startsWith('#')) {
-                                  hexValue = '#' + hexValue;
-                                }
-                                if (/^#[0-9A-F]{6}$/.test(hexValue)) {
-                                  try {
-                                    const newRgb = hexToRgb(hexValue);
-                                    const newHsl = rgbToHsl(newRgb.r, newRgb.g, newRgb.b);
-                                    setTempColor({ hex: hexValue, opacity: currentOpacity });
-                                  } catch (e) {
-                                    // Invalid, reset to current
-                                    setTempColor({ hex: currentHex, opacity: currentOpacity });
-                                  }
-                                } else {
-                                  // Invalid, reset to current
-                                  setTempColor({ hex: currentHex, opacity: currentOpacity });
-                                }
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              onFocus={(e) => e.stopPropagation()}
-                              style={{
-                                width: '100%',
-                                padding: '8px 12px',
-                                background: '#141414',
-                                color: '#ddd',
-                                border: '1px solid #2f2f2f',
-                                borderRadius: '6px',
-                                outline: 'none',
-                                fontFamily: 'monospace',
-                                fontSize: '14px'
-                              }}
-                              placeholder="#00FF00"
-                            />
-                          </div>
-
-                          {/* Opacity Slider */}
-                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                            <label style={{ fontSize: '13px', color: '#999', minWidth: '60px' }}>
-                              Opacity:
-                            </label>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              step="1"
-                              value={currentOpacity}
-                              onChange={(e) => {
-                                const newOpacity = parseFloat(e.target.value);
-                                setTempColor({ hex: currentHex, opacity: newOpacity });
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              style={{
-                                flex: 1,
-                                height: '4px',
-                                background: `linear-gradient(to right, rgba(128,128,128,0.3), ${currentHex})`,
-                                borderRadius: '2px',
-                                outline: 'none',
-                                cursor: 'pointer',
-                                WebkitAppearance: 'none',
-                                appearance: 'none'
-                              }}
-                            />
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              value={opacityInputFocused ? (opacityInputValue !== null ? opacityInputValue.toString() : '') : Math.round(currentOpacity).toString()}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                // Allow empty string for clearing
-                                if (value === '') {
-                                  setOpacityInputValue('');
-                                  return;
-                                }
-                                // Only allow digits
-                                if (/^\d+$/.test(value)) {
-                                  const numValue = parseInt(value, 10);
-                                  if (!isNaN(numValue)) {
-                                    const newOpacity = Math.max(0, Math.min(100, numValue));
-                                    setOpacityInputValue(value); // Keep the typed value as string
-                                    setTempColor({ hex: currentHex, opacity: newOpacity });
-                                  }
-                                }
-                              }}
-                              onBlur={(e) => {
-                                setOpacityInputFocused(false);
-                                const value = e.target.value.trim();
-                                if (value === '' || isNaN(parseInt(value, 10))) {
-                                  // Reset to current opacity on blur if empty/invalid
-                                  setOpacityInputValue(null);
-                                  const final = tempColor ? tempColor.opacity : currentOpacity;
-                                  setTempColor({ hex: currentHex, opacity: final });
-                                } else {
-                                  const numValue = parseInt(value, 10);
-                                  const newOpacity = Math.max(0, Math.min(100, numValue));
-                                  setOpacityInputValue(null);
-                                  setTempColor({ hex: currentHex, opacity: newOpacity });
-                                }
-                              }}
-                              onFocus={(e) => {
-                                e.stopPropagation();
-                                setOpacityInputFocused(true);
-                                e.target.select();
-                                // Set to current opacity value when focused
-                                const current = tempColor ? tempColor.opacity : currentOpacity;
-                                setOpacityInputValue(Math.round(current).toString());
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                e.target.select();
-                              }}
-                              onKeyDown={(e) => {
-                                e.stopPropagation();
-                                // Allow delete, backspace, arrow keys, etc.
-                                if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                                  return;
-                                }
-                                // Allow digits
-                                if (/^\d$/.test(e.key)) {
-                                  return;
-                                }
-                                // Allow Ctrl/Cmd combinations
-                                if (e.ctrlKey || e.metaKey) {
-                                  return;
-                                }
-                                // Prevent other keys
-                                e.preventDefault();
-                              }}
-                              style={{
-                                width: '60px',
-                                padding: '6px 8px',
-                                background: '#141414',
-                                color: '#ddd',
-                                border: '1px solid #2f2f2f',
-                                borderRadius: '6px',
-                                outline: 'none',
-                                fontSize: '13px',
-                                fontFamily: 'monospace',
-                                textAlign: 'center'
-                              }}
-                            />
-                            <span style={{ color: '#ddd', fontWeight: '500', fontSize: '13px' }}>
-                              %
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Action Buttons */}
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                        <button
-                          onClick={() => {
-                            setSelectedColorPickerId(null);
-                            setTempColor(null);
-                            setOpacityInputValue(null);
-                            setOpacityInputFocused(false);
-                          }}
-                          style={{
-                            padding: '8px 16px',
-                            background: '#333',
-                            color: '#fff',
-                            border: '1px solid #444',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            fontFamily: FONT_FAMILY
-                          }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => {
-                            const finalOpacity = tempColor ? tempColor.opacity : currentOpacity;
-                            const newRgba = hexToRgba(currentHex, finalOpacity / 100);
-                            updateBallInCourtEntity(entity.id, { color: newRgba });
-                            setSelectedColorPickerId(null);
-                            setTempColor(null);
-                            setOpacityInputValue(null);
-                            setOpacityInputFocused(false);
-                          }}
-                          style={{
-                            padding: '8px 16px',
-                            background: '#4A90E2',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            fontFamily: FONT_FAMILY,
-                            fontWeight: '500'
-                          }}
-                        >
-                          Apply
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #2a2a2a' }}>
-                <button onClick={cancelTemplateModal} className="btn btn-secondary" style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}>Cancel</button>
-                <button onClick={saveTemplate} className="btn btn-primary" disabled={!templateName.trim()} style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}>
-                  {editingTemplateId ? 'Save Changes' : 'Save Template'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Move/Copy Modal */}
-        {isMoveCopyModalOpen && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000
-          }}>
-            <div style={{
-              width: '600px',
-              maxHeight: '85vh',
-              overflow: 'auto',
-              background: '#1f1f1f',
-              color: '#eaeaea',
-              borderRadius: '12px',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
-              border: '1px solid #2a2a2a',
-              padding: '16px'
-            }}>
-              <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>
-                {moveCopyType === 'module' ? 'Move/Copy Modules' : moveCopyType === 'category' ? 'Move/Copy Categories' : 'Move/Copy Checklist Items'}
-              </div>
-
-              {/* Move/Copy Mode Selection */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Action</div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={() => setMoveCopyMode('copy')}
-                    style={{
-                      padding: '8px 16px',
-                      background: moveCopyMode === 'copy' ? '#4A90E2' : '#2a2a2a',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontWeight: 500,
-                      fontSize: '12px'
-                    }}
-                  >
-                    Copy
-                  </button>
-                  <button
-                    onClick={() => setMoveCopyMode('move')}
-                    style={{
-                      padding: '8px 16px',
-                      background: moveCopyMode === 'move' ? '#4A90E2' : '#2a2a2a',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontWeight: 500,
-                      fontSize: '12px'
-                    }}
-                  >
-                    Move
-                  </button>
-                </div>
-              </div>
-
-              {/* Destination Selection */}
-              {moveCopyType === 'module' && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Destination Template</div>
-                  <select
-                    value={moveCopyDestinationTemplateId || ''}
-                    onChange={(e) => {
-                      setMoveCopyDestinationTemplateId(e.target.value);
-                      setMoveCopyNewTemplateName('');
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #333',
-                      outline: 'none',
-                      background: '#141414',
-                      color: '#eaeaea',
-                      fontFamily: FONT_FAMILY,
-                      cursor: 'pointer',
-                      fontSize: '13px'
-                    }}
-                  >
-                    <option value="">Select destination template...</option>
-                    <option value="new">Create New Template</option>
-                    {templates.filter(t => editingTemplateId ? t.id !== editingTemplateId : true).map(t => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                  {moveCopyDestinationTemplateId === 'new' && (
-                    <input
-                      type="text"
-                      value={moveCopyNewTemplateName}
-                      onChange={(e) => setMoveCopyNewTemplateName(e.target.value)}
-                      placeholder="New template name..."
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #4A90E2',
-                        outline: 'none',
-                        background: '#141414',
-                        color: '#eaeaea',
-                        fontFamily: FONT_FAMILY,
-                        fontSize: '13px',
-                        marginTop: '8px'
-                      }}
-                    />
-                  )}
-                </div>
-              )}
-
-              {moveCopyType === 'category' && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: '#aaa' }}>Destination Space</div>
-                  <select
-                    value={moveCopyDestinationModuleId || ''}
-                    onChange={(e) => {
-                      setMoveCopyDestinationModuleId(e.target.value);
-                      setMoveCopyNewModuleName('');
-                      setMoveCopyNewCategoryName('');
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #333',
-                      outline: 'none',
-                      background: '#141414',
-                      color: '#eaeaea',
-                      fontFamily: FONT_FAMILY,
-                      cursor: 'pointer',
-                      fontSize: '13px'
-                    }}
-                  >
-                    <option value="">Select destination module...</option>
-                    <option value="new">Create New Module</option>
-                    {modules.filter(m => m.id !== selectedModuleId).map(m => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                  {moveCopyDestinationModuleId === 'new' && (
-                    <input
-                      type="text"
-                      value={moveCopyNewModuleName}
-                      onChange={(e) => setMoveCopyNewModuleName(e.target.value)}
-                      placeholder="New module name..."
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #4A90E2',
-                        outline: 'none',
-                        background: '#141414',
-                        color: '#eaeaea',
-                        fontFamily: FONT_FAMILY,
-                        fontSize: '13px',
-                        marginTop: '8px'
-                      }}
-                    />
-                  )}
-                  {shouldShowRenameInput && (
-                    <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <label style={{ fontSize: '12px', fontWeight: 500, color: '#aaa' }}>
-                        New category name{hasCategoryNameConflict ? ' (required to resolve duplicate)' : ''}
-                      </label>
+                      <option value="">Select destination module...</option>
+                      <option value="new">Create New Module</option>
+                      {modules.filter(m => m.id !== selectedModuleId).map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    {moveCopyDestinationModuleId === 'new' && (
                       <input
                         type="text"
-                        value={moveCopyNewCategoryName}
-                        onChange={(e) => setMoveCopyNewCategoryName(e.target.value)}
-                        placeholder={moveCopyMode === 'copy'
-                          ? 'Name to use for the copied category...'
-                          : 'New name before moving into destination module...'}
+                        value={moveCopyNewModuleName}
+                        onChange={(e) => setMoveCopyNewModuleName(e.target.value)}
+                        placeholder="New module name..."
                         style={{
                           width: '100%',
                           padding: '8px 10px',
                           borderRadius: '6px',
-                          border: '1px solid #333',
+                          border: '1px solid #4A90E2',
                           outline: 'none',
                           background: '#141414',
                           color: '#eaeaea',
                           fontFamily: FONT_FAMILY,
-                          fontSize: '13px'
+                          fontSize: '13px',
+                          marginTop: '8px'
                         }}
                       />
-                      {moveCopyMode === 'copy' && (
-                        <div style={{ fontSize: '11px', color: '#6f6f6f' }}>
-                          Only the copied category uses this name; the original keeps its current name.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                    {shouldShowRenameInput && (
+                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '12px', fontWeight: 500, color: '#aaa' }}>
+                          New category name{hasCategoryNameConflict ? ' (required to resolve duplicate)' : ''}
+                        </label>
+                        <input
+                          type="text"
+                          value={moveCopyNewCategoryName}
+                          onChange={(e) => setMoveCopyNewCategoryName(e.target.value)}
+                          placeholder={moveCopyMode === 'copy'
+                            ? 'Name to use for the copied category...'
+                            : 'New name before moving into destination module...'}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #333',
+                            outline: 'none',
+                            background: '#141414',
+                            color: '#eaeaea',
+                            fontFamily: FONT_FAMILY,
+                            fontSize: '13px'
+                          }}
+                        />
+                        {moveCopyMode === 'copy' && (
+                          <div style={{ fontSize: '11px', color: '#6f6f6f' }}>
+                            Only the copied category uses this name; the original keeps its current name.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #2a2a2a' }}>
-                <button
-                  onClick={() => {
-                    setIsMoveCopyModalOpen(false);
-                    setMoveCopyDestinationTemplateId(null);
-                    setMoveCopyDestinationModuleId(null);
-                    setMoveCopyDestinationCategoryId(null);
-                    setMoveCopyNewTemplateName('');
-                    setMoveCopyNewModuleName('');
-                    setMoveCopyNewCategoryName('');
-                  }}
-                  className="btn btn-secondary"
-                  style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={executeMoveCopy}
-                  className="btn btn-primary"
-                  disabled={
-                    (moveCopyType === 'module' && !moveCopyDestinationTemplateId) ||
-                    (moveCopyType === 'module' && moveCopyDestinationTemplateId === 'new' && !moveCopyNewTemplateName.trim()) ||
-                    (moveCopyType === 'category' && !moveCopyDestinationModuleId) ||
-                    (moveCopyType === 'category' && moveCopyDestinationModuleId === 'new' && !moveCopyNewModuleName.trim())
-                  }
-                  style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}
-                >
-                  {moveCopyMode === 'move' ? 'Move' : 'Copy'}
-                </button>
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #2a2a2a' }}>
+                  <button
+                    onClick={() => {
+                      setIsMoveCopyModalOpen(false);
+                      setMoveCopyDestinationTemplateId(null);
+                      setMoveCopyDestinationModuleId(null);
+                      setMoveCopyDestinationCategoryId(null);
+                      setMoveCopyNewTemplateName('');
+                      setMoveCopyNewModuleName('');
+                      setMoveCopyNewCategoryName('');
+                    }}
+                    className="btn btn-secondary"
+                    style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={executeMoveCopy}
+                    className="btn btn-primary"
+                    disabled={
+                      (moveCopyType === 'module' && !moveCopyDestinationTemplateId) ||
+                      (moveCopyType === 'module' && moveCopyDestinationTemplateId === 'new' && !moveCopyNewTemplateName.trim()) ||
+                      (moveCopyType === 'category' && !moveCopyDestinationModuleId) ||
+                      (moveCopyType === 'category' && moveCopyDestinationModuleId === 'new' && !moveCopyNewModuleName.trim())
+                    }
+                    style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}
+                  >
+                    {moveCopyMode === 'move' ? 'Move' : 'Copy'}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        }
 
-        {isMoveModalOpen && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999
-          }}>
+        {
+          isMoveModalOpen && (
             <div style={{
-              width: '560px',
-              background: '#1f1f1f',
-              color: '#eaeaea',
-              borderRadius: '16px',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
-              border: '1px solid #2a2a2a',
-              padding: '24px'
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999
             }}>
               <div style={{
-                fontSize: '24px',
-                fontWeight: 700,
-                textAlign: 'center',
-                marginBottom: '20px'
-              }}>Move {selectedIds.length} document(s)</div>
+                width: '560px',
+                background: '#1f1f1f',
+                color: '#eaeaea',
+                borderRadius: '16px',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
+                border: '1px solid #2a2a2a',
+                padding: '24px'
+              }}>
+                <div style={{
+                  fontSize: '24px',
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  marginBottom: '20px'
+                }}>Move {selectedIds.length} document(s)</div>
 
-              {/* Only show "Move to Documents" option when in projectFiles context */}
-              {getCurrentContextKey() === 'projectFiles' && (
-                <>
-                  <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Move to Documents</div>
+                {/* Only show "Move to Documents" option when in projectFiles context */}
+                {getCurrentContextKey() === 'projectFiles' && (
+                  <>
+                    <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Move to Documents</div>
+                    <button
+                      onClick={() => handleMoveToProject(null, false, true)}
+                      style={{
+                        width: '100%',
+                        padding: '12px 14px',
+                        background: '#28A745',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        marginBottom: '20px',
+                        fontWeight: 600,
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#218838';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#28A745';
+                      }}
+                    >
+                      <Icon name="document" size={14} style={{ marginRight: '6px' }} /> Move to Documents Tab
+                    </button>
+                    <div style={{
+                      borderTop: '1px solid #3a3a3a',
+                      paddingTop: '20px',
+                      marginBottom: '20px'
+                    }}></div>
+                  </>
+                )}
+
+                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Move to existing project</div>
+                {(() => {
+                  // Filter out current project when in projectFiles context
+                  const availableProjects = getCurrentContextKey() === 'projectFiles'
+                    ? projects.filter(p => p.id !== selectedProjectId)
+                    : projects;
+
+                  return availableProjects.length === 0 ? (
+                    <div style={{ color: '#888', fontSize: '13px', marginBottom: '20px', fontStyle: 'italic' }}>
+                      {getCurrentContextKey() === 'projectFiles' ? 'No other projects available' : 'No existing projects'}
+                    </div>
+                  ) : (
+                    <div style={{ maxHeight: '200px', overflow: 'auto', marginBottom: '20px' }}>
+                      {availableProjects.map(proj => (
+                        <button
+                          key={proj.id}
+                          onClick={() => handleMoveToProject(proj.id, false)}
+                          style={{
+                            width: '100%',
+                            padding: '12px 14px',
+                            background: '#2a2a2a',
+                            color: '#eaeaea',
+                            border: '1px solid #3a3a3a',
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            marginBottom: '8px',
+                            textAlign: 'left',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#4A90E2';
+                            e.currentTarget.style.borderColor = '#4A90E2';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#2a2a2a';
+                            e.currentTarget.style.borderColor = '#3a3a3a';
+                          }}
+                        >
+                          <div style={{ fontSize: '14px', fontWeight: 600 }}>{proj.name}</div>
+                          <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
+                            {(allDocuments || []).filter(d => d.project_id === proj.id).length} file(s)
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                <div style={{
+                  borderTop: '1px solid #3a3a3a',
+                  paddingTop: '20px',
+                  marginBottom: '20px'
+                }}></div>
+
+                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Create new project</div>
+                <input
+                  type="text"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  placeholder="Enter project name"
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    border: '1px solid #333',
+                    outline: 'none',
+                    background: '#141414',
+                    color: '#eaeaea',
+                    fontFamily: FONT_FAMILY,
+                    marginBottom: '18px'
+                  }}
+                />
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                   <button
-                    onClick={() => handleMoveToProject(null, false, true)}
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      background: '#28A745',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '10px',
-                      cursor: 'pointer',
-                      marginBottom: '20px',
-                      fontWeight: 600,
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#218838';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#28A745';
-                    }}
+                    onClick={() => { setIsMoveModalOpen(false); setProjectName(''); }}
+                    className="btn btn-secondary btn-md"
                   >
-                    <Icon name="document" size={14} style={{ marginRight: '6px' }} /> Move to Documents Tab
+                    Cancel
                   </button>
-                  <div style={{
-                    borderTop: '1px solid #3a3a3a',
-                    paddingTop: '20px',
-                    marginBottom: '20px'
-                  }}></div>
-                </>
-              )}
-
-              <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Move to existing project</div>
-              {(() => {
-                // Filter out current project when in projectFiles context
-                const availableProjects = getCurrentContextKey() === 'projectFiles'
-                  ? projects.filter(p => p.id !== selectedProjectId)
-                  : projects;
-
-                return availableProjects.length === 0 ? (
-                  <div style={{ color: '#888', fontSize: '13px', marginBottom: '20px', fontStyle: 'italic' }}>
-                    {getCurrentContextKey() === 'projectFiles' ? 'No other projects available' : 'No existing projects'}
-                  </div>
-                ) : (
-                  <div style={{ maxHeight: '200px', overflow: 'auto', marginBottom: '20px' }}>
-                    {availableProjects.map(proj => (
-                      <button
-                        key={proj.id}
-                        onClick={() => handleMoveToProject(proj.id, false)}
-                        style={{
-                          width: '100%',
-                          padding: '12px 14px',
-                          background: '#2a2a2a',
-                          color: '#eaeaea',
-                          border: '1px solid #3a3a3a',
-                          borderRadius: '10px',
-                          cursor: 'pointer',
-                          marginBottom: '8px',
-                          textAlign: 'left',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#4A90E2';
-                          e.currentTarget.style.borderColor = '#4A90E2';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#2a2a2a';
-                          e.currentTarget.style.borderColor = '#3a3a3a';
-                        }}
-                      >
-                        <div style={{ fontSize: '14px', fontWeight: 600 }}>{proj.name}</div>
-                        <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
-                          {(allDocuments || []).filter(d => d.project_id === proj.id).length} file(s)
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              <div style={{
-                borderTop: '1px solid #3a3a3a',
-                paddingTop: '20px',
-                marginBottom: '20px'
-              }}></div>
-
-              <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Create new project</div>
-              <input
-                type="text"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                placeholder="Enter project name"
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: '1px solid #333',
-                  outline: 'none',
-                  background: '#141414',
-                  color: '#eaeaea',
-                  fontFamily: FONT_FAMILY,
-                  marginBottom: '18px'
-                }}
-              />
-
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => { setIsMoveModalOpen(false); setProjectName(''); }}
-                  className="btn btn-secondary btn-md"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleMoveToProject(null, true)}
-                  className="btn btn-primary btn-md"
-                  disabled={!projectName.trim()}
-                >
-                  Create & Move
-                </button>
+                  <button
+                    onClick={() => handleMoveToProject(null, true)}
+                    className="btn btn-primary btn-md"
+                    disabled={!projectName.trim()}
+                  >
+                    Create & Move
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        }
 
         {/* Content Section */}
         <div style={{
@@ -7280,19 +7383,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             </div>
           )}
         </div>
-      </div>
+      </div >
 
       {/* Account Settings Modal */}
-      <AccountSettings
+      < AccountSettings
         isOpen={showAccountSettings}
         onClose={() => setShowAccountSettings(false)}
       />
-    </div>
+    </div >
   );
 });
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient, ballInCourtEntities, setBallInCourtEntities }) {
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
@@ -7311,6 +7414,9 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
   const preRenderQueueRef = useRef(new Set()); // Track pages being pre-rendered
   const lastScaleRef = useRef(1.0); // Track last scale for cache management
+
+  const { uploadDataFile, downloadDocument: downloadFromStorage } = useStorage();
+  const { updateDocument: updateSupabaseDocument } = useDocuments(null);
 
   const initialZoomPrefsRef = useRef(null);
   if (!initialZoomPrefsRef.current) {
@@ -7369,6 +7475,12 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
   const [pageObjects, setPageObjects] = useState({}); // Store PDF page objects for text layer
   const [newHighlightsByPage, setNewHighlightsByPage] = useState({}); // { [pageNumber]: [{x, y, width, height}] }
   const [highlightsToRemoveByPage, setHighlightsToRemoveByPage] = useState({}); // { [pageNumber]: [{x, y, width, height}] }
+
+  // Search state
+  const [searchResults, setSearchResults] = useState([]); // Array of search match results
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1); // Current active match index
+  const searchZoomLevelRef = useRef(null); // Store zoom level before search zoom
+  const isNavigatingToMatchRef = useRef(false); // Flag to prevent recursive navigation
 
   // Survey/Template state
   const [showSurveyPanel, setShowSurveyPanel] = useState(false);
@@ -9718,6 +9830,28 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
     }
   }, [numPages, scrollMode, activeSpaceId, activeSpacePages]);
 
+  // Compute search results grouped by page for efficient rendering
+  const searchResultsByPage = useMemo(() => {
+    if (!searchResults || searchResults.length === 0) {
+      return {};
+    }
+    return searchResults.reduce((acc, result) => {
+      if (!acc[result.pageNumber]) {
+        acc[result.pageNumber] = [];
+      }
+      acc[result.pageNumber].push(result);
+      return acc;
+    }, {});
+  }, [searchResults]);
+
+  // Get current active match
+  const currentMatch = useMemo(() => {
+    if (currentMatchIndex >= 0 && currentMatchIndex < searchResults.length) {
+      return searchResults[currentMatchIndex];
+    }
+    return null;
+  }, [searchResults, currentMatchIndex]);
+
   const handleRequestRegionEdit = useCallback((spaceId, pageId) => {
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
@@ -9884,20 +10018,122 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
     }
   }, [pdfId, annotationsByPage]);
 
+  // Save survey data to Supabase Storage
+  const saveSurveyDataToSupabase = useCallback(async (currentAnnotations, currentSpaces, currentTemplate) => {
+    if (!pdfFile || !pdfFile.projectId || !pdfId) {
+      console.log('Skipping Supabase save: missing context', { pdfFile, projectId: pdfFile?.projectId, pdfId });
+      return;
+    }
+
+    try {
+      console.log('Saving survey data to Supabase...');
+      const data = {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        pdfId,
+        annotations: currentAnnotations, // highlightAnnotations
+        annotationsByPage: annotationsByPage,
+        spaces: currentSpaces,
+        ballInCourtEntities: ballInCourtEntities,
+        templateId: currentTemplate?.id || null,
+        zoomLevel: scale,
+        currentPage: pageNum
+      };
+
+      const jsonString = JSON.stringify(data);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const file = new File([blob], `${pdfFile.id}_data.json`, { type: 'application/json' });
+
+      // Upload to storage: {projectId}/{documentId}_data.json
+      const filePath = `${pdfFile.projectId}/${pdfFile.id}_data.json`;
+      await uploadDataFile(file, filePath);
+
+      // Update document metadata
+      await updateSupabaseDocument(pdfFile.id, {
+        current_page: pageNum,
+        zoom_level: scale,
+        template_id: currentTemplate?.id || null
+      });
+
+      console.log('Survey data saved to Supabase successfully');
+    } catch (error) {
+      console.error('Error saving survey data to Supabase:', error);
+      // Don't alert here to avoid interrupting the user flow, just log
+    }
+  }, [pdfFile, pdfId, annotationsByPage, ballInCourtEntities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
+
+  // Load survey data from Supabase Storage
+  const loadSurveyDataFromSupabase = useCallback(async (doc) => {
+    if (!doc || !doc.projectId) return;
+
+    try {
+      console.log('Loading survey data from Supabase for doc:', doc.id);
+      const filePath = `${doc.projectId}/${doc.id}_data.json`;
+
+      // Check if file exists by trying to get URL (or just try download and catch error)
+      // We'll just try to download
+      const dataBlob = await downloadFromStorage(filePath);
+      if (!dataBlob) return;
+
+      const text = await dataBlob.text();
+      const data = JSON.parse(text);
+
+      console.log('Loaded survey data:', data);
+
+      // Verify it matches this PDF
+      if (data.pdfId && data.pdfId !== getPDFId(pdfFile)) {
+        console.warn('Loaded data PDF ID mismatch. Ignoring.');
+        // return; // Optional: decide whether to load anyway or warn
+      }
+
+      // Restore state
+      if (data.annotations) setHighlightAnnotations(data.annotations);
+      if (data.annotationsByPage) {
+        setAnnotationsByPage(data.annotationsByPage);
+        savedAnnotationsByPageRef.current = data.annotationsByPage;
+      }
+      if (data.spaces) setSpaces(data.spaces);
+      if (data.ballInCourtEntities) setBallInCourtEntities(data.ballInCourtEntities);
+
+      // Restore view state if available
+      if (data.zoomLevel) setScale(data.zoomLevel);
+      if (data.currentPage) setPageNum(data.currentPage);
+
+      // Template restoration is handled by the document's template_id usually, 
+      // but we can fallback to data.templateId if needed.
+
+    } catch (error) {
+      // It's normal for new documents to not have data yet
+      console.log('No existing survey data found or error loading:', error.message);
+    }
+  }, [downloadFromStorage, pdfFile]);
+
   // Manual save function for annotations (triggered by Cmd/Ctrl+S)
-  const handleSaveDocument = useCallback(() => {
-    if (!pdfId) return;
+  const handleSaveDocument = useCallback(async () => {
+    if (!pdfId || !pdfFile) return;
 
-    // Save annotationsByPage to localStorage
-    saveAnnotationsByPage(pdfId, annotationsByPage);
-    savedAnnotationsByPageRef.current = { ...annotationsByPage };
-    setHasUnsavedAnnotations(false);
+    try {
+      console.log('Saving document with embedded annotations...');
+      console.log('PDF file path:', pdfFilePath);
 
-    console.log('Document saved successfully');
+      // Save PDF with embedded annotations (overwrites original file if path available)
+      await savePDFWithAnnotationsPdfLib(pdfFile, annotationsByPage, pageSizes, pdfFilePath);
 
-    // Optional: Show toast notification
-    // TODO: Add toast notification "Document saved"
-  }, [pdfId, annotationsByPage]);
+      // Also save to localStorage as backup (for loading next time)
+      saveAnnotationsByPage(pdfId, annotationsByPage);
+      savedAnnotationsByPageRef.current = { ...annotationsByPage };
+      setHasUnsavedAnnotations(false);
+
+      console.log('Document saved successfully');
+      alert('PDF saved with annotations! The file has been updated.');
+
+      // Sync survey data to Supabase (separate from PDF file)
+      await saveSurveyDataToSupabase(highlightAnnotations, spaces, selectedTemplate);
+    } catch (error) {
+      console.error('Error saving document:', error);
+      alert('Error saving PDF: ' + error.message);
+    }
+  }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath]);
 
   // Load note content when note dialog opens
   useEffect(() => {
@@ -9953,8 +10189,21 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
         pdfjsLib.verbosity = pdfjsLib.VerbosityLevel.ERRORS;
 
         setIsLoadingPDF(true);
-        // console.log('Loading PDF:', pdfFile.name, 'Size:', pdfFile.size, 'Type:', pdfFile.type);
-        const arrayBuffer = await pdfFile.arrayBuffer();
+
+        let arrayBuffer;
+        if (typeof pdfFile.arrayBuffer === 'function') {
+          // Local file
+          arrayBuffer = await pdfFile.arrayBuffer();
+        } else if (pdfFile.filePath) {
+          // Supabase file - download it
+          console.log('Downloading PDF from Supabase:', pdfFile.filePath);
+          const blob = await downloadFromStorage(pdfFile.filePath);
+          if (!blob) throw new Error('Failed to download PDF');
+          arrayBuffer = await blob.arrayBuffer();
+        } else {
+          throw new Error('Invalid file object: missing arrayBuffer and filePath');
+        }
+
         // console.log('ArrayBuffer created, size:', arrayBuffer.byteLength);
         const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
         const pdf = await loadingTask.promise;
@@ -9962,6 +10211,11 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
         setPageNum(1);
+
+        // Load project data from Supabase if available
+        if (pdfFile.projectId) {
+          await loadSurveyDataFromSupabase(pdfFile);
+        }
 
         // Calculate page sizes for layout and annotation layer
         const heights = {};
@@ -10315,6 +10569,184 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
       requestAnimationFrame(applyScrollAdjustment);
     });
   }, [setScale]);
+
+  // Navigate to a search match with zoom and centering
+  const navigateToMatch = useCallback((match, index) => {
+    if (!match || !containerRef.current) return;
+
+    // Prevent recursive navigation
+    if (isNavigatingToMatchRef.current) return;
+    isNavigatingToMatchRef.current = true;
+
+    setCurrentMatchIndex(index);
+
+    const pageNumber = match.pageNumber;
+    const bounds = match.bounds;
+
+    // First, navigate to the page
+    if (scrollMode === 'single') {
+      setPageNum(pageNumber);
+    }
+
+    // Calculate optimal zoom and scroll position
+    const performZoomAndCenter = () => {
+      const container = containerRef.current;
+      const pageContainer = pageContainersRef.current[pageNumber];
+
+      if (!container || !pageContainer) {
+        isNavigatingToMatchRef.current = false;
+        return;
+      }
+
+      // Get page dimensions
+      const pageSize = pageSizes[pageNumber];
+      if (!pageSize || !bounds) {
+        // Just navigate to page if no bounds available
+        if (scrollMode === 'continuous') {
+          goToPage(pageNumber);
+        }
+        isNavigatingToMatchRef.current = false;
+        return;
+      }
+
+      // Calculate optimal zoom level to show the match with context
+      // Target: match should take up about 15-25% of viewport width
+      const containerRect = container.getBoundingClientRect();
+      const viewportWidth = containerRect.width * 0.7; // Account for sidebar
+      const viewportHeight = containerRect.height * 0.7;
+
+      // Add padding around the match bounds for context
+      const paddingFactor = 3; // Show 3x the match size for context
+      const targetWidth = Math.max(bounds.width * paddingFactor, 200);
+      const targetHeight = Math.max(bounds.height * paddingFactor, 100);
+
+      // Calculate zoom to fit the target area comfortably
+      const zoomForWidth = viewportWidth / targetWidth;
+      const zoomForHeight = viewportHeight / targetHeight;
+      let targetZoom = Math.min(zoomForWidth, zoomForHeight);
+
+      // Clamp zoom to reasonable bounds (don't zoom too far in or out)
+      targetZoom = Math.max(1.0, Math.min(targetZoom, 3.0));
+
+      // Only zoom if significantly different from current zoom
+      const currentScale = scaleRef.current;
+      const shouldZoom = Math.abs(targetZoom - currentScale) > 0.1 && targetZoom > currentScale;
+
+      if (shouldZoom) {
+        // Store original zoom level if not already stored
+        if (searchZoomLevelRef.current === null) {
+          searchZoomLevelRef.current = currentScale;
+        }
+
+        // Apply zoom
+        setScaleWithViewportPreservation(targetZoom, { preserveCenter: false });
+      }
+
+      // Calculate scroll position to center the match
+      const scrollToMatch = () => {
+        const updatedScale = shouldZoom ? targetZoom : currentScale;
+        const pageContainerCurrent = pageContainersRef.current[pageNumber];
+
+        if (!pageContainerCurrent) {
+          isNavigatingToMatchRef.current = false;
+          return;
+        }
+
+        // Get the current positions
+        const containerRectCurrent = container.getBoundingClientRect();
+        const pageRect = pageContainerCurrent.getBoundingClientRect();
+
+        // Calculate the match center position in viewport coordinates
+        const matchCenterX = bounds.centerX * updatedScale;
+        const matchCenterY = bounds.centerY * updatedScale;
+
+        // Calculate the offset from page container to match center
+        const pageOffsetX = pageRect.left - containerRectCurrent.left + container.scrollLeft;
+        const pageOffsetY = pageRect.top - containerRectCurrent.top + container.scrollTop;
+
+        // Calculate target scroll position to center the match
+        const targetScrollX = pageOffsetX + matchCenterX - containerRectCurrent.width / 2;
+        const targetScrollY = pageOffsetY + matchCenterY - containerRectCurrent.height / 2;
+
+        // Smooth scroll to the match
+        container.scrollTo({
+          left: Math.max(0, targetScrollX),
+          top: Math.max(0, targetScrollY),
+          behavior: 'smooth'
+        });
+
+        // Clear navigation flag after scroll completes
+        setTimeout(() => {
+          isNavigatingToMatchRef.current = false;
+        }, 400);
+      };
+
+      // If we zoomed, wait for the zoom to apply before scrolling
+      if (shouldZoom) {
+        setTimeout(scrollToMatch, 150);
+      } else {
+        // If in continuous mode, first navigate to page then scroll to match
+        if (scrollMode === 'continuous') {
+          const pageContainerTarget = pageContainersRef.current[pageNumber];
+          if (pageContainerTarget) {
+            const containerRectCurrent = container.getBoundingClientRect();
+            const pageRect = pageContainerTarget.getBoundingClientRect();
+
+            // Calculate position to center the match in viewport
+            const matchCenterY = bounds.centerY * currentScale;
+            const pageTopInContainer = pageRect.top - containerRectCurrent.top + container.scrollTop;
+            const targetScrollY = pageTopInContainer + matchCenterY - containerRectCurrent.height / 2;
+
+            container.scrollTo({
+              top: Math.max(0, targetScrollY),
+              behavior: 'smooth'
+            });
+          }
+        }
+
+        setTimeout(() => {
+          isNavigatingToMatchRef.current = false;
+        }, 400);
+      }
+    };
+
+    // Execute zoom and center after a short delay to ensure page is rendered
+    if (scrollMode === 'continuous') {
+      // First scroll to page area, then fine-tune
+      const pageContainer = pageContainersRef.current[pageNumber];
+      if (pageContainer) {
+        const container = containerRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const pageRect = pageContainer.getBoundingClientRect();
+        const paddingTop = parseFloat(window.getComputedStyle(container).paddingTop || '0');
+        const deltaTop = pageRect.top - containerRect.top;
+        const nextScrollTop = Math.max(deltaTop + container.scrollTop - paddingTop, 0);
+
+        container.scrollTo({
+          top: nextScrollTop,
+          behavior: 'auto' // Instant scroll to page first
+        });
+      }
+      setTimeout(performZoomAndCenter, 100);
+    } else {
+      setTimeout(performZoomAndCenter, 50);
+    }
+  }, [scrollMode, pageSizes, goToPage, setScaleWithViewportPreservation]);
+
+  // Handler for search results change from SearchTextPanel
+  const handleSearchResultsChange = useCallback((results) => {
+    setSearchResults(results);
+    // Reset zoom when search changes
+    if (searchZoomLevelRef.current !== null && results.length === 0) {
+      setScaleWithViewportPreservation(searchZoomLevelRef.current);
+      searchZoomLevelRef.current = null;
+    }
+  }, [setScaleWithViewportPreservation]);
+
+  // Handler for current match index change
+  const handleCurrentMatchIndexChange = useCallback((index) => {
+    setCurrentMatchIndex(index);
+  }, []);
 
   if (!zoomControllerRef.current) {
     zoomControllerRef.current = createZoomController({
@@ -11948,6 +12380,11 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
             numPages={numPages}
             pageNum={pageNum}
             onNavigateToPage={goToPage}
+            onNavigateToMatch={navigateToMatch}
+            searchResults={searchResults}
+            currentMatchIndex={currentMatchIndex}
+            onSearchResultsChange={handleSearchResultsChange}
+            onCurrentMatchIndexChange={handleCurrentMatchIndexChange}
             onDuplicatePage={handleDuplicatePage}
             onDeletePage={handleDeletePage}
             onCutPage={handleCutPage}
@@ -12049,6 +12486,18 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                                 height={pageSizes[pageNumber].height}
                                 onTextSelected={handleTextSelected}
                                 isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
+                              />
+                            )}
+                            {/* Search Highlight Layer */}
+                            {pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                              <SearchHighlightLayer
+                                pageNumber={pageNumber}
+                                width={pageSizes[pageNumber].width}
+                                height={pageSizes[pageNumber].height}
+                                scale={scale}
+                                highlights={searchResultsByPage[pageNumber]}
+                                activeMatchId={currentMatch?.id}
+                                isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
                               />
                             )}
                             {pageSizes[pageNumber] && (
@@ -12165,6 +12614,18 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                             isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
                           />
                         )}
+                        {/* Search Highlight Layer */}
+                        {pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
+                          <SearchHighlightLayer
+                            pageNumber={pageNum}
+                            width={pageSizes[pageNum].width}
+                            height={pageSizes[pageNum].height}
+                            scale={scale}
+                            highlights={searchResultsByPage[pageNum]}
+                            activeMatchId={currentMatch?.id}
+                            isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNum}
+                          />
+                        )}
                         {pageSizes[pageNum] && (
                           <PageAnnotationLayer
                             pageNumber={pageNum}
@@ -12267,6 +12728,19 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                 </button>
               </div>
             ))}
+
+            {/* Select Tool */}
+            <button
+              onClick={() => setActiveTool('select')}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setTooltip({ visible: true, text: 'Select (L→R: Window, R→L: Crossing)', x: rect.left + rect.width / 2, y: rect.top - 10 });
+              }}
+              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+              className={`btn btn-icon ${activeTool === 'select' ? 'btn-active' : ''}`}
+            >
+              <Icon name="cursor" size={16} />
+            </button>
 
             {/* Eraser with Dropdown */}
             <div ref={eraserDropdownRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'stretch' }}>
@@ -14760,8 +15234,9 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
 
                                                       {(() => {
-                                                        // Get ball-in-court entity color for indicator
+                                                        // Get ball-in-court entity for indicator - data-driven from category item's ballInCourt field
                                                         let indicatorColor = null;
+                                                        let indicatorTooltip = null;
                                                         if (selectedTemplate && selectedModuleId) {
                                                           const highlightData = highlightAnnotations[highlightId];
                                                           const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
@@ -14771,36 +15246,36 @@ function PDFViewer({ pdfFile, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequ
                                                             item.itemType === categoryName
                                                           );
 
+                                                          // Try to get ballInCourtEntityId from item's module data first, then from highlightData
+                                                          let ballInCourtEntityId = null;
                                                           if (matchingItem) {
                                                             const moduleName = getModuleName(selectedTemplate, selectedModuleId);
                                                             const dataKey = getModuleDataKey(moduleName);
                                                             const moduleData = matchingItem[dataKey] || {};
-                                                            const ballInCourtEntityId = moduleData.ballInCourtEntityId || highlightData?.ballInCourtEntityId;
+                                                            ballInCourtEntityId = moduleData.ballInCourtEntityId;
+                                                          }
+                                                          // Fallback to highlightData if not found in item
+                                                          if (!ballInCourtEntityId && highlightData?.ballInCourtEntityId) {
+                                                            ballInCourtEntityId = highlightData.ballInCourtEntityId;
+                                                          }
 
-                                                            if (ballInCourtEntityId) {
-                                                              const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
-                                                              const entity = ballInCourtEntities.find(e => e.id === ballInCourtEntityId);
-                                                              if (entity && entity.color) {
-                                                                indicatorColor = getHexFromColor(entity.color);
-                                                              }
+                                                          if (ballInCourtEntityId) {
+                                                            const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
+                                                            const entity = ballInCourtEntities.find(e => e.id === ballInCourtEntityId);
+                                                            if (entity) {
+                                                              // Use the exact color from ballInCourt.color without transformation
+                                                              indicatorColor = entity.color;
+                                                              indicatorTooltip = entity.name;
                                                             }
                                                           }
                                                         }
 
                                                         return (
-                                                          <>
-                                                            {indicatorColor && (
-                                                              <div
-                                                                style={{
-                                                                  width: '16px',
-                                                                  height: '16px',
-                                                                  borderRadius: '50%',
-                                                                  backgroundColor: indicatorColor,
-                                                                  flexShrink: 0
-                                                                }}
-                                                              />
-                                                            )}
-                                                          </>
+                                                          <BallInCourtIndicator
+                                                            color={indicatorColor}
+                                                            size={16}
+                                                            tooltipText={indicatorTooltip}
+                                                          />
                                                         );
                                                       })()}
                                                       {highlightAnnotations[highlightId]?.editingName ? (
@@ -17998,6 +18473,17 @@ export default function App() {
     setAppTemplates(normalized);
   }, []);
 
+  const [ballInCourtEntities, setBallInCourtEntities] = useState([
+    { id: `entity-${Date.now()}-1`, name: 'GC', color: '#E3D1FB' },
+    { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: '#FFF5C3' },
+    { id: `entity-${Date.now()}-3`, name: 'My Company', color: '#CBDCFF' },
+    { id: `entity-${Date.now()}-4`, name: '100% Complete', color: '#B2FFB2' },
+    { id: `entity-${Date.now()}-5`, name: 'Removed', color: '#BBBBBB' }
+  ].map(entity => ({
+    ...entity,
+    color: hexToRgba(entity.color, 0.2)
+  })));
+
   // Authentication state
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
@@ -18026,8 +18512,8 @@ export default function App() {
   // Generate unique tab ID
   const generateTabId = () => `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-  const handleDocumentSelect = (file) => {
-    // console.log('handleDocumentSelect called with file:', file);
+  const handleDocumentSelect = (file, filePath = null) => {
+    // console.log('handleDocumentSelect called with file:', file, 'filePath:', filePath);
     if (!file) {
       console.error('No file provided to handleDocumentSelect');
       return;
@@ -18041,7 +18527,7 @@ export default function App() {
 
       const sameName = tab.file.name === file.name;
       const sameSize = tab.file.size === file.size;
-      const samePath = tab.file.path && file.path ? tab.file.path === file.path : true;
+      const samePath = tab.filePath && filePath ? tab.filePath === filePath : true;
 
       return sameName && sameSize && samePath;
     });
@@ -18062,6 +18548,7 @@ export default function App() {
       id: generateTabId(),
       name: file.name,
       file: file,
+      filePath: filePath, // Store file path in tab
       isHome: false,
       viewState: null // Initialize view state
     };
@@ -18233,6 +18720,8 @@ export default function App() {
             templates={appTemplates}
             onTemplatesChange={handleTemplatesChange}
             onShowAuthModal={() => setShowAuthModal(true)}
+            ballInCourtEntities={ballInCourtEntities}
+            setBallInCourtEntities={setBallInCourtEntities}
           />
           {selectedPDF && (
             <div style={{
@@ -18244,6 +18733,7 @@ export default function App() {
             }}>
               <PDFViewer
                 pdfFile={selectedPDF}
+                pdfFilePath={pdfTab?.filePath}
                 onBack={handleBack}
                 tabId={viewerTabId}
                 onPageDrop={handlePageDrop}
@@ -18262,6 +18752,8 @@ export default function App() {
                 isMSAuthenticated={isMSAuthenticated}
                 msLogin={msLogin}
                 graphClient={graphClient}
+                ballInCourtEntities={ballInCourtEntities}
+                setBallInCourtEntities={setBallInCourtEntities}
               />
             </div>
           )}

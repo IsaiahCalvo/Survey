@@ -8,6 +8,8 @@ An Electron-based PDF viewer application built with React and Vite. Features adv
 - **Page Management**: Duplicate, delete, rotate, mirror, and reorder pages
 - **Bookmarks**: Create hierarchical bookmarks and bookmark groups with drag-and-drop organization
 - **Spaces**: Define regions on pages, organize them into spaces, and export filtered data
+- **User Accounts**: Secure authentication via Supabase (Email, Google, SSO)
+- **Cloud Integration**: Connect to OneDrive to sync and manage files
 - **Search**: Full-text search across PDF documents
 - **Export**: Export spaces to CSV or PDF format
 - **Multi-Document**: Tabbed interface for working with multiple PDFs simultaneously
@@ -18,11 +20,21 @@ An Electron-based PDF viewer application built with React and Vite. Features adv
 
 - Node.js (v14 or higher)
 - npm or yarn
+- Supabase project (for authentication)
 
 ### Installation
 
 ```bash
 npm install
+```
+
+### Configuration
+
+Create a `.env` file in the root directory with your Supabase credentials:
+
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
 ### Development
@@ -65,6 +77,7 @@ This will create distributable packages for your platform in the `dist/` folder.
 - **Desktop Framework**: Electron
 - **PDF Rendering**: PDF.js (pdfjs-dist)
 - **PDF Manipulation**: pdf-lib
+- **Authentication**: Supabase Auth
 - **Drag & Drop**: @dnd-kit/core, @dnd-kit/sortable
 - **Export**: xlsx for CSV/Excel export
 
@@ -77,31 +90,28 @@ Survey/
 │   ├── main.jsx                     # React entry point
 │   ├── electron-main.js             # Electron main process
 │   ├── preload.js                   # Electron preload script
-│   ├── styles.css                   # Global styles
-│   ├── Icons.jsx                    # Icon components
-│   ├── PDFSidebar.jsx              # Sidebar with tabs
-│   ├── TabBar.jsx                   # Multi-document tab bar
-│   ├── TextLayer.jsx                # Text selection layer
-│   ├── RegionSelectionTool.jsx     # Region drawing tool
-│   ├── SpaceRegionOverlay.jsx      # Space region visualization
-│   ├── sidebar/
-│   │   ├── PagesPanel.jsx          # Page thumbnails and management
-│   │   ├── SearchTextPanel.jsx     # Text search functionality
-│   │   ├── BookmarksPanel.jsx      # Bookmarks management
-│   │   ├── SpacesPanel.jsx         # Spaces management
-│   │   └── DraggableBookmark*.jsx  # Bookmark components
-│   └── utils/
-│       ├── zoomController.js        # Zoom logic and preferences
-│       ├── pageRangeParser.js       # Page range input parsing
-│       ├── regionMath.js            # Region geometry calculations
-│       └── pdfCache.js              # PDF caching utilities
+│   ├── components/                  # Reusable UI components
+│   │   ├── AuthModal.jsx            # Authentication modal
+│   │   ├── PageAnnotationLayer.jsx  # Canvas annotation layer
+│   │   ├── RegionSelectionTool.jsx  # Region drawing tool
+│   │   └── ...
+│   ├── contexts/                    # React Contexts
+│   │   └── AuthContext.jsx          # User authentication state
+│   ├── sidebar/                     # Sidebar panels
+│   │   ├── PagesPanel.jsx           # Page thumbnails
+│   │   ├── BookmarksPanel.jsx       # Bookmarks management
+│   │   └── SpacesPanel.jsx          # Spaces management
+│   ├── utils/                       # Utility functions
+│   │   ├── oneDriveUtils.js         # OneDrive integration
+│   │   └── regionMath.js            # Geometry calculations
+│   └── workers/                     # Web Workers
+│       └── pdfRender.worker.js      # PDF rendering worker
 ├── public/                          # Static assets
 ├── dist/                            # Build output
 ├── index.html                       # HTML entry point
 ├── package.json                     # Dependencies and scripts
 ├── vite.config.js                   # Vite configuration
 └── CLAUDE.md                        # Development documentation
-
 ```
 
 ## Key Features Explained

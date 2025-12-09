@@ -18,6 +18,7 @@
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@stripe/stripe-js": "^8.5.3",
     "@supabase/supabase-js": "^2.81.1",
+    "annotpdf": "^1.0.15",
     "chokidar": "^5.0.0",
     "exceljs": "^4.4.0",
     "isomorphic-fetch": "^3.0.0",

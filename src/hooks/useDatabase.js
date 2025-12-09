@@ -498,6 +498,23 @@ export const useStorage = () => {
     return filePath;
   };
 
+  const uploadDataFile = async (data, filePath, onProgress) => {
+    if (!user || !isSupabaseAvailable()) {
+      throw new Error('User not authenticated or Supabase not available');
+    }
+
+    const { data: result, error } = await supabase.storage
+      .from('documents')
+      .upload(filePath, data, {
+        upsert: true,
+        contentType: 'application/json',
+        onUploadProgress: onProgress,
+      });
+
+    if (error) throw error;
+    return filePath;
+  };
+
   const downloadDocument = async (filePath) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase not available');
@@ -533,6 +550,7 @@ export const useStorage = () => {
 
   return {
     uploadDocument,
+    uploadDataFile,
     downloadDocument,
     deleteDocumentFile,
     getDocumentUrl,

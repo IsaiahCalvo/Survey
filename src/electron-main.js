@@ -1,6 +1,10 @@
 // electron-main.js
-const { app, BrowserWindow } = require('electron');
+// electron-main.js
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
+
+console.log('Starting Electron Main Process...');
 
 // Suppress security warnings in development
 if (process.env.NODE_ENV === 'development') {
@@ -25,18 +29,55 @@ function createWindow() {
   }
 }
 
-// IPC Handlers
-const { ipcMain, dialog, shell } = require('electron');
-const fs = require('fs');
-
 // File watchers storage
 const fileWatchers = new Map();
 let chokidar = null;
 
 // Dynamically import chokidar (ES module)
 (async () => {
-  chokidar = await import('chokidar');
+  try {
+    chokidar = await import('chokidar');
+    console.log('Chokidar loaded successfully');
+  } catch (err) {
+    console.error('Failed to load chokidar:', err);
+  }
 })();
+
+console.log('Registering IPC handlers...');
+
+ipcMain.handle('dialog:openFile', async (event, options = {}) => {
+  console.log('IPC: dialog:openFile invoked', options);
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: options.title || 'Open File',
+    defaultPath: options.defaultPath,
+    filters: options.filters || [{ name: 'PDF Files', extensions: ['pdf'] }],
+    properties: ['openFile']
+  });
+
+  if (canceled || !filePaths || filePaths.length === 0) {
+    return { canceled: true };
+  }
+
+  const filePath = filePaths[0];
+
+  try {
+    // Read the file and return both the data and the path
+    const data = fs.readFileSync(filePath);
+    const stats = fs.statSync(filePath);
+    const fileName = path.basename(filePath);
+
+    return {
+      canceled: false,
+      filePath,
+      fileName,
+      fileSize: stats.size,
+      data: Array.from(data) // Convert Buffer to array for IPC
+    };
+  } catch (error) {
+    console.error('Failed to read file:', error);
+    throw error;
+  }
+});
 
 ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, data }) => {
   const { canceled, filePath } = await dialog.showSaveDialog({

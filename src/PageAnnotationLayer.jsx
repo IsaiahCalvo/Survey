@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, memo } from 'react';
 import { Canvas, Rect, Circle, Line, Triangle, Textbox, PencilBrush, Polyline, Group, util, Path } from 'fabric';
+import * as fabric from 'fabric';
 import { regionContainsPoint } from './utils/regionMath';
 
 // Helper function to check if a point is within eraser radius of any point in eraser path
@@ -392,6 +393,8 @@ const PageAnnotationLayer = memo(({
   const selectedModuleIdRef = useRef(selectedModuleId);
   const showSurveyPanelRef = useRef(showSurveyPanel);
   const eraserModeRef = useRef(eraserMode);
+  // Selection rect tracks start position and direction for AutoCAD-style selection
+  const selectionRectRef = useRef(null);
   const isErasingRef = useRef(false);
   const eraserPathRef = useRef(null);
 
@@ -437,8 +440,15 @@ const PageAnnotationLayer = memo(({
       width: width * scale,
       height: height * scale,
       backgroundColor: 'transparent',
-      selection: tool === 'pan' || tool === 'eraser',
+      selection: tool === 'pan' || tool === 'eraser' || tool === 'select',
       isDrawingMode: tool === 'pen' || tool === 'highlighter',
+      // AutoCAD-style selection: mode determined dynamically by drag direction
+      // Default to window selection (L→R) styling - solid blue
+      selectionColor: 'rgba(0, 100, 255, 0.15)',
+      selectionBorderColor: 'rgba(0, 100, 255, 0.8)',
+      selectionLineWidth: 1,
+      selectionDashArray: null,
+      selectionFullyContained: true, // Will be toggled based on drag direction
     });
 
     const brush = new PencilBrush(canvas);
@@ -449,7 +459,6 @@ const PageAnnotationLayer = memo(({
     fabricRef.current = canvas;
 
     if (annotations && annotations.objects && annotations.objects.length > 0) {
-      console.log(`[Page ${pageNumber}] Loading ${annotations.objects.length} annotations`);
       annotations.objects.forEach(objData => {
         util.enlivenObjects([objData], (enlivenedObjects) => {
           enlivenedObjects.forEach(obj => {
@@ -460,6 +469,10 @@ const PageAnnotationLayer = memo(({
             }
             if (!obj.moduleId) {
               obj.moduleId = objData.moduleId || null;
+            }
+            // Enforce multiply blend mode for highlights
+            if (obj.highlightId || obj.needsBIC) {
+              obj.set({ globalCompositeOperation: 'multiply' });
             }
             canvas.add(obj);
           });
@@ -488,7 +501,7 @@ const PageAnnotationLayer = memo(({
       if (!fabricRef.current) return;
       try {
         // Include spaceId in the saved JSON to preserve space associations
-        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC']);
+        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'globalCompositeOperation']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
@@ -497,8 +510,8 @@ const PageAnnotationLayer = memo(({
 
     const setBrushForTool = () => {
       canvas.isDrawingMode = tool === 'pen' || tool === 'highlighter';
-      canvas.selection = tool === 'pan'; // Disable selection for eraser to prevent selection box
-      canvas.defaultCursor = (tool === 'eraser' ? 'crosshair' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default'))));
+      canvas.selection = tool === 'pan' || tool === 'select'; // Enable selection for select tool
+      canvas.defaultCursor = (tool === 'eraser' ? 'crosshair' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
       canvas.hoverCursor = canvas.defaultCursor;
       const c = tool === 'highlighter' ? highlightColor : strokeColor;
       const w = tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth;
@@ -510,7 +523,11 @@ const PageAnnotationLayer = memo(({
 
     const handlePathCreated = (e) => {
       if (e.path) {
-        e.path.set({ strokeUniform: true });
+        e.path.set({
+          strokeUniform: true,
+          perPixelTargetFind: true, // Enable pixel-perfect hit detection, removes boundary box selection
+          targetFindTolerance: 5 // Add small tolerance for easier selection
+        });
         // Store current selectedSpaceId on the path
         if (selectedSpaceIdRef.current) {
           e.path.set({ spaceId: selectedSpaceIdRef.current });
@@ -664,7 +681,6 @@ const PageAnnotationLayer = memo(({
               saveCanvas();
 
               if (onHighlightDeletedRef.current) {
-                console.log('[PageAnnotationLayer] Calling onHighlightDeleted', { pageNumber, bounds, highlightId });
                 onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
               }
             }
@@ -994,6 +1010,275 @@ const PageAnnotationLayer = memo(({
       // handled in creation; keep stub for future
     };
 
+    // Get actual geometric bounds of an object (not bounding box)
+    // This function is kept for potential future use with more precise path geometry
+    // Currently we use aCoords in the selection handler for consistent coordinate space
+    const getActualObjectBounds = (obj) => {
+      // For paths (pen strokes), get the actual path point extremes
+      if (obj.type === 'path' && obj.path) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        obj.path.forEach(pathCmd => {
+          // Path commands are arrays: ['M', x, y] or ['L', x, y] or ['Q', x1, y1, x2, y2], etc.
+          for (let i = 1; i < pathCmd.length; i += 2) {
+            const x = pathCmd[i];
+            const y = pathCmd[i + 1];
+            if (typeof x === 'number' && typeof y === 'number') {
+              // Transform each point to canvas coordinates
+              const transformed = fabric.util.transformPoint({ x, y }, obj.calcTransformMatrix());
+              minX = Math.min(minX, transformed.x);
+              maxX = Math.max(maxX, transformed.x);
+              minY = Math.min(minY, transformed.y);
+              maxY = Math.max(maxY, transformed.y);
+            }
+          }
+        });
+
+        return { left: minX, top: minY, right: maxX, bottom: maxY };
+      }
+
+      // For other objects (rectangles, circles, text, etc.), use corner coordinates
+      const coords = obj.getCoords();
+      const xs = coords.map(c => c.x);
+      const ys = coords.map(c => c.y);
+
+      return {
+        left: Math.min(...xs),
+        top: Math.min(...ys),
+        right: Math.max(...xs),
+        bottom: Math.max(...ys)
+      };
+    };
+
+    // Track mouse down for selection rectangle
+    // AutoCAD/Bluebeam-style: direction determines selection mode
+    const handleMouseDownForSelection = (e) => {
+      if (toolRef.current !== 'select') return;
+
+      // Only track if not clicking on an object (i.e., doing a drag selection)
+      if (e.target) {
+        return;
+      }
+
+      // Use ignoreVpt=true to get coordinates in absolute canvas space (ignoring zoom/pan)
+      // This matches the coordinate space of object.aCoords
+      const pointer = canvas.getPointer(e.e, true);
+
+      // Initialize selection rect with start position
+      // isWindowSelection will be determined by drag direction
+      selectionRectRef.current = {
+        startX: pointer.x,
+        startY: pointer.y,
+        left: pointer.x,
+        top: pointer.y,
+        width: 0,
+        height: 0,
+        isWindowSelection: true // Default to window (L→R), updated during drag
+      };
+
+      // Set initial styling for window selection (blue, solid)
+      canvas.selectionColor = 'rgba(0, 100, 255, 0.15)';
+      canvas.selectionBorderColor = 'rgba(0, 100, 255, 0.8)';
+      canvas.selectionDashArray = null;
+    };
+
+    // Track mouse move to update selection rectangle and visual style based on direction
+    const handleMouseMoveForSelection = (e) => {
+      if (!selectionRectRef.current) return;
+
+      // Use ignoreVpt=true to match mouseDown coordinates
+      const pointer = canvas.getPointer(e.e, true);
+      const startX = selectionRectRef.current.startX;
+      const startY = selectionRectRef.current.startY;
+
+      // Determine drag direction: L→R = Window (contain), R→L = Crossing (touch)
+      const isWindowSelection = pointer.x >= startX;
+      const prevIsWindowSelection = selectionRectRef.current.isWindowSelection;
+
+      // Update selection rect
+      selectionRectRef.current = {
+        startX: startX,
+        startY: startY,
+        left: Math.min(startX, pointer.x),
+        top: Math.min(startY, pointer.y),
+        width: Math.abs(pointer.x - startX),
+        height: Math.abs(pointer.y - startY),
+        isWindowSelection: isWindowSelection
+      };
+
+      // Only update canvas styling if direction changed (for performance)
+      if (isWindowSelection !== prevIsWindowSelection) {
+        if (isWindowSelection) {
+          // Window Selection (L→R): Solid Blue - only fully enclosed objects
+          canvas.selectionColor = 'rgba(0, 100, 255, 0.15)';
+          canvas.selectionBorderColor = 'rgba(0, 100, 255, 0.8)';
+          canvas.selectionDashArray = null;
+        } else {
+          // Crossing Selection (R→L): Dashed Green - any touching objects
+          canvas.selectionColor = 'rgba(0, 200, 100, 0.15)';
+          canvas.selectionBorderColor = 'rgba(0, 200, 100, 0.8)';
+          canvas.selectionDashArray = [5, 5];
+        }
+      }
+    };
+
+    // Track mouse up to perform AutoCAD-style selection based on drag direction
+    const handleMouseUpForSelection = (e) => {
+      // Only handle if we're in select mode and have a selection rect
+      if (toolRef.current !== 'select' || !selectionRectRef.current) {
+        selectionRectRef.current = null;
+        return;
+      }
+
+      // Get pointer in absolute canvas coordinates (ignoring zoom/pan)
+      // This matches the coordinate space we used in mouseDown and the object aCoords
+      const pointer = canvas.getPointer(e.e, true);
+      const startX = selectionRectRef.current.startX;
+      const startY = selectionRectRef.current.startY;
+
+      // Final direction determination (based on screen direction, not scaled)
+      const isWindowSelection = pointer.x >= startX;
+
+      // Selection rectangle in canvas coordinates
+      const selLeft = Math.min(startX, pointer.x);
+      const selTop = Math.min(startY, pointer.y);
+      const selWidth = Math.abs(pointer.x - startX);
+      const selHeight = Math.abs(pointer.y - startY);
+
+      // Only perform selection if there was meaningful drag (more than 5px in either direction)
+      if (selWidth > 5 || selHeight > 5) {
+        const selRight = selLeft + selWidth;
+        const selBottom = selTop + selHeight;
+
+        // DEBUG: Log all coordinate info
+        const zoom = canvas.getZoom();
+        const vpt = canvas.viewportTransform;
+        console.log('=== SELECTION DEBUG ===');
+        console.log('Canvas zoom:', zoom);
+        console.log('Viewport transform:', vpt);
+        console.log('Selection mode:', isWindowSelection ? 'WINDOW (L→R)' : 'CROSSING (R→L)');
+        console.log('Selection rect:', { left: selLeft, top: selTop, right: selRight, bottom: selBottom });
+
+        // Collect objects based on direction-determined selection mode
+        const allObjects = canvas.getObjects();
+        console.log('Total objects on canvas:', allObjects.length);
+
+        const objectsToSelect = [];
+        allObjects.forEach((obj, idx) => {
+          console.log(`--- Object ${idx} ---`);
+          console.log('Type:', obj.type);
+          console.log('Selectable:', obj.selectable);
+          console.log('Visible:', obj.visible);
+
+          // Skip non-selectable or non-visible objects
+          if (!obj.selectable || !obj.visible) {
+            console.log('SKIPPED: not selectable or not visible');
+            return;
+          }
+
+          // Try multiple ways to get bounds
+          console.log('obj.aCoords:', obj.aCoords);
+          console.log('obj.oCoords:', obj.oCoords);
+          console.log('obj.getCoords():', obj.getCoords ? obj.getCoords() : 'N/A');
+          console.log('obj.getBoundingRect():', obj.getBoundingRect ? obj.getBoundingRect() : 'N/A');
+          console.log('obj.left/top/width/height:', { left: obj.left, top: obj.top, width: obj.width, height: obj.height });
+          console.log('obj.scaleX/scaleY:', { scaleX: obj.scaleX, scaleY: obj.scaleY });
+
+          // Use aCoords which are in absolute canvas space (same as our pointer coords)
+          const aCoords = obj.aCoords || obj.getCoords();
+          if (!aCoords) {
+            console.log('SKIPPED: no aCoords');
+            return;
+          }
+
+          // Get bounding box from corner coordinates
+          const xs = Object.values(aCoords).map(c => c.x);
+          const ys = Object.values(aCoords).map(c => c.y);
+          const bounds = {
+            left: Math.min(...xs),
+            top: Math.min(...ys),
+            right: Math.max(...xs),
+            bottom: Math.max(...ys)
+          };
+          console.log('Computed bounds from aCoords:', bounds);
+
+          if (isWindowSelection) {
+            // Window Selection (L→R): Object must be FULLY inside the selection box
+            const checks = {
+              leftCheck: `${bounds.left} >= ${selLeft} = ${bounds.left >= selLeft}`,
+              topCheck: `${bounds.top} >= ${selTop} = ${bounds.top >= selTop}`,
+              rightCheck: `${bounds.right} <= ${selRight} = ${bounds.right <= selRight}`,
+              bottomCheck: `${bounds.bottom} <= ${selBottom} = ${bounds.bottom <= selBottom}`
+            };
+            console.log('Window selection checks:', checks);
+
+            const isFullyContained =
+              bounds.left >= selLeft &&
+              bounds.top >= selTop &&
+              bounds.right <= selRight &&
+              bounds.bottom <= selBottom;
+
+            console.log('Fully contained:', isFullyContained);
+            if (isFullyContained) {
+              objectsToSelect.push(obj);
+            }
+          } else {
+            // Crossing Selection (R→L): Object must INTERSECT with the selection box
+            const checks = {
+              objRightOfSel: `${bounds.right} < ${selLeft} = ${bounds.right < selLeft}`,
+              objLeftOfSel: `${bounds.left} > ${selRight} = ${bounds.left > selRight}`,
+              objAboveSel: `${bounds.bottom} < ${selTop} = ${bounds.bottom < selTop}`,
+              objBelowSel: `${bounds.top} > ${selBottom} = ${bounds.top > selBottom}`
+            };
+            console.log('Crossing selection checks (all should be false for intersection):', checks);
+
+            const intersects = !(
+              bounds.right < selLeft ||
+              bounds.left > selRight ||
+              bounds.bottom < selTop ||
+              bounds.top > selBottom
+            );
+
+            console.log('Intersects:', intersects);
+            if (intersects) {
+              objectsToSelect.push(obj);
+            }
+          }
+        });
+
+        console.log('Objects to select:', objectsToSelect.length);
+        console.log('=== END SELECTION DEBUG ===');
+
+        // Apply our custom selection
+        canvas.discardActiveObject();
+        if (objectsToSelect.length === 1) {
+          canvas.setActiveObject(objectsToSelect[0]);
+          console.log('Set single active object');
+        } else if (objectsToSelect.length > 1) {
+          const activeSelection = new fabric.ActiveSelection(objectsToSelect, { canvas });
+          canvas.setActiveObject(activeSelection);
+          console.log('Set active selection with', objectsToSelect.length, 'objects');
+        } else {
+          console.log('No objects selected');
+        }
+        canvas.requestRenderAll();
+      } else {
+        console.log('Selection drag too small:', selWidth, 'x', selHeight);
+      }
+
+      // Clear selection rect and reset styling
+      selectionRectRef.current = null;
+      canvas.selectionColor = 'rgba(0, 100, 255, 0.15)';
+      canvas.selectionBorderColor = 'rgba(0, 100, 255, 0.8)';
+      canvas.selectionDashArray = null;
+    };
+
+    // Register selection tracking handlers first (they need to run before main handlers)
+    canvas.on('mouse:down', handleMouseDownForSelection);
+    canvas.on('mouse:move', handleMouseMoveForSelection);
+    canvas.on('mouse:up', handleMouseUpForSelection);
+
+    // Then register main handlers
     canvas.on('object:modified', handleObjectModified);
     canvas.on('path:created', handlePathCreated);
     canvas.on('mouse:down', handleMouseDown);
@@ -1054,8 +1339,8 @@ const PageAnnotationLayer = memo(({
     if (!fabricRef.current) return;
     const canvas = fabricRef.current;
     canvas.isDrawingMode = tool === 'pen' || tool === 'highlighter';
-    canvas.selection = tool === 'pan'; // Disable selection for eraser to prevent selection box
-    canvas.defaultCursor = (tool === 'eraser' ? 'crosshair' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default'))));
+    canvas.selection = tool === 'pan' || tool === 'select'; // Enable selection for select tool
+    canvas.defaultCursor = (tool === 'eraser' ? 'crosshair' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
     canvas.hoverCursor = canvas.defaultCursor;
     const c = tool === 'highlighter' ? 'rgba(255, 235, 59, 0.35)' : strokeColor;
     const w = tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth;
@@ -1073,10 +1358,14 @@ const PageAnnotationLayer = memo(({
 
       if (isVisible) {
         // Only make visible objects interactive based on tool
+        const isSelectable = tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight';
         obj.set({
           visible: true,
-          selectable: tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight',
-          evented: tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight'
+          selectable: isSelectable,
+          evented: isSelectable,
+          // Increase hit area for thin/small objects in select mode
+          perPixelTargetFind: tool === 'select',
+          targetFindTolerance: tool === 'select' ? 5 : 0
         });
       } else {
         // Keep hidden objects non-interactive and invisible
@@ -1223,7 +1512,8 @@ const PageAnnotationLayer = memo(({
             selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
             evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
             excludeFromExport: false,
-            strokeUniform: true
+            strokeUniform: true,
+            globalCompositeOperation: 'multiply'
           });
           // Store the highlightId and needsBIC flag on the object for later reference
           rect.set({ highlightId: highlight.highlightId, needsBIC: true });
@@ -1256,7 +1546,8 @@ const PageAnnotationLayer = memo(({
             selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
             evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
             excludeFromExport: false,
-            strokeUniform: true
+            strokeUniform: true,
+            globalCompositeOperation: 'multiply'
           });
           // Store the highlightId if available
           if (highlight.highlightId) {
@@ -1299,7 +1590,6 @@ const PageAnnotationLayer = memo(({
     let removedAny = false;
 
     highlightsToRemove.forEach((boundsToRemove) => {
-      console.log('[PageAnnotationLayer] Processing removal', boundsToRemove);
       // Create a unique key for this removal to avoid processing twice
       const removalKey = `${boundsToRemove.x}-${boundsToRemove.y}-${boundsToRemove.width}-${boundsToRemove.height}`;
 
@@ -1368,7 +1658,7 @@ const PageAnnotationLayer = memo(({
 
   // Filter objects by selected space and regions
   useEffect(() => {
-    if (!fabricRef.current) return;
+    if (!canvasRef.current || !fabric) return;
 
     const canvas = fabricRef.current;
     const objects = canvas.getObjects();
@@ -1447,7 +1737,7 @@ const PageAnnotationLayer = memo(({
         left: 0,
         width: '100%',
         height: '100%',
-        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight') ? 'auto' : 'none',
+        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight') ? 'auto' : 'none',
         zIndex: 10,
       }}
     >
