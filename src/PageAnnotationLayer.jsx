@@ -541,7 +541,7 @@ const PageAnnotationLayer = memo(({
       if (e.path) {
         e.path.set({
           strokeUniform: true,
-          perPixelTargetFind: true, // Enable pixel-perfect hit detection, removes boundary box selection
+          perPixelTargetFind: true, // Enable pixel-perfect hit detection for selection
           targetFindTolerance: 5 // Add small tolerance for easier selection
         });
         // Store current selectedSpaceId on the path
@@ -555,7 +555,103 @@ const PageAnnotationLayer = memo(({
       saveCanvas();
     };
 
-    const handleObjectModified = () => saveCanvas();
+    const handleObjectModified = (e) => {
+      // Ensure the modified object stays selected after transformation
+      // This prevents deselection that can occur when Fabric.js re-checks findTarget after modification
+      const activeObject = fabricRef.current?.getActiveObject();
+      if (e?.target && activeObject === e.target) {
+        // The modified object is still the active object - ensure it stays selected
+        // Use setTimeout to ensure this runs after Fabric.js's internal selection checks
+        setTimeout(() => {
+          if (canvas.getActiveObject() !== e.target && canvas.getObjects().includes(e.target)) {
+            canvas.setActiveObject(e.target);
+            canvas.requestRenderAll();
+          }
+        }, 0);
+      }
+      
+      saveCanvas();
+    };
+
+    // Helper function to check if a point is within an object's bounding box
+    const isPointInBoundingBox = (point, obj) => {
+      if (!obj) return false;
+      
+      // Get bounding box accounting for transformations
+      const bounds = obj.getBoundingRect(true);
+      
+      return (
+        point.x >= bounds.left &&
+        point.x <= bounds.left + bounds.width &&
+        point.y >= bounds.top &&
+        point.y <= bounds.top + bounds.height
+      );
+    };
+
+    // Override Fabric.js findTarget to use pixel-perfect selection but allow bounding box manipulation
+    const originalFindTarget = canvas.findTarget.bind(canvas);
+    canvas.findTarget = function(e, skipGroup) {
+      // CRITICAL: First check for control points (rotation handles, scaling handles)
+      // This must happen BEFORE our custom logic to ensure control points work
+      const activeObject = this.getActiveObject();
+      if (activeObject) {
+        // Check if click is on a control point
+        const control = activeObject._findTargetCorner ? activeObject._findTargetCorner(e.e, true) : null;
+        if (control) {
+          // Click is on a control point - use original findTarget to let Fabric.js handle it
+          return originalFindTarget(e, skipGroup);
+        }
+      }
+      
+      // Apply custom logic for pan and select tools (both allow object manipulation)
+      const shouldUseCustomLogic = toolRef.current === 'pan' || toolRef.current === 'select';
+      
+      if (!shouldUseCustomLogic) {
+        return originalFindTarget(e, skipGroup);
+      }
+
+      const pointer = this.getPointer(e);
+
+      // Use pixel-perfect detection first for selection
+      const pixelPerfectResult = originalFindTarget(e, skipGroup);
+
+      // If pixel-perfect hit found something, return it (for selection)
+      if (pixelPerfectResult) {
+        return pixelPerfectResult;
+      }
+
+      // No pixel-perfect hit - if there's an active object and click is within its bounding box,
+      // return it to allow dragging/manipulation from anywhere in bounding box
+      if (activeObject && isPointInBoundingBox(pointer, activeObject)) {
+        return activeObject;
+      }
+
+      // No hit - return null (will deselect)
+      return null;
+    };
+
+    // Handle mouse down for pan/select tools to prevent deselection when clicking within bounding box
+    const handleMouseDownForPan = (opt) => {
+      const currentTool = toolRef.current;
+      
+      // Handle pan and select tools (both allow object manipulation)
+      if (currentTool !== 'pan' && currentTool !== 'select') {
+        return;
+      }
+
+      const pointer = canvas.getPointer(opt.e);
+      const activeObject = canvas.getActiveObject();
+
+      // If there's an active object, check if click is within its bounding box
+      if (activeObject && isPointInBoundingBox(pointer, activeObject)) {
+        // Click is within bounding box - prevent deselection
+        // Fabric.js will handle the drag/transform automatically
+        return;
+      }
+
+      // If clicking outside, allow normal deselection behavior
+      // The findTarget override will handle selecting new objects
+    };
 
     const handleMouseDown = (opt) => {
       const currentTool = toolRef.current;
@@ -1332,6 +1428,10 @@ const PageAnnotationLayer = memo(({
     canvas.on('mouse:up', handleMouseUp);
     canvas.on('mouse:dblclick', handleDblClick);
 
+    // Register pan tool handler for bounding box selection
+    canvas.on('mouse:down', handleMouseDownForPan);
+
+
     // Register selection tracking handlers LAST so they run FIRST (Fabric.js calls handlers in reverse order)
     canvas.on('mouse:down', handleMouseDownForSelection);
     canvas.on('mouse:move', handleMouseMoveForSelection);
@@ -1418,9 +1518,10 @@ const PageAnnotationLayer = memo(({
           visible: true,
           selectable: isSelectable,
           evented: isSelectable,
-          // Increase hit area for thin/small objects in select mode
-          perPixelTargetFind: tool === 'select',
-          targetFindTolerance: tool === 'select' ? 5 : 0
+          // Enable pixel-perfect hit detection for selection (our findTarget override handles the logic)
+          // This ensures we can detect actual annotation content, not just bounding box
+          perPixelTargetFind: true,
+          targetFindTolerance: (tool === 'pan' || tool === 'select') ? 5 : 0
         });
       } else {
         // Keep hidden objects non-interactive and invisible

@@ -5,7 +5,7 @@ import { PDFDocument } from 'pdf-lib';
 import * as XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { useMSGraph } from './contexts/MSGraphContext';
-import { uploadExcelFile, getFileMetadata } from './services/excelGraphService';
+import { uploadExcelFile, getFileMetadata, downloadExcelFileByPath } from './services/excelGraphService';
 import PageAnnotationLayer from './PageAnnotationLayer';
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
@@ -7395,7 +7395,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 });
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient, ballInCourtEntities, setBallInCourtEntities }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient, msAccount, ballInCourtEntities, setBallInCourtEntities }) {
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
@@ -8832,7 +8832,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         if (targetPath) {
           // Silent save (Sync to Excel) - handled by handleSyncToExcel
           try {
-            await window.electronAPI.writeFile(targetPath, workbookBuffer);
+            // Check if this is a OneDrive file
+            if (selectedTemplate?.isOneDrive) {
+              // Use OneDrive API to upload
+              if (!graphClient) {
+                alert('Please sign in to Microsoft to sync with OneDrive.');
+                return;
+              }
+              await uploadExcelFile(graphClient, targetPath, workbookBuffer);
+            } else {
+              // Use local filesystem
+              await window.electronAPI.writeFile(targetPath, workbookBuffer);
+            }
 
             const updatedTemplate = {
               ...selectedTemplate,
@@ -8856,7 +8867,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             alert('Sync to Excel successful!');
           } catch (err) {
             console.error('Failed to write file:', err);
-            alert('Failed to sync to Excel file. It might be open in another program.');
+            // Check for OneDrive locked file error
+            if (err.message && err.message.includes('locked')) {
+              alert('Failed to sync: The Excel file is locked. Please close it in Excel or OneDrive and try again.');
+            } else {
+              alert('Failed to sync to Excel file. It might be open in another program.');
+            }
             return;
           }
         } else {
@@ -8887,7 +8903,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       console.error('Failed to create Excel export', error);
       alert('Unable to create the Excel file. Please try again.');
     }
-  }, [selectedTemplate, items, highlightAnnotations]);
+  }, [selectedTemplate, items, highlightAnnotations, graphClient]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -8930,7 +8946,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     if (window.electronAPI) {
       try {
-        const fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
+        let fileData;
+        if (selectedTemplate?.isOneDrive) {
+          // Use OneDrive API to download
+          if (!graphClient) {
+            alert('Please sign in to Microsoft to sync with OneDrive.');
+            return;
+          }
+          fileData = await downloadExcelFileByPath(graphClient, selectedTemplate.linkedExcelPath);
+        } else {
+          // Use local filesystem
+          fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
+        }
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
 
@@ -9160,7 +9187,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         alert('Failed to read or parse the linked Excel file.');
       }
     }
-  }, [selectedTemplate, highlightAnnotations]);
+  }, [selectedTemplate, highlightAnnotations, graphClient]);
 
   // Auto-sync from Excel when file changes (file watcher)
   const handleAutoSyncFromExcel = useCallback(async () => {
@@ -9175,7 +9202,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (window.electronAPI) {
       try {
         console.log('Reading Excel file...');
-        const fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
+        let fileData;
+        if (selectedTemplate?.isOneDrive) {
+          // Use OneDrive API to download
+          if (!graphClient) {
+            console.log('Not authenticated with Microsoft, skipping auto-sync');
+            return;
+          }
+          fileData = await downloadExcelFileByPath(graphClient, selectedTemplate.linkedExcelPath);
+        } else {
+          // Use local filesystem
+          fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
+        }
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
 
@@ -9409,7 +9447,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setTimeout(() => setLastSyncMessage(''), 5000);
       }
     }
-  }, [selectedTemplate, highlightAnnotations]);
+  }, [selectedTemplate, highlightAnnotations, graphClient]);
 
   // Set up file watcher when Excel file is linked
   useEffect(() => {
@@ -13954,41 +13992,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           </button>
                           {selectedTemplate.linkedExcelPath && (
                             <>
-                              <button
-                                type="button"
-                                onClick={handleOpenExcel}
-                                title={selectedTemplate.linkedExcelPath}
-                                style={{
-                                  background: '#2ecc71',
-                                  border: '1px solid #27ae60',
-                                  color: '#fff',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  padding: '6px 12px',
-                                  borderRadius: '6px',
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.08em',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                Open Excel
-                              </button>
-                              {fileWatcherActive && (
-                                <div style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  fontSize: '11px',
-                                  color: '#2ecc71',
-                                  padding: '4px 8px',
-                                  background: 'rgba(46, 204, 113, 0.1)',
-                                  borderRadius: '4px',
-                                  border: '1px solid rgba(46, 204, 113, 0.3)'
-                                }}>
-                                  <span style={{ fontSize: '14px' }}>●</span>
-                                  <span>Auto-sync active</span>
-                                </div>
-                              )}
+
                               {lastSyncMessage && (
                                 <div style={{
                                   fontSize: '11px',
@@ -16119,8 +16123,66 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           overflow: 'hidden'
                         }}>
                           <div
-                            onClick={() => {
-                              window.electronAPI.openPath(selectedTemplate.linkedExcelPath);
+                            onClick={async () => {
+                              const excelPath = selectedTemplate.linkedExcelPath;
+                              const isOneDrive = selectedTemplate.isOneDrive;
+
+                              console.log('Attempting to open Excel file:', { excelPath, isOneDrive });
+
+                              if (!excelPath) {
+                                alert('No Excel file is linked to this survey.');
+                                setShowExportMenu(false);
+                                return;
+                              }
+
+                              // Handle OneDrive files - open in browser
+                              if (isOneDrive) {
+                                try {
+                                  // Get the file's web URL from OneDrive
+                                  if (graphClient) {
+                                    const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
+                                    if (driveItem && driveItem.webUrl) {
+                                      window.open(driveItem.webUrl, '_blank');
+                                    } else {
+                                      alert('Could not get the OneDrive file URL. Please open the file manually from OneDrive.');
+                                    }
+                                  } else {
+                                    alert('Please sign in to Microsoft to open OneDrive files.');
+                                  }
+                                } catch (err) {
+                                  console.error('Error opening OneDrive file:', err);
+                                  alert(`Error opening OneDrive file:\n${err.message}`);
+                                }
+                                setShowExportMenu(false);
+                                return;
+                              }
+
+                              // Handle local files
+                              if (window.electronAPI) {
+                                try {
+                                  // Check if file exists first
+                                  const exists = await window.electronAPI.fileExists(excelPath);
+                                  console.log('File exists:', exists);
+
+                                  if (!exists) {
+                                    alert(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`);
+                                    setShowExportMenu(false);
+                                    return;
+                                  }
+
+                                  const result = await window.electronAPI.openPath(excelPath);
+                                  if (result) {
+                                    // shell.openPath returns an error string if it fails, empty string on success
+                                    console.error('Failed to open Excel file:', result);
+                                    alert(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`);
+                                  }
+                                } catch (err) {
+                                  console.error('Error opening Excel file:', err);
+                                  alert(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`);
+                                }
+                              } else {
+                                alert('This feature is only available in the desktop app.');
+                              }
                               setShowExportMenu(false);
                             }}
                             style={{
@@ -16149,6 +16211,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               color: '#fff',
                               fontSize: '14px',
                               cursor: 'pointer',
+                              borderBottom: '1px solid #444',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
@@ -16156,8 +16219,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
-                            <Icon name="rotate" size={16} />
-                            Sync
+                            <Icon name="upload" size={16} />
+                            Push to Excel
+                          </div>
+                          <div
+                            onClick={() => {
+                              handleSyncFromExcel();
+                              setShowExportMenu(false);
+                            }}
+                            style={{
+                              padding: '12px 16px',
+                              color: '#fff',
+                              fontSize: '14px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <Icon name="download" size={16} />
+                            Pull from Excel
                           </div>
                         </div>
                       )}
@@ -18752,6 +18835,7 @@ export default function App() {
                 isMSAuthenticated={isMSAuthenticated}
                 msLogin={msLogin}
                 graphClient={graphClient}
+                msAccount={msAccount}
                 ballInCourtEntities={ballInCourtEntities}
                 setBallInCourtEntities={setBallInCourtEntities}
               />
