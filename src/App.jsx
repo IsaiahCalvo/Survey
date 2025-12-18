@@ -12877,7 +12877,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         <div
           ref={bottomToolbarRef}
           style={{
-            padding: '12px 20px',
+            padding: '11px 20px 12px 20px',
             background: 'transparent',
             borderTop: '1px solid #444',
             display: 'flex',
