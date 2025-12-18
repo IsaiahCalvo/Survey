@@ -7503,7 +7503,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
-  const [eraserMode, setEraserMode] = useState('partial'); // 'partial' | 'entire'
+  const [eraserMode, setEraserMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('eraserMode');
+      return saved || 'partial';
+    } catch (e) {
+      return 'partial';
+    }
+  }); // 'partial' | 'entire'
+  const [showEraserMenu, setShowEraserMenu] = useState(false);
+  const eraserMenuRef = useRef(null);
 
   const [tooltip, setTooltip] = useState({ visible: false, text: '', x: 0, y: 0 });
   const [showAnnotationColorPicker, setShowAnnotationColorPicker] = useState(false);
@@ -7533,6 +7542,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef(null);
 
+  // Close eraser menu when tool changes
+  useEffect(() => {
+    if (activeTool !== 'eraser') {
+      setShowEraserMenu(false);
+    }
+  }, [activeTool]);
+
   // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -7540,16 +7556,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
         setShowExportMenu(false);
       }
+      // Close eraser menu
+      if (eraserMenuRef.current && !eraserMenuRef.current.contains(event.target)) {
+        setShowEraserMenu(false);
+      }
     };
 
-    if (showExportMenu) {
+    if (showExportMenu || showEraserMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showExportMenu]);
+  }, [showExportMenu, showEraserMenu]);
+
+  // Persist eraser mode
+  useEffect(() => {
+    try {
+      localStorage.setItem('eraserMode', eraserMode);
+    } catch (e) {
+      console.error('Error saving eraser mode:', e);
+    }
+  }, [eraserMode]);
   const [pendingLocationItem, setPendingLocationItem] = useState(null);
   const topToolbarRef = useRef(null);
   const bottomToolbarRef = useRef(null);
@@ -12635,13 +12664,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
                   { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
                 ].map(t => (
-                  <div key={t.id} style={{ position: 'relative' }}>
+                  <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <button
-                      onClick={() => setActiveTool(t.id)}
+                      onClick={() => {
+                        if (t.id === 'eraser' && activeTool === 'eraser') {
+                          setShowEraserMenu(!showEraserMenu);
+                        } else {
+                          setActiveTool(t.id);
+                          if (t.id !== 'eraser') setShowEraserMenu(false);
+                        }
+                      }}
                       className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
                       style={{
                         display: 'flex',
-                        flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
                         padding: '6px',
@@ -12651,26 +12686,46 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       title={t.label}
                     >
                       <Icon name={t.iconName} size={20} />
+                      {t.id === 'eraser' && activeTool === 'eraser' && (
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowEraserMenu(!showEraserMenu);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginLeft: '2px',
+                            padding: '2px'
+                          }}
+                        >
+                          <Icon name="chevronUp" size={12} />
+                        </div>
+                      )}
                     </button>
 
                     {/* Eraser Mode Popup specific to the Eraser tool in sub-toolbar */}
-                    {t.id === 'eraser' && activeTool === 'eraser' && (
-                      <div style={{
-                        position: 'absolute',
-                        bottom: '100%',
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        marginBottom: '6px',
-                        background: '#1e1e1e',
-                        border: '1px solid transparent',
-                        borderRadius: '6px',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-                        zIndex: 1000,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        padding: '4px',
-                        minWidth: '140px'
-                      }}>
+                    {t.id === 'eraser' && activeTool === 'eraser' && showEraserMenu && (
+                      <div
+                        ref={eraserMenuRef}
+                        style={{
+                          position: 'absolute',
+                          bottom: '100%',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          marginBottom: '6px',
+                          background: '#1e1e1e',
+                          border: '1px solid #333',
+                          borderRadius: '6px',
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                          zIndex: 1000,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          padding: '4px',
+                          minWidth: '140px'
+                        }}
+                      >
                         <div style={{
                           padding: '4px 8px',
                           fontSize: '10px',
@@ -12683,18 +12738,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           Eraser Type
                         </div>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setEraserMode('partial'); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEraserMode('partial');
+                            setShowEraserMenu(false);
+                          }}
                           className={`btn ${eraserMode === 'partial' ? 'btn-active' : 'btn-ghost'}`}
                           style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
                         >
-                          Partial Erase
+                          Partial Eraser
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setEraserMode('entire'); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEraserMode('entire');
+                            setShowEraserMenu(false);
+                          }}
                           className={`btn ${eraserMode === 'entire' ? 'btn-active' : 'btn-ghost'}`}
                           style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
                         >
-                          Entire Erase
+                          Entire Eraser
                         </button>
                       </div>
                     )}
