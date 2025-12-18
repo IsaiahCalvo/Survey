@@ -1324,8 +1324,8 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
   if (isLoading) {
     return (
       <div style={{
-        fontSize: '48px',
-        height: '80px',
+        fontSize: '32px',
+        height: '64px',
         width: '100%',
         display: 'flex',
         alignItems: 'center',
@@ -1335,7 +1335,7 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
         borderRadius: '4px',
         border: '1px solid #3a3a3a'
       }}>
-        <Icon name="document" size={32} color="#999" />
+        <Icon name="document" size={24} color="#999" />
       </div>
     );
   }
@@ -1347,10 +1347,10 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
         alt="PDF thumbnail"
         style={{
           width: '100%',
-          maxHeight: '100px',
+          maxHeight: '80px',
           objectFit: 'contain',
           borderRadius: '4px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
           background: '#1a1a1a'
         }}
       />
@@ -1359,7 +1359,7 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
 
   return (
     <div style={{
-      height: '80px',
+      height: '64px',
       width: '100%',
       display: 'flex',
       alignItems: 'center',
@@ -1369,7 +1369,7 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
       border: '1px solid #3a3a3a',
       opacity: 0.6
     }}>
-      <Icon name="document" size={40} color="#999" />
+      <Icon name="document" size={32} color="#999" />
     </div>
   );
 }
@@ -4559,11 +4559,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     ? 'User'
                     : 'Sign In'}
               </div>
-              <div style={{ fontSize: '11px', opacity: 0.7 }}>
-                {isAuthenticated && user?.email
-                  ? user.email
-                  : 'Click to sign in'}
-              </div>
             </div>
           </div>
 
@@ -6874,8 +6869,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           ) : viewMode === 'grid' ? (
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-              gap: '16px'
+              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+              gap: '12px'
             }}>
               {(activeSection === 'documents' ? sortedDocuments : activeSection === 'projects' ? (selectedProjectId ? (supabaseDocuments || []).map(doc => ({
                 id: doc.id,
@@ -6910,27 +6905,27 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     }}
                     style={{
                       background: '#252525',
-                      border: '1px solid #3a3a3a',
+                      border: '1px solid #333',
                       borderRadius: '8px',
-                      padding: '12px',
+                      padding: '8px',
                       cursor: 'pointer',
                       transition: 'all 0.3s',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
                       position: 'relative',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: '8px'
+                      gap: '6px'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.45)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.35)';
                       e.currentTarget.style.borderColor = '#4A90E2';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-                      e.currentTarget.style.borderColor = '#3a3a3a';
+                      e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
+                      e.currentTarget.style.borderColor = '#333';
                     }}
                   >
                     {isSelectionMode && (
@@ -6942,22 +6937,22 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                           toggleSelectItem(item.id, e);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        style={{ position: 'absolute', right: '8px', top: '8px', zIndex: 10 }}
+                        style={{ position: 'absolute', right: '6px', top: '6px', zIndex: 10 }}
                       />
                     )}
                     <PDFThumbnail dataUrl={item.dataUrl} filePath={item.filePath} docId={item.id} getDocumentUrl={getDocumentUrl} downloadDocument={downloadFromStorage} />
                     <div style={{ textAlign: 'center', width: '100%' }}>
                       <div style={{
-                        fontSize: '12px',
+                        fontSize: '11px',
                         fontWeight: '500',
                         color: '#eaeaea',
-                        marginBottom: '4px',
+                        marginBottom: '2px',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap'
                       }}>{item.name}</div>
-                      <div style={{ fontSize: '10px', color: '#999' }}>{formatFileSize(item.size)}</div>
-                      <div style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>{formatDate(item.uploadedAt)}</div>
+                      <div style={{ fontSize: '9px', color: '#888' }}>{formatFileSize(item.size)}</div>
+                      <div style={{ fontSize: '9px', color: '#888', marginTop: '1px' }}>{formatDate(item.uploadedAt)}</div>
                     </div>
                   </div>
                 ) : activeSection === 'projects' && !selectedProjectId ? (
@@ -6966,21 +6961,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     onClick={() => (isSelectionMode ? toggleSelectItem(item.id) : setSelectedProjectId(item.id))}
                     style={{
                       background: '#252525',
-                      border: '1px solid #3a3a3a',
+                      border: '1px solid #333',
                       borderRadius: '8px',
-                      padding: '12px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                      padding: '8px',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
                       position: 'relative',
                       cursor: 'pointer',
-                      transition: 'all 0.3s'
+                      transition: 'all 0.3s',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '4px'
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.borderColor = '#4A90E2';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.45)';
+                      e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.35)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#3a3a3a';
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+                      e.currentTarget.style.borderColor = '#333';
+                      e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
                     }}
                   >
                     {isSelectionMode && (
@@ -6988,12 +6987,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                         type="checkbox"
                         checked={isItemSelected(item.id)}
                         onChange={(e) => toggleSelectItem(item.id, e)}
-                        style={{ position: 'absolute', right: '8px', top: '8px' }}
+                        style={{ position: 'absolute', right: '6px', top: '6px' }}
                       />
                     )}
-                    <Icon name="folder" size={32} color="#FFFFFF" />
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#eaeaea', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                    <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>{(allDocuments || []).filter(d => d.project_id === item.id).length} files • {formatDate(item.created_at || item.createdAt)}</div>
+                    <Icon name="folder" size={24} color="#FFFFFF" />
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#eaeaea', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center', width: '100%' }}>{item.name}</div>
+                    <div style={{ fontSize: '9px', color: '#888', marginTop: '2px', textAlign: 'center' }}>{(allDocuments || []).filter(d => d.project_id === item.id).length} files • {formatDate(item.created_at || item.createdAt)}</div>
                   </div>
                 ) : activeSection === 'projects' && selectedProjectId ? (
                   <div
@@ -7010,27 +7009,27 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     }}
                     style={{
                       background: '#252525',
-                      border: '1px solid #3a3a3a',
+                      border: '1px solid #333',
                       borderRadius: '8px',
-                      padding: '12px',
+                      padding: '8px',
                       cursor: 'pointer',
                       transition: 'all 0.3s',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
                       position: 'relative',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: '8px'
+                      gap: '6px'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.45)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.35)';
                       e.currentTarget.style.borderColor = '#4A90E2';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-                      e.currentTarget.style.borderColor = '#3a3a3a';
+                      e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
+                      e.currentTarget.style.borderColor = '#333';
                     }}
                   >
                     {isSelectionMode && (
@@ -7042,14 +7041,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                           toggleSelectItem(item.id, e);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        style={{ position: 'absolute', right: '8px', top: '8px', zIndex: 10 }}
+                        style={{ position: 'absolute', right: '6px', top: '6px', zIndex: 10 }}
                       />
                     )}
                     <PDFThumbnail dataUrl={item.dataUrl} filePath={item.filePath} docId={item.id} getDocumentUrl={getDocumentUrl} downloadDocument={downloadFromStorage} />
                     <div style={{ textAlign: 'center', width: '100%' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '500', color: '#eaeaea', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                      <div style={{ fontSize: '10px', color: '#999' }}>{formatFileSize(item.size || item.file_size || 0)}</div>
-                      <div style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>{formatDate(item.uploadedAt || item.created_at || item.updated_at)}</div>
+                      <div style={{ fontSize: '11px', fontWeight: '500', color: '#eaeaea', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                      <div style={{ fontSize: '9px', color: '#888' }}>{formatFileSize(item.size || item.file_size || 0)}</div>
+                      <div style={{ fontSize: '9px', color: '#888', marginTop: '1px' }}>{formatDate(item.uploadedAt || item.created_at || item.updated_at)}</div>
                     </div>
                   </div>
                 ) : activeSection === 'templates' && !selectedTemplateId ? (
@@ -7058,21 +7057,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     onClick={() => (isSelectionMode ? toggleSelectItem(item.id) : openEditTemplateModal(item.id))}
                     style={{
                       background: '#252525',
-                      border: '1px solid #3a3a3a',
+                      border: '1px solid #333',
                       borderRadius: '8px',
-                      padding: '12px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                      padding: '8px',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
                       position: 'relative',
                       cursor: 'pointer',
-                      transition: 'all 0.3s'
+                      transition: 'all 0.3s',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '4px'
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.borderColor = '#4A90E2';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.45)';
+                      e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.35)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#3a3a3a';
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+                      e.currentTarget.style.borderColor = '#333';
+                      e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
                     }}
                   >
                     {isSelectionMode && (
@@ -7080,12 +7083,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                         type="checkbox"
                         checked={isItemSelected(item.id)}
                         onChange={(e) => toggleSelectItem(item.id, e)}
-                        style={{ position: 'absolute', right: '8px', top: '8px' }}
+                        style={{ position: 'absolute', right: '6px', top: '6px' }}
                       />
                     )}
-                    <Icon name="template" size={32} color="#FFFFFF" />
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#eaeaea', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name || 'Untitled Template'}</div>
-                    <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>{formatDate(item.createdAt || new Date().toISOString())}</div>
+                    <Icon name="template" size={24} color="#FFFFFF" />
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#eaeaea', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center', width: '100%' }}>{item.name || 'Untitled Template'}</div>
+                    <div style={{ fontSize: '9px', color: '#888', marginTop: '2px', textAlign: 'center' }}>{formatDate(item.createdAt || new Date().toISOString())}</div>
                   </div>
                 ) : activeSection === 'templates' && selectedTemplateId ? (
                   <div
@@ -7102,27 +7105,27 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     }}
                     style={{
                       background: '#252525',
-                      border: '1px solid #3a3a3a',
+                      border: '1px solid #333',
                       borderRadius: '8px',
-                      padding: '12px',
+                      padding: '8px',
                       cursor: 'pointer',
                       transition: 'all 0.3s',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
                       position: 'relative',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: '8px'
+                      gap: '6px'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.45)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.35)';
                       e.currentTarget.style.borderColor = '#4A90E2';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-                      e.currentTarget.style.borderColor = '#3a3a3a';
+                      e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
+                      e.currentTarget.style.borderColor = '#333';
                     }}
                   >
                     {isSelectionMode && (
@@ -7134,14 +7137,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                           toggleSelectItem(item.id, e);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        style={{ position: 'absolute', right: '8px', top: '8px', zIndex: 10 }}
+                        style={{ position: 'absolute', right: '6px', top: '6px', zIndex: 10 }}
                       />
                     )}
                     <PDFThumbnail dataUrl={item.dataUrl} filePath={item.filePath} docId={item.id} getDocumentUrl={getDocumentUrl} downloadDocument={downloadFromStorage} />
                     <div style={{ textAlign: 'center', width: '100%' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '500', color: '#eaeaea', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                      <div style={{ fontSize: '10px', color: '#999' }}>{formatFileSize(item.size)}</div>
-                      <div style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>{formatDate(item.uploadedAt)}</div>
+                      <div style={{ fontSize: '11px', fontWeight: '500', color: '#eaeaea', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                      <div style={{ fontSize: '9px', color: '#888' }}>{formatFileSize(item.size)}</div>
+                      <div style={{ fontSize: '9px', color: '#888', marginTop: '1px' }}>{formatDate(item.uploadedAt)}</div>
                     </div>
                   </div>
                 ) : (
@@ -7149,15 +7152,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     key={item.id}
                     style={{
                       background: '#252525',
-                      border: '1px solid #3a3a3a',
+                      border: '1px solid #333',
                       borderRadius: '8px',
-                      padding: '12px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                      padding: '8px',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '4px'
                     }}
                   >
-                    <Icon name="template" size={32} color="#FFFFFF" />
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#eaeaea', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name || 'Untitled Template'}</div>
-                    <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>{formatDate(item.createdAt || new Date().toISOString())}</div>
+                    <Icon name="template" size={24} color="#FFFFFF" />
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#eaeaea', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center', width: '100%' }}>{item.name || 'Untitled Template'}</div>
+                    <div style={{ fontSize: '9px', color: '#888', marginTop: '2px', textAlign: 'center' }}>{formatDate(item.createdAt || new Date().toISOString())}</div>
                   </div>
                 )
               ))}

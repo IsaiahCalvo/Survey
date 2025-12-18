@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -554,5 +554,165 @@ export const useStorage = () => {
     downloadDocument,
     deleteDocumentFile,
     getDocumentUrl,
+  };
+};
+
+// ============================================
+// DOCUMENT TOOL PREFERENCES HOOKS
+// ============================================
+
+// Default preferences for each tool type
+export const DEFAULT_TOOL_PREFERENCES = {
+  pen: { strokeColor: '#ff0000', strokeWidth: 3, strokeOpacity: 100 },
+  highlighter: { strokeColor: '#ffff00', strokeWidth: 20, strokeOpacity: 50 },
+  eraser: { strokeWidth: 10 },
+  rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
+  ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
+  line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
+  arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
+  text: { strokeColor: '#000000', strokeOpacity: 100 },
+  note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
+  underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
+  strikeout: { strokeColor: '#ff0000', strokeOpacity: 100 },
+  squiggly: { strokeColor: '#ff0000', strokeOpacity: 100 },
+  highlight: { strokeColor: '#ffff00', strokeOpacity: 50 },
+};
+
+// Tools that support stroke width
+export const TOOLS_WITH_STROKE_WIDTH = ['pen', 'highlighter', 'eraser', 'rect', 'ellipse', 'line', 'arrow'];
+
+// Tools that support fill
+export const TOOLS_WITH_FILL = ['rect', 'ellipse', 'note'];
+
+/**
+ * Hook for managing per-document, per-tool preferences
+ * Stores preferences in localStorage keyed by document ID
+ * Optionally syncs to Supabase if user is authenticated and document exists in DB
+ */
+export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => {
+  const { user } = useAuth();
+  const [toolPreferences, setToolPreferences] = useState(() => {
+    // Initialize from localStorage if available
+    if (documentId) {
+      try {
+        const saved = localStorage.getItem(`toolPrefs_${documentId}`);
+        if (saved) {
+          return JSON.parse(saved);
+        }
+      } catch (e) {
+        console.error('Error loading tool preferences from localStorage:', e);
+      }
+    }
+    return { ...DEFAULT_TOOL_PREFERENCES };
+  });
+  const [loading, setLoading] = useState(false);
+
+  // Load preferences when documentId changes
+  useEffect(() => {
+    if (!documentId) {
+      setToolPreferences({ ...DEFAULT_TOOL_PREFERENCES });
+      return;
+    }
+
+    // Load from localStorage first
+    try {
+      const saved = localStorage.getItem(`toolPrefs_${documentId}`);
+      if (saved) {
+        setToolPreferences(JSON.parse(saved));
+      } else {
+        setToolPreferences({ ...DEFAULT_TOOL_PREFERENCES });
+      }
+    } catch (e) {
+      console.error('Error loading tool preferences:', e);
+      setToolPreferences({ ...DEFAULT_TOOL_PREFERENCES });
+    }
+
+    // If we have a Supabase document ID and user, fetch from DB
+    if (supabaseDocId && user && isSupabaseAvailable()) {
+      fetchFromSupabase();
+    }
+  }, [documentId, supabaseDocId, user]);
+
+  const fetchFromSupabase = async () => {
+    if (!supabaseDocId || !user || !isSupabaseAvailable()) return;
+
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('documents')
+        .select('tool_preferences')
+        .eq('id', supabaseDocId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching tool preferences from Supabase:', error);
+        return;
+      }
+
+      if (data?.tool_preferences) {
+        // Merge with defaults to ensure all tools have preferences
+        const merged = { ...DEFAULT_TOOL_PREFERENCES, ...data.tool_preferences };
+        setToolPreferences(merged);
+        // Also save to localStorage for offline access
+        if (documentId) {
+          localStorage.setItem(`toolPrefs_${documentId}`, JSON.stringify(merged));
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching tool preferences:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update preferences for a specific tool
+  const updateToolPreference = useCallback((toolId, updates) => {
+    setToolPreferences(prev => {
+      const currentToolPrefs = prev[toolId] || DEFAULT_TOOL_PREFERENCES[toolId] || {};
+      const newPrefs = {
+        ...prev,
+        [toolId]: { ...currentToolPrefs, ...updates }
+      };
+
+      // Save to localStorage
+      if (documentId) {
+        try {
+          localStorage.setItem(`toolPrefs_${documentId}`, JSON.stringify(newPrefs));
+        } catch (e) {
+          console.error('Error saving tool preferences to localStorage:', e);
+        }
+      }
+
+      // Debounced save to Supabase
+      if (supabaseDocId && user && isSupabaseAvailable()) {
+        // Use a timeout to debounce rapid updates
+        clearTimeout(updateToolPreference._saveTimeout);
+        updateToolPreference._saveTimeout = setTimeout(async () => {
+          try {
+            await supabase
+              .from('documents')
+              .update({ tool_preferences: newPrefs })
+              .eq('id', supabaseDocId);
+          } catch (err) {
+            console.error('Error saving tool preferences to Supabase:', err);
+          }
+        }, 500);
+      }
+
+      return newPrefs;
+    });
+  }, [documentId, supabaseDocId, user]);
+
+  // Get preferences for a specific tool (with defaults)
+  const getToolPreference = useCallback((toolId) => {
+    return toolPreferences[toolId] || DEFAULT_TOOL_PREFERENCES[toolId] || {};
+  }, [toolPreferences]);
+
+  return {
+    toolPreferences,
+    updateToolPreference,
+    getToolPreference,
+    loading,
+    refetch: fetchFromSupabase,
   };
 };
