@@ -9,7 +9,7 @@ const PRESET_COLORS = [
 ];
 
 const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
-    const [mode, setMode] = useState('spectrum'); // 'grid' or 'spectrum'
+    const [mode, setMode] = useState('grid'); // 'grid' or 'spectrum'
     const [localHex, setLocalHex] = useState(color || '#000000');
     const [localOpacity, setLocalOpacity] = useState(opacity * 100);
 
