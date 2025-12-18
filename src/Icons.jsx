@@ -167,16 +167,31 @@ const Icon = ({ name, size = 16, color = 'currentColor', style, className }) => 
     ),
 
     highlighter: (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M9 11l-6 6v3h9l3-3" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M22 12l-4.6-4.6a2 2 0 0 0-2.8 0l-5.2 5.2 9 9 5.2-5.2a2 2 0 0 0 0-2.8l-1.6-1.6z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+      <div
+        style={{
+          ...style,
+          width: size * 1.4,
+          height: size * 1.4,
+          backgroundColor: color,
+          maskImage: 'url("/highlighter-icon.png")',
+          maskSize: 'contain',
+          maskRepeat: 'no-repeat',
+          maskPosition: 'center',
+          WebkitMaskImage: 'url("/highlighter-icon.png")',
+          WebkitMaskSize: 'contain',
+          WebkitMaskRepeat: 'no-repeat',
+          WebkitMaskPosition: 'center',
+        }}
+        className={className}
+      />
     ),
 
     eraser: (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M20 20H7L3 16C2 15 2 13 3 12L13 2L22 11L20 20Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M17 17l-11-11" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g transform="rotate(-45 12 12)">
+          <rect x="7" y="4" width="10" height="16" rx="2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <line x1="7" y1="10" x2="17" y2="10" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
       </svg>
     ),
 
@@ -405,9 +420,10 @@ const Icon = ({ name, size = 16, color = 'currentColor', style, className }) => 
       </svg>
     ),
     creditCard: (
-      <path d="M21 4H3C1.89543 4 1 4.89543 1 6V18C1 19.1046 1.89543 20 3 20H21C22.1046 20 23 19.1046 23 18V6C23 4.89543 22.1046 4 21 4Z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M21 4H3C1.89543 4 1 4.89543 1 6V18C1 19.1046 1.89543 20 3 20H21C22.1046 20 23 19.1046 23 18V6C23 4.89543 22.1046 4 21 4Z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
         <path d="M1 10H23" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      </path>
+      </svg>
     ),
   };
 

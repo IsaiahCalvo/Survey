@@ -12,6 +12,7 @@ import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
+import CompactColorPicker from './components/CompactColorPicker';
 import PDFSidebar from './PDFSidebar';
 import RegionSelectionTool from './RegionSelectionTool';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
@@ -173,6 +174,37 @@ const getOpacityFromBallColor = (color) => {
   }
 
   // For hex colors or if no opacity found, default to 100%
+  return 100;
+};
+
+// Helper to get hex from color (for stroke/fill)
+const getHexFromAnnotationColor = (color) => {
+  if (!color) return '#ff0000';
+  if (color.startsWith('rgba')) {
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+    if (match) {
+      const r = parseInt(match[1]).toString(16).padStart(2, '0');
+      const g = parseInt(match[2]).toString(16).padStart(2, '0');
+      const b = parseInt(match[3]).toString(16).padStart(2, '0');
+      return `#${r}${g}${b}`;
+    }
+  }
+  if (color.startsWith('#')) {
+    return color;
+  }
+  return '#ff0000';
+};
+
+// Helper to get opacity from color (for stroke/fill)
+const getOpacityFromAnnotationColor = (color) => {
+  if (!color) return 100;
+  if (color.startsWith('rgba')) {
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (match && match[4]) {
+      const opacity = parseFloat(match[4]);
+      return Math.round(opacity * 100);
+    }
+  }
   return 100;
 };
 
@@ -7395,12 +7427,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 });
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient, msAccount, ballInCourtEntities, setBallInCourtEntities }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient, msAccount, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange }) {
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
   const canvasRef = useRef({});
-  const eraserDropdownRef = useRef(null);
+
   const renderTasksRef = useRef({});
   const isNavigatingRef = useRef(false);
   const isZoomingRef = useRef(false);
@@ -7466,12 +7498,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
   const [strokeColor, setStrokeColor] = useState('#ff0000');
+  const [strokeOpacity, setStrokeOpacity] = useState(100);
+  const [fillColor, setFillColor] = useState('#ff0000');
+  const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
-  const [shapeToolsOpen, setShapeToolsOpen] = useState(false);
   const [eraserMode, setEraserMode] = useState('partial'); // 'partial' | 'entire'
-  const [eraserDropdownOpen, setEraserDropdownOpen] = useState(false);
+
   const [tooltip, setTooltip] = useState({ visible: false, text: '', x: 0, y: 0 });
+  const [showAnnotationColorPicker, setShowAnnotationColorPicker] = useState(false);
+  const [annotationColorPickerTab, setAnnotationColorPickerTab] = useState('stroke'); // 'stroke' | 'fill'
+  const [annotationColorPickerMode, setAnnotationColorPickerMode] = useState('grid'); // 'grid' | 'advanced'
+  const [annotationTempColor, setAnnotationTempColor] = useState(null); // Temporary color while picking
+  const [annotationOpacityInputValue, setAnnotationOpacityInputValue] = useState(null);
+  const [annotationOpacityInputFocused, setAnnotationOpacityInputFocused] = useState(false);
   const [pageObjects, setPageObjects] = useState({}); // Store PDF page objects for text layer
   const [newHighlightsByPage, setNewHighlightsByPage] = useState({}); // { [pageNumber]: [{x, y, width, height}] }
   const [highlightsToRemoveByPage, setHighlightsToRemoveByPage] = useState({}); // { [pageNumber]: [{x, y, width, height}] }
@@ -7483,6 +7523,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const isNavigatingToMatchRef = useRef(false); // Flag to prevent recursive navigation
 
   // Survey/Template state
+  const [activeCategoryDropdown, setActiveCategoryDropdown] = useState(null); // 'draw' | 'shape' | 'review' | 'survey'
   const [showSurveyPanel, setShowSurveyPanel] = useState(false);
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(false);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
@@ -7492,9 +7533,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef(null);
 
-  // Close export menu when clicking outside
+  // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // Close export menu
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
         setShowExportMenu(false);
       }
@@ -9998,7 +10040,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setNoteDialogOpen(null);
     setNoteDialogContent({ text: '', photos: [], videos: [] });
     setActiveTool('pan');
-    setShapeToolsOpen(false);
+
 
     if (!pdfFile) {
       setPdfId(null);
@@ -10053,8 +10095,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     if (currentJson !== savedJson && Object.keys(annotationsByPage).length > 0) {
       setHasUnsavedAnnotations(true);
+      // Notify parent component
+      if (onUnsavedAnnotationsChange) {
+        onUnsavedAnnotationsChange(true);
+      }
+    } else {
+      // Notify parent component when there are no unsaved changes
+      if (onUnsavedAnnotationsChange) {
+        onUnsavedAnnotationsChange(false);
+      }
     }
-  }, [pdfId, annotationsByPage]);
+  }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange]);
 
   // Save survey data to Supabase Storage
   const saveSurveyDataToSupabase = useCallback(async (currentAnnotations, currentSpaces, currentTemplate) => {
@@ -10161,6 +10212,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       saveAnnotationsByPage(pdfId, annotationsByPage);
       savedAnnotationsByPageRef.current = { ...annotationsByPage };
       setHasUnsavedAnnotations(false);
+      // Notify parent component that changes have been saved
+      if (onUnsavedAnnotationsChange) {
+        onUnsavedAnnotationsChange(false);
+      }
 
       console.log('Document saved successfully');
       alert('PDF saved with annotations! The file has been updated.');
@@ -10171,7 +10226,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       console.error('Error saving document:', error);
       alert('Error saving PDF: ' + error.message);
     }
-  }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath]);
+  }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath, onUnsavedAnnotationsChange]);
 
   // Load note content when note dialog opens
   useEffect(() => {
@@ -10914,19 +10969,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [activeTool, showRegionSelection]);
 
-  // Close eraser dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (eraserDropdownRef.current && !eraserDropdownRef.current.contains(event.target)) {
-        setEraserDropdownOpen(false);
-      }
-    };
 
-    if (eraserDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [eraserDropdownOpen]);
 
   // Input handlers with validation
   const handlePageInputChange = useCallback((e) => {
@@ -11888,19 +11931,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
   }, [selectedModuleId, highlightAnnotations]);
 
-  // Close shapes dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (shapeToolsOpen && !event.target.closest('[data-shapes-dropdown]')) {
-        setShapeToolsOpen(false);
-      }
-    };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [shapeToolsOpen]);
 
   // Space filtering logic - determine which pages should be visible
   const shouldShowPage = useCallback((pageNumber) => {
@@ -12131,142 +12162,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             </button>
           </div>
 
-          <div style={{ width: '1px', height: '24px', background: '#555' }} />
-
-          {/* Zoom Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
-              onClick={zoomOut}
-              className="btn btn-default btn-icon"
-            >
-              <Icon name="minus" size={18} />
-            </button>
-
-            <input
-              ref={zoomInputRef}
-              type="text"
-              data-page-number-input
-              value={zoomInputValue}
-              onChange={handleZoomInputChange}
-              onKeyDown={handleZoomInputKeyDown}
-              onBlur={handleZoomInputBlur}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              aria-label="Zoom percentage"
-              style={{
-                width: '60px',
-                padding: '6px 10px',
-                background: '#444',
-                color: '#ddd',
-                border: '1px solid #555',
-                borderRadius: '5px',
-                fontSize: '14px',
-                fontFamily: FONT_FAMILY,
-                fontWeight: '500',
-                letterSpacing: '-0.2px',
-                textAlign: 'center'
-              }}
-            />
-
-            <span style={{
-              color: '#999',
-              fontSize: '14px',
-              fontFamily: FONT_FAMILY,
-              fontWeight: '400'
-            }}>
-              %
-            </span>
-
-            <button
-              onClick={zoomIn}
-              className="btn btn-default btn-icon"
-            >
-              <Icon name="plus" size={18} />
-            </button>
-
-            <button
-              onClick={resetZoom}
-              className="btn btn-default btn-sm"
-            >
-              Reset
-            </button>
-
-            <div
-              ref={zoomMenuRef}
-              style={{ position: 'relative' }}
-            >
-              <button
-                onClick={toggleZoomMenu}
-                className="btn btn-default btn-sm"
-                aria-haspopup="listbox"
-                aria-expanded={isZoomMenuOpen}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                <Icon name="settings" size={16} />
-                <span>{zoomDropdownLabel}</span>
-                <Icon name={isZoomMenuOpen ? 'chevronUp' : 'chevronDown'} size={14} />
-              </button>
-
-              {isZoomMenuOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 6px)',
-                    right: 0,
-                    background: '#2b2b2b',
-                    border: '1px solid #3a3a3a',
-                    borderRadius: '10px',
-                    boxShadow: '0 18px 36px rgba(0,0,0,0.45)',
-                    minWidth: '220px',
-                    zIndex: 2000,
-                    padding: '6px 0'
-                  }}
-                >
-                  {ZOOM_MODE_OPTIONS.map((option) => {
-                    const isActive = option.id === zoomMode;
-                    return (
-                      <button
-                        key={option.id}
-                        onClick={() => handleZoomModeSelect(option.id)}
-                        className="btn btn-ghost"
-                        style={{
-                          width: '100%',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'flex-start',
-                          padding: '10px 14px',
-                          background: isActive ? '#3a3a3a' : 'transparent',
-                          border: 'none',
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                          gap: '2px'
-                        }}
-                      >
-                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#e0e0e0' }}>
-                          {option.label}
-                          {option.id === ZOOM_MODES.MANUAL && (
-                            <span style={{ marginLeft: '6px', fontWeight: 400, color: '#9a9a9a' }}>
-                              {Math.round((manualZoomScale || 1) * 100)}%
-                            </span>
-                          )}
-                        </span>
-                        <span style={{ fontSize: '12px', color: '#9a9a9a' }}>
-                          {option.description}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
           <div style={{
+            marginLeft: 'auto',
             marginLeft: 'auto',
             fontSize: '13px',
             color: '#999',
@@ -12278,18 +12175,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             gap: '6px'
           }}>
             {pdfFile.name}
-            {hasUnsavedAnnotations && (
-              <span
-                style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  background: '#4A90E2',
-                  display: 'inline-block'
-                }}
-                title="Unsaved changes (Cmd/Ctrl+S to save)"
-              />
-            )}
           </div>
 
           <div style={{ width: '1px', height: '24px', background: '#555' }} />
@@ -12727,34 +12612,209 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           </div>
         </div>
 
+        {/* Secondary Sub-Toolbar (Drawboard Style) */}
+        {activeCategoryDropdown && (
+          <div
+            style={{
+              width: '100%',
+              background: 'transparent',
+              borderBottom: '1px solid #3a3a3a',
+              borderTop: '1px solid #3a3a3a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '8px 0',
+              zIndex: 10
+            }}
+          >
+            {activeCategoryDropdown === 'draw' && (
+              <>
+                {[
+                  { id: 'pen', label: 'Pen', iconName: 'pen' },
+                  { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
+                  { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
+                ].map(t => (
+                  <div key={t.id} style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setActiveTool(t.id)}
+                      className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '6px',
+                        gap: '4px',
+                        minWidth: '40px'
+                      }}
+                      title={t.label}
+                    >
+                      <Icon name={t.iconName} size={20} />
+                    </button>
+
+                    {/* Eraser Mode Popup specific to the Eraser tool in sub-toolbar */}
+                    {t.id === 'eraser' && activeTool === 'eraser' && (
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '100%',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        marginBottom: '6px',
+                        background: '#1e1e1e',
+                        border: '1px solid #444',
+                        borderRadius: '6px',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                        zIndex: 1000,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: '4px',
+                        minWidth: '140px'
+                      }}>
+                        <div style={{
+                          padding: '4px 8px',
+                          fontSize: '10px',
+                          color: '#888',
+                          textTransform: 'uppercase',
+                          fontWeight: 600,
+                          borderBottom: '1px solid #333',
+                          marginBottom: '4px'
+                        }}>
+                          Eraser Type
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEraserMode('partial'); }}
+                          className={`btn ${eraserMode === 'partial' ? 'btn-active' : 'btn-ghost'}`}
+                          style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
+                        >
+                          Partial Erase
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEraserMode('entire'); }}
+                          className={`btn ${eraserMode === 'entire' ? 'btn-active' : 'btn-ghost'}`}
+                          style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
+                        >
+                          Entire Erase
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
+
+            {activeCategoryDropdown === 'shape' && (
+              <>
+                {[
+                  { id: 'rect', label: 'Rectangle', iconName: 'rect' },
+                  { id: 'ellipse', label: 'Ellipse', iconName: 'ellipse' },
+                  { id: 'line', label: 'Line', iconName: 'line' },
+                  { id: 'arrow', label: 'Arrow', iconName: 'arrow' }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveTool(t.id)}
+                    className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '6px',
+                      gap: '4px',
+                      minWidth: '40px'
+                    }}
+                    title={t.label}
+                  >
+                    <Icon name={t.iconName} size={20} />
+                  </button>
+                ))}
+              </>
+            )}
+
+            {activeCategoryDropdown === 'review' && (
+              <>
+                {[
+                  { id: 'text', label: 'Text', iconName: 'text' },
+                  { id: 'note', label: 'Note', iconName: 'note' },
+                  { id: 'underline', label: 'Underline', iconName: 'underline' },
+                  { id: 'strikeout', label: 'Strikeout', iconName: 'strikeout' },
+                  { id: 'squiggly', label: 'Squiggly', iconName: 'squiggly' }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveTool(t.id)}
+                    className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '6px',
+                      gap: '4px',
+                      minWidth: '40px'
+                    }}
+                    title={t.label}
+                  >
+                    <Icon name={t.iconName} size={20} />
+                  </button>
+                ))}
+              </>
+            )}
+
+            {activeCategoryDropdown === 'survey' && (
+              <button
+                onClick={() => setActiveTool('highlight')}
+                className={`btn ${activeTool === 'highlight' ? 'btn-active' : 'btn-ghost'}`}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '6px',
+                  gap: '4px',
+                  minWidth: '40px'
+                }}
+                title="Highlight Area"
+              >
+                <Icon name="highlighter" size={20} />
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Annotation Toolbar Footer */}
         <div
           ref={bottomToolbarRef}
           style={{
             padding: '12px 20px',
-            background: '#333',
+            background: 'transparent',
             borderTop: '1px solid #444',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: '12px',
             fontSize: '14px',
             fontFamily: FONT_FAMILY,
             flexShrink: 0
           }}
         >
-          {/* Annotation Tools */}
+          {/* Left Spacer */}
+          <div style={{ flex: 1 }} />
+
+          {/* Centered Annotation Tools */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', position: 'relative' }}>
-            {/* Basic Tools */}
+            {/* Top Level Tools: Pan & Select */}
             {[
               { id: 'pan', label: 'Pan', iconName: 'pan' },
-              { id: 'pen', label: 'Pen', iconName: 'pen' },
-              { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
-              ...(showSurveyPanel ? [{ id: 'highlight', label: 'Highlight (Rect)', iconName: 'highlighter' }] : []),
-              { id: 'text', label: 'Text', iconName: 'text' }
+              { id: 'select', label: 'Select', iconName: 'cursor' }
             ].map(t => (
-              <div key={t.id} style={{ position: 'relative', display: 'inline-block' }}>
+              <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <button
-                  onClick={() => setActiveTool(t.id)}
+                  onClick={() => {
+                    setActiveTool(t.id);
+                    setActiveCategoryDropdown(null);
+                  }}
                   onMouseEnter={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
                     setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
@@ -12767,255 +12827,290 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               </div>
             ))}
 
-            {/* Select Tool */}
-            <button
-              onClick={() => setActiveTool('select')}
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setTooltip({ visible: true, text: 'Select (L→R: Window, R→L: Crossing)', x: rect.left + rect.width / 2, y: rect.top - 10 });
-              }}
-              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-icon ${activeTool === 'select' ? 'btn-active' : ''}`}
-            >
-              <Icon name="cursor" size={16} />
-            </button>
+            <div style={{ width: '1px', height: '20px', background: '#333', margin: '0 2px' }} />
 
-            {/* Eraser with Dropdown */}
-            <div ref={eraserDropdownRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'stretch' }}>
-              <button
-                onClick={() => setActiveTool('eraser')}
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setTooltip({ visible: true, text: 'Eraser', x: rect.left + rect.width / 2, y: rect.top - 10 });
-                }}
-                onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                className={`btn btn-icon ${activeTool === 'eraser' ? 'btn-active' : ''}`}
-                style={{
-                  borderTopRightRadius: '0',
-                  borderBottomRightRadius: '0',
-                  borderRight: 'none'
-                }}
-              >
-                <Icon name="eraser" size={16} />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEraserDropdownOpen(!eraserDropdownOpen);
-                }}
-                onMouseEnter={(e) => {
-                  if (!eraserDropdownOpen) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setTooltip({ visible: true, text: 'Eraser Options', x: rect.left + rect.width / 2, y: rect.top - 10 });
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (!eraserDropdownOpen) {
-                    setTooltip({ visible: false, text: '', x: 0, y: 0 });
-                  }
-                }}
-                className={`btn btn-icon ${activeTool === 'eraser' ? 'btn-active' : ''}`}
-                style={{
-                  borderTopLeftRadius: '0',
-                  borderBottomLeftRadius: '0',
-                  padding: '0 4px',
-                  minWidth: '20px'
-                }}
-              >
-                <Icon name="chevronDown" size={12} />
-              </button>
-
-              {/* Eraser Dropdown Menu */}
-              {eraserDropdownOpen && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: '100%',
-                  left: 0,
-                  marginBottom: '4px',
-                  background: '#444',
-                  border: '1px solid #555',
-                  borderRadius: '5px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  zIndex: 1000,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minWidth: '160px'
-                }}>
-                  <button
-                    onClick={() => {
-                      setEraserMode('partial');
-                      setEraserDropdownOpen(false);
-                      setActiveTool('eraser');
-                    }}
-                    className={`btn ${eraserMode === 'partial' ? 'btn-active' : 'btn-ghost'}`}
-                    style={{
-                      borderBottom: '1px solid #555',
-                      borderRadius: '0',
-                      textAlign: 'left',
-                      justifyContent: 'flex-start',
-                      padding: '8px 12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    <span style={{ fontSize: '13px' }}>Partial Stroke</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEraserMode('entire');
-                      setEraserDropdownOpen(false);
-                      setActiveTool('eraser');
-                    }}
-                    className={`btn ${eraserMode === 'entire' ? 'btn-active' : 'btn-ghost'}`}
-                    style={{
-                      borderRadius: '0',
-                      textAlign: 'left',
-                      justifyContent: 'flex-start',
-                      padding: '8px 12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    <span style={{ fontSize: '13px' }}>Entire Stroke</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Shape Tools Dropdown */}
-            <div style={{ position: 'relative', display: 'inline-block' }} data-shapes-dropdown>
-              <button
-                onClick={() => setShapeToolsOpen(!shapeToolsOpen)}
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setTooltip({ visible: true, text: 'Shapes', x: rect.left + rect.width / 2, y: rect.top - 10 });
-                }}
-                onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                className={`btn btn-md ${['rect', 'ellipse', 'line', 'arrow', 'underline', 'strikeout', 'squiggly', 'note'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
-              >
-                Shapes
-              </button>
-
-              {/* Dropdown Menu */}
-              {shapeToolsOpen && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: '100%',
-                  left: 0,
-                  marginBottom: '4px',
-                  background: '#444',
-                  border: '1px solid #555',
-                  borderRadius: '5px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  zIndex: 1000,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minWidth: '120px'
-                }}>
-                  {[
-                    { id: 'rect', label: 'Rect', iconName: 'rect' },
-                    { id: 'ellipse', label: 'Ellipse', iconName: 'ellipse' },
-                    { id: 'line', label: 'Line', iconName: 'line' },
-                    { id: 'arrow', label: 'Arrow', iconName: 'arrow' },
-                    { id: 'underline', label: 'Underline', iconName: 'underline' },
-                    { id: 'strikeout', label: 'Strikeout', iconName: 'strikeout' },
-                    { id: 'squiggly', label: 'Squiggly', iconName: 'squiggly' },
-                    { id: 'note', label: 'Note', iconName: 'note' }
-                  ].map(t => (
-                    <button
-                      key={t.id}
-                      onClick={() => {
-                        setActiveTool(t.id);
-                        setShapeToolsOpen(false);
-                      }}
-                      className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
-                      style={{
-                        borderBottom: t.id !== 'note' ? '1px solid #555' : 'none',
-                        borderRadius: '0',
-                        textAlign: 'left',
-                        justifyContent: 'flex-start',
-                        padding: '8px 12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px'
-                      }}
-                    >
-                      <Icon name={t.iconName} size={16} />
-                      <span style={{ fontSize: '13px' }}>{t.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
+            {/* Draw Category */}
+            {/* Draw Category Button */}
+            {/* Draw Category Button */}
             <button
               onClick={() => {
-                if (!activeSpaceId || !shouldShowPage(pageNum)) {
-                  return;
+                const isActive = activeCategoryDropdown === 'draw';
+                setActiveCategoryDropdown(isActive ? null : 'draw');
+                if (!isActive) {
+                  if (!['pen', 'highlighter', 'eraser'].includes(activeTool)) {
+                    setActiveTool('pen');
+                  }
                 }
-                setRegionSelectionPage(pageNum);
-                setShowRegionSelection(true);
               }}
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setTooltip({
-                  visible: true,
-                  text: 'Region Selection',
-                  x: rect.left + rect.width / 2,
-                  y: rect.top - 10
-                });
-              }}
-              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-md ${showRegionSelection ? 'btn-active' : 'btn-default'}`}
-              disabled={!activeSpaceId || !shouldShowPage(pageNum)}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-              title={!activeSpaceId
-                ? 'Activate a space to define regions'
-                : (!shouldShowPage(pageNum)
-                  ? 'Add this page to the active space to define regions'
-                  : 'Define page regions for this space')}
+              className={`btn btn-md ${activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'eraser'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+              title="Draw"
             >
-              <Icon name="rect" size={16} />
-              Regions
+              <Icon name={(['pen', 'highlighter', 'eraser'].includes(activeTool) ? activeTool : 'pen')} size={16} />
             </button>
+
+            {/* Shape Category */}
+            {/* Shape Category Button */}
+            {/* Shape Category Button */}
+            <button
+              onClick={() => {
+                const isActive = activeCategoryDropdown === 'shape';
+                setActiveCategoryDropdown(isActive ? null : 'shape');
+                if (!isActive) {
+                  if (!['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
+                    setActiveTool('rect');
+                  }
+                }
+              }}
+              className={`btn btn-md ${activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+              title="Shape"
+            >
+              <Icon name={(['rect', 'ellipse', 'line', 'arrow'].includes(activeTool) ? activeTool : 'rect')} size={16} />
+            </button>
+
+            {/* Review Category */}
+            {/* Review Category Button */}
+            {/* Review Category Button */}
+            <button
+              onClick={() => {
+                const isActive = activeCategoryDropdown === 'review';
+                setActiveCategoryDropdown(isActive ? null : 'review');
+                if (!isActive) {
+                  if (!['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
+                    setActiveTool('text');
+                  }
+                }
+              }}
+              className={`btn btn-md ${activeCategoryDropdown === 'review' || ['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+              title="Review"
+            >
+              <Icon name={(['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool) ? activeTool : 'text')} size={16} />
+            </button>
+
+            {/* Survey Category Button (Conditional) */}
+            {showSurveyPanel && (
+              <button
+                onClick={() => {
+                  const isActive = activeCategoryDropdown === 'survey';
+                  setActiveCategoryDropdown(isActive ? null : 'survey');
+                  if (!isActive) {
+                    setActiveTool('highlight');
+                  }
+                }}
+                className={`btn btn-md ${activeCategoryDropdown === 'survey' || activeTool === 'highlight' ? 'btn-active' : 'btn-default'}`}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+                title="Survey"
+              >
+                <Icon name="highlighter" size={16} />
+              </button>
+            )}
+
+
+
+            <div style={{ width: '1px', height: '24px', background: '#555' }} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+              <button
+                onClick={() => setShowAnnotationColorPicker(!showAnnotationColorPicker)}
+                className="btn btn-default"
+                style={{
+                  width: '32px',
+                  height: '28px',
+                  padding: 0,
+                  borderRadius: '4px',
+                  border: '1px solid #444',
+                  background: strokeColor,
+                  opacity: strokeOpacity / 100,
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}
+                title="Color"
+              />
+
+              {showAnnotationColorPicker && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: '50%',
+                  marginBottom: '10px',
+                  transform: 'translate(-50%, 0)',
+                  zIndex: 2000
+                }}>
+                  <CompactColorPicker
+                    color={strokeColor}
+                    opacity={strokeOpacity / 100}
+                    onChange={(hex, alpha) => {
+                      setStrokeColor(hex);
+                      setStrokeOpacity(Math.round(alpha * 100));
+                    }}
+                    onClose={() => setShowAnnotationColorPicker(false)}
+                  />
+                </div>
+              )}
+
+              <input
+                type="number"
+                min="1"
+                max="30"
+                value={strokeWidth}
+                onChange={(e) => setStrokeWidth(parseInt(e.target.value) || 1)}
+                style={{
+                  width: '50px',
+                  padding: '6px 8px',
+                  background: '#444',
+                  color: '#ddd',
+                  border: '1px solid #555',
+                  borderRadius: '5px',
+                  fontSize: '13px',
+                  fontFamily: FONT_FAMILY
+                }}
+                title="Width"
+              />
+            </div>
           </div>
 
-          <div style={{ width: '1px', height: '24px', background: '#555' }} />
+          {/* Right Section: Zoom Controls */}
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={zoomOut}
+              className="btn btn-default btn-icon"
+            >
+              <Icon name="minus" size={18} />
+            </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ color: '#aaa', fontSize: '13px' }}>Color</label>
-            <input
-              type="color"
-              value={strokeColor}
-              onChange={(e) => setStrokeColor(e.target.value)}
-              style={{
-                width: '32px',
-                height: '28px',
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer'
-              }}
-            />
-            <label style={{ color: '#aaa', fontSize: '13px' }}>Width</label>
-            <input
-              type="number"
-              min="1"
-              max="30"
-              value={strokeWidth}
-              onChange={(e) => setStrokeWidth(parseInt(e.target.value) || 1)}
-              style={{
-                width: '60px',
-                padding: '6px 8px',
-                background: '#444',
-                color: '#ddd',
-                border: '1px solid #555',
-                borderRadius: '5px',
-                fontSize: '13px',
-                fontFamily: FONT_FAMILY
-              }}
-            />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                ref={zoomInputRef}
+                type="text"
+                data-page-number-input
+                value={zoomInputValue}
+                onChange={handleZoomInputChange}
+                onKeyDown={handleZoomInputKeyDown}
+                onBlur={handleZoomInputBlur}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                aria-label="Zoom percentage"
+                style={{
+                  width: '56px',
+                  padding: '6px 8px',
+                  background: '#444',
+                  color: '#ddd',
+                  border: '1px solid #555',
+                  borderRadius: '5px',
+                  fontSize: '13px',
+                  fontFamily: FONT_FAMILY,
+                  fontWeight: '500',
+                  letterSpacing: '-0.2px',
+                  textAlign: 'center'
+                }}
+              />
+              <span style={{
+                position: 'absolute',
+                right: '4px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: '#999',
+                fontSize: '12px',
+                fontFamily: FONT_FAMILY,
+                fontWeight: '400',
+                pointerEvents: 'none'
+              }}>
+                %
+              </span>
+            </div>
+
+            <button
+              onClick={zoomIn}
+              className="btn btn-default btn-icon"
+            >
+              <Icon name="plus" size={18} />
+            </button>
+
+            <button
+              onClick={resetZoom}
+              className="btn btn-default btn-sm"
+              style={{ fontSize: '13px', padding: '6px 10px' }}
+            >
+              Reset
+            </button>
+
+            <div
+              ref={zoomMenuRef}
+              style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+            >
+              <button
+                onClick={toggleZoomMenu}
+                className="btn btn-default btn-sm"
+                aria-haspopup="listbox"
+                aria-expanded={isZoomMenuOpen}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  whiteSpace: 'nowrap',
+                  fontSize: '13px',
+                  padding: '6px 10px'
+                }}
+              >
+                <span>{zoomDropdownLabel}</span>
+                <Icon name={isZoomMenuOpen ? 'chevronUp' : 'chevronDown'} size={14} />
+              </button>
+
+              {isZoomMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    right: 0,
+                    marginBottom: '6px',
+                    background: '#2b2b2b',
+                    border: '1px solid #3a3a3a',
+                    borderRadius: '10px',
+                    boxShadow: '0 18px 36px rgba(0,0,0,0.45)',
+                    minWidth: '220px',
+                    zIndex: 2000,
+                    padding: '6px 0'
+                  }}
+                >
+                  {ZOOM_MODE_OPTIONS.map((option) => {
+                    const isActive = option.id === zoomMode;
+                    return (
+                      <button
+                        key={option.id}
+                        onClick={() => handleZoomModeSelect(option.id)}
+                        className="btn btn-ghost"
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-start',
+                          padding: '10px 14px',
+                          background: isActive ? '#3a3a3a' : 'transparent',
+                          border: 'none',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          gap: '2px'
+                        }}
+                      >
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#e0e0e0' }}>
+                          {option.label}
+                          {option.id === ZOOM_MODES.MANUAL && (
+                            <span style={{ marginLeft: '6px', fontWeight: 400, color: '#9a9a9a' }}>
+                              {Math.round((manualZoomScale || 1) * 100)}%
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#9a9a9a' }}>
+                          {option.description}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -13029,6 +13124,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             fontSize: '12px',
             color: '#999',
             display: 'flex',
+            alignItems: 'center',
             gap: '20px',
             fontFamily: FONT_FAMILY,
             fontWeight: '400',
@@ -14757,11 +14853,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   const isCategorySelected = selectedCategories[category.id] === true;
                                   const isCategorySelectModeActive = categorySelectModeActive;
                                   const isCategoryActive = (isCategorySelectModeActive && isCategorySelected) || selectedCategoryId === category.id;
-                                  const buttonBackground = isCategoryActive ? '#4A90E2' : '#333';
+                                  const buttonBackground = 'transparent';
                                   const borderColor = isCategoryActive ? '#4A90E2' : '#444';
                                   const baseBorder = `1px solid ${borderColor}`;
-                                  const buttonTextColor = isCategoryActive ? '#fff' : '#ddd';
-                                  const buttonSubTextColor = isCategoryActive ? '#ddd' : '#999';
+                                  const buttonTextColor = isCategoryActive ? '#4A90E2' : '#ddd';
+                                  const buttonSubTextColor = isCategoryActive ? '#4A90E2' : '#999';
                                   const buttonLeftBorder = (copyModeActive || isCategorySelectModeActive) ? 'none' : baseBorder;
                                   const buttonRightBorder = highlightCount > 0 ? 'none' : baseBorder;
 
@@ -14820,20 +14916,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                               alignItems: 'center',
                                               gap: '12px',
                                               padding: '12px 16px',
-                                              background: isCategorySelected ? '#4A90E2' : '#3A3A3A',
+                                              background: 'transparent',
                                               borderRadius: '6px',
                                               cursor: 'pointer',
                                               flex: 1,
-                                              marginBottom: '8px'
+                                              marginBottom: '8px',
+                                              color: isCategorySelected ? '#4A90E2' : '#DDD',
+                                              border: `1px solid ${isCategorySelected ? '#4A90E2' : '#444'}`
                                             }}
                                             onMouseEnter={(e) => {
                                               if (!isCategorySelected) {
-                                                e.currentTarget.style.background = '#444';
+                                                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
                                               }
                                             }}
                                             onMouseLeave={(e) => {
                                               if (!isCategorySelected) {
-                                                e.currentTarget.style.background = '#3A3A3A';
+                                                e.currentTarget.style.background = 'transparent';
                                               }
                                             }}
                                           >
@@ -14917,7 +15015,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                 }}
                                                 style={{
                                                   padding: '2px 12px',
-                                                  background: isArrowActive ? '#4A90E2' : '#555',
+                                                  background: 'transparent',
                                                   borderTop: baseBorder,
                                                   borderRight: baseBorder,
                                                   borderBottom: baseBorder,
@@ -14945,7 +15043,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                 >
                                                   <path
                                                     d="M6 9L12 15L18 9"
-                                                    stroke="#fff"
+                                                    stroke={isArrowActive ? "#4A90E2" : "#fff"}
                                                     strokeWidth="2.5"
                                                     strokeLinecap="round"
                                                     strokeLinejoin="round"
@@ -14962,7 +15060,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         <div style={{
                                           marginTop: '8px',
                                           padding: '8px',
-                                          background: '#1b1b1b',
+                                          background: 'transparent',
                                           border: '1px solid #444',
                                           borderRadius: '6px'
                                         }}>
@@ -15165,7 +15263,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                             return (
                                               <div key={highlight.id} id={`highlight-item-${highlight.id}`} style={{
                                                 marginBottom: '8px',
-                                                background: '#2a2a2a',
+                                                background: 'transparent',
                                                 border: '1px solid #444',
                                                 borderRadius: '6px',
                                                 overflow: 'hidden'
@@ -16360,7 +16458,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               textAlign: 'left',
                               justifyContent: 'flex-start',
                               padding: '12px 16px',
-                              background: '#333',
+                              background: 'transparent',
                               border: '1px solid #444'
                             }}
                           >
@@ -18670,6 +18768,29 @@ export default function App() {
     }));
   }, [activeTabId]);
 
+  // Memoized callback to track unsaved annotations - uses selectedPDF to find the correct tab
+  const handleUnsavedAnnotationsChange = useCallback((hasUnsaved) => {
+    setTabs(prev => {
+      const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
+      if (!pdfTab) return prev;
+      return prev.map(tab =>
+        tab.id === pdfTab.id ? { ...tab, hasUnsavedAnnotations: hasUnsaved } : tab
+      );
+    });
+  }, [selectedPDF]);
+
+  // Memoized callback to update PDF file
+  const handleUpdatePDFFile = useCallback((newFile) => {
+    setTabs(prev => {
+      const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
+      if (!pdfTab) return prev;
+      return prev.map(tab =>
+        tab.id === pdfTab.id ? { ...tab, file: newFile } : tab
+      );
+    });
+    setSelectedPDF(newFile);
+  }, [selectedPDF]);
+
   const handleTabClose = (tabId) => {
     // Prevent closing the home tab
     if (tabId === HOME_TAB_ID) return;
@@ -18820,12 +18941,8 @@ export default function App() {
                 onBack={handleBack}
                 tabId={viewerTabId}
                 onPageDrop={handlePageDrop}
-                onUpdatePDFFile={(newFile) => {
-                  setTabs(prev => prev.map(tab =>
-                    tab.id === viewerTabId ? { ...tab, file: newFile } : tab
-                  ));
-                  setSelectedPDF(newFile);
-                }}
+                onUpdatePDFFile={handleUpdatePDFFile}
+                onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
                 onRequestCreateTemplate={handleCreateTemplateRequest}
                 initialViewState={viewerViewState}
                 onViewStateChange={handleViewStateChange}

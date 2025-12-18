@@ -216,12 +216,29 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
                   </div>
                 )}
 
-                {/* Tab icon - home icon for home tab, document icon for PDFs */}
-                <Icon 
-                  name={isHome ? "home" : "document"} 
-                  size={14} 
-                  style={{ marginRight: '8px', flexShrink: 0 }} 
-                />
+                {/* Tab icon - home icon for home tab, blue circle for PDFs with unsaved changes */}
+                {isHome ? (
+                  <Icon 
+                    name="home" 
+                    size={14} 
+                    style={{ marginRight: '8px', flexShrink: 0 }} 
+                  />
+                ) : tab.hasUnsavedAnnotations ? (
+                  <span
+                    style={{
+                      width: '5px',
+                      height: '5px',
+                      borderRadius: '50%',
+                      background: '#4A90E2',
+                      display: 'inline-block',
+                      marginRight: '8px',
+                      flexShrink: 0
+                    }}
+                    title="Unsaved changes (Cmd/Ctrl+S to save)"
+                  />
+                ) : (
+                  <div style={{ width: '14px', marginRight: '8px', flexShrink: 0 }} />
+                )}
 
                 {/* Tab title */}
                 <span

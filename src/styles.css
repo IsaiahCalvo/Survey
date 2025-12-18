@@ -106,13 +106,13 @@
 
 /* Button Variants */
 .btn-default {
-  background: #3A3A3A;
+  background: transparent;
   color: #DDD;
   border: 1px solid #444;
 }
 
 .btn-default:hover:not(:disabled) {
-  background: #444;
+  background: rgba(255, 255, 255, 0.05);
   border-color: #555;
 }
 
@@ -175,14 +175,14 @@
   padding: 6px;
   min-width: 28px;
   min-height: 28px;
-  background: #3A3A3A;
+  background: transparent;
   color: #DDD;
   border: 1px solid #444;
   font-size: 14px;
 }
 
 .btn-icon:hover:not(:disabled) {
-  background: #444;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .btn-icon-sm {
@@ -210,9 +210,9 @@
 /* Active state */
 .btn-active,
 .btn-active:hover {
-  background: #4A90E2;
-  color: white;
-  border-color: #4A90E2;
+  background: transparent;
+  color: #4A90E2;
+  border-color: transparent;
 }
 
 /* Action Card Buttons */
