@@ -12325,8 +12325,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             </button>
           </div>
 
-          <div style={{ width: '1px', height: '16px', background: '#555', marginLeft: 'auto' }} />
-
           {/* Survey Button */}
           <button
             onClick={() => {
@@ -12339,10 +12337,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setSelectedModuleId(null);
               }
             }}
-            className={`btn btn-sm ${showSurveyPanel ? 'btn-active' : 'btn-default'}`}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            className={`btn btn-md ${showSurveyPanel ? 'btn-active' : 'btn-default'}`}
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              fontSize: '14px',
+              fontWeight: '600',
+              padding: '4px 10px',
+              marginLeft: 'auto',
+              transition: 'all 0.2s ease',
+              background: showSurveyPanel ? 'rgba(74, 144, 226, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+              border: showSurveyPanel ? '1px solid #4A90E2' : '1px solid #555',
+              color: showSurveyPanel ? '#4A90E2' : '#FFF'
+            }}
           >
-            <Icon name="survey" size={16} />
+            <Icon name="survey" size={18} />
             Survey
           </button>
         </div>
@@ -12765,6 +12775,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           <div
             style={{
               width: '100%',
+              height: '52px',
               background: 'transparent',
               borderBottom: '1px solid #3a3a3a',
               borderTop: '1px solid #3a3a3a',
@@ -12772,8 +12783,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
-              padding: '8px 0',
-              zIndex: 10
+              zIndex: 10,
+              boxSizing: 'border-box'
             }}
           >
             {activeCategoryDropdown === 'draw' && (
@@ -12899,7 +12910,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
                     style={{
                       display: 'flex',
-                      flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
                       padding: '6px',
@@ -12929,7 +12939,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
                     style={{
                       display: 'flex',
-                      flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
                       padding: '6px',
@@ -12950,7 +12959,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 className={`btn ${activeTool === 'highlight' ? 'btn-active' : 'btn-ghost'}`}
                 style={{
                   display: 'flex',
-                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
                   padding: '6px',
