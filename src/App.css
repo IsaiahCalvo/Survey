@@ -95,6 +95,7 @@ textarea {
   height: 100vh;
   overflow: hidden;
   font-family: var(--font-primary);
+  transform: scaleX(-1);
 }
 
 /* App container */

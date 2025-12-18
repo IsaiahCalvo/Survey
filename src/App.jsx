@@ -12811,7 +12811,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         justifyContent: 'center',
                         padding: '6px',
                         gap: '4px',
-                        minWidth: '40px'
+                        minWidth: '40px',
+                        transform: 'matrix(1, 0, 0, 1, 0, -0.298866) rotate(630deg)'
                       }}
                       title={t.label}
                     >
@@ -12914,7 +12915,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       justifyContent: 'center',
                       padding: '6px',
                       gap: '4px',
-                      minWidth: '40px'
+                      minWidth: '40px',
+                      transform: 'matrix(1, 0, 0, 1, 0, -0.298866) rotate(630deg)'
                     }}
                     title={t.label}
                   >
@@ -12943,7 +12945,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       justifyContent: 'center',
                       padding: '6px',
                       gap: '4px',
-                      minWidth: '40px'
+                      minWidth: '40px',
+                      transform: 'matrix(1, 0, 0, 1, 0, -0.298866) rotate(630deg)'
                     }}
                     title={t.label}
                   >
@@ -12963,7 +12966,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   justifyContent: 'center',
                   padding: '6px',
                   gap: '4px',
-                  minWidth: '40px'
+                  minWidth: '40px',
+                  transform: 'matrix(1, 0, 0, 1, 0, -0.298866) rotate(630deg)'
                 }}
                 title="Highlight Area"
               >
@@ -13179,45 +13183,80 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               <Icon name="minus" size={18} />
             </button>
 
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <input
-                ref={zoomInputRef}
-                type="text"
-                data-page-number-input
-                value={zoomInputValue}
-                onChange={handleZoomInputChange}
-                onKeyDown={handleZoomInputKeyDown}
-                onBlur={handleZoomInputBlur}
-                inputMode="numeric"
-                pattern="[0-9]*"
-                aria-label="Zoom percentage"
-                style={{
-                  width: '56px',
-                  padding: '6px 8px',
-                  background: '#444',
-                  color: '#ddd',
-                  border: '1px solid #555',
-                  borderRadius: '5px',
-                  fontSize: '13px',
+            <div 
+              onClick={() => zoomInputRef.current?.focus()}
+              style={{ 
+                position: 'relative', 
+                display: 'flex', 
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '56px',
+                height: '29px',
+                background: '#444',
+                border: '1px solid #555',
+                borderRadius: '5px',
+                padding: '0 4px',
+                boxSizing: 'border-box',
+                cursor: 'text'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ display: 'inline-grid', alignItems: 'center' }}>
+                  <span style={{ 
+                    gridArea: '1/1', 
+                    visibility: 'hidden', 
+                    fontSize: '13px', 
+                    fontFamily: FONT_FAMILY, 
+                    fontWeight: '500',
+                    letterSpacing: '-0.2px',
+                    whiteSpace: 'pre',
+                    padding: '0 1px'
+                  }}>
+                    {zoomInputValue || ' '}
+                  </span>
+                  <input
+                    ref={zoomInputRef}
+                    type="text"
+                    data-page-number-input
+                    value={zoomInputValue}
+                    onChange={handleZoomInputChange}
+                    onKeyDown={handleZoomInputKeyDown}
+                    onBlur={handleZoomInputBlur}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    aria-label="Zoom percentage"
+                    style={{
+                      gridArea: '1/1',
+                      width: '100%',
+                      background: 'transparent',
+                      color: '#ddd',
+                      border: 'none',
+                      padding: 0,
+                      margin: 0,
+                      fontSize: '13px',
+                      fontFamily: FONT_FAMILY,
+                      fontWeight: '500',
+                      letterSpacing: '-0.2px',
+                      textAlign: 'center',
+                      outline: 'none',
+                      minWidth: '1ch'
+                    }}
+                  />
+                </div>
+                <span style={{
+                  color: '#999',
+                  fontSize: '12px',
                   fontFamily: FONT_FAMILY,
-                  fontWeight: '500',
-                  letterSpacing: '-0.2px',
-                  textAlign: 'center'
-                }}
-              />
-              <span style={{
-                position: 'absolute',
-                right: '4px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: '#999',
-                fontSize: '12px',
-                fontFamily: FONT_FAMILY,
-                fontWeight: '400',
-                pointerEvents: 'none'
-              }}>
-                %
-              </span>
+                  fontWeight: '400',
+                  marginLeft: '1px',
+                  pointerEvents: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  height: '100%'
+                }}>
+                  %
+                </span>
+              </div>
             </div>
 
             <button
