@@ -42,7 +42,7 @@ import { AccountSettings } from './components/AccountSettings';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import BallInCourtIndicator from './components/BallInCourtIndicator';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
-import { useProjects, useDocuments, useTemplates, useStorage } from './hooks/useDatabase';
+import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { supabase } from './supabaseClient';
 
 // Set up the PDF.js worker
@@ -4383,7 +4383,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }}>
       {/* Sidebar */}
       <div style={{
-        width: '240px',
+        width: '200px',
         background: '#1E1E1E',
         color: '#FFFFFF',
         display: 'flex',
@@ -4394,9 +4394,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         zIndex: 1
       }}>
         <div style={{
-          padding: '24px',
+          padding: '0 16px',
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          height: '72px',
+          height: '56px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -4407,7 +4407,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           zIndex: 2
         }}>
           <h2 style={{
-            fontSize: '24px',
+            fontSize: '18px',
             fontWeight: '600',
             letterSpacing: '-0.5px',
             margin: 0,
@@ -4422,7 +4422,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           <div
             onClick={() => handleSectionNavClick('documents')}
             style={{
-              padding: '12px 24px',
+              padding: '10px 16px',
               background: activeSection === 'documents' ? 'rgba(255,255,255,0.1)' : 'transparent',
               borderLeft: activeSection === 'documents' ? '3px solid #4A90E2' : '3px solid transparent',
               cursor: 'pointer',
@@ -4440,7 +4440,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           <div
             onClick={() => handleSectionNavClick('projects', { resetProject: true })}
             style={{
-              padding: '12px 24px',
+              padding: '10px 16px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -4461,7 +4461,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           <div
             onClick={() => handleSectionNavClick('templates', { resetProject: true, resetTemplate: true })}
             style={{
-              padding: '12px 24px',
+              padding: '10px 16px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -4484,7 +4484,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         <div
           onClick={() => setShowAccountSettings(true)}
           style={{
-            padding: '12px 24px',
+            padding: '10px 16px',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
@@ -4501,7 +4501,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         </div>
 
         <div style={{
-          padding: '16px 24px',
+          padding: '12px 16px',
           borderTop: '1px solid rgba(255,255,255,0.1)',
           position: 'relative'
         }} ref={userDropdownRef}>
@@ -4656,12 +4656,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         {/* Header */}
         <div style={{
           background: '#252525',
-          padding: '20px 32px',
+          padding: '0 32px',
           borderBottom: '1px solid #3A3A3A',
           display: 'flex',
           alignItems: 'center',
           gap: '24px',
-          height: '72px',
+          height: '56px',
           boxSizing: 'border-box',
           boxShadow: 'none',
           position: 'relative',
@@ -4670,7 +4670,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           zIndex: 2
         }}>
           <h1 style={{
-            fontSize: '24px',
+            fontSize: '18px',
             fontWeight: '600',
             margin: 0,
             letterSpacing: '-0.5px',
@@ -7700,6 +7700,91 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [pdfId, setPdfId] = useState(null);
   const [items, setItems] = useState({}); // { [itemId]: Item }
   const [annotations, setAnnotations] = useState({}); // { [annotationId]: Annotation }
+
+  // Per-document, per-tool preferences hook
+  const {
+    toolPreferences,
+    updateToolPreference,
+    getToolPreference,
+  } = useDocumentToolPreferences(pdfId, pdfFile?.id);
+
+  // Input field state for stroke width (fixes "Sticky 1" bug)
+  // Separate state allows input to be empty while typing
+  const [strokeWidthInputValue, setStrokeWidthInputValue] = useState(String(strokeWidth));
+  const [isStrokeWidthFocused, setIsStrokeWidthFocused] = useState(false);
+
+  // Sync tool properties when activeTool or pdfId changes (load per-tool preferences)
+  useEffect(() => {
+    if (!pdfId) return;
+    const toolPrefs = getToolPreference(activeTool);
+    if (toolPrefs.strokeColor !== undefined) setStrokeColor(toolPrefs.strokeColor);
+    if (toolPrefs.strokeOpacity !== undefined) setStrokeOpacity(toolPrefs.strokeOpacity);
+    if (toolPrefs.fillColor !== undefined) setFillColor(toolPrefs.fillColor);
+    if (toolPrefs.fillOpacity !== undefined) setFillOpacity(toolPrefs.fillOpacity);
+    if (toolPrefs.strokeWidth !== undefined) {
+      setStrokeWidth(toolPrefs.strokeWidth);
+      if (!isStrokeWidthFocused) {
+        setStrokeWidthInputValue(String(toolPrefs.strokeWidth));
+      }
+    }
+  }, [activeTool, pdfId, toolPreferences]);
+
+  // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
+  useEffect(() => {
+    if (!isStrokeWidthFocused) {
+      setStrokeWidthInputValue(String(strokeWidth));
+    }
+  }, [strokeWidth, isStrokeWidthFocused]);
+
+  // Handlers to update both local state AND persist to tool preferences
+  const handleStrokeColorChange = useCallback((color) => {
+    setStrokeColor(color);
+    if (pdfId) updateToolPreference(activeTool, { strokeColor: color });
+  }, [activeTool, pdfId, updateToolPreference]);
+
+  const handleStrokeOpacityChange = useCallback((opacity) => {
+    setStrokeOpacity(opacity);
+    if (pdfId) updateToolPreference(activeTool, { strokeOpacity: opacity });
+  }, [activeTool, pdfId, updateToolPreference]);
+
+  const handleFillColorChange = useCallback((color) => {
+    setFillColor(color);
+    if (pdfId) updateToolPreference(activeTool, { fillColor: color });
+  }, [activeTool, pdfId, updateToolPreference]);
+
+  const handleFillOpacityChange = useCallback((opacity) => {
+    setFillOpacity(opacity);
+    if (pdfId) updateToolPreference(activeTool, { fillOpacity: opacity });
+  }, [activeTool, pdfId, updateToolPreference]);
+
+  const handleStrokeWidthChange = useCallback((width) => {
+    setStrokeWidth(width);
+    if (pdfId) updateToolPreference(activeTool, { strokeWidth: width });
+  }, [activeTool, pdfId, updateToolPreference]);
+
+  // Handle width input changes (allows empty string while typing)
+  const handleStrokeWidthInputChange = useCallback((e) => {
+    const value = e.target.value;
+    // Allow empty string or valid numbers
+    if (value === '' || /^\d+$/.test(value)) {
+      setStrokeWidthInputValue(value);
+    }
+  }, []);
+
+  // Commit width value on blur (clamp to valid range)
+  const handleStrokeWidthInputBlur = useCallback(() => {
+    setIsStrokeWidthFocused(false);
+    const parsed = parseInt(strokeWidthInputValue, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      // Reset to minimum if empty or invalid
+      setStrokeWidthInputValue('1');
+      handleStrokeWidthChange(1);
+    } else {
+      const clamped = Math.min(Math.max(parsed, 1), 30);
+      setStrokeWidthInputValue(String(clamped));
+      handleStrokeWidthChange(clamped);
+    }
+  }, [strokeWidthInputValue, handleStrokeWidthChange]);
 
   // Item copy state (was transfer)
   const [transferState, setTransferState] = useState(null); // { mode: 'select'|'prompt'|'checklist', sourceSpaceId, items, destSpaceId }
@@ -12149,30 +12234,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         <div
           ref={topToolbarRef}
           style={{
-            padding: '12px 20px',
-            background: '#333',
-            borderBottom: '1px solid #444',
+            padding: '4px 12px',
+            background: '#2d2d2d',
+            borderBottom: '1px solid #3d3d3d',
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
-            fontSize: '14px',
+            gap: '8px',
+            fontSize: '13px',
             fontFamily: FONT_FAMILY,
             flexShrink: 0
           }}
         >
           <button
             onClick={onBack}
-            className="btn btn-default btn-md"
+            className="btn btn-default btn-sm"
           >
             <Icon name="arrowLeft" size={14} style={{ marginRight: '4px' }} /> Back
           </button>
 
-          <div style={{ width: '1px', height: '24px', background: '#555' }} />
+          <div style={{ width: '1px', height: '16px', background: '#555' }} />
 
           {/* View Mode Toggle */}
           <button
             onClick={toggleScrollMode}
-            className="btn btn-default btn-md"
+            className="btn btn-default btn-sm"
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
             <Icon name={scrollMode === 'continuous' ? 'pages' : 'pageSingle'} size={16} />
@@ -12180,13 +12265,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           </button>
 
           {/* Page Navigation */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               onClick={goToPreviousPage}
               disabled={pageNum <= 1}
-              className="btn btn-default btn-icon"
+              className="btn btn-default btn-icon-sm"
             >
-              <Icon name="chevronLeft" size={18} />
+              <Icon name="chevronLeft" size={16} />
             </button>
 
             <input
@@ -12201,13 +12286,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               pattern="[0-9]*"
               aria-label="Current page"
               style={{
-                width: '56px',
-                padding: '6px 10px',
+                width: '48px',
+                padding: '3px 8px',
                 background: '#444',
                 color: '#ddd',
                 border: '1px solid #555',
                 borderRadius: '5px',
-                fontSize: '14px',
+                fontSize: '13px',
                 fontFamily: FONT_FAMILY,
                 fontWeight: '500',
                 letterSpacing: '-0.2px',
@@ -12217,7 +12302,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
             <span style={{
               color: '#999',
-              fontSize: '14px',
+              fontSize: '13px',
               fontFamily: FONT_FAMILY,
               fontWeight: '400'
             }}>
@@ -12227,13 +12312,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             <button
               onClick={goToNextPage}
               disabled={pageNum >= numPages}
-              className="btn btn-default btn-icon"
+              className="btn btn-default btn-icon-sm"
             >
-              <Icon name="chevronRight" size={18} />
+              <Icon name="chevronRight" size={16} />
             </button>
           </div>
 
-          <div style={{ width: '1px', height: '24px', background: '#555', marginLeft: 'auto' }} />
+          <div style={{ width: '1px', height: '16px', background: '#555', marginLeft: 'auto' }} />
 
           {/* Survey Button */}
           <button
@@ -12247,7 +12332,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setSelectedModuleId(null);
               }
             }}
-            className={`btn btn-md ${showSurveyPanel ? 'btn-active' : 'btn-default'}`}
+            className={`btn btn-sm ${showSurveyPanel ? 'btn-active' : 'btn-default'}`}
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
             <Icon name="survey" size={16} />
@@ -12487,7 +12572,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 scale={scale}
                                 tool={activeTool}
                                 strokeColor={strokeColor}
-                                strokeWidth={strokeWidth}
+                                strokeWidth={Number(strokeWidth) || 3}
                                 annotations={annotationsByPage[pageNumber]}
                                 onSaveAnnotations={handleSaveAnnotations}
                                 newHighlights={newHighlightsByPage[pageNumber]}
@@ -12613,7 +12698,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             scale={scale}
                             tool={activeTool}
                             strokeColor={strokeColor}
-                            strokeWidth={strokeWidth}
+                            strokeWidth={Number(strokeWidth) || 3}
                             annotations={annotationsByPage[pageNum]}
                             onSaveAnnotations={handleSaveAnnotations}
                             newHighlights={newHighlightsByPage[pageNum]}
@@ -13032,8 +13117,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     color={strokeColor}
                     opacity={strokeOpacity / 100}
                     onChange={(hex, alpha) => {
-                      setStrokeColor(hex);
-                      setStrokeOpacity(Math.round(alpha * 100));
+                      handleStrokeColorChange(hex);
+                      handleStrokeOpacityChange(Math.round(alpha * 100));
                     }}
                     onClose={() => setShowAnnotationColorPicker(false)}
                   />
@@ -13041,21 +13126,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               )}
 
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 className="no-spin-buttons"
-                min="1"
-                max="30"
-                value={strokeWidth}
-                onChange={(e) => setStrokeWidth(parseInt(e.target.value) || 1)}
+                value={strokeWidthInputValue}
+                onChange={handleStrokeWidthInputChange}
+                onFocus={() => setIsStrokeWidthFocused(true)}
+                onBlur={handleStrokeWidthInputBlur}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.target.blur();
+                  }
+                }}
                 style={{
-                  width: '50px',
-                  padding: '6px 8px',
-                  background: '#444',
-                  color: '#ddd',
-                  border: '1px solid transparent',
-                  borderRadius: '5px',
-                  fontSize: '13px',
-                  fontFamily: FONT_FAMILY
+                  width: "40px",
+                  padding: "6px 4px",
+                  background: "#444",
+                  color: "#ddd",
+                  border: "1px solid transparent",
+                  borderRadius: "5px",
+                  fontSize: "13px",
+                  fontFamily: FONT_FAMILY,
+                  textAlign: "center"
                 }}
                 title="Width"
               />
