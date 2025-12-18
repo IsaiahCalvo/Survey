@@ -12233,22 +12233,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             </button>
           </div>
 
-          <div style={{
-            marginLeft: 'auto',
-            marginLeft: 'auto',
-            fontSize: '13px',
-            color: '#999',
-            fontFamily: FONT_FAMILY,
-            fontWeight: '400',
-            letterSpacing: '-0.1px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}>
-            {pdfFile.name}
-          </div>
-
-          <div style={{ width: '1px', height: '24px', background: '#555' }} />
+          <div style={{ width: '1px', height: '24px', background: '#555', marginLeft: 'auto' }} />
 
           {/* Survey Button */}
           <button
@@ -12905,10 +12890,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           }}
         >
           {/* Left Spacer */}
-          <div style={{ flex: 1 }} />
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }} />
 
           {/* Centered Annotation Tools */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', alignContent: 'center', gap: '6px', flexWrap: 'wrap', position: 'relative' }}>
             {/* Top Level Tools: Pan & Select */}
             {[
               { id: 'pan', label: 'Pan', iconName: 'pan' },
