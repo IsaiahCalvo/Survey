@@ -7787,7 +7787,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setStrokeWidthInputValue('1');
       handleStrokeWidthChange(1);
     } else {
-      const clamped = Math.min(Math.max(parsed, 1), 30);
+      const clamped = Math.min(Math.max(parsed, 1), 50);
       setStrokeWidthInputValue(String(clamped));
       handleStrokeWidthChange(clamped);
     }
