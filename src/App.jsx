@@ -7542,6 +7542,48 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef(null);
 
+  const [lastDrawTool, setLastDrawTool] = useState(() => {
+    try {
+      return localStorage.getItem('lastDrawTool') || 'pen';
+    } catch (e) {
+      return 'pen';
+    }
+  });
+  const [lastShapeTool, setLastShapeTool] = useState(() => {
+    try {
+      return localStorage.getItem('lastShapeTool') || 'rect';
+    } catch (e) {
+      return 'rect';
+    }
+  });
+  const [lastReviewTool, setLastReviewTool] = useState(() => {
+    try {
+      return localStorage.getItem('lastReviewTool') || 'text';
+    } catch (e) {
+      return 'text';
+    }
+  });
+
+  // Track last used tool for each category to keep icons persistent
+  useEffect(() => {
+    if (['pen', 'highlighter', 'eraser'].includes(activeTool)) {
+      setLastDrawTool(activeTool);
+      try {
+        localStorage.setItem('lastDrawTool', activeTool);
+      } catch (e) {}
+    } else if (['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
+      setLastShapeTool(activeTool);
+      try {
+        localStorage.setItem('lastShapeTool', activeTool);
+      } catch (e) {}
+    } else if (['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
+      setLastReviewTool(activeTool);
+      try {
+        localStorage.setItem('lastReviewTool', activeTool);
+      } catch (e) {}
+    }
+  }, [activeTool]);
+
   // Close eraser menu when tool changes
   useEffect(() => {
     if (activeTool !== 'eraser') {
@@ -12901,7 +12943,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setActiveCategoryDropdown(isActive ? null : 'draw');
                 if (!isActive) {
                   if (!['pen', 'highlighter', 'eraser'].includes(activeTool)) {
-                    setActiveTool('pen');
+                    setActiveTool(lastDrawTool);
                   }
                 }
               }}
@@ -12909,7 +12951,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Draw"
             >
-              <Icon name={(['pen', 'highlighter', 'eraser'].includes(activeTool) ? activeTool : 'pen')} size={16} />
+              <Icon name={lastDrawTool} size={16} />
             </button>
 
             {/* Shape Category */}
@@ -12921,7 +12963,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setActiveCategoryDropdown(isActive ? null : 'shape');
                 if (!isActive) {
                   if (!['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
-                    setActiveTool('rect');
+                    setActiveTool(lastShapeTool);
                   }
                 }
               }}
@@ -12929,7 +12971,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Shape"
             >
-              <Icon name={(['rect', 'ellipse', 'line', 'arrow'].includes(activeTool) ? activeTool : 'rect')} size={16} />
+              <Icon name={lastShapeTool} size={16} />
             </button>
 
             {/* Review Category */}
@@ -12941,7 +12983,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setActiveCategoryDropdown(isActive ? null : 'review');
                 if (!isActive) {
                   if (!['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
-                    setActiveTool('text');
+                    setActiveTool(lastReviewTool);
                   }
                 }
               }}
@@ -12949,7 +12991,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Review"
             >
-              <Icon name={(['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool) ? activeTool : 'text')} size={16} />
+              <Icon name={lastReviewTool} size={16} />
             </button>
 
             {/* Survey Category Button (Conditional) */}
