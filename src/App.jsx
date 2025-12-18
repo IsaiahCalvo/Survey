@@ -12951,7 +12951,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Draw"
             >
-              <Icon name={lastDrawTool} size={16} />
+              <Icon name="pen" size={16} />
             </button>
 
             {/* Shape Category */}
@@ -12971,7 +12971,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Shape"
             >
-              <Icon name={lastShapeTool} size={16} />
+              <Icon name="rect" size={16} />
             </button>
 
             {/* Review Category */}
@@ -12991,7 +12991,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Review"
             >
-              <Icon name={lastReviewTool} size={16} />
+              <Icon name="text" size={16} />
             </button>
 
             {/* Survey Category Button (Conditional) */}
