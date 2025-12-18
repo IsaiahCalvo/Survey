@@ -12932,7 +12932,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               </div>
             ))}
 
-            <div style={{ width: '1px', height: '20px', background: '#333', margin: '0 2px' }} />
+            <div style={{ width: '1px', height: '24px', background: 'rgb(85, 85, 85)', margin: '0 2px' }} />
 
             {/* Draw Category */}
             {/* Draw Category Button */}
