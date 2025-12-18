@@ -108,12 +108,12 @@
 .btn-default {
   background: transparent;
   color: #DDD;
-  border: 1px solid #444;
+  border: 1px solid transparent;
 }
 
 .btn-default:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.05);
-  border-color: #555;
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .btn-primary {
@@ -130,7 +130,7 @@
 .btn-secondary {
   background: #2D2D2D;
   color: #C8C8C8;
-  border: 1px solid #3A3A3A;
+  border: 1px solid transparent;
 }
 
 .btn-secondary:hover:not(:disabled) {
@@ -163,12 +163,12 @@
 .btn-ghost {
   background: transparent;
   color: #DDD;
-  border: 1px solid #3A3A3A;
+  border: 1px solid transparent;
 }
 
 .btn-ghost:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.05);
-  border-color: #555;
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .btn-icon {
@@ -177,7 +177,7 @@
   min-height: 28px;
   background: transparent;
   color: #DDD;
-  border: 1px solid #444;
+  border: 1px solid transparent;
   font-size: 14px;
 }
 
@@ -251,4 +251,15 @@
   font-size: 13px;
   font-weight: 500;
   color: #FFFFFF;
+}
+
+/* Remove spin buttons from number inputs */
+.no-spin-buttons::-webkit-outer-spin-button,
+.no-spin-buttons::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.no-spin-buttons[type=number] {
+  -moz-appearance: textfield;
 }

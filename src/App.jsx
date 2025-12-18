@@ -12662,7 +12662,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         transform: 'translateX(-50%)',
                         marginBottom: '6px',
                         background: '#1e1e1e',
-                        border: '1px solid #444',
+                        border: '1px solid transparent',
                         borderRadius: '6px',
                         boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                         zIndex: 1000,
@@ -12920,7 +12920,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   height: '28px',
                   padding: 0,
                   borderRadius: '4px',
-                  border: '1px solid #444',
+                  border: '1px solid transparent',
                   background: strokeColor,
                   opacity: strokeOpacity / 100,
                   position: 'relative',
@@ -12952,6 +12952,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
               <input
                 type="number"
+                className="no-spin-buttons"
                 min="1"
                 max="30"
                 value={strokeWidth}
@@ -12961,7 +12962,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   padding: '6px 8px',
                   background: '#444',
                   color: '#ddd',
-                  border: '1px solid #555',
+                  border: '1px solid transparent',
                   borderRadius: '5px',
                   fontSize: '13px',
                   fontFamily: FONT_FAMILY
@@ -13066,7 +13067,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     right: 0,
                     marginBottom: '6px',
                     background: '#2b2b2b',
-                    border: '1px solid #3a3a3a',
+                    border: '1px solid transparent',
                     borderRadius: '10px',
                     boxShadow: '0 18px 36px rgba(0,0,0,0.45)',
                     minWidth: '220px',
@@ -14854,7 +14855,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   const isCategorySelectModeActive = categorySelectModeActive;
                                   const isCategoryActive = (isCategorySelectModeActive && isCategorySelected) || selectedCategoryId === category.id;
                                   const buttonBackground = 'transparent';
-                                  const borderColor = isCategoryActive ? '#4A90E2' : '#444';
+                                  const borderColor = isCategoryActive ? '#4A90E2' : 'transparent';
                                   const baseBorder = `1px solid ${borderColor}`;
                                   const buttonTextColor = isCategoryActive ? '#4A90E2' : '#ddd';
                                   const buttonSubTextColor = isCategoryActive ? '#4A90E2' : '#999';
@@ -14877,7 +14878,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                             alignItems: 'center',
                                             padding: '0 8px',
                                             cursor: 'pointer',
-                                            border: '1px solid #444',
+                                            border: '1px solid transparent',
                                             borderRadius: '6px 0 0 6px',
                                             background: '#333',
                                             userSelect: 'none'
@@ -14922,7 +14923,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                               flex: 1,
                                               marginBottom: '8px',
                                               color: isCategorySelected ? '#4A90E2' : '#DDD',
-                                              border: `1px solid ${isCategorySelected ? '#4A90E2' : '#444'}`
+                                              border: `1px solid ${isCategorySelected ? '#4A90E2' : 'transparent'}`
                                             }}
                                             onMouseEnter={(e) => {
                                               if (!isCategorySelected) {
@@ -15061,7 +15062,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           marginTop: '8px',
                                           padding: '8px',
                                           background: 'transparent',
-                                          border: '1px solid #444',
+                                          border: '1px solid transparent',
                                           borderRadius: '6px'
                                         }}>
                                           {/* Select button for item-level selection - only show when NOT in item select mode */}
@@ -15082,7 +15083,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                 marginBottom: '12px',
                                                 background: '#3a3a3a',
                                                 color: '#ddd',
-                                                border: '1px solid #444',
+                                                border: '1px solid transparent',
                                                 whiteSpace: 'nowrap'
                                               }}
                                             >
@@ -15264,7 +15265,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                               <div key={highlight.id} id={`highlight-item-${highlight.id}`} style={{
                                                 marginBottom: '8px',
                                                 background: 'transparent',
-                                                border: '1px solid #444',
+                                                border: '1px solid transparent',
                                                 borderRadius: '6px',
                                                 overflow: 'hidden'
                                               }}>
@@ -16459,7 +16460,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               justifyContent: 'flex-start',
                               padding: '12px 16px',
                               background: 'transparent',
-                              border: '1px solid #444'
+                              border: '1px solid transparent'
                             }}
                           >
                             <div style={{ fontWeight: '500', color: '#fff' }}>

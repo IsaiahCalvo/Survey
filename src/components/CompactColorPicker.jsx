@@ -20,8 +20,23 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
 
     const svRef = useRef(null);
     const hueRef = useRef(null);
+    const containerRef = useRef(null);
     const isDraggingSV = useRef(false);
     const isDraggingHue = useRef(false);
+
+    // Handle click outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (containerRef.current && !containerRef.current.contains(event.target)) {
+                if (onClose) onClose();
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [onClose]);
 
     // Initialize HSV from Hex on mount or color change
     useEffect(() => {
@@ -104,7 +119,9 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
     };
 
     return (
-        <div style={{
+        <div 
+            ref={containerRef}
+            style={{
             width: '260px',
             background: '#1e1e1e',
             border: '1px solid #333',
@@ -155,7 +172,9 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
                             justifyContent: 'center'
                         }}
                     >
-                        <div style={{ width: 12, height: 12, background: 'linear-gradient(135deg, red, blue)', borderRadius: '2px' }} />
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                            <path d="M8 2L10 6L14 8L10 10L8 14L6 10L2 8L6 6L8 2Z" fill="currentColor" />
+                        </svg>
                     </button>
                 </div>
             </div>

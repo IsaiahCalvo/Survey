@@ -22,3 +22,9 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Backup logs
+scripts/backup.log
+scripts/backup-stdout.log
+scripts/backup-stderr.log
+scripts/backup-cron.log
