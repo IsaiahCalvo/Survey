@@ -68,7 +68,6 @@
   white-space: nowrap;
   user-select: none;
   outline: none;
-  transform: none;
 }
 
 .btn:disabled {

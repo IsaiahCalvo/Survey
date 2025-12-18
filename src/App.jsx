@@ -12811,8 +12811,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         justifyContent: 'center',
                         padding: '6px',
                         gap: '4px',
-                        minWidth: '40px',
-                        transform: 'matrix(1, 0, 0, 1, 0, -0.298866) rotate(630deg)'
+                        minWidth: '40px'
                       }}
                       title={t.label}
                     >
@@ -12915,8 +12914,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       justifyContent: 'center',
                       padding: '6px',
                       gap: '4px',
-                      minWidth: '40px',
-                      transform: 'matrix(1, 0, 0, 1, 0, -0.298866) rotate(630deg)'
+                      minWidth: '40px'
                     }}
                     title={t.label}
                   >
@@ -12945,8 +12943,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       justifyContent: 'center',
                       padding: '6px',
                       gap: '4px',
-                      minWidth: '40px',
-                      transform: 'matrix(1, 0, 0, 1, 0, -0.298866) rotate(630deg)'
+                      minWidth: '40px'
                     }}
                     title={t.label}
                   >
@@ -12966,8 +12963,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   justifyContent: 'center',
                   padding: '6px',
                   gap: '4px',
-                  minWidth: '40px',
-                  transform: 'matrix(1, 0, 0, 1, 0, -0.298866) rotate(630deg)'
+                  minWidth: '40px'
                 }}
                 title="Highlight Area"
               >
