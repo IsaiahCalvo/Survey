@@ -3,32 +3,51 @@
 
 PROJECT_DIR="/Users/isaiahcalvo/Desktop/Survey"
 SCRIPT_PATH="$PROJECT_DIR/scripts/auto-backup.sh"
-CRON_LOG="$PROJECT_DIR/scripts/backup-cron.log"
+DAEMON_PATH="$PROJECT_DIR/scripts/backup-daemon.sh"
+PID_FILE="$PROJECT_DIR/scripts/backup-daemon.pid"
 BACKUP_LOG="$PROJECT_DIR/scripts/backup.log"
 
 case "$1" in
     start)
-        echo "Setting up cron job for backups every 25 minutes..."
-        (crontab -l 2>/dev/null | grep -v "auto-backup.sh"; echo "*/25 * * * * $SCRIPT_PATH >> $CRON_LOG 2>&1") | crontab -
-        echo "✓ Backup scheduler configured"
-        echo ""
-        echo "NOTE: For cron to work, grant Full Disk Access:"
-        echo "  1. Open System Settings → Privacy & Security → Full Disk Access"
-        echo "  2. Click + and add /usr/sbin/cron"
-        echo "  (Press Cmd+Shift+G to navigate to /usr/sbin/cron)"
+        # Check if daemon already running
+        if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+            echo "Backup daemon already running (PID: $(cat $PID_FILE))"
+            exit 0
+        fi
+
+        echo "Starting backup daemon..."
+        nohup "$DAEMON_PATH" > /dev/null 2>&1 &
+        sleep 1
+
+        if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+            echo "✓ Backup daemon started (PID: $(cat $PID_FILE))"
+            echo "  Backups will run every 25 minutes"
+        else
+            echo "✗ Failed to start daemon"
+        fi
         ;;
     stop)
-        echo "Removing backup cron job..."
-        crontab -l 2>/dev/null | grep -v "auto-backup.sh" | crontab -
-        echo "✓ Backup scheduler removed"
+        if [ -f "$PID_FILE" ]; then
+            PID=$(cat "$PID_FILE")
+            if kill -0 "$PID" 2>/dev/null; then
+                kill "$PID"
+                rm -f "$PID_FILE"
+                echo "✓ Backup daemon stopped"
+            else
+                rm -f "$PID_FILE"
+                echo "Daemon was not running"
+            fi
+        else
+            echo "Daemon is not running"
+        fi
         ;;
     status)
         echo "=== Backup Status ==="
-        if crontab -l 2>/dev/null | grep -q "auto-backup.sh"; then
-            echo "✓ Cron job is CONFIGURED (runs every 25 minutes)"
-            crontab -l | grep "auto-backup.sh"
+        if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+            echo "✓ Backup daemon is RUNNING (PID: $(cat $PID_FILE))"
         else
-            echo "✗ Cron job is NOT configured"
+            echo "✗ Backup daemon is NOT running"
+            echo "  Run './scripts/backup-control.sh start' to enable"
         fi
         echo ""
         echo "=== Last 5 Log Entries ==="
@@ -76,9 +95,9 @@ case "$1" in
         echo "Usage: ./scripts/backup-control.sh <command>"
         echo ""
         echo "Commands:"
-        echo "  start     - Enable automatic backups (every 25 min)"
-        echo "  stop      - Disable automatic backups"
-        echo "  status    - Check if backup scheduler is running"
+        echo "  start     - Start automatic backups (every 25 min)"
+        echo "  stop      - Stop automatic backups"
+        echo "  status    - Check if backup daemon is running"
         echo "  now       - Run a backup immediately"
         echo "  log       - Show recent backup log entries"
         echo "  history   - Show last 10 backup commits"
