@@ -20,6 +20,140 @@ const isPointNearEraserPath = (point, eraserPath, eraserRadius) => {
   });
 };
 
+// Helper function to check if a sample point is within the eraser zone (any point in eraser path)
+// Check if a path point (centerline) is erased, accounting for stroke width
+// The eraser overlaps if it's within (strokeWidth/2 + eraserRadius) of the centerline
+// This allows erasing the edge of wide strokes without touching the centerline
+const isPointInEraserZone = (x, y, eraserPath, eraserRadius, strokeWidth = 0) => {
+  // Combined radius: half stroke width + eraser radius
+  // This accounts for the stroke's visual width, not just the centerline
+  const combinedRadius = (strokeWidth / 2) + eraserRadius;
+  const combinedRadiusSq = combinedRadius * combinedRadius;
+
+  for (const eraserPoint of eraserPath.points) {
+    const dx = x - eraserPoint.x;
+    const dy = y - eraserPoint.y;
+    const distSq = dx * dx + dy * dy;
+
+    // Check if eraser overlaps with stroke (accounting for stroke width)
+    if (distSq < combinedRadiusSq) {
+      return true;
+    }
+  }
+  return false;
+};
+
+// Douglas-Peucker path simplification with minimum retention to prevent over-simplification
+const simplifyPath = (points, tolerance = 2.0) => {
+  if (points.length <= 2) return points;
+
+  // SAFEGUARD: Ensure we keep at least 30% of points to preserve curve smoothness
+  const MIN_RETENTION_RATIO = 0.30;
+  const minPointsToKeep = Math.max(3, Math.ceil(points.length * MIN_RETENTION_RATIO));
+
+  const simplifyRecursive = (pts, tol) => {
+    if (pts.length <= 2) return pts;
+
+    // Find the point with maximum distance from line between first and last
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+
+    let maxDist = 0;
+    let maxIndex = 0;
+
+    for (let i = 1; i < pts.length - 1; i++) {
+      const point = pts[i];
+      // Perpendicular distance from point to line (first->last)
+      const dx = last.localX - first.localX;
+      const dy = last.localY - first.localY;
+      const lineLenSq = dx * dx + dy * dy;
+
+      let dist;
+      if (lineLenSq === 0) {
+        // First and last are same point
+        dist = Math.sqrt(
+          Math.pow(point.localX - first.localX, 2) +
+          Math.pow(point.localY - first.localY, 2)
+        );
+      } else {
+        // Perpendicular distance
+        const t = Math.max(0, Math.min(1,
+          ((point.localX - first.localX) * dx + (point.localY - first.localY) * dy) / lineLenSq
+        ));
+        const projX = first.localX + t * dx;
+        const projY = first.localY + t * dy;
+        dist = Math.sqrt(
+          Math.pow(point.localX - projX, 2) +
+          Math.pow(point.localY - projY, 2)
+        );
+      }
+
+      if (dist > maxDist) {
+        maxDist = dist;
+        maxIndex = i;
+      }
+    }
+
+    // If max distance is greater than tolerance, recursively simplify
+    if (maxDist > tol) {
+      const left = simplifyRecursive(pts.slice(0, maxIndex + 1), tol);
+      const right = simplifyRecursive(pts.slice(maxIndex), tol);
+      return left.slice(0, -1).concat(right);
+    } else {
+      // All points are within tolerance, keep only endpoints
+      return [first, last];
+    }
+  };
+
+  let result = simplifyRecursive(points, tolerance);
+
+  // If we simplified too aggressively, reduce tolerance and try again
+  let currentTolerance = tolerance;
+  while (result.length < minPointsToKeep && currentTolerance > 0.1) {
+    currentTolerance *= 0.5; // Halve tolerance
+    result = simplifyRecursive(points, currentTolerance);
+  }
+
+  // Final fallback: if still too few points, sample evenly from original
+  if (result.length < minPointsToKeep) {
+    const step = Math.max(1, Math.floor(points.length / minPointsToKeep));
+    result = [];
+    for (let i = 0; i < points.length; i += step) {
+      result.push(points[i]);
+    }
+    // Ensure last point is included
+    if (result[result.length - 1] !== points[points.length - 1]) {
+      result.push(points[points.length - 1]);
+    }
+  }
+
+  return result;
+};
+
+// Sample a cubic bezier curve at parameter t (0-1)
+const sampleCubicBezier = (t, p0x, p0y, cp1x, cp1y, cp2x, cp2y, p1x, p1y) => {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const mt3 = mt2 * mt;
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return {
+    x: mt3 * p0x + 3 * mt2 * t * cp1x + 3 * mt * t2 * cp2x + t3 * p1x,
+    y: mt3 * p0y + 3 * mt2 * t * cp1y + 3 * mt * t2 * cp2y + t3 * p1y
+  };
+};
+
+// Sample a quadratic bezier curve at parameter t (0-1)
+const sampleQuadraticBezier = (t, p0x, p0y, cpx, cpy, p1x, p1y) => {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const t2 = t * t;
+  return {
+    x: mt2 * p0x + 2 * mt * t * cpx + t2 * p1x,
+    y: mt2 * p0y + 2 * mt * t * cpy + t2 * p1y
+  };
+};
+
 // Helper function to check if a point is near a path object (for click detection)
 const isPointNearPath = (point, pathObj, threshold) => {
   if (pathObj.type !== 'path') return false;
@@ -171,95 +305,228 @@ const getPathPoints = (pathObj) => {
   return points;
 };
 
-// Helper function to erase part of a path by modifying path data
+// Helper function to erase part of a path by detecting intersections and splitting
+// Enhanced with: stroke-width awareness, bezier curve sampling, bounding box pre-check, Douglas-Peucker simplification
 const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
   if (pathObj.type !== 'path') {
     return false;
   }
 
   try {
-    // Store properties
+    const pathData = pathObj.path;
+    if (!pathData || pathData.length === 0) return false;
+
+    // Store properties for new paths
     const originalProps = {
       stroke: pathObj.stroke,
       strokeWidth: pathObj.strokeWidth,
       fill: pathObj.fill,
       strokeUniform: pathObj.strokeUniform,
       spaceId: pathObj.spaceId,
-      moduleId: pathObj.moduleId,
-      left: pathObj.left,
-      top: pathObj.top
+      moduleId: pathObj.moduleId
     };
 
-    // Get path data
-    const pathData = pathObj.path;
-    if (!pathData || pathData.length === 0) return false;
+    // Get the path's transform to convert local coords to canvas coords
+    const pathOffset = pathObj.pathOffset || { x: 0, y: 0 };
+    const matrix = pathObj.calcTransformMatrix ? pathObj.calcTransformMatrix() : null;
 
-    // Convert path commands to points
-    const pathPoints = [];
-    let currentX = 0, currentY = 0;
+    // Transform local path coordinates to canvas coordinates
+    const toCanvasCoords = (localX, localY) => {
+      // Adjust for pathOffset (Fabric.js centers paths using this)
+      const x = localX - pathOffset.x;
+      const y = localY - pathOffset.y;
 
-    for (let i = 0; i < pathData.length; i++) {
-      const cmd = pathData[i];
-      const command = cmd[0];
-
-      if (command === 'M' || command === 'm') {
-        currentX = command === 'M' ? cmd[1] : currentX + cmd[1];
-        currentY = command === 'M' ? cmd[2] : currentY + cmd[2];
-        pathPoints.push({ x: currentX, y: currentY, command: 'M', index: i });
-      } else if (command === 'L' || command === 'l') {
-        currentX = command === 'L' ? cmd[1] : currentX + cmd[1];
-        currentY = command === 'L' ? cmd[2] : currentY + cmd[2];
-        pathPoints.push({ x: currentX, y: currentY, command: 'L', index: i });
-      } else if (command === 'C' || command === 'c') {
-        // Cubic bezier - use end point
-        currentX = command === 'C' ? cmd[5] : currentX + cmd[5];
-        currentY = command === 'C' ? cmd[6] : currentY + cmd[6];
-        pathPoints.push({ x: currentX, y: currentY, command: 'C', index: i });
-      } else if (command === 'Q' || command === 'q') {
-        // Quadratic bezier - use end point
-        currentX = command === 'Q' ? cmd[3] : currentX + cmd[3];
-        currentY = command === 'Q' ? cmd[4] : currentY + cmd[4];
-        pathPoints.push({ x: currentX, y: currentY, command: 'Q', index: i });
+      if (matrix && matrix.length >= 6) {
+        const [a, b, c, d, e, f] = matrix;
+        return {
+          x: a * x + c * y + e,
+          y: b * x + d * y + f
+        };
       }
-    }
+      // Fallback: just use left/top offset
+      return {
+        x: x + (pathObj.left || 0),
+        y: y + (pathObj.top || 0)
+      };
+    };
 
-    if (pathPoints.length < 2) return false;
-
-    // Convert to canvas coordinates
-    const pointsInCanvas = pathPoints.map(p => ({
-      ...p,
-      canvasX: p.x + originalProps.left,
-      canvasY: p.y + originalProps.top
-    }));
-
-    // Split stroke by eraser - iterate through each point
-    const segments = [];
-    let currentSegment = [];
-
-    for (let i = 0; i < pointsInCanvas.length; i++) {
-      const point = pointsInCanvas[i];
-      let isErased = false;
-
-      // Check if this point is within eraser path
+    // OPTIMIZATION: Quick bounding box rejection check
+    // If the eraser path doesn't intersect the path's bounding box, skip processing
+    const pathBounds = pathObj.getBoundingRect ? pathObj.getBoundingRect() : null;
+    if (pathBounds) {
+      let eraserIntersects = false;
       for (const eraserPoint of eraserPath.points) {
-        const distance = Math.sqrt(
-          Math.pow(point.canvasX - eraserPoint.x, 2) +
-          Math.pow(point.canvasY - eraserPoint.y, 2)
-        );
-        if (distance < eraserRadius) {
-          isErased = true;
+        if (eraserPoint.x >= pathBounds.left - eraserRadius &&
+            eraserPoint.x <= pathBounds.left + pathBounds.width + eraserRadius &&
+            eraserPoint.y >= pathBounds.top - eraserRadius &&
+            eraserPoint.y <= pathBounds.top + pathBounds.height + eraserRadius) {
+          eraserIntersects = true;
           break;
         }
       }
+      if (!eraserIntersects) {
+        return false; // Early exit - eraser nowhere near this path
+      }
+    }
 
-      if (isErased) {
-        // Point is erased, save current segment if it has enough points
+    // Sample the entire path and detect eraser intersections
+    // OPTIMIZATION: Sample resolution for performance
+    const SAMPLE_RESOLUTION = 12; // pixels between samples for curves
+    const sampledPoints = [];
+
+    let currentX = 0, currentY = 0;
+    let startX = 0, startY = 0; // For tracking path start (M command)
+
+    for (let cmdIdx = 0; cmdIdx < pathData.length; cmdIdx++) {
+      const cmd = pathData[cmdIdx];
+      const command = cmd[0];
+
+      if (command === 'M' || command === 'm') {
+        const endX = command === 'M' ? cmd[1] : currentX + cmd[1];
+        const endY = command === 'M' ? cmd[2] : currentY + cmd[2];
+
+        // Add move point
+        const canvasPos = toCanvasCoords(endX, endY);
+        const isErased = isPointInEraserZone(canvasPos.x, canvasPos.y, eraserPath, eraserRadius, originalProps.strokeWidth);
+        sampledPoints.push({ localX: endX, localY: endY, isErased, isMove: true });
+
+        currentX = endX;
+        currentY = endY;
+        startX = endX;
+        startY = endY;
+
+      } else if (command === 'L' || command === 'l') {
+        const endX = command === 'L' ? cmd[1] : currentX + cmd[1];
+        const endY = command === 'L' ? cmd[2] : currentY + cmd[2];
+
+        // Sample the line segment
+        const dx = endX - currentX;
+        const dy = endY - currentY;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const numSamples = Math.max(2, Math.ceil(length / SAMPLE_RESOLUTION));
+
+        for (let i = 1; i <= numSamples; i++) {
+          const t = i / numSamples;
+          const sampleX = currentX + dx * t;
+          const sampleY = currentY + dy * t;
+          const canvasPos = toCanvasCoords(sampleX, sampleY);
+          const isErased = isPointInEraserZone(canvasPos.x, canvasPos.y, eraserPath, eraserRadius, originalProps.strokeWidth);
+          sampledPoints.push({ localX: sampleX, localY: sampleY, isErased, isMove: false });
+        }
+
+        currentX = endX;
+        currentY = endY;
+
+      } else if (command === 'C' || command === 'c') {
+        // Cubic bezier - sample along the curve
+        const cp1x = command === 'C' ? cmd[1] : currentX + cmd[1];
+        const cp1y = command === 'C' ? cmd[2] : currentY + cmd[2];
+        const cp2x = command === 'C' ? cmd[3] : currentX + cmd[3];
+        const cp2y = command === 'C' ? cmd[4] : currentY + cmd[4];
+        const endX = command === 'C' ? cmd[5] : currentX + cmd[5];
+        const endY = command === 'C' ? cmd[6] : currentY + cmd[6];
+
+        // Estimate curve length for sampling
+        const chordLength = Math.sqrt(Math.pow(endX - currentX, 2) + Math.pow(endY - currentY, 2));
+        const controlLength = Math.sqrt(Math.pow(cp1x - currentX, 2) + Math.pow(cp1y - currentY, 2)) +
+                              Math.sqrt(Math.pow(cp2x - cp1x, 2) + Math.pow(cp2y - cp1y, 2)) +
+                              Math.sqrt(Math.pow(endX - cp2x, 2) + Math.pow(endY - cp2y, 2));
+        const approxLength = (chordLength + controlLength) / 2;
+        const numSamples = Math.max(4, Math.ceil(approxLength / SAMPLE_RESOLUTION));
+
+        for (let i = 1; i <= numSamples; i++) {
+          const t = i / numSamples;
+          const sample = sampleCubicBezier(t, currentX, currentY, cp1x, cp1y, cp2x, cp2y, endX, endY);
+          const canvasPos = toCanvasCoords(sample.x, sample.y);
+          const isErased = isPointInEraserZone(canvasPos.x, canvasPos.y, eraserPath, eraserRadius, originalProps.strokeWidth);
+          sampledPoints.push({ localX: sample.x, localY: sample.y, isErased, isMove: false });
+        }
+
+        currentX = endX;
+        currentY = endY;
+
+      } else if (command === 'Q' || command === 'q') {
+        // Quadratic bezier - sample along the curve
+        const cpx = command === 'Q' ? cmd[1] : currentX + cmd[1];
+        const cpy = command === 'Q' ? cmd[2] : currentY + cmd[2];
+        const endX = command === 'Q' ? cmd[3] : currentX + cmd[3];
+        const endY = command === 'Q' ? cmd[4] : currentY + cmd[4];
+
+        // Estimate curve length
+        const chordLength = Math.sqrt(Math.pow(endX - currentX, 2) + Math.pow(endY - currentY, 2));
+        const controlLength = Math.sqrt(Math.pow(cpx - currentX, 2) + Math.pow(cpy - currentY, 2)) +
+                              Math.sqrt(Math.pow(endX - cpx, 2) + Math.pow(endY - cpy, 2));
+        const approxLength = (chordLength + controlLength) / 2;
+        const numSamples = Math.max(3, Math.ceil(approxLength / SAMPLE_RESOLUTION));
+
+        for (let i = 1; i <= numSamples; i++) {
+          const t = i / numSamples;
+          const sample = sampleQuadraticBezier(t, currentX, currentY, cpx, cpy, endX, endY);
+          const canvasPos = toCanvasCoords(sample.x, sample.y);
+          const isErased = isPointInEraserZone(canvasPos.x, canvasPos.y, eraserPath, eraserRadius, originalProps.strokeWidth);
+          sampledPoints.push({ localX: sample.x, localY: sample.y, isErased, isMove: false });
+        }
+
+        currentX = endX;
+        currentY = endY;
+
+      } else if (command === 'Z' || command === 'z') {
+        // Close path - draw line back to start
+        if (currentX !== startX || currentY !== startY) {
+          const dx = startX - currentX;
+          const dy = startY - currentY;
+          const length = Math.sqrt(dx * dx + dy * dy);
+          const numSamples = Math.max(2, Math.ceil(length / SAMPLE_RESOLUTION));
+
+          for (let i = 1; i <= numSamples; i++) {
+            const t = i / numSamples;
+            const sampleX = currentX + dx * t;
+            const sampleY = currentY + dy * t;
+            const canvasPos = toCanvasCoords(sampleX, sampleY);
+            const isErased = isPointInEraserZone(canvasPos.x, canvasPos.y, eraserPath, eraserRadius, originalProps.strokeWidth);
+            sampledPoints.push({ localX: sampleX, localY: sampleY, isErased, isMove: false });
+          }
+        }
+        currentX = startX;
+        currentY = startY;
+      }
+    }
+
+    if (sampledPoints.length < 2) return false;
+
+    // Check if any points were erased
+    const hasErasedPoints = sampledPoints.some(p => p.isErased);
+    if (!hasErasedPoints) return false;
+
+    // Check if all points were erased
+    const allErased = sampledPoints.every(p => p.isErased);
+    if (allErased) {
+      canvas.remove(pathObj);
+      return true;
+    }
+
+    // Split sampled points into surviving segments
+    // A segment is a contiguous run of non-erased points
+    const segments = [];
+    let currentSegment = [];
+
+    for (let i = 0; i < sampledPoints.length; i++) {
+      const point = sampledPoints[i];
+
+      if (point.isMove && currentSegment.length >= 2) {
+        // Save current segment before starting new subpath
+        segments.push([...currentSegment]);
+        currentSegment = [];
+      }
+
+      if (point.isErased) {
+        // Point is erased - end current segment if it has enough points
         if (currentSegment.length >= 2) {
           segments.push([...currentSegment]);
         }
         currentSegment = [];
       } else {
-        // Point survives, add to current segment
+        // Point survives
         currentSegment.push(point);
       }
     }
@@ -269,36 +536,52 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
       segments.push(currentSegment);
     }
 
-    // If no segments remain, remove path
+    // If no segments remain, remove path entirely
     if (segments.length === 0) {
       canvas.remove(pathObj);
       return true;
     }
 
-    // If path wasn't modified (still has all points), do nothing
-    if (segments.length === 1 && segments[0].length === pointsInCanvas.length) {
-      return false;
-    }
-
-    // Remove original and create new paths for each segment
+    // Remove the original path
     canvas.remove(pathObj);
 
-    segments.forEach(segment => {
-      if (segment.length < 2) return;
+    // Create new paths for each surviving segment
+    for (const segment of segments) {
+      if (segment.length < 2) continue;
 
+      // OPTIMIZATION: Simplify path to prevent exponential segment growth
+      // This uses Douglas-Peucker algorithm to reduce points while preserving shape
+      const simplifiedSegment = simplifyPath(segment, 0.5); // tolerance in pixels
+
+      if (simplifiedSegment.length < 2) continue;
+
+      // Build new path data using simple L commands (line segments)
       const newPathData = [];
-      for (let i = 0; i < segment.length; i++) {
-        const point = segment[i];
+
+      for (let i = 0; i < simplifiedSegment.length; i++) {
+        const point = simplifiedSegment[i];
         if (i === 0) {
-          newPathData.push(['M', point.x, point.y]);
+          newPathData.push(['M', point.localX, point.localY]);
         } else {
-          newPathData.push(['L', point.x, point.y]);
+          newPathData.push(['L', point.localX, point.localY]);
         }
       }
 
-      const newPath = new Path(newPathData, originalProps);
+      // Create a new Path with the same visual properties
+      const newPath = new Path(newPathData, {
+        stroke: originalProps.stroke,
+        strokeWidth: originalProps.strokeWidth,
+        fill: originalProps.fill || 'transparent',
+        strokeUniform: originalProps.strokeUniform !== false,
+        spaceId: originalProps.spaceId,
+        moduleId: originalProps.moduleId,
+        selectable: true,
+        evented: true,
+        perPixelTargetFind: true
+      });
+
       canvas.add(newPath);
-    });
+    }
 
     return true;
   } catch (e) {
@@ -382,6 +665,7 @@ const PageAnnotationLayer = memo(({
   selectedCategoryId = null, // Category ID to keep highlights visible when panel is hidden
   activeRegions = null,
   eraserMode = 'partial', // 'partial' | 'entire'
+  eraserSize = 20, // Eraser radius in pixels
   showSurveyPanel = false // Whether survey mode is active
 }) => {
   const canvasRef = useRef(null);
@@ -399,6 +683,8 @@ const PageAnnotationLayer = memo(({
   const selectedModuleIdRef = useRef(selectedModuleId);
   const showSurveyPanelRef = useRef(showSurveyPanel);
   const eraserModeRef = useRef(eraserMode);
+  const eraserSizeRef = useRef(eraserSize);
+  const lastPartialEraseTimeRef = useRef(0); // Throttle timestamp for partial erasing
   // Selection rect tracks start position and direction for AutoCAD-style selection
   const selectionRectRef = useRef(null);
   const selectionRectObjRef = useRef(null); // Temporary rectangle object for visual feedback
@@ -435,6 +721,10 @@ const PageAnnotationLayer = memo(({
   useEffect(() => {
     eraserModeRef.current = eraserMode;
   }, [eraserMode]);
+
+  useEffect(() => {
+    eraserSizeRef.current = eraserSize;
+  }, [eraserSize]);
 
   // Initialize canvas only once
   useEffect(() => {
@@ -696,7 +986,7 @@ const PageAnnotationLayer = memo(({
       if (currentTool === 'eraser') {
         // For eraser, use geometry-based hit testing for all object types
         const pointer = canvas.getPointer(opt.e);
-        const eraserRadius = currentStrokeWidth || 10;
+        const eraserRadius = eraserSizeRef.current || 20;
 
         // Find the closest object whose geometry is actually under the cursor
         let target = null;
@@ -797,11 +1087,19 @@ const PageAnnotationLayer = memo(({
 
           // For non-highlight objects, check eraser mode
           if (currentEraserMode === 'entire') {
-            // Entire mode: Remove object immediately on touch
+            // Entire mode: Remove object immediately on touch and set up for continuous drag erasing
             canvas.remove(target);
             canvas.discardActiveObject();
             canvas.requestRenderAll();
             saveCanvas();
+            // Enable continuous erasing during drag
+            isErasingRef.current = true;
+            eraserPathRef.current = {
+              target: null,
+              startX: x,
+              startY: y,
+              points: [{ x, y }]
+            };
           } else {
             // Partial mode: Set up erasing state for drag-based erasing
             isErasingRef.current = true;
@@ -812,18 +1110,25 @@ const PageAnnotationLayer = memo(({
               startY: y,
               points: [{ x, y }]
             };
+
+            // FEATURE: Single-click partial erase - immediately erase if clicking on a path
+            if (target.type === 'path') {
+              const wasErased = erasePathSegment(target, eraserPathRef.current, eraserSizeRef.current || 20, canvas);
+              if (wasErased) {
+                canvas.requestRenderAll();
+                saveCanvas();
+              }
+            }
           }
         } else {
-          // No target found, start partial erasing if in partial mode (for drag-to-erase)
-          if (currentEraserMode === 'partial') {
-            isErasingRef.current = true;
-            eraserPathRef.current = {
-              target: null,
-              startX: x,
-              startY: y,
-              points: [{ x, y }]
-            };
-          }
+          // No target found, start erasing mode for drag-to-erase (both partial and entire modes)
+          isErasingRef.current = true;
+          eraserPathRef.current = {
+            target: null,
+            startX: x,
+            startY: y,
+            points: [{ x, y }]
+          };
         }
         return;
       }
@@ -932,21 +1237,125 @@ const PageAnnotationLayer = memo(({
       const currentTool = toolRef.current;
       const currentEraserMode = eraserModeRef.current;
 
+      // Handle continuous erasing in "entire" mode (remove any object touched during drag)
+      if (currentTool === 'eraser' && currentEraserMode === 'entire' && isErasingRef.current && eraserPathRef.current) {
+        const { x, y } = canvas.getPointer(opt.e);
+        const eraserRadius = eraserSizeRef.current || 20;
+        const pointer = { x, y };
+
+        // Find and remove any objects touched by the eraser
+        const objects = canvas.getObjects();
+        for (const obj of objects) {
+          // Skip if not from current space
+          const objSpaceId = obj.spaceId || null;
+          if (selectedSpaceIdRef.current !== null && objSpaceId !== selectedSpaceIdRef.current) {
+            continue;
+          }
+
+          // Skip invisible objects
+          if (!obj.visible) continue;
+
+          // Check if this is a highlight (handled separately)
+          const hasHighlightId = obj.highlightId != null;
+          const hasNeedsBICFlag = obj.needsBIC === true;
+          const isColoredHighlight = obj.type === 'rect' && (
+            (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
+            (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
+          );
+          const fillIsTransparent = !obj.fill || obj.fill === 'transparent' ||
+            (typeof obj.fill === 'string' && obj.fill === 'transparent');
+          const hasStroke = obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent';
+          const isNeedsBICHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
+          const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
+
+          // Use geometry-based hit testing to check if eraser touches this object
+          if (isPointOnObject(pointer, obj, eraserRadius)) {
+            if (isHighlight) {
+              // Handle highlight deletion (same logic as mousedown)
+              if (onHighlightDeletedRef.current) {
+                const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
+                const bounds = {
+                  x: obj.left / currentZoom,
+                  y: obj.top / currentZoom,
+                  width: obj.width / currentZoom,
+                  height: obj.height / currentZoom,
+                  pageNumber
+                };
+                const highlightId = obj.highlightId || null;
+
+                if (highlightId && renderedHighlightsRef.current.has(highlightId)) {
+                  renderedHighlightsRef.current.delete(highlightId);
+                }
+
+                const highlightKey = highlightId || `${bounds.x}-${bounds.y}-${bounds.width}-${bounds.height}`;
+                processedHighlightsRef.current.delete(highlightKey);
+
+                canvas.remove(obj);
+                canvas.requestRenderAll();
+                saveCanvas();
+
+                if (onHighlightDeletedRef.current) {
+                  onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
+                }
+              }
+            } else {
+              // Remove entire object
+              canvas.remove(obj);
+              canvas.requestRenderAll();
+              saveCanvas();
+            }
+          }
+        }
+        return;
+      }
+
       // Handle partial erasing
       if (currentTool === 'eraser' && currentEraserMode === 'partial' && isErasingRef.current && eraserPathRef.current) {
         const { x, y } = canvas.getPointer(opt.e);
         const eraserPath = eraserPathRef.current;
+
+        // OPTIMIZATION: Only keep last N eraser points (sliding window) to prevent unbounded growth
+        const MAX_ERASER_POINTS = 20;
+        // OPTIMIZATION: Check minimum movement before adding point
+        const lastPoint = eraserPath.points.length > 0 ? eraserPath.points[eraserPath.points.length - 1] : null;
+        const MIN_MOVE_DIST = 1; // Reduced from 3px to 1px for better detection
+        if (lastPoint) {
+          const dx = x - lastPoint.x;
+          const dy = y - lastPoint.y;
+          if (dx * dx + dy * dy < MIN_MOVE_DIST * MIN_MOVE_DIST) {
+            return; // Mouse barely moved, skip entirely
+          }
+        }
+
         eraserPath.points.push({ x, y });
+        if (eraserPath.points.length > MAX_ERASER_POINTS) {
+          eraserPath.points = eraserPath.points.slice(-MAX_ERASER_POINTS);
+        }
+
+        // OPTIMIZATION: Throttle processing - balanced between responsiveness and performance
+        const now = Date.now();
+        const THROTTLE_MS = 50; // Balanced throttle for responsiveness
+        if (now - lastPartialEraseTimeRef.current < THROTTLE_MS) {
+          return; // Skip this frame, but eraser points are still accumulated
+        }
+        lastPartialEraseTimeRef.current = now;
 
         // Find objects that intersect with the eraser path
-        const eraserRadius = strokeWidthRef.current || 10;
-        const objects = canvas.getObjects();
+        const eraserRadius = eraserSizeRef.current || 20;
+        // Create a copy of objects array since erasePathSegment modifies the canvas
+        const objects = [...canvas.getObjects()];
 
-        objects.forEach(obj => {
+        // OPTIMIZATION: Limit paths processed per frame to avoid blocking
+        const MAX_PATHS_PER_FRAME = 5;
+        let pathsProcessed = 0;
+        let needsRenderAndSave = false; // Track if ANY object was modified
+
+        for (const obj of objects) {
+          if (pathsProcessed >= MAX_PATHS_PER_FRAME) break;
           // Skip if not from current space
           const objSpaceId = obj.spaceId || null;
           if (selectedSpaceIdRef.current !== null && objSpaceId !== selectedSpaceIdRef.current) {
-            return;
+            continue;
           }
 
           // Skip highlights (they're handled separately)
@@ -963,17 +1372,17 @@ const PageAnnotationLayer = memo(({
           const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
 
           if (isHighlight) {
-            return; // Highlights are handled separately
+            continue; // Highlights are handled separately
           }
 
           // Check if eraser path intersects with object
           // For paths (pen/highlighter strokes), use partial erasing
           if (obj.type === 'path') {
+            pathsProcessed++; // Count path objects processed
             // Use partial path erasing - only erase the intersected segment
             const wasErased = erasePathSegment(obj, eraserPath, eraserRadius, canvas);
             if (wasErased) {
-              canvas.requestRenderAll();
-              saveCanvas();
+              needsRenderAndSave = true; // Mark for render/save ONCE after loop
             }
           } else {
             // For all other objects (groups, rects, circles, lines, text, etc.)
@@ -984,11 +1393,16 @@ const PageAnnotationLayer = memo(({
 
             if (isTouching) {
               canvas.remove(obj);
-              canvas.requestRenderAll();
-              saveCanvas();
+              needsRenderAndSave = true; // Mark for render/save ONCE after loop
             }
           }
-        });
+        }
+
+        // OPTIMIZATION: Render and save ONCE after processing all objects (not inside loop)
+        if (needsRenderAndSave) {
+          canvas.requestRenderAll();
+          saveCanvas();
+        }
 
         return;
       }
@@ -1017,8 +1431,8 @@ const PageAnnotationLayer = memo(({
       const currentTool = toolRef.current;
       const currentEraserMode = eraserModeRef.current;
 
-      // Handle partial erasing end
-      if (currentTool === 'eraser' && currentEraserMode === 'partial' && isErasingRef.current) {
+      // Handle erasing end (both partial and entire modes)
+      if (currentTool === 'eraser' && isErasingRef.current) {
         isErasingRef.current = false;
         eraserPathRef.current = null;
         canvas.requestRenderAll();

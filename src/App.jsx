@@ -7518,6 +7518,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return 'partial';
     }
   }); // 'partial' | 'entire'
+  const [eraserSize, setEraserSize] = useState(20); // Default 20px radius
+  const [eraserCursorPos, setEraserCursorPos] = useState({ x: 0, y: 0, visible: false });
   const [showEraserMenu, setShowEraserMenu] = useState(false);
   const eraserMenuRef = useRef(null);
 
@@ -11134,7 +11136,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [activeTool, showRegionSelection]);
 
+  // Track eraser cursor position when eraser tool is active
+  useEffect(() => {
+    if (activeTool !== 'eraser') {
+      setEraserCursorPos(prev => ({ ...prev, visible: false }));
+      return;
+    }
 
+    const handleMouseMove = (e) => {
+      setEraserCursorPos({
+        x: e.clientX,
+        y: e.clientY,
+        visible: true
+      });
+    };
+
+    const handleMouseLeave = () => {
+      setEraserCursorPos(prev => ({ ...prev, visible: false }));
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [activeTool]);
 
   // Input handlers with validation
   const handlePageInputChange = useCallback((e) => {
@@ -12231,6 +12259,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   return (
     <>
+      {/* Eraser Cursor Overlay */}
+      {activeTool === 'eraser' && eraserCursorPos.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            left: eraserCursorPos.x - (eraserSize * scale),
+            top: eraserCursorPos.y - (eraserSize * scale),
+            width: eraserSize * 2 * scale,
+            height: eraserSize * 2 * scale,
+            borderRadius: '50%',
+            backgroundColor: 'rgba(128, 128, 128, 0.2)',
+            border: '2px solid rgba(100, 100, 100, 0.6)',
+            pointerEvents: 'none',
+            zIndex: 99999
+          }}
+        />
+      )}
       <div style={{
         height: '100vh',
         display: 'flex',
@@ -12604,6 +12649,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 selectedCategoryId={selectedCategoryId}
                                 activeRegions={pageRegions}
                                 eraserMode={eraserMode}
+                                eraserSize={eraserSize}
                                 showSurveyPanel={showSurveyPanel}
                               />
                             )}
@@ -12730,6 +12776,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             selectedCategoryId={selectedCategoryId}
                             activeRegions={pageRegions}
                             eraserMode={eraserMode}
+                            eraserSize={eraserSize}
                             showSurveyPanel={showSurveyPanel}
                           />
                         )}

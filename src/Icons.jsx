@@ -165,23 +165,15 @@ const Icon = ({ name, size = 16, color = 'currentColor', style, className }) => 
     ),
 
     highlighter: (
-      <div
-        style={{
-          ...style,
-          width: size * 1.4,
-          height: size * 1.4,
-          backgroundColor: color,
-          maskImage: 'url("/highlighter-icon.png")',
-          maskSize: 'contain',
-          maskRepeat: 'no-repeat',
-          maskPosition: 'center',
-          WebkitMaskImage: 'url("/highlighter-icon.png")',
-          WebkitMaskSize: 'contain',
-          WebkitMaskRepeat: 'no-repeat',
-          WebkitMaskPosition: 'center',
-        }}
-        className={className}
-      />
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        {/* Highlighter marker - angled pen shape */}
+        <path d="M4 18L6 20L18 8L16 6L4 18Z" fill={color} opacity="0.4" />
+        <path d="M6 20L8 22L20 10L18 8L6 20Z" fill={color} />
+        {/* Tip of highlighter */}
+        <path d="M20 10L22 12L20 14L18 12L20 10Z" fill={color} opacity="0.6" />
+        {/* Highlight stroke - wavy line showing the effect */}
+        <path d="M3 15C3 15 5 13 7 15C9 17 11 13 13 15C15 17 17 13 19 15" stroke={color} strokeWidth="2.5" strokeLinecap="round" fill="none" opacity="0.5" />
+      </svg>
     ),
 
     eraser: (
