@@ -13043,12 +13043,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       }}
                       className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
                       style={{
+                        position: 'relative',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         padding: '6px',
                         gap: '4px',
-                        minWidth: '40px'
+                        minWidth: '40px',
+                        width: '40px'
                       }}
                       title={t.label}
                     >
@@ -13061,11 +13063,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             setShowEraserMenu(!showEraserMenu);
                           }}
                           style={{
+                            position: 'absolute',
+                            bottom: '2px',
+                            right: '2px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            marginLeft: '2px',
-                            padding: '2px'
+                            padding: '2px',
+                            pointerEvents: 'auto'
                           }}
                         >
                           <Icon name="chevronUp" size={12} />
