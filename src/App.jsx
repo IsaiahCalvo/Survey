@@ -11488,32 +11488,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           // #endregion
 
           if (targetContainer && container) {
-            // First, scroll the page container into view using scrollIntoView
-            // This ensures the page is visible before we calculate fine adjustments
-            targetContainer.scrollIntoView({ behavior: 'auto', block: 'start', inline: 'nearest' });
+            // Calculate positions directly without scrollIntoView to avoid timing issues
+            const containerRect = container.getBoundingClientRect();
+            const targetRect = targetContainer.getBoundingClientRect();
+            const computedStyles = window.getComputedStyle(container);
+            const paddingTop = parseFloat(computedStyles.paddingTop || '0');
+            const paddingLeft = parseFloat(computedStyles.paddingLeft || '0');
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
             
-            // Wait one more frame for scrollIntoView to complete, then apply bounds offset
+            // Calculate page container's position in scroll coordinates
+            const pageContainerScrollTop = container.scrollTop + (targetRect.top - containerRect.top);
+            const pageContainerScrollLeft = container.scrollLeft + (targetRect.left - containerRect.left);
+            
+            let scrollTop = pageContainerScrollTop - paddingTop;
+            let scrollLeft = pageContainerScrollLeft - paddingLeft;
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11500',message:'Page container scroll position',data:{pageContainerScrollTop,pageContainerScrollLeft,containerScrollTop:container.scrollTop,containerScrollLeft:container.scrollLeft,containerRectTop:containerRect.top,containerRectLeft:containerRect.left,targetRectTop:targetRect.top,targetRectLeft:targetRect.left,targetRectWidth:targetRect.width,paddingTop,paddingLeft,scrollTopAfterPadding:scrollTop,scrollLeftAfterPadding:scrollLeft},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v11',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
+            
+            // Use requestAnimationFrame to ensure DOM is ready for accurate measurements
             requestAnimationFrame(() => {
-              const containerRect = container.getBoundingClientRect();
-              const targetRect = targetContainer.getBoundingClientRect();
-              const computedStyles = window.getComputedStyle(container);
-              const paddingTop = parseFloat(computedStyles.paddingTop || '0');
-              
-              // Calculate current position of page container top
-              const pageContainerScrollTop = container.scrollTop + (targetRect.top - containerRect.top);
-              let scrollTop = pageContainerScrollTop - paddingTop;
-              
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11500',message:'Page container scroll position after scrollIntoView',data:{pageContainerScrollTop,containerScrollTop:container.scrollTop,containerRectTop:containerRect.top,targetRectTop:targetRect.top,difference:targetRect.top-containerRect.top,paddingTop,scrollTopAfterPadding:scrollTop},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'E'})}).catch(()=>{});
-              // #endregion
-
-              // Calculate horizontal scroll position
-              const paddingLeft = parseFloat(computedStyles.paddingLeft || '0');
-              const containerWidth = container.clientWidth;
-              
-              // Initialize scrollLeft to current position (will be updated if bounds available)
-              let scrollLeft = container.scrollLeft;
-              
               // Add bounds offset if available
               if (bounds) {
                 const currentScale = zoomControllerRef.current ? zoomControllerRef.current.getScale() : scale;
@@ -11527,65 +11523,64 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 const scaledWidth = boundsWidth * currentScale;
 
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11518',message:'Bounds calculation',data:{bounds,currentScale,scale,boundsY,boundsX,boundsHeight,boundsWidth,scaledTop,scaledLeft,scaledHeight,scaledWidth,usingZoomController:!!zoomControllerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v7',hypothesisId:'A'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11518',message:'Bounds calculation',data:{bounds,currentScale,scale,boundsY,boundsX,boundsHeight,boundsWidth,scaledTop,scaledLeft,scaledHeight,scaledWidth,usingZoomController:!!zoomControllerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v11',hypothesisId:'A'})}).catch(()=>{});
                 // #endregion
 
                 // Vertical positioning: add bounds offset and center
                 scrollTop += scaledTop;
-                const containerHeight = container.clientHeight;
                 const centerOffsetY = (containerHeight / 2) - (scaledHeight / 2);
                 scrollTop -= centerOffsetY;
 
-                // Horizontal positioning: Find the PDF canvas element to get its actual position
-                // Find the PDF canvas within the page container
+                // Horizontal positioning: Calculate using scroll coordinates
+                // Find the PDF canvas to get its actual width
                 const pdfCanvas = targetContainer.querySelector('canvas');
-                let pdfPageLeft = targetRect.left;
                 let pdfPageWidth = targetRect.width;
                 
                 if (pdfCanvas) {
                   const canvasRect = pdfCanvas.getBoundingClientRect();
-                  pdfPageLeft = canvasRect.left;
                   pdfPageWidth = canvasRect.width;
                 } else {
                   // Fallback: estimate PDF page width from pageHeights if available
                   if (pageHeights[pageNumber]) {
                     pdfPageWidth = pageHeights[pageNumber] * 0.7 * currentScale;
-                    // PDF is centered in container, so calculate its left position
-                    pdfPageLeft = targetRect.left + (targetRect.width - pdfPageWidth) / 2;
                   }
                 }
                 
-                // Calculate highlight center position in viewport coordinates
+                // Calculate where the PDF page starts within the page container
+                // Since pages are centered, PDF starts at: (containerWidth - pdfPageWidth) / 2 from container left
+                const pdfPageLeftOffsetInContainer = (targetRect.width - pdfPageWidth) / 2;
+                
+                // PDF page's left edge in scroll coordinates
+                const pdfPageLeftInScroll = pageContainerScrollLeft + pdfPageLeftOffsetInContainer;
+                
+                // Calculate highlight center position
                 const highlightCenterX = boundsX + (boundsWidth / 2);
                 const scaledHighlightCenterX = highlightCenterX * currentScale;
-                const highlightCenterInViewport = pdfPageLeft + scaledHighlightCenterX;
                 
-                // Calculate scroll to center the highlight
-                // Convert highlight center from viewport coordinates to scroll coordinates
-                // highlightCenterInViewport is relative to viewport, we need it relative to scroll container
-                const highlightCenterInScroll = container.scrollLeft + (highlightCenterInViewport - containerRect.left);
+                // Highlight center in scroll coordinates
+                const highlightCenterInScroll = pdfPageLeftInScroll + scaledHighlightCenterX;
                 
                 // To center the highlight, we want: highlightCenterInScroll = scrollLeft + (containerWidth / 2)
                 // Therefore: scrollLeft = highlightCenterInScroll - (containerWidth / 2)
                 scrollLeft = highlightCenterInScroll - (containerWidth / 2);
                 
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11550',message:'Horizontal scroll calculation',data:{boundsX,boundsWidth,highlightCenterX,scaledHighlightCenterX,pdfPageLeft,pdfPageWidth,targetRectLeft:targetRect.left,targetRectWidth:targetRect.width,containerRectLeft:containerRect.left,containerScrollLeft:container.scrollLeft,highlightCenterInViewport,highlightCenterInScroll,containerWidth,calculatedScrollLeft:highlightCenterInScroll - (containerWidth / 2),finalScrollLeft:scrollLeft,hasCanvas:!!pdfCanvas},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v8',hypothesisId:'E'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11550',message:'Horizontal scroll calculation',data:{boundsX,boundsWidth,highlightCenterX,scaledHighlightCenterX,pdfPageWidth,targetRectLeft:targetRect.left,targetRectWidth:targetRect.width,containerRectLeft:containerRect.left,containerScrollLeft:container.scrollLeft,pageContainerScrollLeft,pdfPageLeftOffsetInContainer,pdfPageLeftInScroll,highlightCenterInScroll,containerWidth,calculatedScrollLeft:highlightCenterInScroll - (containerWidth / 2),finalScrollLeft:scrollLeft,hasCanvas:!!pdfCanvas},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v11',hypothesisId:'E'})}).catch(()=>{});
                 // #endregion
 
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11529',message:'Final scroll calculation',data:{scrollTop,scrollLeft,containerHeight,containerWidth,centerOffsetY,scaledHeight,scaledWidth},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v7',hypothesisId:'E'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11529',message:'Final scroll calculation',data:{scrollTop,scrollLeft,containerHeight,containerWidth,centerOffsetY,scaledHeight,scaledWidth},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v11',hypothesisId:'E'})}).catch(()=>{});
                 // #endregion
               } else {
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11533',message:'No bounds available',data:{scrollTop,scrollLeft},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v7',hypothesisId:'C'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11533',message:'No bounds available',data:{scrollTop,scrollLeft},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v11',hypothesisId:'C'})}).catch(()=>{});
                 // #endregion
               }
 
               const finalScrollTop = Math.max(0, Math.min(scrollTop, container.scrollHeight - container.clientHeight));
               const finalScrollLeft = Math.max(0, Math.min(scrollLeft, container.scrollWidth - container.clientWidth));
               // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11539',message:'Scrolling to final position',data:{finalScrollTop,finalScrollLeft,scrollTop,scrollLeft,containerScrollHeight:container.scrollHeight,containerScrollWidth:container.scrollWidth,containerClientHeight:container.clientHeight,containerClientWidth:container.clientWidth},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v4',hypothesisId:'E'})}).catch(()=>{});
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11539',message:'Scrolling to final position',data:{finalScrollTop,finalScrollLeft,scrollTop,scrollLeft,containerScrollHeight:container.scrollHeight,containerScrollWidth:container.scrollWidth,containerClientHeight:container.clientHeight,containerClientWidth:container.clientWidth},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v11',hypothesisId:'E'})}).catch(()=>{});
               // #endregion
               container.scrollTo({
                 top: finalScrollTop,
