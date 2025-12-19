@@ -11474,99 +11474,85 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // However, scrolling happens on container which might need layout update.
       // Let's use setTimeout to allow render cycle if scale changed.
 
-      setTimeout(() => {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11464',message:'setTimeout callback executing',data:{pageNumber,scale,hasZoomController:!!zoomControllerRef.current,zoomControllerScale:zoomControllerRef.current?.getScale?.()},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        const targetContainer = pageContainersRef.current[pageNumber];
-        const container = containerRef.current;
+      // Use double requestAnimationFrame to ensure DOM has updated after scale change
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11477',message:'Double RAF callback executing',data:{pageNumber,scale,hasZoomController:!!zoomControllerRef.current,zoomControllerScale:zoomControllerRef.current?.getScale?.()},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+          const targetContainer = pageContainersRef.current[pageNumber];
+          const container = containerRef.current;
 
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11466',message:'Container refs check',data:{hasTargetContainer:!!targetContainer,hasContainer:!!container,pageNumber,availablePages:Object.keys(pageContainersRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11485',message:'Container refs check',data:{hasTargetContainer:!!targetContainer,hasContainer:!!container,pageNumber,availablePages:Object.keys(pageContainersRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
 
-        if (targetContainer && container) {
-          // Calculate the page container's absolute scroll position
-          // Use offsetTop which gives position relative to offsetParent in document flow
-          // This is more reliable than getBoundingClientRect when element is off-screen
-          let pageContainerScrollTop = 0;
-          let element = targetContainer;
-          const content = contentRef.current;
-          
-          // Accumulate offsetTop values up to the scroll container
-          while (element && element !== container) {
-            pageContainerScrollTop += element.offsetTop;
-            const parent = element.offsetParent;
+          if (targetContainer && container) {
+            // First, scroll the page container into view using scrollIntoView
+            // This ensures the page is visible before we calculate fine adjustments
+            targetContainer.scrollIntoView({ behavior: 'auto', block: 'start', inline: 'nearest' });
             
-            // If we hit body/html or lose the parent chain, use getBoundingClientRect fallback
-            if (!parent || parent === document.body || parent === document.documentElement) {
+            // Wait one more frame for scrollIntoView to complete, then apply bounds offset
+            requestAnimationFrame(() => {
               const containerRect = container.getBoundingClientRect();
               const targetRect = targetContainer.getBoundingClientRect();
-              // Use the standard formula as fallback
-              pageContainerScrollTop = container.scrollTop + (targetRect.top - containerRect.top);
-              break;
-            }
-            
-            // If we've reached the content wrapper or container, we're done
-            if (parent === content || parent === container) {
-              break;
-            }
-            
-            element = parent;
-          }
+              const computedStyles = window.getComputedStyle(container);
+              const paddingTop = parseFloat(computedStyles.paddingTop || '0');
+              
+              // Calculate current position of page container top
+              const pageContainerScrollTop = container.scrollTop + (targetRect.top - containerRect.top);
+              let scrollTop = pageContainerScrollTop - paddingTop;
+              
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11500',message:'Page container scroll position after scrollIntoView',data:{pageContainerScrollTop,containerScrollTop:container.scrollTop,containerRectTop:containerRect.top,targetRectTop:targetRect.top,difference:targetRect.top-containerRect.top,paddingTop,scrollTopAfterPadding:scrollTop},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'E'})}).catch(()=>{});
+              // #endregion
 
-          const computedStyles = window.getComputedStyle(container);
-          const paddingTop = parseFloat(computedStyles.paddingTop || '0');
-          let scrollTop = pageContainerScrollTop - paddingTop;
+              // Add bounds offset if available
+              if (bounds) {
+                const currentScale = zoomControllerRef.current ? zoomControllerRef.current.getScale() : scale;
+                const boundsY = bounds.y || bounds.top;
+                const boundsHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0);
+                const scaledTop = boundsY * currentScale;
+                const scaledHeight = boundsHeight * currentScale;
 
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11485',message:'Page container scroll position calculated',data:{pageContainerScrollTop,containerScrollTop:container.scrollTop,paddingTop,scrollTopAfterPadding:scrollTop},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11518',message:'Bounds calculation',data:{bounds,currentScale,scale,boundsY,boundsHeight,scaledTop,scaledHeight,usingZoomController:!!zoomControllerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'A'})}).catch(()=>{});
+                // #endregion
 
-          // Add bounds offset if available
-          if (bounds) {
-            const currentScale = zoomControllerRef.current ? zoomControllerRef.current.getScale() : scale;
-            const boundsY = bounds.y || bounds.top;
-            const boundsHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0);
-            const scaledTop = boundsY * currentScale;
-            const scaledHeight = boundsHeight * currentScale;
+                scrollTop += scaledTop;
 
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11497',message:'Bounds calculation',data:{bounds,currentScale,scale,boundsY,boundsHeight,scaledTop,scaledHeight,usingZoomController:!!zoomControllerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
+                // Center the item vertically
+                const containerHeight = container.clientHeight;
+                const centerOffset = (containerHeight / 2) - (scaledHeight / 2);
+                scrollTop -= centerOffset;
 
-            scrollTop += scaledTop;
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11529',message:'Final scroll calculation',data:{scrollTopBeforeBounds:scrollTop-scaledTop+centerOffset,scrollTop,containerHeight,centerOffset,scaledHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'E'})}).catch(()=>{});
+                // #endregion
+              } else {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11533',message:'No bounds available',data:{scrollTop},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'C'})}).catch(()=>{});
+                // #endregion
+              }
 
-            // Center the item vertically
-            const containerHeight = container.clientHeight;
-            const centerOffset = (containerHeight / 2) - (scaledHeight / 2);
-            scrollTop -= centerOffset;
-
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11505',message:'Final scroll calculation',data:{scrollTopBeforeBounds:scrollTop-scaledTop+centerOffset,scrollTop,containerHeight,centerOffset,scaledHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
+              const finalScrollTop = Math.max(0, Math.min(scrollTop, container.scrollHeight - container.clientHeight));
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11539',message:'Scrolling to final position',data:{finalScrollTop,scrollTop,containerScrollHeight:container.scrollHeight,containerClientHeight:container.clientHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'E'})}).catch(()=>{});
+              // #endregion
+              container.scrollTo({
+                top: finalScrollTop,
+                behavior: 'smooth'
+              });
+            });
           } else {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11507',message:'No bounds available',data:{scrollTop},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'C'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11547',message:'Container not found - fallback to goToPage',data:{pageNumber,hasTargetContainer:!!targetContainer,hasContainer:!!container},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'D'})}).catch(()=>{});
             // #endregion
+            // If page not mounted, fallback to standard page navigation
+            goToPage(pageNumber);
           }
-
-          const finalScrollTop = Math.max(0, Math.min(scrollTop, container.scrollHeight - container.clientHeight));
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11508',message:'Scrolling to position',data:{finalScrollTop,scrollTop,containerScrollHeight:container.scrollHeight,containerClientHeight:container.clientHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
-          container.scrollTo({
-            top: finalScrollTop,
-            behavior: 'smooth'
-          });
-        } else {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11513',message:'Container not found - fallback to goToPage',data:{pageNumber,hasTargetContainer:!!targetContainer,hasContainer:!!container},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
-          // If page not mounted, fallback to standard page navigation
-          goToPage(pageNumber);
-        }
-      }, 100);
+        });
+      });
     }
   }, [scale, scrollMode, goToPage]);
 
@@ -14350,6 +14336,32 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   background: '#252525'
                 }}
               >
+                {isSurveyPanelCollapsed && (
+                  <button
+                    onClick={() => {
+                      setIsSurveyPanelCollapsed(prev => !prev);
+                      requestAnimationFrame(() => {
+                        zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+                      });
+                    }}
+                    style={{
+                      background: 'rgb(51, 51, 51)',
+                      border: 'none',
+                      color: 'rgb(153, 153, 153)',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'background 0.15s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgb(51, 51, 51)'}
+                  >
+                    <Icon name="chevronLeft" size={16} color="#999" />
+                  </button>
+                )}
               </div>
 
               {!isSurveyPanelCollapsed && (
