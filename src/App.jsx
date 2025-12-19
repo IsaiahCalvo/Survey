@@ -13064,8 +13064,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           }}
                           style={{
                             position: 'absolute',
-                            bottom: '2px',
-                            right: '2px',
+                            left: '50%',
+                            top: '50%',
+                            transform: 'translate(12px, -50%)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
