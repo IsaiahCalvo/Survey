@@ -168,8 +168,8 @@ const Icon = ({ name, size = 16, color = 'currentColor', style, className }) => 
       <div
         style={{
           ...style,
-          width: size * 1.4,
-          height: size * 1.4,
+          width: size * 1.25,
+          height: size * 1.225,
           backgroundColor: color,
           maskImage: 'url("/highlighter-icon.png")',
           maskSize: 'contain',
