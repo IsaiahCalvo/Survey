@@ -308,12 +308,15 @@ const getPathPoints = (pathObj) => {
 // Helper function to erase part of a path by detecting intersections and splitting
 // Enhanced with: stroke-width awareness, bezier curve sampling, bounding box pre-check, Douglas-Peucker simplification
 const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
+  console.log('[erasePathSegment] Called with:', { type: pathObj.type, eraserPoints: eraserPath?.points?.length, eraserRadius });
   if (pathObj.type !== 'path') {
+    console.log('[erasePathSegment] Not a path, returning false');
     return false;
   }
 
   try {
     const pathData = pathObj.path;
+    console.log('[erasePathSegment] Path data:', pathData?.length, 'commands');
     if (!pathData || pathData.length === 0) return false;
 
     // Store properties for new paths
@@ -365,8 +368,10 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
         }
       }
       if (!eraserIntersects) {
+        console.log('[erasePathSegment] Bounding box check failed - eraser not near path');
         return false; // Early exit - eraser nowhere near this path
       }
+      console.log('[erasePathSegment] Bounding box check passed');
     }
 
     // Sample the entire path and detect eraser intersections
@@ -492,10 +497,13 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
       }
     }
 
+    console.log('[erasePathSegment] Sampled points:', sampledPoints.length);
     if (sampledPoints.length < 2) return false;
 
     // Check if any points were erased
     const hasErasedPoints = sampledPoints.some(p => p.isErased);
+    const erasedCount = sampledPoints.filter(p => p.isErased).length;
+    console.log('[erasePathSegment] Erased points:', erasedCount, '/', sampledPoints.length);
     if (!hasErasedPoints) return false;
 
     // Check if all points were erased
@@ -987,12 +995,14 @@ const PageAnnotationLayer = memo(({
         // For eraser, use geometry-based hit testing for all object types
         const pointer = canvas.getPointer(opt.e);
         const eraserRadius = eraserSizeRef.current || 20;
+        console.log('[Eraser] MouseDown - pointer:', pointer, 'radius:', eraserRadius, 'mode:', currentEraserMode);
 
         // Find the closest object whose geometry is actually under the cursor
         let target = null;
         let minDistance = Infinity;
 
         const objects = canvas.getObjects();
+        console.log('[Eraser] Objects on canvas:', objects.length, objects.map(o => ({ type: o.type, spaceId: o.spaceId })));
         for (const obj of objects) {
           // Only check objects from current space
           const objSpaceId = obj.spaceId || null;
@@ -1017,7 +1027,9 @@ const PageAnnotationLayer = memo(({
           const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
 
           // Use geometry-based hit testing for all object types
-          if (isPointOnObject(pointer, obj, eraserRadius)) {
+          const hitTest = isPointOnObject(pointer, obj, eraserRadius);
+          console.log('[Eraser] Hit test for', obj.type, ':', hitTest);
+          if (hitTest) {
             if (isHighlight) {
               // Highlights take priority - select immediately
               target = obj;
@@ -1038,6 +1050,7 @@ const PageAnnotationLayer = memo(({
           }
         }
 
+        console.log('[Eraser] Target found:', target ? target.type : 'none');
         if (target) {
           // Check if this is a highlight
           const hasHighlightId = target.highlightId != null;
@@ -1113,7 +1126,9 @@ const PageAnnotationLayer = memo(({
 
             // FEATURE: Single-click partial erase - immediately erase if clicking on a path
             if (target.type === 'path') {
+              console.log('[Eraser] Calling erasePathSegment for single-click partial erase');
               const wasErased = erasePathSegment(target, eraserPathRef.current, eraserSizeRef.current || 20, canvas);
+              console.log('[Eraser] erasePathSegment result:', wasErased);
               if (wasErased) {
                 canvas.requestRenderAll();
                 saveCanvas();
