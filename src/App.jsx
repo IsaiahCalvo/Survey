@@ -11487,20 +11487,32 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
         if (targetContainer && container) {
           // Calculate the page container's absolute scroll position
-          // Use offsetTop to get position relative to offsetParent, then accumulate up to container
+          // Use offsetTop which gives position relative to offsetParent in document flow
+          // This is more reliable than getBoundingClientRect when element is off-screen
           let pageContainerScrollTop = 0;
           let element = targetContainer;
+          const content = contentRef.current;
+          
+          // Accumulate offsetTop values up to the scroll container
           while (element && element !== container) {
             pageContainerScrollTop += element.offsetTop;
-            element = element.offsetParent;
-            // Safety check to prevent infinite loop
-            if (!element || element === document.body || element === document.documentElement) {
-              // Fallback: use getBoundingClientRect if offsetParent chain breaks
+            const parent = element.offsetParent;
+            
+            // If we hit body/html or lose the parent chain, use getBoundingClientRect fallback
+            if (!parent || parent === document.body || parent === document.documentElement) {
               const containerRect = container.getBoundingClientRect();
               const targetRect = targetContainer.getBoundingClientRect();
+              // Use the standard formula as fallback
               pageContainerScrollTop = container.scrollTop + (targetRect.top - containerRect.top);
               break;
             }
+            
+            // If we've reached the content wrapper or container, we're done
+            if (parent === content || parent === container) {
+              break;
+            }
+            
+            element = parent;
           }
 
           const computedStyles = window.getComputedStyle(container);
@@ -14338,30 +14350,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   background: '#252525'
                 }}
               >
-                <button
-                  onClick={() => {
-                    setIsSurveyPanelCollapsed(prev => !prev);
-                    requestAnimationFrame(() => {
-                      zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-                    });
-                  }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#999',
-                    cursor: 'pointer',
-                    padding: '4px',
-                    borderRadius: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'background 0.15s ease'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  <Icon name={isSurveyPanelCollapsed ? 'chevronLeft' : 'chevronRight'} size={16} color="#999" />
-                </button>
               </div>
 
               {!isSurveyPanelCollapsed && (
@@ -14377,6 +14365,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       background: '#333'
                     }}
                   >
+                    <button
+                      onClick={() => {
+                        setIsSurveyPanelCollapsed(prev => !prev);
+                        requestAnimationFrame(() => {
+                          zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+                        });
+                      }}
+                      style={{
+                        background: 'rgb(51, 51, 51)',
+                        border: 'none',
+                        color: 'rgb(153, 153, 153)',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'background 0.15s'
+                      }}
+                    >
+                      <Icon name={isSurveyPanelCollapsed ? 'chevronLeft' : 'chevronRight'} size={16} color="#999" />
+                    </button>
                     <div
                       style={{
                         display: 'flex',
@@ -14401,24 +14411,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       </h2>
                       {!categorySelectModeActive && (
                         <>
-                          <button
-                            type="button"
-                            onClick={handleExportSurveyToExcel}
-                            style={{
-                              background: '#4A90E2',
-                              border: '1px solid #3277c7',
-                              color: '#fff',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.08em',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Export
-                          </button>
                           {selectedTemplate.linkedExcelPath && (
                             <>
 
