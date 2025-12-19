@@ -11232,10 +11232,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     const handleMouseMove = (e) => {
+      // Check if cursor is within the PDF container viewport
+      const pdfContainer = document.querySelector('[data-testid="pdf-container"]');
+      let isWithinViewport = false;
+
+      if (pdfContainer) {
+        const rect = pdfContainer.getBoundingClientRect();
+        isWithinViewport = (
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom
+        );
+      }
+
       setEraserCursorPos({
         x: e.clientX,
         y: e.clientY,
-        visible: true
+        visible: isWithinViewport
       });
     };
 
