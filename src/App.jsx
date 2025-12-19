@@ -7523,6 +7523,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showEraserMenu, setShowEraserMenu] = useState(false);
   const eraserMenuRef = useRef(null);
 
+  // Spacebar Pan state
+  const previousToolRef = useRef(null);
+  const isPanningRef = useRef(false);
+
   const [tooltip, setTooltip] = useState({ visible: false, text: '', x: 0, y: 0 });
   const [showAnnotationColorPicker, setShowAnnotationColorPicker] = useState(false);
   const [annotationColorPickerTab, setAnnotationColorPickerTab] = useState('stroke'); // 'stroke' | 'fill'
@@ -7632,6 +7636,90 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       console.error('Error saving eraser mode:', e);
     }
   }, [eraserMode]);
+
+  // Spacebar Pan feature
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Only handle space key
+      if (e.key !== ' ' && e.code !== 'Space') {
+        return;
+      }
+
+      // Check if user is focused on an input, textarea, or contenteditable element
+      const activeElement = document.activeElement;
+      const isInputFocused = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.isContentEditable ||
+        activeElement.contentEditable === 'true'
+      );
+
+      if (isInputFocused) {
+        return; // Don't trigger tool switch if focused on input
+      }
+
+      // CRITICAL: Prevent default browser scrolling behavior BEFORE any early returns
+      // This must happen even when e.repeat is true to prevent continuous scrolling
+      e.preventDefault();
+      e.stopImmediatePropagation(); // Stop all other handlers from processing this event
+
+      // Prevent re-firing tool switch logic if key is being held (event.repeat)
+      // But we still prevent default above to stop scrolling
+      if (e.repeat) {
+        return;
+      }
+
+      // Only switch if not already panning
+      if (!isPanningRef.current) {
+        // Save current tool and switch to pan
+        previousToolRef.current = activeTool;
+        isPanningRef.current = true;
+        setActiveTool('pan');
+      }
+    };
+
+    const handleKeyUp = (e) => {
+      // Only handle space key
+      if (e.key !== ' ' && e.code !== 'Space') {
+        return;
+      }
+
+      // Restore previous tool if panning was active
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        if (previousToolRef.current !== null) {
+          setActiveTool(previousToolRef.current);
+          previousToolRef.current = null;
+        }
+      }
+    };
+
+    const handleWindowBlur = () => {
+      // Reset panning state if window loses focus (e.g., Alt-Tab)
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        if (previousToolRef.current !== null) {
+          setActiveTool(previousToolRef.current);
+          previousToolRef.current = null;
+        }
+      }
+    };
+
+    // Attach event listeners to document for global key handling
+    // Use { capture: true, passive: false } to ensure preventDefault works properly
+    // Capture phase ensures we catch the event before any other handlers
+    document.addEventListener('keydown', handleKeyDown, { capture: true, passive: false });
+    document.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
+
+    // Cleanup on unmount
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
+      document.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [activeTool]);
+
   const [pendingLocationItem, setPendingLocationItem] = useState(null);
   const topToolbarRef = useRef(null);
   const bottomToolbarRef = useRef(null);
@@ -13186,7 +13274,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Draw"
             >
-              <Icon name="pen" size={16} />
+              <Icon name="pen" size={22} />
             </button>
 
             {/* Shape Category */}
