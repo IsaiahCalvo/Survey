@@ -11439,8 +11439,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Locate item on PDF (Forward Navigation)
   const handleLocateItemOnPDF = useCallback((highlight) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11441',message:'handleLocateItemOnPDF called',data:{highlight:highlight?{pageNumber:highlight.pageNumber,bounds:highlight.bounds,hasBounds:!!highlight.bounds}:null,scrollMode,scale},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     if (!highlight) return;
     const { pageNumber, bounds } = highlight;
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11446',message:'Extracted highlight data',data:{pageNumber,bounds,hasBounds:!!bounds,boundsKeys:bounds?Object.keys(bounds):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
 
     // Zoom in a little (e.g., 1.5x or +20% depending on current scale, but user asked for "zooming in on it a little")
     // Let's set a target scale. If current scale is small, zoom in.
@@ -11448,12 +11455,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (zoomControllerRef.current) {
       // Zoom to 1.5x or current scale if higher
       const targetScale = Math.max(scale, 1.5);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11450',message:'Scale calculation',data:{currentScale:scale,targetScale,willChange:targetScale!==scale,hasZoomController:!!zoomControllerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       if (targetScale !== scale) {
         setScale(targetScale);
       }
     }
 
     if (scrollMode === 'single') {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11457',message:'Single page mode - no scrolling',data:{pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
       setPageNum(pageNumber);
     } else {
       // Continuous mode
@@ -11462,8 +11475,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Let's use setTimeout to allow render cycle if scale changed.
 
       setTimeout(() => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11464',message:'setTimeout callback executing',data:{pageNumber,scale,hasZoomController:!!zoomControllerRef.current,zoomControllerScale:zoomControllerRef.current?.getScale?.()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         const targetContainer = pageContainersRef.current[pageNumber];
         const container = containerRef.current;
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11466',message:'Container refs check',data:{hasTargetContainer:!!targetContainer,hasContainer:!!container,pageNumber,availablePages:Object.keys(pageContainersRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
 
         if (targetContainer && container) {
           // Calculate scroll position
@@ -11471,6 +11491,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           const targetRect = targetContainer.getBoundingClientRect();
           const computedStyles = window.getComputedStyle(container);
           const paddingTop = parseFloat(computedStyles.paddingTop || '0');
+
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11472',message:'Container measurements',data:{containerScrollTop:container.scrollTop,containerRect:{top:containerRect.top,height:containerRect.height},targetRect:{top:targetRect.top,height:targetRect.height},paddingTop},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
 
           // Base page top relative to container scroll
           // current scroll top + (target top - container top)
@@ -11495,21 +11519,43 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             // Let's try scrolling immediately.
 
             const currentScale = zoomControllerRef.current ? zoomControllerRef.current.getScale() : scale;
+            const boundsY = bounds.y || bounds.top;
+            const boundsHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0);
+            const scaledTop = boundsY * currentScale;
+            const scaledHeight = boundsHeight * currentScale;
 
-            const scaledTop = (bounds.y || bounds.top) * currentScale;
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11497',message:'Bounds calculation',data:{bounds,currentScale,scale,boundsY,boundsHeight,scaledTop,scaledHeight,usingZoomController:!!zoomControllerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+
             scrollTop += scaledTop;
 
             // Center the item vertically
-            const scaledHeight = (bounds.height || bounds.bottom - bounds.top) * currentScale;
             const containerHeight = container.clientHeight;
-            scrollTop -= (containerHeight / 2) - (scaledHeight / 2);
+            const centerOffset = (containerHeight / 2) - (scaledHeight / 2);
+            scrollTop -= centerOffset;
+
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11505',message:'Final scroll calculation',data:{scrollTopBeforeBounds:scrollTop-scaledTop+centerOffset,scrollTop,containerHeight,centerOffset,scaledHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
+          } else {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11507',message:'No bounds available',data:{scrollTop},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
           }
 
+          const finalScrollTop = Math.max(0, scrollTop);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11508',message:'Scrolling to position',data:{finalScrollTop,scrollTop,containerScrollHeight:container.scrollHeight,containerClientHeight:container.clientHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
           container.scrollTo({
-            top: Math.max(0, scrollTop),
+            top: finalScrollTop,
             behavior: 'smooth'
           });
         } else {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11513',message:'Container not found - fallback to goToPage',data:{pageNumber,hasTargetContainer:!!targetContainer,hasContainer:!!container},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
           // If page not mounted, fallback to standard page navigation
           goToPage(pageNumber);
         }
@@ -15160,7 +15206,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   const allItemsSelected = itemSelectedCount === highlightCount && highlightCount > 0;
 
                                   return (
-                                    <div key={category.id} style={{ marginBottom: categorySelectModeActive ? '0' : '8px' }}>
+                                    <div key={category.id} style={{ 
+                                      marginBottom: categorySelectModeActive ? '0' : '8px',
+                                      border: '1px solid #444',
+                                      borderRadius: '6px',
+                                      padding: '4px'
+                                    }}>
                                       <div style={{ display: 'flex', gap: isCategorySelectModeActive ? '12px' : '8px', alignItems: 'center' }}>
                                         {/* Checkbox for category selection - only show in copy mode */}
                                         {copyModeActive && (
@@ -15556,7 +15607,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                               <div key={highlight.id} id={`highlight-item-${highlight.id}`} style={{
                                                 marginBottom: '8px',
                                                 background: 'transparent',
-                                                border: '1px solid transparent',
+                                                border: '1px solid #444',
                                                 borderRadius: '6px',
                                                 overflow: 'hidden'
                                               }}>
