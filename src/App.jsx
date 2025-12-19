@@ -11476,48 +11476,43 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       setTimeout(() => {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11464',message:'setTimeout callback executing',data:{pageNumber,scale,hasZoomController:!!zoomControllerRef.current,zoomControllerScale:zoomControllerRef.current?.getScale?.()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11464',message:'setTimeout callback executing',data:{pageNumber,scale,hasZoomController:!!zoomControllerRef.current,zoomControllerScale:zoomControllerRef.current?.getScale?.()},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         const targetContainer = pageContainersRef.current[pageNumber];
         const container = containerRef.current;
 
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11466',message:'Container refs check',data:{hasTargetContainer:!!targetContainer,hasContainer:!!container,pageNumber,availablePages:Object.keys(pageContainersRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11466',message:'Container refs check',data:{hasTargetContainer:!!targetContainer,hasContainer:!!container,pageNumber,availablePages:Object.keys(pageContainersRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
 
         if (targetContainer && container) {
-          // Calculate scroll position
-          const containerRect = container.getBoundingClientRect();
-          const targetRect = targetContainer.getBoundingClientRect();
+          // Calculate the page container's absolute scroll position
+          // Use offsetTop to get position relative to offsetParent, then accumulate up to container
+          let pageContainerScrollTop = 0;
+          let element = targetContainer;
+          while (element && element !== container) {
+            pageContainerScrollTop += element.offsetTop;
+            element = element.offsetParent;
+            // Safety check to prevent infinite loop
+            if (!element || element === document.body || element === document.documentElement) {
+              // Fallback: use getBoundingClientRect if offsetParent chain breaks
+              const containerRect = container.getBoundingClientRect();
+              const targetRect = targetContainer.getBoundingClientRect();
+              pageContainerScrollTop = container.scrollTop + (targetRect.top - containerRect.top);
+              break;
+            }
+          }
+
           const computedStyles = window.getComputedStyle(container);
           const paddingTop = parseFloat(computedStyles.paddingTop || '0');
+          let scrollTop = pageContainerScrollTop - paddingTop;
 
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11472',message:'Container measurements',data:{containerScrollTop:container.scrollTop,containerRect:{top:containerRect.top,height:containerRect.height},targetRect:{top:targetRect.top,height:targetRect.height},paddingTop},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11485',message:'Page container scroll position calculated',data:{pageContainerScrollTop,containerScrollTop:container.scrollTop,paddingTop,scrollTopAfterPadding:scrollTop},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
           // #endregion
-
-          // Base page top relative to container scroll
-          // current scroll top + (target top - container top)
-          let scrollTop = container.scrollTop + (targetRect.top - containerRect.top) - paddingTop;
 
           // Add bounds offset if available
           if (bounds) {
-            // bounds are in PDF coordinates (unscaled)
-            // Note: we should use the NEW scale if we just updated it, but 'scale' var here is from closure.
-            // If we updated state, this closure might be stale for the exact calculation if we don't wait for re-render.
-            // But for "centering", exact pixel precision might be slightly off if we don't wait.
-            // Given the user wants "zoom in", we might trigger a re-render.
-            // Actually, if we setScale, the component re-renders, and we might lose this scroll command unless we persist it?
-            // Or we can just scroll "best effort" and maybe the user manually adjusts.
-            // Better approach: If we change scale, we might need a `useEffect` to handle "scroll to pending highlight".
-            // But for now, let's try direct manipulation.
-
-            // Use current scale from ref if available to be safe? No, just use `scale` prop.
-            // If we just called setScale, `scale` here is old.
-            // Let's assume we just scroll to the *current* position of the element.
-            // If the element grows due to zoom, the browser might handle some of it, or we re-calculate after zoom?
-            // Let's try scrolling immediately.
-
             const currentScale = zoomControllerRef.current ? zoomControllerRef.current.getScale() : scale;
             const boundsY = bounds.y || bounds.top;
             const boundsHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0);
@@ -11525,7 +11520,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             const scaledHeight = boundsHeight * currentScale;
 
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11497',message:'Bounds calculation',data:{bounds,currentScale,scale,boundsY,boundsHeight,scaledTop,scaledHeight,usingZoomController:!!zoomControllerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11497',message:'Bounds calculation',data:{bounds,currentScale,scale,boundsY,boundsHeight,scaledTop,scaledHeight,usingZoomController:!!zoomControllerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
             // #endregion
 
             scrollTop += scaledTop;
@@ -11536,17 +11531,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             scrollTop -= centerOffset;
 
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11505',message:'Final scroll calculation',data:{scrollTopBeforeBounds:scrollTop-scaledTop+centerOffset,scrollTop,containerHeight,centerOffset,scaledHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11505',message:'Final scroll calculation',data:{scrollTopBeforeBounds:scrollTop-scaledTop+centerOffset,scrollTop,containerHeight,centerOffset,scaledHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
             // #endregion
           } else {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11507',message:'No bounds available',data:{scrollTop},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11507',message:'No bounds available',data:{scrollTop},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'C'})}).catch(()=>{});
             // #endregion
           }
 
-          const finalScrollTop = Math.max(0, scrollTop);
+          const finalScrollTop = Math.max(0, Math.min(scrollTop, container.scrollHeight - container.clientHeight));
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11508',message:'Scrolling to position',data:{finalScrollTop,scrollTop,containerScrollHeight:container.scrollHeight,containerClientHeight:container.clientHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11508',message:'Scrolling to position',data:{finalScrollTop,scrollTop,containerScrollHeight:container.scrollHeight,containerClientHeight:container.clientHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
           // #endregion
           container.scrollTo({
             top: finalScrollTop,
@@ -11554,7 +11549,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           });
         } else {
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11513',message:'Container not found - fallback to goToPage',data:{pageNumber,hasTargetContainer:!!targetContainer,hasContainer:!!container},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11513',message:'Container not found - fallback to goToPage',data:{pageNumber,hasTargetContainer:!!targetContainer,hasContainer:!!container},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
           // #endregion
           // If page not mounted, fallback to standard page navigation
           goToPage(pageNumber);
