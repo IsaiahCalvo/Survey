@@ -558,6 +558,151 @@ export const useStorage = () => {
 };
 
 // ============================================
+// CONNECTED SERVICES HOOKS
+// ============================================
+
+/**
+ * Hook for managing connected external services (Microsoft, Google, etc.)
+ * Persists connection status to Supabase so services stay connected across sessions
+ */
+export const useConnectedServices = () => {
+  const { user } = useAuth();
+  const [services, setServices] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!user || !isSupabaseAvailable()) {
+      setLoading(false);
+      return;
+    }
+
+    fetchServices();
+  }, [user]);
+
+  const fetchServices = async () => {
+    if (!user || !isSupabaseAvailable()) return;
+
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('connected_services')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      // Convert array to object keyed by service_name for easier access
+      const servicesMap = {};
+      (data || []).forEach(service => {
+        servicesMap[service.service_name] = service;
+      });
+      setServices(servicesMap);
+    } catch (err) {
+      console.error('Error fetching connected services:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const connectService = async (serviceName, accountData) => {
+    if (!user || !isSupabaseAvailable()) return null;
+
+    try {
+      const serviceData = {
+        user_id: user.id,
+        service_name: serviceName,
+        is_connected: true,
+        account_id: accountData.accountId || null,
+        account_email: accountData.email || null,
+        account_name: accountData.name || null,
+        metadata: accountData.metadata || {},
+        connected_at: new Date().toISOString(),
+        last_used_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('connected_services')
+        .upsert(serviceData, { onConflict: 'user_id,service_name' })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setServices(prev => ({
+        ...prev,
+        [serviceName]: data
+      }));
+
+      return data;
+    } catch (err) {
+      console.error('Error connecting service:', err);
+      setError(err.message);
+      throw err;
+    }
+  };
+
+  const disconnectService = async (serviceName) => {
+    if (!user || !isSupabaseAvailable()) return;
+
+    try {
+      const { error } = await supabase
+        .from('connected_services')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('service_name', serviceName);
+
+      if (error) throw error;
+
+      setServices(prev => {
+        const updated = { ...prev };
+        delete updated[serviceName];
+        return updated;
+      });
+    } catch (err) {
+      console.error('Error disconnecting service:', err);
+      setError(err.message);
+      throw err;
+    }
+  };
+
+  const updateServiceLastUsed = async (serviceName) => {
+    if (!user || !isSupabaseAvailable()) return;
+
+    try {
+      await supabase
+        .from('connected_services')
+        .update({ last_used_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .eq('service_name', serviceName);
+    } catch (err) {
+      console.error('Error updating service last used:', err);
+    }
+  };
+
+  const isServiceConnected = (serviceName) => {
+    return services[serviceName]?.is_connected === true;
+  };
+
+  const getServiceInfo = (serviceName) => {
+    return services[serviceName] || null;
+  };
+
+  return {
+    services,
+    loading,
+    error,
+    connectService,
+    disconnectService,
+    updateServiceLastUsed,
+    isServiceConnected,
+    getServiceInfo,
+    refetch: fetchServices,
+  };
+};
+
+// ============================================
 // DOCUMENT TOOL PREFERENCES HOOKS
 // ============================================
 

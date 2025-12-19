@@ -7606,7 +7606,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setShowExportMenu(false);
       }
       // Close eraser menu
-      if (eraserMenuRef.current && !eraserMenuRef.current.contains(event.target)) {
+      // Don't close if clicking on the eraser button itself (let the button handler manage it)
+      const isEraserButton = event.target.closest('[data-eraser-button]');
+      if (eraserMenuRef.current && !eraserMenuRef.current.contains(event.target) && !isEraserButton) {
         setShowEraserMenu(false);
       }
     };
@@ -12796,9 +12798,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 ].map(t => (
                   <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <button
+                      data-eraser-button={t.id === 'eraser' ? 'true' : undefined}
                       onClick={() => {
-                        if (t.id === 'eraser' && activeTool === 'eraser') {
-                          setShowEraserMenu(!showEraserMenu);
+                        if (t.id === 'eraser') {
+                          if (activeTool === 'eraser') {
+                            // If eraser is already active, toggle the menu
+                            setShowEraserMenu(!showEraserMenu);
+                          } else {
+                            // If eraser is not active, set it as active and open the menu
+                            setActiveTool(t.id);
+                            setShowEraserMenu(true);
+                          }
                         } else {
                           setActiveTool(t.id);
                           if (t.id !== 'eraser') setShowEraserMenu(false);
@@ -12818,6 +12828,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       <Icon name={t.iconName} size={20} />
                       {t.id === 'eraser' && activeTool === 'eraser' && (
                         <div
+                          data-eraser-button="true"
                           onClick={(e) => {
                             e.stopPropagation();
                             setShowEraserMenu(!showEraserMenu);

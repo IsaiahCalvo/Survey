@@ -7,7 +7,7 @@ import './AccountSettings.css';
 
 export const AccountSettings = ({ isOpen, onClose }) => {
   const { user, updateProfile, updatePassword, signOut, signInWithGoogle } = useAuth();
-  const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount } = useMSGraph();
+  const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -46,17 +46,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   }, [user]);
 
   // Sync Microsoft account data if user profile is incomplete
+  // Note: Microsoft connection persistence is now handled by MSGraphContext using the connected_services table
   useEffect(() => {
     if (isMSAuthenticated && msAccount && user) {
-      // Persist Microsoft connection status to Supabase
-      if (!user.user_metadata?.microsoft_connected) {
-        updateProfile({ microsoft_connected: true }).catch(console.error);
-      }
-
       const hasName = user.user_metadata?.first_name || user.user_metadata?.last_name;
 
       if (!hasName) {
-        const msName = msAccount.name || msAccount.username; // MS Graph usually provides 'displayName' as 'name' in msal account object
+        const msName = msAccount.name || msAccount.username;
 
         if (msName) {
           const parts = msName.split(' ');
@@ -587,6 +583,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         <div className="account-connected-account-status account-connected-account-status-connected">
                           Connected as {msAccount?.username || msAccount?.email || msAccount?.name}
                         </div>
+                      ) : msNeedsReconnect ? (
+                        <div className="account-connected-account-status" style={{ color: '#f59e0b' }}>
+                          Session expired. Click Reconnect to restore access.
+                        </div>
                       ) : (
                         <div className="account-connected-account-status">
                           Not connected. Connect to sync exported surveys
@@ -611,7 +611,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       </button>
                     ) : (
                       <button
-                        className="account-btn-primary"
+                        className={msNeedsReconnect ? "account-btn-primary" : "account-btn-primary"}
                         onClick={async () => {
                           try {
                             await msLogin();
@@ -620,8 +620,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           }
                         }}
                         disabled={loading}
+                        style={msNeedsReconnect ? { backgroundColor: '#f59e0b', borderColor: '#f59e0b' } : {}}
                       >
-                        Connect
+                        {msNeedsReconnect ? 'Reconnect' : 'Connect'}
                       </button>
                     )}
                   </div>
