@@ -14374,7 +14374,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   {/* Panel Header */}
                   <div
                     style={{
-                      padding: categorySelectModeActive ? '16px 10px' : '20px 10px',
+                      padding: categorySelectModeActive ? '10px 8px' : '12px 8px',
                       borderBottom: '1px solid #444',
                       display: 'flex',
                       alignItems: 'center',
@@ -14508,11 +14508,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   {/* Modules Tabs */}
                   {((selectedTemplate.modules || selectedTemplate.spaces) || []).length > 0 && (
                     <div style={{
-                      padding: '12px 16px',
+                      padding: '8px 12px',
                       borderBottom: '1px solid #444',
                       background: '#333',
                       display: 'flex',
-                      gap: '8px',
+                      gap: '6px',
                       overflowX: 'auto'
                     }}>
                       {(selectedTemplate.modules || selectedTemplate.spaces || []).map(module => (
@@ -14548,7 +14548,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   <div style={{
                     flex: categorySelectModeActive ? '1 1 auto' : 1,
                     overflowY: 'auto',
-                    padding: '20px 10px',
+                    padding: '12px 8px',
                     fontFamily: FONT_FAMILY,
                     display: 'flex',
                     flexDirection: 'column',
@@ -14584,9 +14584,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           {!copyModeActive && !categorySelectModeActive ? (
                             <div
                               style={{
-                                marginBottom: '20px',
+                                marginBottom: '12px',
                                 display: 'flex',
-                                gap: '10px',
+                                gap: '8px',
                                 flexWrap: 'wrap',
                                 alignItems: 'center'
                               }}
@@ -14643,11 +14643,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             </div>
                           ) : copyModeActive ? (
                             <div style={{
-                              marginBottom: '20px',
+                              marginBottom: '12px',
                               display: 'flex',
-                              gap: '12px',
+                              gap: '8px',
                               alignItems: 'center',
-                              paddingBottom: '12px',
+                              paddingBottom: '8px',
                               borderBottom: '1px solid #333'
                             }}>
                               {/* Select All checkbox */}
@@ -14965,12 +14965,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           ) : null}
 
                           {/* Categories List */}
-                          <div style={{ marginBottom: '32px' }}>
+                          <div style={{ marginBottom: '20px' }}>
                             <h3 style={{
-                              fontSize: '16px',
+                              fontSize: '14px',
                               fontWeight: '600',
                               color: '#fff',
-                              marginBottom: '16px',
+                              marginBottom: '10px',
                               fontFamily: FONT_FAMILY
                             }}>
                               Select Category to Highlight
@@ -14983,7 +14983,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                               return (
                                 <div style={{
-                                  marginBottom: '16px'
+                                  marginBottom: '10px'
                                 }}>
                                   <div style={{
                                     display: 'flex',
@@ -15176,7 +15176,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             })()}
 
                             {module.categories && module.categories.length > 0 ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: categorySelectModeActive ? '12px' : '8px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: categorySelectModeActive ? '8px' : '4px' }}>
                                 {module.categories.map(category => {
                                   const categoryHighlights = highlightsByCategory[category.id] || [];
                                   const highlightCount = categoryHighlights.length;
@@ -15207,10 +15207,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                                   return (
                                     <div key={category.id} style={{ 
-                                      marginBottom: categorySelectModeActive ? '0' : '8px',
+                                      marginBottom: categorySelectModeActive ? '0' : '4px',
                                       border: '1px solid #444',
-                                      borderRadius: '6px',
-                                      padding: '4px'
+                                      borderRadius: '4px',
+                                      padding: '2px'
                                     }}>
                                       <div style={{ display: 'flex', gap: isCategorySelectModeActive ? '12px' : '8px', alignItems: 'center' }}>
                                         {/* Checkbox for category selection - only show in copy mode */}
@@ -15218,10 +15218,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           <label style={{
                                             display: 'flex',
                                             alignItems: 'center',
-                                            padding: '0 8px',
+                                            padding: '0 6px',
                                             cursor: 'pointer',
                                             border: '1px solid transparent',
-                                            borderRadius: '6px 0 0 6px',
+                                            borderRadius: '4px 0 0 4px',
                                             background: '#333',
                                             userSelect: 'none'
                                           }}>
@@ -15328,7 +15328,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                               style={{
                                                 textAlign: 'left',
                                                 justifyContent: 'flex-start',
-                                                padding: '8px 16px',
+                                                padding: '6px 12px',
                                                 background: buttonBackground,
                                                 borderTop: baseBorder,
                                                 borderBottom: baseBorder,
@@ -15336,13 +15336,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                 borderRight: highlightCount > 0 ? 'none' : baseBorder,
                                                 color: buttonTextColor,
                                                 flex: 1,
-                                                borderRadius: highlightCount > 0 ? '6px 0 0 6px' : '6px',
+                                                borderRadius: highlightCount > 0 ? '4px 0 0 4px' : '4px',
                                               }}
                                             >
                                               <div style={{ fontWeight: '500' }}>
                                                 {category.name || 'Untitled Category'}
                                               </div>
-                                              <div style={{ fontSize: '12px', color: buttonSubTextColor, marginTop: '4px' }}>
+                                              <div style={{ fontSize: '11px', color: buttonSubTextColor, marginTop: '2px' }}>
                                                 {highlightCount}
                                               </div>
                                             </button>
@@ -15357,13 +15357,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                   }));
                                                 }}
                                                 style={{
-                                                  padding: '2px 12px',
+                                                  padding: '2px 8px',
                                                   background: 'transparent',
                                                   borderTop: baseBorder,
                                                   borderRight: baseBorder,
                                                   borderBottom: baseBorder,
                                                   borderLeft: 'none',
-                                                  borderRadius: '0 6px 6px 0',
+                                                  borderRadius: '0 4px 4px 0',
                                                   cursor: 'pointer',
                                                   display: 'flex',
                                                   alignItems: 'center',
@@ -15401,11 +15401,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       {/* Expanded highlights list */}
                                       {isExpanded && highlightCount > 0 && (
                                         <div style={{
-                                          marginTop: '8px',
-                                          padding: '8px',
+                                          marginTop: '4px',
+                                          padding: '4px',
                                           background: 'transparent',
                                           border: '1px solid transparent',
-                                          borderRadius: '6px'
+                                          borderRadius: '4px'
                                         }}>
                                           {/* Select button for item-level selection - only show when NOT in item select mode */}
                                           {!isItemSelectModeActiveForCategory && !categorySelectModeActive && !copyModeActive && (
@@ -15422,7 +15422,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                               }}
                                               className="btn btn-sm"
                                               style={{
-                                                marginBottom: '12px',
+                                                marginBottom: '8px',
                                                 background: '#3a3a3a',
                                                 color: '#ddd',
                                                 border: '1px solid transparent',
@@ -15436,7 +15436,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           {/* Item Select Mode Actions */}
                                           {isItemSelectModeActiveForCategory && (
                                             <div style={{
-                                              marginBottom: '12px',
+                                              marginBottom: '8px',
                                               display: 'flex',
                                               gap: '4px',
                                               alignItems: 'center',
@@ -15605,10 +15605,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                                             return (
                                               <div key={highlight.id} id={`highlight-item-${highlight.id}`} style={{
-                                                marginBottom: '8px',
+                                                marginBottom: '4px',
                                                 background: 'transparent',
                                                 border: '1px solid #444',
-                                                borderRadius: '6px',
+                                                borderRadius: '4px',
                                                 overflow: 'hidden'
                                               }}>
                                                 {/* Highlight header - clickable to expand */}
@@ -15668,7 +15668,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                       display: 'flex',
                                                       alignItems: 'center',
                                                       justifyContent: 'space-between',
-                                                      padding: '8px 10px',
+                                                      padding: '6px 8px',
                                                       background: 'transparent',
                                                       border: 'none',
                                                       cursor: 'pointer',
