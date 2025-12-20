@@ -210,8 +210,10 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
   const pathData = pathObj.path;
   if (!pathData || pathData.length === 0) return false;
 
-  const strokeWidth = pathObj.strokeWidth || 1;
-  const effectiveDistance = strokeWidth / 2 + tolerance;
+  const strokeWidth = pathObj.strokeWidth || 0;
+  const hasStroke = strokeWidth > 0 && pathObj.stroke && pathObj.stroke !== 'transparent';
+  const hasFill = pathObj.fill && pathObj.fill !== 'transparent' && pathObj.fill !== null;
+  const effectiveDistance = (strokeWidth / 2) + tolerance;
 
   // Get object's transform matrix and calculate inverse to transform point to local space
   const matrix = getObjectTransformMatrix(pathObj);
@@ -224,7 +226,10 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
     y: localPoint.y + pathOffset.y
   };
 
+  // For filled paths, also collect vertices to check if point is inside
+  const vertices = [];
   let currentX = 0, currentY = 0;
+  let startX = 0, startY = 0;
   let minDistance = Infinity;
 
   for (let i = 0; i < pathData.length; i++) {
@@ -236,16 +241,22 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
       const endY = command === 'M' ? cmd[2] : currentY + cmd[2];
       currentX = endX;
       currentY = endY;
+      startX = endX;
+      startY = endY;
+      if (hasFill) vertices.push({ x: endX, y: endY });
     } else if (command === 'L' || command === 'l') {
       const endX = command === 'L' ? cmd[1] : currentX + cmd[1];
       const endY = command === 'L' ? cmd[2] : currentY + cmd[2];
 
-      const dist = distanceToLineSegment(pathLocalPoint,
-        { x: currentX, y: currentY },
-        { x: endX, y: endY }
-      );
-      minDistance = Math.min(minDistance, dist);
+      if (hasStroke || !hasFill) {
+        const dist = distanceToLineSegment(pathLocalPoint,
+          { x: currentX, y: currentY },
+          { x: endX, y: endY }
+        );
+        minDistance = Math.min(minDistance, dist);
+      }
 
+      if (hasFill) vertices.push({ x: endX, y: endY });
       currentX = endX;
       currentY = endY;
     } else if (command === 'C' || command === 'c') {
@@ -271,9 +282,12 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
         const x = mt3 * currentX + 3 * mt2 * tt * cp1x + 3 * mt * tt2 * cp2x + tt3 * endX;
         const y = mt3 * currentY + 3 * mt2 * tt * cp1y + 3 * mt * tt2 * cp2y + tt3 * endY;
 
-        const dist = distanceToLineSegment(pathLocalPoint, { x: prevX, y: prevY }, { x, y });
-        minDistance = Math.min(minDistance, dist);
+        if (hasStroke || !hasFill) {
+          const dist = distanceToLineSegment(pathLocalPoint, { x: prevX, y: prevY }, { x, y });
+          minDistance = Math.min(minDistance, dist);
+        }
 
+        if (hasFill) vertices.push({ x, y });
         prevX = x;
         prevY = y;
       }
@@ -297,9 +311,12 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
         const x = mt * mt * currentX + 2 * mt * tt * cpx + tt * tt * endX;
         const y = mt * mt * currentY + 2 * mt * tt * cpy + tt * tt * endY;
 
-        const dist = distanceToLineSegment(pathLocalPoint, { x: prevX, y: prevY }, { x, y });
-        minDistance = Math.min(minDistance, dist);
+        if (hasStroke || !hasFill) {
+          const dist = distanceToLineSegment(pathLocalPoint, { x: prevX, y: prevY }, { x, y });
+          minDistance = Math.min(minDistance, dist);
+        }
 
+        if (hasFill) vertices.push({ x, y });
         prevX = x;
         prevY = y;
       }
@@ -307,12 +324,37 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
       currentX = endX;
       currentY = endY;
     } else if (command === 'Z' || command === 'z') {
-      // Close path - we don't need to do anything special here
-      // as the path should already be closed
+      // Close path - add line back to start for stroke distance calculation
+      if ((hasStroke || !hasFill) && (currentX !== startX || currentY !== startY)) {
+        const dist = distanceToLineSegment(pathLocalPoint,
+          { x: currentX, y: currentY },
+          { x: startX, y: startY }
+        );
+        minDistance = Math.min(minDistance, dist);
+      }
+      currentX = startX;
+      currentY = startY;
     }
   }
 
-  return minDistance <= effectiveDistance;
+  // Check if point is on stroke
+  if (hasStroke && minDistance <= effectiveDistance) {
+    return true;
+  }
+
+  // Check if point is inside filled area using ray casting
+  if (hasFill && vertices.length >= 3) {
+    if (isPointInPolygon(pathLocalPoint, vertices)) {
+      return true;
+    }
+  }
+
+  // For paths with only stroke (no fill), check stroke distance with default tolerance
+  if (!hasFill && minDistance <= (tolerance + (strokeWidth > 0 ? strokeWidth / 2 : 3))) {
+    return true;
+  }
+
+  return false;
 };
 
 /**

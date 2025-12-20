@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, memo } from 'react';
 import { Canvas, Rect, Circle, Line, Triangle, Textbox, PencilBrush, Polyline, Group, util, Path } from 'fabric';
 import * as fabric from 'fabric';
+import polygonClipping from 'polygon-clipping';
 import { regionContainsPoint } from './utils/regionMath';
 import {
   isPointOnObject,
@@ -305,10 +306,104 @@ const getPathPoints = (pathObj) => {
   return points;
 };
 
-// Helper function to erase part of a path by detecting intersections and splitting
-// Enhanced with: stroke-width awareness, bezier curve sampling, bounding box pre-check, Douglas-Peucker simplification
+// Helper: Create a circle polygon with N vertices
+const createCirclePolygon = (cx, cy, radius, numSegments = 32) => {
+  const points = [];
+  for (let i = 0; i < numSegments; i++) {
+    const angle = (2 * Math.PI * i) / numSegments;
+    points.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)]);
+  }
+  return [points]; // polygon-clipping format: array of rings
+};
+
+// Helper: Convert stroke path to filled polygon outline
+// This offsets the centerline perpendicular by strokeWidth/2 on each side
+const strokeToPolygon = (centerlinePoints, strokeWidth) => {
+  if (centerlinePoints.length < 2) return null;
+
+  const halfWidth = strokeWidth / 2;
+  const leftSide = [];
+  const rightSide = [];
+
+  for (let i = 0; i < centerlinePoints.length; i++) {
+    const curr = centerlinePoints[i];
+    let dx, dy, len;
+
+    if (i === 0) {
+      // First point: use direction to next point
+      const next = centerlinePoints[i + 1];
+      dx = next.x - curr.x;
+      dy = next.y - curr.y;
+    } else if (i === centerlinePoints.length - 1) {
+      // Last point: use direction from previous point
+      const prev = centerlinePoints[i - 1];
+      dx = curr.x - prev.x;
+      dy = curr.y - prev.y;
+    } else {
+      // Middle points: average direction
+      const prev = centerlinePoints[i - 1];
+      const next = centerlinePoints[i + 1];
+      dx = next.x - prev.x;
+      dy = next.y - prev.y;
+    }
+
+    len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 0.0001) {
+      // Degenerate case: use vertical offset
+      leftSide.push([curr.x - halfWidth, curr.y]);
+      rightSide.push([curr.x + halfWidth, curr.y]);
+    } else {
+      // Normal perpendicular
+      const nx = -dy / len;
+      const ny = dx / len;
+      leftSide.push([curr.x + nx * halfWidth, curr.y + ny * halfWidth]);
+      rightSide.push([curr.x - nx * halfWidth, curr.y - ny * halfWidth]);
+    }
+  }
+
+  // Add rounded end caps
+  const addEndCap = (center, direction, isStart) => {
+    const capPoints = [];
+    const startAngle = Math.atan2(direction.y, direction.x) + (isStart ? Math.PI / 2 : -Math.PI / 2);
+    const numCapSegments = 8;
+    for (let i = 0; i <= numCapSegments; i++) {
+      const angle = startAngle + (Math.PI * i) / numCapSegments;
+      capPoints.push([
+        center.x + halfWidth * Math.cos(angle),
+        center.y + halfWidth * Math.sin(angle)
+      ]);
+    }
+    return capPoints;
+  };
+
+  // Build closed polygon: left side -> end cap -> right side reversed -> start cap
+  const first = centerlinePoints[0];
+  const last = centerlinePoints[centerlinePoints.length - 1];
+  const firstDir = {
+    x: centerlinePoints[1].x - first.x,
+    y: centerlinePoints[1].y - first.y
+  };
+  const lastDir = {
+    x: last.x - centerlinePoints[centerlinePoints.length - 2].x,
+    y: last.y - centerlinePoints[centerlinePoints.length - 2].y
+  };
+
+  const polygon = [
+    ...leftSide,
+    ...addEndCap(last, lastDir, false),
+    ...rightSide.reverse(),
+    ...addEndCap(first, firstDir, true)
+  ];
+
+  return [polygon]; // polygon-clipping format
+};
+
+// Helper function to erase part of a path using BOOLEAN SUBTRACTION
+// The eraser acts like a cookie cutter - only removing the exact intersection area
 const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
+  console.log('[erasePathSegment] Boolean subtraction mode');
   console.log('[erasePathSegment] Called with:', { type: pathObj.type, eraserPoints: eraserPath?.points?.length, eraserRadius });
+
   if (pathObj.type !== 'path') {
     console.log('[erasePathSegment] Not a path, returning false');
     return false;
@@ -333,115 +428,62 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     const pathOffset = pathObj.pathOffset || { x: 0, y: 0 };
     const matrix = pathObj.calcTransformMatrix ? pathObj.calcTransformMatrix() : null;
 
-    console.log('[erasePathSegment] pathOffset:', pathOffset, 'matrix:', matrix);
+    // Transform local path coordinates to canvas coordinates
+    const toCanvasCoords = (localX, localY) => {
+      const x = localX - pathOffset.x;
+      const y = localY - pathOffset.y;
 
-    // Transform canvas coordinates to local path data coordinates
-    // This uses the SAME approach as isPointOnPath in geometryHitTest.js
-    const toLocalCoords = (canvasX, canvasY) => {
       if (matrix && matrix.length >= 6) {
         const [a, b, c, d, e, f] = matrix;
-        const det = a * d - b * c;
-
-        if (Math.abs(det) < 1e-10) {
-          // Fallback for degenerate matrix
-          return {
-            x: canvasX - (pathObj.left || 0) + pathOffset.x,
-            y: canvasY - (pathObj.top || 0) + pathOffset.y
-          };
-        }
-
-        const invDet = 1 / det;
-        const px = canvasX - e;
-        const py = canvasY - f;
-
-        // Apply inverse transform then add pathOffset (same as isPointOnPath)
         return {
-          x: (d * px - c * py) * invDet + pathOffset.x,
-          y: (-b * px + a * py) * invDet + pathOffset.y
+          x: a * x + c * y + e,
+          y: b * x + d * y + f
         };
       }
-      // Fallback: just use left/top offset
       return {
-        x: canvasX - (pathObj.left || 0) + pathOffset.x,
-        y: canvasY - (pathObj.top || 0) + pathOffset.y
+        x: x + (pathObj.left || 0),
+        y: y + (pathObj.top || 0)
       };
     };
 
-    // Pre-transform all eraser points to local path space ONCE
-    // This is the same coordinate space that path data uses
-    const localEraserPoints = eraserPath.points.map(p => toLocalCoords(p.x, p.y));
-    console.log('[erasePathSegment] Eraser points (canvas):', eraserPath.points);
-    console.log('[erasePathSegment] Eraser points (local):', localEraserPoints);
-
-    // Check if a path point (in local coords) is within eraser zone
-    // Compare directly in local space - no more coordinate transforms needed
-    const isPointErased = (localX, localY) => {
-      const strokeHalf = (originalProps.strokeWidth || 3) / 2;
-      const combinedRadius = strokeHalf + eraserRadius;
-      const combinedRadiusSq = combinedRadius * combinedRadius;
-
-      for (const eraserPt of localEraserPoints) {
-        const dx = localX - eraserPt.x;
-        const dy = localY - eraserPt.y;
-        const distSq = dx * dx + dy * dy;
-        if (distSq <= combinedRadiusSq) {
-          return true;
-        }
-      }
-      return false;
-    };
-
     // OPTIMIZATION: Quick bounding box rejection check
-    // Transform eraser points to local space and check against path bounds in local space
     const pathBounds = pathObj.getBoundingRect ? pathObj.getBoundingRect() : null;
     if (pathBounds) {
       let eraserIntersects = false;
       for (const eraserPoint of eraserPath.points) {
-        if (eraserPoint.x >= pathBounds.left - eraserRadius &&
-            eraserPoint.x <= pathBounds.left + pathBounds.width + eraserRadius &&
-            eraserPoint.y >= pathBounds.top - eraserRadius &&
-            eraserPoint.y <= pathBounds.top + pathBounds.height + eraserRadius) {
+        if (eraserPoint.x >= pathBounds.left - eraserRadius - originalProps.strokeWidth &&
+            eraserPoint.x <= pathBounds.left + pathBounds.width + eraserRadius + originalProps.strokeWidth &&
+            eraserPoint.y >= pathBounds.top - eraserRadius - originalProps.strokeWidth &&
+            eraserPoint.y <= pathBounds.top + pathBounds.height + eraserRadius + originalProps.strokeWidth) {
           eraserIntersects = true;
           break;
         }
       }
       if (!eraserIntersects) {
-        console.log('[erasePathSegment] Bounding box check failed - eraser not near path');
-        return false; // Early exit - eraser nowhere near this path
+        console.log('[erasePathSegment] Bounding box check failed');
+        return false;
       }
-      console.log('[erasePathSegment] Bounding box check passed');
     }
 
-    // Sample the entire path and detect eraser intersections
-    // All comparisons now happen in local path coordinate space
-    const SAMPLE_RESOLUTION = 8; // pixels between samples for curves (reduced for better precision)
-    const sampledPoints = [];
-
+    // Step 1: Sample the path centerline and transform to canvas coordinates
+    const SAMPLE_RESOLUTION = 4; // Fine sampling for accurate outline
+    const centerlinePoints = [];
     let currentX = 0, currentY = 0;
-    let startX = 0, startY = 0; // For tracking path start (M command)
 
-    for (let cmdIdx = 0; cmdIdx < pathData.length; cmdIdx++) {
-      const cmd = pathData[cmdIdx];
+    for (const cmd of pathData) {
       const command = cmd[0];
 
       if (command === 'M' || command === 'm') {
         const endX = command === 'M' ? cmd[1] : currentX + cmd[1];
         const endY = command === 'M' ? cmd[2] : currentY + cmd[2];
-
-        // Add move point - check directly in local space
-        const isErased = isPointErased(endX, endY);
-        sampledPoints.push({ localX: endX, localY: endY, isErased, isMove: true });
-
+        const canvasPos = toCanvasCoords(endX, endY);
+        centerlinePoints.push({ x: canvasPos.x, y: canvasPos.y, isMove: true });
         currentX = endX;
         currentY = endY;
-        startX = endX;
-        startY = endY;
 
       } else if (command === 'L' || command === 'l') {
         const endX = command === 'L' ? cmd[1] : currentX + cmd[1];
         const endY = command === 'L' ? cmd[2] : currentY + cmd[2];
-
-        // Sample the line segment
         const dx = endX - currentX;
         const dy = endY - currentY;
         const length = Math.sqrt(dx * dx + dy * dy);
@@ -449,171 +491,152 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
 
         for (let i = 1; i <= numSamples; i++) {
           const t = i / numSamples;
-          const sampleX = currentX + dx * t;
-          const sampleY = currentY + dy * t;
-          const isErased = isPointErased(sampleX, sampleY);
-          sampledPoints.push({ localX: sampleX, localY: sampleY, isErased, isMove: false });
+          const canvasPos = toCanvasCoords(currentX + dx * t, currentY + dy * t);
+          centerlinePoints.push({ x: canvasPos.x, y: canvasPos.y, isMove: false });
         }
-
         currentX = endX;
         currentY = endY;
 
       } else if (command === 'C' || command === 'c') {
-        // Cubic bezier - sample along the curve
         const cp1x = command === 'C' ? cmd[1] : currentX + cmd[1];
-        const cp1y = command === 'C' ? cmd[2] : currentY + cmd[2];
+        const cp1y = command === 'C' ? cmd[2] : currentX + cmd[2];
         const cp2x = command === 'C' ? cmd[3] : currentX + cmd[3];
         const cp2y = command === 'C' ? cmd[4] : currentY + cmd[4];
         const endX = command === 'C' ? cmd[5] : currentX + cmd[5];
         const endY = command === 'C' ? cmd[6] : currentY + cmd[6];
 
-        // Estimate curve length for sampling
         const chordLength = Math.sqrt(Math.pow(endX - currentX, 2) + Math.pow(endY - currentY, 2));
-        const controlLength = Math.sqrt(Math.pow(cp1x - currentX, 2) + Math.pow(cp1y - currentY, 2)) +
-                              Math.sqrt(Math.pow(cp2x - cp1x, 2) + Math.pow(cp2y - cp1y, 2)) +
-                              Math.sqrt(Math.pow(endX - cp2x, 2) + Math.pow(endY - cp2y, 2));
-        const approxLength = (chordLength + controlLength) / 2;
-        const numSamples = Math.max(4, Math.ceil(approxLength / SAMPLE_RESOLUTION));
+        const numSamples = Math.max(8, Math.ceil(chordLength / SAMPLE_RESOLUTION));
 
         for (let i = 1; i <= numSamples; i++) {
           const t = i / numSamples;
           const sample = sampleCubicBezier(t, currentX, currentY, cp1x, cp1y, cp2x, cp2y, endX, endY);
-          const isErased = isPointErased(sample.x, sample.y);
-          sampledPoints.push({ localX: sample.x, localY: sample.y, isErased, isMove: false });
+          const canvasPos = toCanvasCoords(sample.x, sample.y);
+          centerlinePoints.push({ x: canvasPos.x, y: canvasPos.y, isMove: false });
         }
-
         currentX = endX;
         currentY = endY;
 
       } else if (command === 'Q' || command === 'q') {
-        // Quadratic bezier - sample along the curve
         const cpx = command === 'Q' ? cmd[1] : currentX + cmd[1];
         const cpy = command === 'Q' ? cmd[2] : currentY + cmd[2];
         const endX = command === 'Q' ? cmd[3] : currentX + cmd[3];
         const endY = command === 'Q' ? cmd[4] : currentY + cmd[4];
 
-        // Estimate curve length
         const chordLength = Math.sqrt(Math.pow(endX - currentX, 2) + Math.pow(endY - currentY, 2));
-        const controlLength = Math.sqrt(Math.pow(cpx - currentX, 2) + Math.pow(cpy - currentY, 2)) +
-                              Math.sqrt(Math.pow(endX - cpx, 2) + Math.pow(endY - cpy, 2));
-        const approxLength = (chordLength + controlLength) / 2;
-        const numSamples = Math.max(3, Math.ceil(approxLength / SAMPLE_RESOLUTION));
+        const numSamples = Math.max(6, Math.ceil(chordLength / SAMPLE_RESOLUTION));
 
         for (let i = 1; i <= numSamples; i++) {
           const t = i / numSamples;
           const sample = sampleQuadraticBezier(t, currentX, currentY, cpx, cpy, endX, endY);
-          const isErased = isPointErased(sample.x, sample.y);
-          sampledPoints.push({ localX: sample.x, localY: sample.y, isErased, isMove: false });
+          const canvasPos = toCanvasCoords(sample.x, sample.y);
+          centerlinePoints.push({ x: canvasPos.x, y: canvasPos.y, isMove: false });
         }
-
         currentX = endX;
         currentY = endY;
-
-      } else if (command === 'Z' || command === 'z') {
-        // Close path - draw line back to start
-        if (currentX !== startX || currentY !== startY) {
-          const dx = startX - currentX;
-          const dy = startY - currentY;
-          const length = Math.sqrt(dx * dx + dy * dy);
-          const numSamples = Math.max(2, Math.ceil(length / SAMPLE_RESOLUTION));
-
-          for (let i = 1; i <= numSamples; i++) {
-            const t = i / numSamples;
-            const sampleX = currentX + dx * t;
-            const sampleY = currentY + dy * t;
-            const isErased = isPointErased(sampleX, sampleY);
-            sampledPoints.push({ localX: sampleX, localY: sampleY, isErased, isMove: false });
-          }
-        }
-        currentX = startX;
-        currentY = startY;
       }
     }
 
-    console.log('[erasePathSegment] Sampled points:', sampledPoints.length);
-    if (sampledPoints.length < 2) return false;
+    if (centerlinePoints.length < 2) return false;
 
-    // Check if any points were erased
-    const hasErasedPoints = sampledPoints.some(p => p.isErased);
-    const erasedCount = sampledPoints.filter(p => p.isErased).length;
-    console.log('[erasePathSegment] Erased points:', erasedCount, '/', sampledPoints.length);
-    if (!hasErasedPoints) return false;
-
-    // Check if all points were erased
-    const allErased = sampledPoints.every(p => p.isErased);
-    if (allErased) {
-      canvas.remove(pathObj);
-      return true;
+    // Step 2: Convert stroke to filled polygon outline
+    const strokePolygon = strokeToPolygon(centerlinePoints, originalProps.strokeWidth);
+    if (!strokePolygon) {
+      console.log('[erasePathSegment] Failed to create stroke polygon');
+      return false;
     }
+    console.log('[erasePathSegment] Stroke polygon created with', strokePolygon[0].length, 'vertices');
 
-    // Split sampled points into surviving segments
-    // A segment is a contiguous run of non-erased points
-    const segments = [];
-    let currentSegment = [];
-
-    for (let i = 0; i < sampledPoints.length; i++) {
-      const point = sampledPoints[i];
-
-      if (point.isMove && currentSegment.length >= 2) {
-        // Save current segment before starting new subpath
-        segments.push([...currentSegment]);
-        currentSegment = [];
-      }
-
-      if (point.isErased) {
-        // Point is erased - end current segment if it has enough points
-        if (currentSegment.length >= 2) {
-          segments.push([...currentSegment]);
-        }
-        currentSegment = [];
+    // Step 3: Create eraser circle polygons and union them
+    let eraserPolygon = null;
+    for (const eraserPoint of eraserPath.points) {
+      const circle = createCirclePolygon(eraserPoint.x, eraserPoint.y, eraserRadius, 24);
+      if (eraserPolygon === null) {
+        eraserPolygon = circle;
       } else {
-        // Point survives
-        currentSegment.push(point);
+        try {
+          const unionResult = polygonClipping.union(eraserPolygon, circle);
+          if (unionResult && unionResult.length > 0) {
+            eraserPolygon = unionResult;
+          }
+        } catch (e) {
+          // If union fails, just use the last circle
+          eraserPolygon = circle;
+        }
       }
     }
 
-    // Save final segment
-    if (currentSegment.length >= 2) {
-      segments.push(currentSegment);
+    if (!eraserPolygon) {
+      console.log('[erasePathSegment] Failed to create eraser polygon');
+      return false;
+    }
+    console.log('[erasePathSegment] Eraser polygon ready');
+
+    // Step 4: Perform boolean DIFFERENCE (stroke - eraser)
+    let resultPolygons;
+    try {
+      resultPolygons = polygonClipping.difference(strokePolygon, eraserPolygon);
+    } catch (e) {
+      console.error('[erasePathSegment] Boolean difference failed:', e);
+      return false;
     }
 
-    // If no segments remain, remove path entirely
-    if (segments.length === 0) {
+    console.log('[erasePathSegment] Difference result:', resultPolygons?.length, 'polygons');
+
+    // If no result, the entire stroke was erased
+    if (!resultPolygons || resultPolygons.length === 0) {
       canvas.remove(pathObj);
       return true;
     }
 
-    // Remove the original path
+    // Check if result is same as original (no intersection)
+    // This is a rough check - if polygon count and approximate area are similar
+    if (resultPolygons.length === 1 && resultPolygons[0].length === 1) {
+      const originalArea = Math.abs(polygonArea(strokePolygon[0]));
+      const resultArea = Math.abs(polygonArea(resultPolygons[0][0]));
+      if (Math.abs(originalArea - resultArea) < 1) {
+        console.log('[erasePathSegment] No effective change, skipping');
+        return false;
+      }
+    }
+
+    // Step 5: Remove original path and create new filled polygons
     canvas.remove(pathObj);
 
-    // Create new paths for each surviving segment
-    for (const segment of segments) {
-      if (segment.length < 2) continue;
+    for (const polygon of resultPolygons) {
+      // In GeoJSON/polygon-clipping format:
+      // polygon[0] = outer ring (the shape boundary)
+      // polygon[1+] = hole rings (to be subtracted)
+      // We need to create a single path with all rings, using even-odd fill rule
 
-      // OPTIMIZATION: Simplify path to prevent exponential segment growth
-      // This uses Douglas-Peucker algorithm to reduce points while preserving shape
-      const simplifiedSegment = simplifyPath(segment, 0.5); // tolerance in pixels
+      if (!polygon || polygon.length === 0) continue;
 
-      if (simplifiedSegment.length < 2) continue;
+      const svgPathData = [];
 
-      // Build new path data using simple L commands (line segments)
-      const newPathData = [];
+      // Process all rings (outer + holes) into a single path
+      for (let ringIdx = 0; ringIdx < polygon.length; ringIdx++) {
+        const ring = polygon[ringIdx];
+        if (!ring || ring.length < 3) continue;
 
-      for (let i = 0; i < simplifiedSegment.length; i++) {
-        const point = simplifiedSegment[i];
-        if (i === 0) {
-          newPathData.push(['M', point.localX, point.localY]);
-        } else {
-          newPathData.push(['L', point.localX, point.localY]);
+        for (let i = 0; i < ring.length; i++) {
+          const [x, y] = ring[i];
+          if (i === 0) {
+            svgPathData.push(['M', x, y]);
+          } else {
+            svgPathData.push(['L', x, y]);
+          }
         }
+        svgPathData.push(['Z']); // Close this ring
       }
 
-      // Create a new Path with the same visual properties
-      const newPath = new Path(newPathData, {
-        stroke: originalProps.stroke,
-        strokeWidth: originalProps.strokeWidth,
-        fill: originalProps.fill || 'transparent',
-        strokeUniform: originalProps.strokeUniform !== false,
+      if (svgPathData.length === 0) continue;
+
+      // Create filled path with evenodd fill rule to handle holes correctly
+      const newPath = new Path(svgPathData, {
+        stroke: null, // No stroke - it's now a filled shape
+        strokeWidth: 0,
+        fill: originalProps.stroke, // Use original stroke color as fill
+        fillRule: 'evenodd', // This makes inner rings appear as holes
         spaceId: originalProps.spaceId,
         moduleId: originalProps.moduleId,
         selectable: true,
@@ -626,9 +649,21 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
 
     return true;
   } catch (e) {
-    console.error('Error erasing path segment:', e);
+    console.error('Error in boolean erasePathSegment:', e);
     return false;
   }
+};
+
+// Helper: Calculate polygon area (for comparison)
+const polygonArea = (vertices) => {
+  let area = 0;
+  const n = vertices.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += vertices[i][0] * vertices[j][1];
+    area -= vertices[j][0] * vertices[i][1];
+  }
+  return area / 2;
 };
 
 // Ensure color is in rgba format with specified opacity (default 0.2, but highlights use 1.0)
