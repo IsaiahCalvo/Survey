@@ -322,39 +322,77 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     // Store properties for new paths
     const originalProps = {
       stroke: pathObj.stroke,
-      strokeWidth: pathObj.strokeWidth,
+      strokeWidth: pathObj.strokeWidth || 3,
       fill: pathObj.fill,
       strokeUniform: pathObj.strokeUniform,
       spaceId: pathObj.spaceId,
       moduleId: pathObj.moduleId
     };
 
-    // Get the path's transform to convert local coords to canvas coords
+    // Get the path's transform matrix and pathOffset
     const pathOffset = pathObj.pathOffset || { x: 0, y: 0 };
     const matrix = pathObj.calcTransformMatrix ? pathObj.calcTransformMatrix() : null;
 
-    // Transform local path coordinates to canvas coordinates
-    const toCanvasCoords = (localX, localY) => {
-      // Adjust for pathOffset (Fabric.js centers paths using this)
-      const x = localX - pathOffset.x;
-      const y = localY - pathOffset.y;
+    console.log('[erasePathSegment] pathOffset:', pathOffset, 'matrix:', matrix);
 
+    // Transform canvas coordinates to local path data coordinates
+    // This uses the SAME approach as isPointOnPath in geometryHitTest.js
+    const toLocalCoords = (canvasX, canvasY) => {
       if (matrix && matrix.length >= 6) {
         const [a, b, c, d, e, f] = matrix;
+        const det = a * d - b * c;
+
+        if (Math.abs(det) < 1e-10) {
+          // Fallback for degenerate matrix
+          return {
+            x: canvasX - (pathObj.left || 0) + pathOffset.x,
+            y: canvasY - (pathObj.top || 0) + pathOffset.y
+          };
+        }
+
+        const invDet = 1 / det;
+        const px = canvasX - e;
+        const py = canvasY - f;
+
+        // Apply inverse transform then add pathOffset (same as isPointOnPath)
         return {
-          x: a * x + c * y + e,
-          y: b * x + d * y + f
+          x: (d * px - c * py) * invDet + pathOffset.x,
+          y: (-b * px + a * py) * invDet + pathOffset.y
         };
       }
       // Fallback: just use left/top offset
       return {
-        x: x + (pathObj.left || 0),
-        y: y + (pathObj.top || 0)
+        x: canvasX - (pathObj.left || 0) + pathOffset.x,
+        y: canvasY - (pathObj.top || 0) + pathOffset.y
       };
     };
 
+    // Pre-transform all eraser points to local path space ONCE
+    // This is the same coordinate space that path data uses
+    const localEraserPoints = eraserPath.points.map(p => toLocalCoords(p.x, p.y));
+    console.log('[erasePathSegment] Eraser points (canvas):', eraserPath.points);
+    console.log('[erasePathSegment] Eraser points (local):', localEraserPoints);
+
+    // Check if a path point (in local coords) is within eraser zone
+    // Compare directly in local space - no more coordinate transforms needed
+    const isPointErased = (localX, localY) => {
+      const strokeHalf = (originalProps.strokeWidth || 3) / 2;
+      const combinedRadius = strokeHalf + eraserRadius;
+      const combinedRadiusSq = combinedRadius * combinedRadius;
+
+      for (const eraserPt of localEraserPoints) {
+        const dx = localX - eraserPt.x;
+        const dy = localY - eraserPt.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq <= combinedRadiusSq) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     // OPTIMIZATION: Quick bounding box rejection check
-    // If the eraser path doesn't intersect the path's bounding box, skip processing
+    // Transform eraser points to local space and check against path bounds in local space
     const pathBounds = pathObj.getBoundingRect ? pathObj.getBoundingRect() : null;
     if (pathBounds) {
       let eraserIntersects = false;
@@ -375,8 +413,8 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     }
 
     // Sample the entire path and detect eraser intersections
-    // OPTIMIZATION: Sample resolution for performance
-    const SAMPLE_RESOLUTION = 12; // pixels between samples for curves
+    // All comparisons now happen in local path coordinate space
+    const SAMPLE_RESOLUTION = 8; // pixels between samples for curves (reduced for better precision)
     const sampledPoints = [];
 
     let currentX = 0, currentY = 0;
@@ -390,9 +428,8 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
         const endX = command === 'M' ? cmd[1] : currentX + cmd[1];
         const endY = command === 'M' ? cmd[2] : currentY + cmd[2];
 
-        // Add move point
-        const canvasPos = toCanvasCoords(endX, endY);
-        const isErased = isPointInEraserZone(canvasPos.x, canvasPos.y, eraserPath, eraserRadius, originalProps.strokeWidth);
+        // Add move point - check directly in local space
+        const isErased = isPointErased(endX, endY);
         sampledPoints.push({ localX: endX, localY: endY, isErased, isMove: true });
 
         currentX = endX;
@@ -414,8 +451,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
           const t = i / numSamples;
           const sampleX = currentX + dx * t;
           const sampleY = currentY + dy * t;
-          const canvasPos = toCanvasCoords(sampleX, sampleY);
-          const isErased = isPointInEraserZone(canvasPos.x, canvasPos.y, eraserPath, eraserRadius, originalProps.strokeWidth);
+          const isErased = isPointErased(sampleX, sampleY);
           sampledPoints.push({ localX: sampleX, localY: sampleY, isErased, isMove: false });
         }
 
@@ -442,8 +478,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
         for (let i = 1; i <= numSamples; i++) {
           const t = i / numSamples;
           const sample = sampleCubicBezier(t, currentX, currentY, cp1x, cp1y, cp2x, cp2y, endX, endY);
-          const canvasPos = toCanvasCoords(sample.x, sample.y);
-          const isErased = isPointInEraserZone(canvasPos.x, canvasPos.y, eraserPath, eraserRadius, originalProps.strokeWidth);
+          const isErased = isPointErased(sample.x, sample.y);
           sampledPoints.push({ localX: sample.x, localY: sample.y, isErased, isMove: false });
         }
 
@@ -467,8 +502,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
         for (let i = 1; i <= numSamples; i++) {
           const t = i / numSamples;
           const sample = sampleQuadraticBezier(t, currentX, currentY, cpx, cpy, endX, endY);
-          const canvasPos = toCanvasCoords(sample.x, sample.y);
-          const isErased = isPointInEraserZone(canvasPos.x, canvasPos.y, eraserPath, eraserRadius, originalProps.strokeWidth);
+          const isErased = isPointErased(sample.x, sample.y);
           sampledPoints.push({ localX: sample.x, localY: sample.y, isErased, isMove: false });
         }
 
@@ -487,8 +521,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
             const t = i / numSamples;
             const sampleX = currentX + dx * t;
             const sampleY = currentY + dy * t;
-            const canvasPos = toCanvasCoords(sampleX, sampleY);
-            const isErased = isPointInEraserZone(canvasPos.x, canvasPos.y, eraserPath, eraserRadius, originalProps.strokeWidth);
+            const isErased = isPointErased(sampleX, sampleY);
             sampledPoints.push({ localX: sampleX, localY: sampleY, isErased, isMove: false });
           }
         }
