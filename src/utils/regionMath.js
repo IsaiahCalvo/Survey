@@ -119,6 +119,37 @@ const getRegionBounds = (region) => {
   return { minX, minY, maxX, maxY };
 };
 
+// Calculate center point of a region from its coordinates
+const calculateRegionCenter = (coordinates) => {
+  if (!Array.isArray(coordinates) || coordinates.length < 6) {
+    return null;
+  }
+
+  const bounds = { minX: Number.POSITIVE_INFINITY, minY: Number.POSITIVE_INFINITY, 
+                   maxX: Number.NEGATIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY };
+  
+  for (let i = 0; i < coordinates.length; i += 2) {
+    const x = coordinates[i];
+    const y = coordinates[i + 1];
+    if (typeof x === 'number' && typeof y === 'number') {
+      if (x < bounds.minX) bounds.minX = x;
+      if (x > bounds.maxX) bounds.maxX = x;
+      if (y < bounds.minY) bounds.minY = y;
+      if (y > bounds.maxY) bounds.maxY = y;
+    }
+  }
+
+  if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.minY) || 
+      !Number.isFinite(bounds.maxX) || !Number.isFinite(bounds.maxY)) {
+    return null;
+  }
+
+  return {
+    x: (bounds.minX + bounds.maxX) / 2,
+    y: (bounds.minY + bounds.maxY) / 2
+  };
+};
+
 // Check if two bounding boxes overlap
 const boundsOverlap = (bounds1, bounds2) => {
   if (!bounds1 || !bounds2) return false;
@@ -281,12 +312,40 @@ export const mergeRegions = (region1, region2) => {
     // Generate a new regionId for the merged region
     const newRegionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+    // Calculate center for origin tracking
+    const originCenter = calculateRegionCenter(mergedCoords);
+
+    // Preserve merge history by collecting sourceRegions from both regions
+    // If a region doesn't have sourceRegions, it's an original region, so include it directly
+    const sourceRegions = [
+      ...(Array.isArray(region1.sourceRegions) && region1.sourceRegions.length > 0 
+        ? region1.sourceRegions 
+        : [{
+            regionId: region1.regionId,
+            pageId: region1.pageId,
+            shapeType: region1.shapeType,
+            operation: region1.operation,
+            coordinates: region1.coordinates
+          }]),
+      ...(Array.isArray(region2.sourceRegions) && region2.sourceRegions.length > 0 
+        ? region2.sourceRegions 
+        : [{
+            regionId: region2.regionId,
+            pageId: region2.pageId,
+            shapeType: region2.shapeType,
+            operation: region2.operation,
+            coordinates: region2.coordinates
+          }])
+    ];
+
     return {
       regionId: newRegionId,
       pageId: region1.pageId || region2.pageId,
       shapeType: shapeType,
       operation: op1,
-      coordinates: mergedCoords
+      coordinates: mergedCoords,
+      sourceRegions: sourceRegions,
+      originCenter: originCenter
     };
   } catch (error) {
     console.error('Error merging regions:', error);
@@ -322,17 +381,24 @@ export const subtractRegionFromRegion = (subjectRegion, subtractRegion) => {
     }
 
     // Convert result back to regions
+    // Note: When a region is subtracted, we preserve the sourceRegions from the subject
+    // but create new region IDs since the geometry has changed
     const resultRegions = [];
     for (const polygon of result) {
       const coords = polygonToRegionCoords(polygon);
       if (coords && coords.length >= 6) {
         const isRectangular = subjectRegion.shapeType === 'rectangular' && polygon.length === 5;
+        const originCenter = calculateRegionCenter(coords);
         resultRegions.push({
           regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           pageId: subjectRegion.pageId,
           shapeType: isRectangular ? 'rectangular' : 'polygon',
           operation: subjectRegion.operation,
-          coordinates: coords
+          coordinates: coords,
+          // Preserve sourceRegions if the subject had them (for unmerge capability)
+          // If the subject was already a merged region, preserve that history
+          sourceRegions: subjectRegion.sourceRegions || undefined,
+          originCenter: originCenter || subjectRegion.originCenter || undefined
         });
       }
     }

@@ -111,9 +111,19 @@ const RegionSelectionTool = ({
 
   useEffect(() => {
     if (active) {
+      // Deep clone regions preserving all metadata including sourceRegions and originCenter
       const clonedRegions = (initialRegions || []).map(region => ({
         ...region,
-        coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : []
+        coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
+        // Preserve sourceRegions for unmerge capability
+        sourceRegions: Array.isArray(region.sourceRegions)
+          ? region.sourceRegions.map(sourceRegion => ({
+              ...sourceRegion,
+              coordinates: Array.isArray(sourceRegion.coordinates) ? [...sourceRegion.coordinates] : []
+            }))
+          : undefined,
+        // Preserve originCenter for unmerge offset calculation
+        originCenter: region.originCenter ? { ...region.originCenter } : undefined
       }));
       setRegions(clonedRegions);
     } else {
@@ -859,9 +869,19 @@ const RegionSelectionTool = ({
     // and any subtractions are applied permanently.
     const consolidatedRegions = mergeOverlappingRegions(regions);
 
+    // Preserve all metadata including sourceRegions and originCenter for unmerge capability
     const payload = consolidatedRegions.map(region => ({
       ...region,
-      coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : []
+      coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
+      // Deep copy sourceRegions array to ensure it's preserved
+      sourceRegions: Array.isArray(region.sourceRegions) 
+        ? region.sourceRegions.map(sourceRegion => ({
+            ...sourceRegion,
+            coordinates: Array.isArray(sourceRegion.coordinates) ? [...sourceRegion.coordinates] : []
+          }))
+        : undefined,
+      // Preserve originCenter if it exists
+      originCenter: region.originCenter ? { ...region.originCenter } : undefined
     }));
     onRegionComplete(payload);
     setRegions([]);
@@ -1224,13 +1244,17 @@ const RegionSelectionTool = ({
 
     // Calculate current center to determine offset
     const currentBounds = getRegionBounds(region);
+    if (!currentBounds) return;
+    
     const currentCenter = {
       x: (currentBounds.minX + currentBounds.maxX) / 2,
       y: (currentBounds.minY + currentBounds.maxY) / 2
     };
 
-    const dx = currentCenter.x - region.originCenter.x;
-    const dy = currentCenter.y - region.originCenter.y;
+    // If originCenter is missing, calculate it from current region (fallback)
+    const originCenter = region.originCenter || currentCenter;
+    const dx = currentCenter.x - originCenter.x;
+    const dy = currentCenter.y - originCenter.y;
 
     // Restore source regions with offset
     const restoredRegions = region.sourceRegions.map(sourceRegion => {
@@ -1921,25 +1945,15 @@ const RegionSelectionTool = ({
               const height = (bounds.maxY - bounds.minY) * scale;
 
               return (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: `${left}px`,
-                    top: `${top}px`,
-                    width: `${width}px`,
-                    height: `${height}px`,
-                    pointerEvents: 'none', // Allow clicks to pass through the bounding box frame
-                    zIndex: 1002
-                  }}
-                >
+                <>
                   {resizeHandles.map(handle => (
                     <div
                       key={handle.key}
                       onMouseDown={(event) => handleResizePointerDown(selectedRegion, handle.key, event)}
                       style={{
                         position: 'absolute',
-                        left: `${handle.offsetX * 100}%`,
-                        top: `${handle.offsetY * 100}%`,
+                        left: `${left + (handle.offsetX * width)}px`,
+                        top: `${top + (handle.offsetY * height)}px`,
                         transform: 'translate(-50%, -50%)',
                         width: '12px',
                         height: '12px',
@@ -1947,11 +1961,12 @@ const RegionSelectionTool = ({
                         background: '#F5A623',
                         border: '2px solid #fff',
                         cursor: handle.cursor,
-                        pointerEvents: 'auto' // Re-enable pointer events for handles
+                        pointerEvents: 'auto',
+                        zIndex: 1003
                       }}
                     />
                   ))}
-                </div>
+                </>
               );
             }
           })()}
