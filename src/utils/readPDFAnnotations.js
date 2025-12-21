@@ -144,7 +144,10 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
         strokeUniform: true,
         selectable: true,
         evented: true,
-        excludeFromExport: false
+        excludeFromExport: false,
+        // Enable proper hit detection for imported ink annotations
+        perPixelTargetFind: true,
+        targetFindTolerance: 5
       };
     }
 

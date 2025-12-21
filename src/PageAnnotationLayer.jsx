@@ -2372,7 +2372,14 @@ const PageAnnotationLayer = memo(({
             return;
           }
 
-          util.enlivenObjects([objData], (enlivenedObjects) => {
+          // Normalize type names between Fabric.js versions (5.x uses lowercase, 6.x uses PascalCase)
+          const normalizedObjData = { ...objData };
+          if (normalizedObjData.type) {
+            // Convert PascalCase to lowercase for Fabric.js 5.x compatibility
+            normalizedObjData.type = normalizedObjData.type.toLowerCase();
+          }
+
+          util.enlivenObjects([normalizedObjData], (enlivenedObjects) => {
             console.log(`[Page ${pageNumber}] Enlivened object ${idx} callback`, enlivenedObjects?.length);
             if (!enlivenedObjects || enlivenedObjects.length === 0) {
               console.warn(`[Page ${pageNumber}] Object ${idx} enlivened but returned empty`);
@@ -2391,6 +2398,23 @@ const PageAnnotationLayer = memo(({
               // Enforce multiply blend mode for highlights
               if (obj.highlightId || obj.needsBIC) {
                 obj.set({ globalCompositeOperation: 'multiply' });
+              }
+
+              // Fix for imported ink annotations not being interactive
+              // Ensure paths (like ink strokes) have per-pixel target finding enabled
+              if (obj.type === 'path') {
+                obj.set({
+                  perPixelTargetFind: true,
+                  targetFindTolerance: 5,
+                  selectable: true,
+                  evented: true
+                });
+
+                // Ensure pathOffset is set for proper hit detection
+                // Fabric.js uses pathOffset to center paths; if missing, calculate it
+                if (!obj.pathOffset && obj.path && obj.path.length > 0) {
+                  obj.setCoords();
+                }
               }
               canvas.add(obj);
             });
@@ -2414,18 +2438,49 @@ const PageAnnotationLayer = memo(({
             enlivenedObjects.forEach((obj, index) => {
               if (obj.type === 'path') {
                 const bounds = obj.getBoundingRect(true);
-                // Test point at center
+                // Test point at center of bounding box
                 const centerX = bounds.left + bounds.width / 2;
                 const centerY = bounds.top + bounds.height / 2;
                 const testPoint = { x: centerX, y: centerY };
                 const hitTest = isPointOnObject(testPoint, obj, 5);
+
+                // Also test a point on the actual path (first point after transform)
+                const pathData = obj.path;
+                let firstPathPoint = null;
+                if (pathData && pathData.length > 0 && pathData[0][0] === 'M') {
+                  const matrix = obj.calcTransformMatrix ? obj.calcTransformMatrix() : null;
+                  const pathOffset = obj.pathOffset || { x: 0, y: 0 };
+                  // First point in path data
+                  const localX = pathData[0][1] - pathOffset.x;
+                  const localY = pathData[0][2] - pathOffset.y;
+                  if (matrix) {
+                    // Transform local point to canvas coordinates
+                    firstPathPoint = {
+                      x: matrix[0] * localX + matrix[2] * localY + matrix[4],
+                      y: matrix[1] * localX + matrix[3] * localY + matrix[5]
+                    };
+                  }
+                }
+                const hitTestFirstPoint = firstPathPoint ? isPointOnObject(firstPathPoint, obj, 5) : null;
+
                 console.log(`[Diagnostic] Path ${index} loaded:`, {
                   rect: bounds,
                   center: testPoint,
                   hitTestResult: hitTest,
                   pathLength: obj.path?.length,
                   strokeWidth: obj.strokeWidth,
-                  selectable: obj.selectable
+                  selectable: obj.selectable,
+                  evented: obj.evented,
+                  perPixelTargetFind: obj.perPixelTargetFind,
+                  pathOffset: obj.pathOffset,
+                  left: obj.left,
+                  top: obj.top,
+                  width: obj.width,
+                  height: obj.height,
+                  scaleX: obj.scaleX,
+                  scaleY: obj.scaleY,
+                  firstPathPoint,
+                  hitTestFirstPoint
                 });
               }
             });
