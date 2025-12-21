@@ -13,7 +13,7 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
   // PDF subtypes come with a leading slash (e.g., "/Ink"), normalize by removing it
   const subtype = subtypeRaw ? subtypeRaw.replace(/^\//, '') : null;
   const rect = pdfAnnot.get(PDFName.of('Rect'));
-  
+
   if (!rect || !Array.isArray(rect.array)) {
     return null;
   }
@@ -23,7 +23,7 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
   const bottom = Math.max(y1, y2); // PDF coordinates: bottom is higher Y
   const width = Math.abs(x2 - x1);
   const height = Math.abs(y2 - y1);
-  
+
   // Convert PDF coordinates (bottom-left origin) to Fabric.js (top-left origin)
   const top = pageHeight - bottom;
 
@@ -58,18 +58,18 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
       const allPoints = [];
       inkList.array.forEach((pathArray) => {
         if (!Array.isArray(pathArray.array)) return;
-        
+
         const points = pathArray.array;
         for (let i = 0; i < points.length; i += 2) {
           if (i + 1 >= points.length) break;
-          
+
           const pdfX = points[i]?.valueOf() || 0;
           const pdfY = points[i + 1]?.valueOf() || 0;
-          
+
           // Convert PDF coordinates (bottom-left origin) to canvas coordinates (top-left origin)
           const canvasX = pdfX;
           const canvasY = pageHeight - pdfY;
-          
+
           allPoints.push({ x: canvasX, y: canvasY });
         }
       });
@@ -84,7 +84,7 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
       const actualMinY = Math.min(...allPoints.map(p => p.y));
       const actualMaxX = Math.max(...allPoints.map(p => p.x));
       const actualMaxY = Math.max(...allPoints.map(p => p.y));
-      
+
       const actualLeft = actualMinX;
       const actualTop = actualMinY;
       const actualWidth = actualMaxX - actualMinX;
@@ -93,22 +93,22 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
       // Second pass: build path data with coordinates relative to object position
       const pathData = [];
       let pointIndex = 0;
-      
+
       inkList.array.forEach((pathArray) => {
         if (!Array.isArray(pathArray.array)) return;
-        
+
         const points = pathArray.array;
         let isFirstInPath = true;
-        
+
         for (let i = 0; i < points.length; i += 2) {
           if (i + 1 >= points.length) break;
-          
+
           const point = allPoints[pointIndex++];
-          
+
           // Make coordinates relative to the object's top-left corner
           const relX = point.x - actualLeft;
           const relY = point.y - actualTop;
-          
+
           if (isFirstInPath) {
             pathData.push(['M', relX, relY]);
             isFirstInPath = false;
@@ -118,18 +118,16 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
         }
       });
 
+      // Skip paths that failed to produce any commands
       if (pathData.length === 0) {
         console.warn('[PDF Import] Failed to build path data');
         return null;
       }
 
-      // Skip paths with zero dimensions (they won't render)
-      if (actualWidth <= 0 || actualHeight <= 0) {
-        console.warn(`[PDF Import] Skipping Ink path with zero dimensions: ${actualWidth}x${actualHeight}`);
-        return null;
-      }
+      // Note: Zero dimensions are valid for vertical/horizontal lines or dots (will have stroke width)
+      // if (actualWidth <= 0 || actualHeight <= 0) { ... }
 
-      console.log(`[PDF Import] Created Ink path: ${pathData.length} commands, bounds: (${actualLeft}, ${actualTop}) ${actualWidth}x${actualHeight}`);
+      // console.log(`[PDF Import] Created Ink path: ${pathData.length} commands, bounds: (${actualLeft}, ${actualTop}) ${actualWidth}x${actualHeight}`);
 
       return {
         type: 'path',
@@ -154,7 +152,7 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
       // Convert FreeText to Fabric.js Textbox
       const contents = pdfAnnot.get(PDFName.of('Contents'));
       const text = contents?.toString() || '';
-      
+
       // Try to get font size from DA (default appearance)
       const da = pdfAnnot.get(PDFName.of('DA'));
       let fontSize = 12;
@@ -222,9 +220,9 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
       if (!line || !Array.isArray(line.array) || line.array.length < 4) {
         return null;
       }
-      
+
       const [x1, y1, x2, y2] = line.array.map(v => v?.valueOf() || 0);
-      
+
       return {
         type: 'line',
         version: '5.3.0',
@@ -277,7 +275,7 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
     case 'Highlight': {
       // Convert Highlight to a transparent rectangle (for visual representation)
       // Note: Highlight annotations are typically handled separately in the app
-      
+
       // Get fill color (IC field for interior color)
       const icArray = pdfAnnot.get(PDFName.of('IC'));
       let fillColor = '#FFFF00';
@@ -335,7 +333,7 @@ export const readAnnotationsFromPDF = async (pdfFile) => {
     pages.forEach((page, pageIndex) => {
       const pageNumber = pageIndex + 1; // 1-indexed
       const pageHeight = page.getSize().height;
-      
+
       // Get annotations from page
       const annots = page.node.lookup(PDFName.of('Annots'));
       if (!annots || !Array.isArray(annots.array)) {
@@ -352,32 +350,32 @@ export const readAnnotationsFromPDF = async (pdfFile) => {
           const subtypeRaw = annot.get(PDFName.of('Subtype'))?.toString();
           // PDF subtypes come with a leading slash (e.g., "/Ink"), normalize by removing it
           const subtype = subtypeRaw ? subtypeRaw.replace(/^\//, '') : null;
-          
-          console.log(`[PDF Import] Page ${pageNumber}: Found annotation with subtypeRaw="${subtypeRaw}", normalized="${subtype}"`);
-          
+
+          // console.log(`[PDF Import] Page ${pageNumber}: Found annotation with subtypeRaw="${subtypeRaw}", normalized="${subtype}"`);
+
           if (!subtype) {
-            console.warn(`[PDF Import] Annotation has no subtype on page ${pageNumber}`);
+            // console.warn(`[PDF Import] Annotation has no subtype on page ${pageNumber}`);
             return; // Use return instead of continue in forEach
           }
-          
+
           // Check if supported
           const supportedTypes = ['Ink', 'FreeText', 'Square', 'Circle', 'Line', 'Polygon', 'Highlight'];
-          
+
           if (supportedTypes.includes(subtype)) {
-            console.log(`[PDF Import] Processing supported annotation type: ${subtype} on page ${pageNumber}`);
+            // console.log(`[PDF Import] Processing supported annotation type: ${subtype} on page ${pageNumber}`);
             const fabricObj = pdfAnnotationToFabric(annot, pageNumber, pageHeight);
             if (fabricObj) {
-              console.log(`[PDF Import] Successfully converted ${subtype} annotation to Fabric.js object`);
+              // console.log(`[PDF Import] Successfully converted ${subtype} annotation to Fabric.js object`);
               pageAnnotations.push(fabricObj);
             } else {
-              console.warn(`[PDF Import] Failed to convert ${subtype} annotation to Fabric.js object`);
+              // console.warn(`[PDF Import] Failed to convert ${subtype} annotation to Fabric.js object`);
             }
           } else {
             // Track unsupported types (use normalized subtype for cleaner messages)
             const count = unsupportedTypes.get(subtype) || 0;
             unsupportedTypes.set(subtype, count + 1);
             // Annotation is preserved in PDF, just not imported
-            console.log(`[PDF Import] Skipping unsupported annotation type: ${subtype} on page ${pageNumber}`);
+            // console.log(`[PDF Import] Skipping unsupported annotation type: ${subtype} on page ${pageNumber}`);
           }
         } catch (error) {
           console.warn(`Error reading annotation on page ${pageNumber}:`, error);
