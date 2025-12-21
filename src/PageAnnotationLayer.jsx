@@ -1225,101 +1225,30 @@ const PageAnnotationLayer = memo(({
         return;
       }
 
-      // Handle partial erasing
+      // Handle partial erasing - OPTIMIZED: collect points during drag, apply on mouse up
       if (currentTool === 'eraser' && currentEraserMode === 'partial' && isErasingRef.current && eraserPathRef.current) {
         const { x, y } = canvas.getPointer(opt.e);
         const eraserPath = eraserPathRef.current;
 
-        // OPTIMIZATION: Only keep last N eraser points (sliding window) to prevent unbounded growth
-        const MAX_ERASER_POINTS = 20;
-        // OPTIMIZATION: Check minimum movement before adding point
+        // Check minimum movement before adding point
         const lastPoint = eraserPath.points.length > 0 ? eraserPath.points[eraserPath.points.length - 1] : null;
-        const MIN_MOVE_DIST = 1; // Reduced from 3px to 1px for better detection
+        const MIN_MOVE_DIST = 2;
         if (lastPoint) {
           const dx = x - lastPoint.x;
           const dy = y - lastPoint.y;
           if (dx * dx + dy * dy < MIN_MOVE_DIST * MIN_MOVE_DIST) {
-            return; // Mouse barely moved, skip entirely
+            return; // Mouse barely moved, skip
           }
         }
 
+        // Collect ALL points during drag (no sliding window - we need all for final clipPath)
         eraserPath.points.push({ x, y });
-        if (eraserPath.points.length > MAX_ERASER_POINTS) {
-          eraserPath.points = eraserPath.points.slice(-MAX_ERASER_POINTS);
-        }
+        console.log('[Eraser:Move] Point added, total:', eraserPath.points.length, 'pos:', {x: x.toFixed(1), y: y.toFixed(1)});
 
-        // OPTIMIZATION: Throttle processing - balanced between responsiveness and performance
-        const now = Date.now();
-        const THROTTLE_MS = 50; // Balanced throttle for responsiveness
-        if (now - lastPartialEraseTimeRef.current < THROTTLE_MS) {
-          return; // Skip this frame, but eraser points are still accumulated
-        }
-        lastPartialEraseTimeRef.current = now;
-
-        // Find objects that intersect with the eraser path
-        const eraserRadius = eraserSizeRef.current || 20;
-        // Create a copy of objects array since erasePathSegment modifies the canvas
-        const objects = [...canvas.getObjects()];
-
-        // OPTIMIZATION: Limit paths processed per frame to avoid blocking
-        const MAX_PATHS_PER_FRAME = 5;
-        let pathsProcessed = 0;
-        let needsRenderAndSave = false; // Track if ANY object was modified
-
-        for (const obj of objects) {
-          if (pathsProcessed >= MAX_PATHS_PER_FRAME) break;
-          // Skip if not from current space
-          const objSpaceId = obj.spaceId || null;
-          if (selectedSpaceIdRef.current !== null && objSpaceId !== selectedSpaceIdRef.current) {
-            continue;
-          }
-
-          // Skip highlights (they're handled separately)
-          const hasHighlightId = obj.highlightId != null;
-          const hasNeedsBICFlag = obj.needsBIC === true;
-          const isColoredHighlight = obj.type === 'rect' && (
-            (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
-            (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
-          );
-          const fillIsTransparent = !obj.fill || obj.fill === 'transparent' ||
-            (typeof obj.fill === 'string' && obj.fill === 'transparent');
-          const hasStroke = obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent';
-          const isNeedsBICHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
-          const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
-
-          if (isHighlight) {
-            continue; // Highlights are handled separately
-          }
-
-          // Check if eraser path intersects with object
-          // For paths (pen/highlighter strokes), use partial erasing
-          if (obj.type === 'path') {
-            pathsProcessed++; // Count path objects processed
-            // Use partial path erasing - only erase the intersected segment
-            const wasErased = erasePathSegment(obj, eraserPath, eraserRadius, canvas);
-            if (wasErased) {
-              needsRenderAndSave = true; // Mark for render/save ONCE after loop
-            }
-          } else {
-            // For all other objects (groups, rects, circles, lines, text, etc.)
-            // Use geometry-based hit testing for each eraser point
-            const isTouching = eraserPath.points.some(point => {
-              return isPointOnObject(point, obj, eraserRadius);
-            });
-
-            if (isTouching) {
-              canvas.remove(obj);
-              needsRenderAndSave = true; // Mark for render/save ONCE after loop
-            }
-          }
-        }
-
-        // OPTIMIZATION: Render and save ONCE after processing all objects (not inside loop)
-        if (needsRenderAndSave) {
-          canvas.requestRenderAll();
-          saveCanvas();
-        }
-
+        // Just request render to update eraser overlay visual - DON'T apply clipPath yet
+        const renderStart = performance.now();
+        canvas.requestRenderAll();
+        console.log('[Eraser:Move] requestRenderAll took:', (performance.now() - renderStart).toFixed(2), 'ms');
         return;
       }
 
@@ -1349,6 +1278,54 @@ const PageAnnotationLayer = memo(({
 
       // Handle erasing end (both partial and entire modes)
       if (currentTool === 'eraser' && isErasingRef.current) {
+        const eraserPath = eraserPathRef.current;
+
+        // Apply partial erasing on mouse up (optimized: only process once at end of stroke)
+        if (currentEraserMode === 'partial' && eraserPath && eraserPath.points.length > 0) {
+          const eraserRadius = eraserSizeRef.current || 20;
+          const objects = [...canvas.getObjects()];
+          let needsRenderAndSave = false;
+
+          for (const obj of objects) {
+            // Skip if not from current space
+            const objSpaceId = obj.spaceId || null;
+            if (selectedSpaceIdRef.current !== null && objSpaceId !== selectedSpaceIdRef.current) {
+              continue;
+            }
+
+            // Skip highlights
+            const hasHighlightId = obj.highlightId != null;
+            const hasNeedsBICFlag = obj.needsBIC === true;
+            const isColoredHighlight = obj.type === 'rect' && (
+              (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
+              (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
+            );
+            const fillIsTransparent = !obj.fill || obj.fill === 'transparent' ||
+              (typeof obj.fill === 'string' && obj.fill === 'transparent');
+            const hasStroke = obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent';
+            const isNeedsBICHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
+            const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
+
+            if (isHighlight) continue;
+
+            if (obj.type === 'path') {
+              const wasErased = erasePathSegment(obj, eraserPath, eraserRadius, canvas);
+              if (wasErased) needsRenderAndSave = true;
+            } else {
+              // For non-path objects, check if eraser touched them
+              const isTouching = eraserPath.points.some(point => isPointOnObject(point, obj, eraserRadius));
+              if (isTouching) {
+                canvas.remove(obj);
+                needsRenderAndSave = true;
+              }
+            }
+          }
+
+          if (needsRenderAndSave) {
+            saveCanvas();
+          }
+        }
+
         isErasingRef.current = false;
         eraserPathRef.current = null;
         canvas.requestRenderAll();
