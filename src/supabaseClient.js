@@ -13,3 +13,19 @@ export const supabase = supabaseUrl && supabaseAnonKey
 
 // Helper to check if Supabase is available
 export const isSupabaseAvailable = () => supabase !== null;
+
+// Helper to check if an error is a schema cache error (406)
+// These errors should be silently ignored as the table will become available
+export const isSchemaError = (error) => {
+  if (!error) return false;
+  return error.status === 406 || error.code === '406' || error.message?.includes('406');
+};
+
+// Flag to track if connected_services table is available
+// This prevents repeated failed requests
+let connectedServicesAvailable = null;
+
+export const isConnectedServicesAvailable = () => connectedServicesAvailable;
+export const setConnectedServicesAvailable = (available) => {
+  connectedServicesAvailable = available;
+};

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseAvailable } from '../supabaseClient';
+import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvailable, setConnectedServicesAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 
 // ============================================
@@ -583,6 +583,12 @@ export const useConnectedServices = () => {
   const fetchServices = async () => {
     if (!user || !isSupabaseAvailable()) return;
 
+    // Skip if we already know the table isn't available
+    if (isConnectedServicesAvailable() === false) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -590,7 +596,19 @@ export const useConnectedServices = () => {
         .select('*')
         .eq('user_id', user.id);
 
-      if (error) throw error;
+      // Silently handle 406 errors (schema cache not ready)
+      if (error) {
+        if (isSchemaError(error)) {
+          // Mark table as unavailable to prevent repeated requests
+          setConnectedServicesAvailable(false);
+          setLoading(false);
+          return;
+        }
+        throw error;
+      }
+
+      // Table is available
+      setConnectedServicesAvailable(true);
 
       // Convert array to object keyed by service_name for easier access
       const servicesMap = {};

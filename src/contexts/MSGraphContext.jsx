@@ -3,7 +3,7 @@ import { PublicClientApplication } from '@azure/msal-browser';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { msalConfig, loginRequest } from '../authConfig';
 import { useAuth } from './AuthContext';
-import { supabase, isSupabaseAvailable } from '../supabaseClient';
+import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvailable, setConnectedServicesAvailable } from '../supabaseClient';
 
 const MSGraphContext = createContext({});
 
@@ -192,6 +192,11 @@ export const MSGraphProvider = ({ children }) => {
                     }
                 } else if (user && isSupabaseAvailable()) {
                     // No cached accounts, but user is logged in - check if we should restore
+                    // Skip if we already know the table isn't available
+                    if (isConnectedServicesAvailable() === false) {
+                        return;
+                    }
+
                     try {
                         const { data: persistedConnection, error } = await supabase
                             .from('connected_services')
@@ -200,13 +205,22 @@ export const MSGraphProvider = ({ children }) => {
                             .eq('service_name', 'microsoft')
                             .single();
 
-                        // Silently ignore 406 errors (schema cache not ready)
+                        // Silently ignore errors (schema cache not ready or no rows)
+                        // PGRST116 = no rows found, 406 = schema not ready
                         if (error) {
+                            if (isSchemaError(error)) {
+                                // Mark table as unavailable to prevent repeated requests
+                                setConnectedServicesAvailable(false);
+                                return;
+                            }
                             if (error.code !== 'PGRST116') {
-                                console.log('Connected services table not ready yet, skipping restore check');
+                                console.log('Connected services query error, skipping restore check');
                             }
                             return;
                         }
+
+                        // Table is available
+                        setConnectedServicesAvailable(true);
 
                         if (persistedConnection && persistedConnection.is_connected) {
                             console.log('Found persisted Microsoft connection, attempting SSO silent auth...');

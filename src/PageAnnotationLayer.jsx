@@ -1593,6 +1593,15 @@ const PageAnnotationLayer = memo(({
     // Track mouse down for selection rectangle
     // AutoCAD/Bluebeam-style: direction determines selection mode
     const handleMouseDownForSelection = (e) => {
+      // DEBUG: Always log mouse down details
+      console.log('[Selection] Mouse Down', {
+        tool: toolRef.current,
+        hasTarget: !!e.target,
+        targetType: e.target?.type,
+        isCanvas: e.target === canvas,
+        pointer: canvas.getPointer(e.e)
+      });
+
       if (toolRef.current !== 'select') {
         return;
       }
@@ -1605,11 +1614,20 @@ const PageAnnotationLayer = memo(({
       // Allow single-click selection of objects - we'll handle that in mouseUp
       // Only skip if this is clearly an object click (not a drag start)
       const isObjectClick = e.target && e.target !== canvas && e.target.type !== undefined;
+
       if (isObjectClick) {
+        console.log('[Selection] Fabric hit object:', e.target.type, {
+          selectable: e.target.selectable,
+          evented: e.target.evented,
+          visible: e.target.visible,
+          perPixelTargetFind: e.target.perPixelTargetFind
+        });
         // Don't initialize selection rect - allow single-click object selection to work normally
         // But also don't prevent the object from being selected
         return;
       }
+
+      console.log('[Selection] Starting custom selection tracking (no Fabric hit)');
 
       // Disable canvas.selection to prevent Fabric.js from interfering with our custom drag selection
       // We'll re-enable it after selection completes to show visual feedback
@@ -2339,43 +2357,83 @@ const PageAnnotationLayer = memo(({
     if (annotations.objects && annotations.objects.length > 0) {
       console.log(`[Page ${pageNumber}] Updating annotations: ${currentObjectCount} existing, ${annotations.objects.length} new`);
 
+      // DEBUG: Log first object to check data structure
+      console.log(`[Page ${pageNumber}] First object sample:`, JSON.stringify(annotations.objects[0]));
+      console.log(`[Page ${pageNumber}] Fabric util available:`, !!util, 'enlivenObjects available:', !!util?.enlivenObjects);
+
       // Clear existing objects and reload all annotations
       canvas.clear();
 
-      annotations.objects.forEach(objData => {
-        util.enlivenObjects([objData], (enlivenedObjects) => {
-          enlivenedObjects.forEach(obj => {
-            obj.set({ strokeUniform: true });
-            // Store spaceId on object if not already set (for backward compatibility)
-            if (!obj.spaceId) {
-              obj.spaceId = objData.spaceId || null;
+      try {
+        annotations.objects.forEach((objData, idx) => {
+          // Normalize objData if needed (e.g. handle version differences)
+          if (!objData.type) {
+            console.warn(`[Page ${pageNumber}] Object ${idx} missing type, skipping`, objData);
+            return;
+          }
+
+          util.enlivenObjects([objData], (enlivenedObjects) => {
+            console.log(`[Page ${pageNumber}] Enlivened object ${idx} callback`, enlivenedObjects?.length);
+            if (!enlivenedObjects || enlivenedObjects.length === 0) {
+              console.warn(`[Page ${pageNumber}] Object ${idx} enlivened but returned empty`);
+              return;
             }
-            if (!obj.moduleId) {
-              obj.moduleId = objData.moduleId || null;
-            }
-            // Enforce multiply blend mode for highlights
-            if (obj.highlightId || obj.needsBIC) {
-              obj.set({ globalCompositeOperation: 'multiply' });
-            }
-            canvas.add(obj);
+
+            enlivenedObjects.forEach(obj => {
+              obj.set({ strokeUniform: true });
+              // Store spaceId on object if not already set (for backward compatibility)
+              if (!obj.spaceId) {
+                obj.spaceId = objData.spaceId || null;
+              }
+              if (!obj.moduleId) {
+                obj.moduleId = objData.moduleId || null;
+              }
+              // Enforce multiply blend mode for highlights
+              if (obj.highlightId || obj.needsBIC) {
+                obj.set({ globalCompositeOperation: 'multiply' });
+              }
+              canvas.add(obj);
+            });
+            // After loading, filter by selectedSpaceId
+            canvas.getObjects().forEach(obj => {
+              const objSpaceId = obj.spaceId || null;
+              const objModuleId = obj.moduleId || null;
+              const currentSpaceId = selectedSpaceIdRef.current;
+              const currentModuleId = selectedModuleIdRef.current;
+              const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
+              const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
+              const isVisible = matchesSpace && matchesModule;
+              obj.set({ visible: isVisible });
+              if (!isVisible) {
+                obj.set({ selectable: false, evented: false });
+              }
+            });
+            canvas.renderAll();
+
+            // DIAGNOSTIC CODE: Verify hit testing for loaded paths
+            enlivenedObjects.forEach((obj, index) => {
+              if (obj.type === 'path') {
+                const bounds = obj.getBoundingRect(true);
+                // Test point at center
+                const centerX = bounds.left + bounds.width / 2;
+                const centerY = bounds.top + bounds.height / 2;
+                const testPoint = { x: centerX, y: centerY };
+                const hitTest = isPointOnObject(testPoint, obj, 5);
+                console.log(`[Diagnostic] Path ${index} loaded:`, {
+                  rect: bounds,
+                  center: testPoint,
+                  hitTestResult: hitTest,
+                  pathLength: obj.path?.length,
+                  strokeWidth: obj.strokeWidth,
+                  selectable: obj.selectable
+                });
+              }
+            });
           });
-          // After loading, filter by selectedSpaceId
-          canvas.getObjects().forEach(obj => {
-            const objSpaceId = obj.spaceId || null;
-            const objModuleId = obj.moduleId || null;
-            const currentSpaceId = selectedSpaceIdRef.current;
-            const currentModuleId = selectedModuleIdRef.current;
-            const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
-            const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
-            const isVisible = matchesSpace && matchesModule;
-            obj.set({ visible: isVisible });
-            if (!isVisible) {
-              obj.set({ selectable: false, evented: false });
-            }
-          });
-          canvas.renderAll();
         });
-      });
+      } catch (e) {
+        console.error(`[Page ${pageNumber}] Error enlivening objects:`, e);
+      }
     } else if (currentObjectCount > 0) {
       // If annotations is empty but we have objects, clear them
       console.log(`[Page ${pageNumber}] Clearing annotations (empty prop)`);
