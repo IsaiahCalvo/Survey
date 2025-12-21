@@ -311,39 +311,30 @@ const getPathPoints = (pathObj) => {
 // Much more performant and stable than polygon-clipping boolean operations
 
 // Create an inverted clip path that hides eraser circles
-// Uses evenodd fill rule: outer rect shows content, inner circles hide it
+// Uses a Group of circles with inverted=true so overlapping circles accumulate properly
 const createEraserClipPath = (eraserCircles, bounds, padding = 50) => {
   if (!eraserCircles || eraserCircles.length === 0) return null;
 
-  // Create SVG path: outer rectangle (clockwise) + inner circles (counter-clockwise for holes)
-  const left = bounds.left - padding;
-  const top = bounds.top - padding;
-  const right = bounds.left + bounds.width + padding;
-  const bottom = bounds.top + bounds.height + padding;
-
-  // Start with outer rectangle (clockwise = solid area)
-  let pathData = `M ${left} ${top} L ${right} ${top} L ${right} ${bottom} L ${left} ${bottom} Z`;
-
-  // Add each eraser circle as a hole (counter-clockwise)
-  for (const circle of eraserCircles) {
-    const { cx, cy, r } = circle;
-    // Approximate circle with bezier curves (counter-clockwise for hole)
-    const k = 0.5522847498; // bezier approximation constant for circles
-    pathData += ` M ${cx} ${cy - r}`;
-    pathData += ` C ${cx - r * k} ${cy - r}, ${cx - r} ${cy - r * k}, ${cx - r} ${cy}`;
-    pathData += ` C ${cx - r} ${cy + r * k}, ${cx - r * k} ${cy + r}, ${cx} ${cy + r}`;
-    pathData += ` C ${cx + r * k} ${cy + r}, ${cx + r} ${cy + r * k}, ${cx + r} ${cy}`;
-    pathData += ` C ${cx + r} ${cy - r * k}, ${cx + r * k} ${cy - r}, ${cx} ${cy - r}`;
-    pathData += ` Z`;
-  }
-
-  const clipPath = new Path(pathData, {
-    fill: 'black',
-    fillRule: 'evenodd',
-    absolutePositioned: true // Important: clipPath coords are in canvas space
+  // Create circle objects for each eraser position
+  const circleObjects = eraserCircles.map(circle => {
+    return new Circle({
+      left: circle.cx - circle.r,
+      top: circle.cy - circle.r,
+      radius: circle.r,
+      fill: 'black',
+      originX: 'left',
+      originY: 'top'
+    });
   });
 
-  return clipPath;
+  // Create a Group containing all eraser circles
+  // With inverted=true, the clipPath shows everything EXCEPT what's inside the circles
+  const clipGroup = new Group(circleObjects, {
+    absolutePositioned: true,
+    inverted: true  // This is the key - inverts the clipping so circles become holes
+  });
+
+  return clipGroup;
 };
 
 // Helper function to erase part of a path using CLIP PATH approach
