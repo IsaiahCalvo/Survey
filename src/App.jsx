@@ -9,6 +9,7 @@ import { uploadExcelFile, getFileMetadata, downloadExcelFileByPath } from './ser
 import PageAnnotationLayer from './PageAnnotationLayer';
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
+import { readAnnotationsFromPDF } from './utils/readPDFAnnotations';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
@@ -10591,6 +10592,69 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // The simple canvas rendering in PDFPageCanvas will handle rendering on the main thread.
 
         setIsLoadingPDF(false);
+
+        // Import annotations from PDF (PDF-first approach with smart merge)
+        try {
+          const currentPdfId = getPDFId(pdfFile);
+          if (currentPdfId) {
+            // Read annotations from PDF (source of truth)
+            const tempFile = { arrayBuffer: () => Promise.resolve(arrayBuffer) };
+            const result = await readAnnotationsFromPDF(tempFile);
+            const pdfAnnotations = result.annotationsByPage || {};
+            
+            // Load existing annotations from localStorage (may have unsaved work)
+            const localAnnotations = loadAnnotationsByPage(currentPdfId);
+            
+            // Smart merge: PDF is authoritative, but preserve local unsaved work
+            const merged = { ...pdfAnnotations };
+            
+            Object.entries(localAnnotations).forEach(([pageNum, localAnnots]) => {
+              if (!merged[pageNum]) {
+                // Page doesn't exist in PDF annotations, use local (unsaved work)
+                merged[pageNum] = localAnnots;
+              } else {
+                // Page exists in both - merge objects intelligently
+                const pdfObjects = merged[pageNum].objects || [];
+                const localObjects = localAnnots.objects || [];
+                
+                // Merge: PDF objects first (authoritative), then add local objects
+                // This preserves unsaved local work while respecting PDF as source of truth
+                merged[pageNum] = {
+                  ...merged[pageNum],
+                  objects: [...pdfObjects, ...localObjects]
+                };
+              }
+            });
+            
+            // Update state and save merged annotations
+            setAnnotationsByPage(merged);
+            savedAnnotationsByPageRef.current = merged;
+            saveAnnotationsByPage(currentPdfId, merged);
+            
+            // Track that we've synced
+            localStorage.setItem(`lastSynced_${currentPdfId}`, Date.now().toString());
+            
+            // Show notification if unsupported types were found
+            if (result.unsupportedTypes && result.unsupportedTypes.length > 0) {
+              const message = result.unsupportedTypes
+                .map(({ type, count }) => `${count} ${type} annotation${count > 1 ? 's' : ''}`)
+                .join(', ');
+              
+              // Use setTimeout to show notification after PDF is fully loaded
+              setTimeout(() => {
+                alert(`Some annotations were preserved in the PDF but not imported (not supported): ${message}. They will remain visible when viewing the PDF in other applications.`);
+              }, 500);
+            }
+            
+            const pdfPageCount = Object.keys(pdfAnnotations).length;
+            if (pdfPageCount > 0) {
+              console.log(`Imported annotations from PDF: ${pdfPageCount} page(s) with annotations`);
+            }
+          }
+        } catch (annotationError) {
+          console.warn('Error importing annotations from PDF:', annotationError);
+          // Don't block PDF loading if annotation import fails
+        }
 
       } catch (error) {
         console.error('Error loading PDF:', error);
