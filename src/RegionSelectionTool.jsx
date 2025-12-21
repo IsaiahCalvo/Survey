@@ -1242,7 +1242,7 @@ const RegionSelectionTool = ({
 
     if (!region || !region.sourceRegions || region.sourceRegions.length === 0) return;
 
-    // Calculate current center to determine offset
+    // Calculate current bounds and center
     const currentBounds = getRegionBounds(region);
     if (!currentBounds) return;
     
@@ -1251,20 +1251,61 @@ const RegionSelectionTool = ({
       y: (currentBounds.minY + currentBounds.maxY) / 2
     };
 
-    // If originCenter is missing, calculate it from current region (fallback)
-    const originCenter = region.originCenter || currentCenter;
+    // Calculate original bounds from sourceRegions (the bounds they had when merged)
+    // We need to find the bounding box of all source regions at merge time
+    let originMinX = Infinity, originMinY = Infinity, originMaxX = -Infinity, originMaxY = -Infinity;
+    region.sourceRegions.forEach(sourceRegion => {
+      const bounds = getRegionBounds(sourceRegion);
+      if (bounds) {
+        originMinX = Math.min(originMinX, bounds.minX);
+        originMinY = Math.min(originMinY, bounds.minY);
+        originMaxX = Math.max(originMaxX, bounds.maxX);
+        originMaxY = Math.max(originMaxY, bounds.maxY);
+      }
+    });
+
+    // If we have originCenter, use it to calculate the original center
+    // Otherwise, calculate from the source regions' bounds
+    const originCenter = region.originCenter || {
+      x: (originMinX + originMaxX) / 2,
+      y: (originMinY + originMaxY) / 2
+    };
+
+    // Calculate original bounds dimensions
+    const originWidth = originMaxX - originMinX;
+    const originHeight = originMaxY - originMinY;
+    
+    // Calculate current bounds dimensions
+    const currentWidth = currentBounds.maxX - currentBounds.minX;
+    const currentHeight = currentBounds.maxY - currentBounds.minY;
+
+    // Calculate scale factors (avoid division by zero)
+    const scaleX = originWidth > 0 ? currentWidth / originWidth : 1;
+    const scaleY = originHeight > 0 ? currentHeight / originHeight : 1;
+
+    // Calculate translation (center movement)
     const dx = currentCenter.x - originCenter.x;
     const dy = currentCenter.y - originCenter.y;
 
-    // Restore source regions with offset
+    // Restore source regions with full transformation (scale + translation)
     const restoredRegions = region.sourceRegions.map(sourceRegion => {
+      // Apply transformation: scale around origin center, then translate
       const newCoords = sourceRegion.coordinates.map((val, idx) => {
-        return idx % 2 === 0 ? val + dx : val + dy;
+        if (idx % 2 === 0) {
+          // X coordinate
+          const relativeX = val - originCenter.x;
+          return originCenter.x + relativeX * scaleX + dx;
+        } else {
+          // Y coordinate
+          const relativeY = val - originCenter.y;
+          return originCenter.y + relativeY * scaleY + dy;
+        }
       });
+
       return {
         ...sourceRegion,
         coordinates: newCoords,
-        regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.random().toString(36).substr(2, 5)}` // New IDs to avoid conflicts
+        regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.random().toString(36).substr(2, 5)}`
       };
     });
 
