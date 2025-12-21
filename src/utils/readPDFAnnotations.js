@@ -123,6 +123,12 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
         return null;
       }
 
+      // Skip paths with zero dimensions (they won't render)
+      if (actualWidth <= 0 || actualHeight <= 0) {
+        console.warn(`[PDF Import] Skipping Ink path with zero dimensions: ${actualWidth}x${actualHeight}`);
+        return null;
+      }
+
       console.log(`[PDF Import] Created Ink path: ${pathData.length} commands, bounds: (${actualLeft}, ${actualTop}) ${actualWidth}x${actualHeight}`);
 
       return {
@@ -130,8 +136,8 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
         version: '5.3.0',
         left: actualLeft,
         top: actualTop,
-        width: Math.max(actualWidth, 1),
-        height: Math.max(actualHeight, 1),
+        width: actualWidth,
+        height: actualHeight,
         path: pathData,
         stroke: strokeColor,
         strokeWidth: Math.max(strokeWidth, 1),
@@ -347,18 +353,24 @@ export const readAnnotationsFromPDF = async (pdfFile) => {
           // PDF subtypes come with a leading slash (e.g., "/Ink"), normalize by removing it
           const subtype = subtypeRaw ? subtypeRaw.replace(/^\//, '') : null;
           
+          console.log(`[PDF Import] Page ${pageNumber}: Found annotation with subtypeRaw="${subtypeRaw}", normalized="${subtype}"`);
+          
           if (!subtype) {
             console.warn(`[PDF Import] Annotation has no subtype on page ${pageNumber}`);
-            continue;
+            return; // Use return instead of continue in forEach
           }
           
           // Check if supported
           const supportedTypes = ['Ink', 'FreeText', 'Square', 'Circle', 'Line', 'Polygon', 'Highlight'];
           
           if (supportedTypes.includes(subtype)) {
+            console.log(`[PDF Import] Processing supported annotation type: ${subtype} on page ${pageNumber}`);
             const fabricObj = pdfAnnotationToFabric(annot, pageNumber, pageHeight);
             if (fabricObj) {
+              console.log(`[PDF Import] Successfully converted ${subtype} annotation to Fabric.js object`);
               pageAnnotations.push(fabricObj);
+            } else {
+              console.warn(`[PDF Import] Failed to convert ${subtype} annotation to Fabric.js object`);
             }
           } else {
             // Track unsupported types (use normalized subtype for cleaner messages)

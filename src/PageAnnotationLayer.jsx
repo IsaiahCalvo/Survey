@@ -2243,6 +2243,86 @@ const PageAnnotationLayer = memo(({
     }
   }, [highlightsToRemove, pageNumber, onSaveAnnotations, scale]);
 
+  // Update canvas when annotations prop changes (e.g., after PDF import)
+  const lastAnnotationsRef = useRef(null);
+  const isInitialLoadRef = useRef(true);
+  const lastPageNumberRef = useRef(pageNumber);
+  
+  // Reset initial load flag when page changes
+  if (lastPageNumberRef.current !== pageNumber) {
+    isInitialLoadRef.current = true;
+    lastAnnotationsRef.current = null;
+    lastPageNumberRef.current = pageNumber;
+  }
+  
+  useEffect(() => {
+    if (!fabricRef.current || !annotations) return;
+    
+    // Skip if annotations haven't actually changed (using a simple comparison)
+    const annotationsKey = JSON.stringify(annotations);
+    if (lastAnnotationsRef.current === annotationsKey) return;
+    
+    // On initial load, skip this effect - the initialization useEffect handles it
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
+      lastAnnotationsRef.current = annotationsKey;
+      return;
+    }
+    
+    lastAnnotationsRef.current = annotationsKey;
+    
+    const canvas = fabricRef.current;
+    const currentObjectCount = canvas.getObjects().length;
+    
+    // Only update if annotations actually changed and we have new objects to load
+    if (annotations.objects && annotations.objects.length > 0) {
+      console.log(`[Page ${pageNumber}] Updating annotations: ${currentObjectCount} existing, ${annotations.objects.length} new`);
+      
+      // Clear existing objects and reload all annotations
+      canvas.clear();
+      
+      annotations.objects.forEach(objData => {
+        util.enlivenObjects([objData], (enlivenedObjects) => {
+          enlivenedObjects.forEach(obj => {
+            obj.set({ strokeUniform: true });
+            // Store spaceId on object if not already set (for backward compatibility)
+            if (!obj.spaceId) {
+              obj.spaceId = objData.spaceId || null;
+            }
+            if (!obj.moduleId) {
+              obj.moduleId = objData.moduleId || null;
+            }
+            // Enforce multiply blend mode for highlights
+            if (obj.highlightId || obj.needsBIC) {
+              obj.set({ globalCompositeOperation: 'multiply' });
+            }
+            canvas.add(obj);
+          });
+          // After loading, filter by selectedSpaceId
+          canvas.getObjects().forEach(obj => {
+            const objSpaceId = obj.spaceId || null;
+            const objModuleId = obj.moduleId || null;
+            const currentSpaceId = selectedSpaceIdRef.current;
+            const currentModuleId = selectedModuleIdRef.current;
+            const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
+            const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
+            const isVisible = matchesSpace && matchesModule;
+            obj.set({ visible: isVisible });
+            if (!isVisible) {
+              obj.set({ selectable: false, evented: false });
+            }
+          });
+          canvas.renderAll();
+        });
+      });
+    } else if (currentObjectCount > 0) {
+      // If annotations is empty but we have objects, clear them
+      console.log(`[Page ${pageNumber}] Clearing annotations (empty prop)`);
+      canvas.clear();
+      canvas.renderAll();
+    }
+  }, [annotations, pageNumber, selectedSpaceId, selectedModuleId]);
+
   // Filter objects by selected space and regions
   useEffect(() => {
     if (!canvasRef.current || !fabric) return;
