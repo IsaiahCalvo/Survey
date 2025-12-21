@@ -313,9 +313,13 @@ const getPathPoints = (pathObj) => {
 // Create an inverted clip path that hides eraser circles
 // Uses a Group of circles with inverted=true so overlapping circles accumulate properly
 const createEraserClipPath = (eraserCircles, bounds, padding = 50) => {
+  const startTime = performance.now();
+  console.log('[createEraserClipPath] Creating clipPath with', eraserCircles?.length || 0, 'circles');
+
   if (!eraserCircles || eraserCircles.length === 0) return null;
 
   // Create circle objects for each eraser position
+  const circleStart = performance.now();
   const circleObjects = eraserCircles.map(circle => {
     return new Circle({
       left: circle.cx - circle.r,
@@ -326,13 +330,17 @@ const createEraserClipPath = (eraserCircles, bounds, padding = 50) => {
       originY: 'top'
     });
   });
+  console.log('[createEraserClipPath] Circle objects created in', (performance.now() - circleStart).toFixed(2), 'ms');
 
   // Create a Group containing all eraser circles
   // With inverted=true, the clipPath shows everything EXCEPT what's inside the circles
+  const groupStart = performance.now();
   const clipGroup = new Group(circleObjects, {
     absolutePositioned: true,
     inverted: true  // This is the key - inverts the clipping so circles become holes
   });
+  console.log('[createEraserClipPath] Group created in', (performance.now() - groupStart).toFixed(2), 'ms');
+  console.log('[createEraserClipPath] Total time:', (performance.now() - startTime).toFixed(2), 'ms');
 
   return clipGroup;
 };
@@ -455,6 +463,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
 
     // Merge with existing circles
     const allEraserCircles = [...existingEraserCircles, ...newCircles];
+    console.log('[erasePathSegment] Circles - existing:', existingEraserCircles.length, 'new:', newCircles.length, 'total:', allEraserCircles.length);
 
     // Store the eraser circles on the object for future reference/serialization
     pathObj.eraserCircles = allEraserCircles;
@@ -463,6 +472,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     const clipPathStart = performance.now();
     const clipPath = createEraserClipPath(allEraserCircles, pathBounds, 100);
     const clipPathTime = performance.now() - clipPathStart;
+    console.log('[erasePathSegment] ClipPath creation took:', clipPathTime.toFixed(2), 'ms');
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:410', message: 'ClipPath creation', data: { clipPathTime: clipPathTime.toFixed(2), totalCircles: allEraserCircles.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
 
@@ -555,6 +565,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
 
     // #region agent log
     const totalEraseTime = performance.now() - eraseStartTime;
+    console.log('[erasePathSegment] TOTAL TIME:', totalEraseTime.toFixed(2), 'ms for', allEraserCircles.length, 'circles');
     fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:495', message: 'Total erasePathSegment time', data: { totalEraseTime: totalEraseTime.toFixed(2), totalCircles: allEraserCircles.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
     // #endregion
     return true;
@@ -1770,6 +1781,9 @@ const PageAnnotationLayer = memo(({
 
       // Only perform selection if there was meaningful drag (more than 5px in either direction)
       if (selWidth > 5 || selHeight > 5) {
+        // ... existing drag selection logic ...
+        console.log('[Selection] Drag detected', { selWidth, selHeight }); // DEBUG LOG
+
         const selRight = selLeft + selWidth;
         const selBottom = selTop + selHeight;
 
@@ -1849,6 +1863,44 @@ const PageAnnotationLayer = memo(({
           canvas.setActiveObject(activeSelection);
         }
         canvas.requestRenderAll();
+      } else {
+        // If drag was too small, treat it as a single click
+        console.log('[Selection] Single click fallback triggered'); // DEBUG LOG
+
+        const pointer = canvas.getPointer(e.e);
+        const allObjects = canvas.getObjects();
+        let hitObject = null;
+        const HIT_TOLERANCE = 10; // Increased tolerance for testing
+
+        // Find topmost object whose geometry contains the click point
+        // Iterate in reverse order (top to bottom) since last added is on top
+        for (let i = allObjects.length - 1; i >= 0; i--) {
+          const obj = allObjects[i];
+          if (!obj.selectable || !obj.visible) continue;
+
+          // DEBUG: Log check
+          // const isPath = obj.type === 'path';
+          // if (isPath) console.log('[Selection] Checking path:', i, obj.left, obj.top, obj.width, obj.height);
+
+          // Use geometry-based hit testing
+          if (isPointOnObject(pointer, obj, HIT_TOLERANCE)) {
+            console.log('[Selection] Hit found:', obj.type, obj); // DEBUG LOG
+            hitObject = obj;
+            break;
+          }
+        }
+
+        if (hitObject) {
+          // Enable selection temporarily to show the object as selected
+          canvas.selection = true;
+          canvas.setActiveObject(hitObject);
+          canvas.requestRenderAll();
+        } else {
+          console.log('[Selection] No hit found in fallback'); // DEBUG LOG
+          // Clicked on empty space - deselect all
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+        }
       }
 
       // Clear selection rect and remove visual rectangle
