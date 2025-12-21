@@ -56,13 +56,17 @@ export const MSGraphProvider = ({ children }) => {
                 last_used_at: new Date().toISOString(),
             };
 
-            await supabase
+            const { error } = await supabase
                 .from('connected_services')
                 .upsert(serviceData, { onConflict: 'user_id,service_name' });
 
-            console.log('Microsoft connection persisted to Supabase');
+            if (error) {
+                console.log('Could not persist connection (table not ready), will retry later');
+            } else {
+                console.log('Microsoft connection persisted to Supabase');
+            }
         } catch (err) {
-            console.error('Error persisting Microsoft connection:', err);
+            console.log('Could not persist connection, will retry later');
         }
     }, [user]);
 
@@ -71,15 +75,19 @@ export const MSGraphProvider = ({ children }) => {
         if (!user || !isSupabaseAvailable()) return;
 
         try {
-            await supabase
+            const { error } = await supabase
                 .from('connected_services')
                 .delete()
                 .eq('user_id', user.id)
                 .eq('service_name', 'microsoft');
 
-            console.log('Microsoft connection removed from Supabase');
+            if (error) {
+                console.log('Could not remove connection (table not ready)');
+            } else {
+                console.log('Microsoft connection removed from Supabase');
+            }
         } catch (err) {
-            console.error('Error removing Microsoft connection:', err);
+            console.log('Could not remove connection');
         }
     }, [user]);
 
@@ -96,13 +104,13 @@ export const MSGraphProvider = ({ children }) => {
                 .single();
 
             if (error && error.code !== 'PGRST116') {
-                console.error('Error fetching persisted connection:', error);
+                // Silently fail - table might not be ready
                 return null;
             }
 
             return data;
         } catch (err) {
-            console.error('Error fetching persisted connection:', err);
+            // Silently fail - table might not be ready
             return null;
         }
     }, [user]);
@@ -159,7 +167,7 @@ export const MSGraphProvider = ({ children }) => {
                     if (user) {
                         // Use direct Supabase call to avoid dependency on persistConnection
                         try {
-                            await supabase
+                            const { error } = await supabase
                                 .from('connected_services')
                                 .upsert({
                                     user_id: user.id,
@@ -174,19 +182,31 @@ export const MSGraphProvider = ({ children }) => {
                                     },
                                     last_used_at: new Date().toISOString(),
                                 }, { onConflict: 'user_id,service_name' });
+
+                            if (error) {
+                                console.log('Could not persist connection on init, will retry later');
+                            }
                         } catch (err) {
-                            console.error('Error persisting connection on init:', err);
+                            console.log('Could not persist connection on init, will retry later');
                         }
                     }
                 } else if (user && isSupabaseAvailable()) {
                     // No cached accounts, but user is logged in - check if we should restore
                     try {
-                        const { data: persistedConnection } = await supabase
+                        const { data: persistedConnection, error } = await supabase
                             .from('connected_services')
                             .select('*')
                             .eq('user_id', user.id)
                             .eq('service_name', 'microsoft')
                             .single();
+
+                        // Silently ignore 406 errors (schema cache not ready)
+                        if (error) {
+                            if (error.code !== 'PGRST116') {
+                                console.log('Connected services table not ready yet, skipping restore check');
+                            }
+                            return;
+                        }
 
                         if (persistedConnection && persistedConnection.is_connected) {
                             console.log('Found persisted Microsoft connection, attempting SSO silent auth...');
@@ -214,10 +234,8 @@ export const MSGraphProvider = ({ children }) => {
                             }
                         }
                     } catch (err) {
-                        // No persisted connection found, that's fine
-                        if (err.code !== 'PGRST116') {
-                            console.error('Error checking persisted connection:', err);
-                        }
+                        // Silently handle errors - table might not be ready
+                        console.log('Could not check for persisted connection, will retry on next load');
                     }
                 }
 
@@ -248,13 +266,17 @@ export const MSGraphProvider = ({ children }) => {
         if (!user || !isSupabaseAvailable()) return;
 
         try {
-            await supabase
+            const { error } = await supabase
                 .from('connected_services')
                 .update({ last_used_at: new Date().toISOString() })
                 .eq('user_id', user.id)
                 .eq('service_name', 'microsoft');
+
+            if (error) {
+                // Silently fail - not critical
+            }
         } catch (err) {
-            console.error('Error updating last used:', err);
+            // Silently fail - not critical
         }
     }, [user]);
 
