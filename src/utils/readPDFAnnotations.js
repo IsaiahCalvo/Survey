@@ -48,11 +48,12 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
       // Convert Ink annotation to Fabric.js Path
       const inkList = pdfAnnot.get(PDFName.of('InkList'));
       if (!inkList || !Array.isArray(inkList.array)) {
+        console.warn('[PDF Import] Ink annotation has no InkList');
         return null;
       }
 
-      // Build path data from ink lists
-      const pathData = [];
+      // First pass: collect all points and calculate actual bounds
+      const allPoints = [];
       inkList.array.forEach((pathArray) => {
         if (!Array.isArray(pathArray.array)) return;
         
@@ -60,30 +61,84 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
         for (let i = 0; i < points.length; i += 2) {
           if (i + 1 >= points.length) break;
           
-          const x = points[i]?.valueOf() || 0;
-          const y = pageHeight - (points[i + 1]?.valueOf() || 0); // Flip Y
+          const pdfX = points[i]?.valueOf() || 0;
+          const pdfY = points[i + 1]?.valueOf() || 0;
           
-          if (i === 0) {
-            pathData.push(['M', x, y]);
+          // Convert PDF coordinates (bottom-left origin) to canvas coordinates (top-left origin)
+          const canvasX = pdfX;
+          const canvasY = pageHeight - pdfY;
+          
+          allPoints.push({ x: canvasX, y: canvasY });
+        }
+      });
+
+      if (allPoints.length === 0) {
+        console.warn('[PDF Import] Ink annotation has no points');
+        return null;
+      }
+
+      // Calculate actual bounding box from all points
+      const actualMinX = Math.min(...allPoints.map(p => p.x));
+      const actualMinY = Math.min(...allPoints.map(p => p.y));
+      const actualMaxX = Math.max(...allPoints.map(p => p.x));
+      const actualMaxY = Math.max(...allPoints.map(p => p.y));
+      
+      const actualLeft = actualMinX;
+      const actualTop = actualMinY;
+      const actualWidth = actualMaxX - actualMinX;
+      const actualHeight = actualMaxY - actualMinY;
+
+      // Second pass: build path data with coordinates relative to object position
+      const pathData = [];
+      let pointIndex = 0;
+      
+      inkList.array.forEach((pathArray) => {
+        if (!Array.isArray(pathArray.array)) return;
+        
+        const points = pathArray.array;
+        let isFirstInPath = true;
+        
+        for (let i = 0; i < points.length; i += 2) {
+          if (i + 1 >= points.length) break;
+          
+          const point = allPoints[pointIndex++];
+          
+          // Make coordinates relative to the object's top-left corner
+          const relX = point.x - actualLeft;
+          const relY = point.y - actualTop;
+          
+          if (isFirstInPath) {
+            pathData.push(['M', relX, relY]);
+            isFirstInPath = false;
           } else {
-            pathData.push(['L', x, y]);
+            pathData.push(['L', relX, relY]);
           }
         }
       });
 
-      if (pathData.length === 0) return null;
+      if (pathData.length === 0) {
+        console.warn('[PDF Import] Failed to build path data');
+        return null;
+      }
+
+      console.log(`[PDF Import] Created Ink path: ${pathData.length} commands, bounds: (${actualLeft}, ${actualTop}) ${actualWidth}x${actualHeight}`);
 
       return {
         type: 'path',
-        left,
-        top,
-        width,
-        height,
+        version: '5.3.0',
+        left: actualLeft,
+        top: actualTop,
+        width: Math.max(actualWidth, 1),
+        height: Math.max(actualHeight, 1),
         path: pathData,
         stroke: strokeColor,
-        strokeWidth,
+        strokeWidth: Math.max(strokeWidth, 1),
         fill: '',
-        opacity: 1
+        opacity: 1,
+        strokeUniform: true,
+        selectable: true,
+        evented: true,
+        excludeFromExport: false
       };
     }
 
@@ -105,6 +160,7 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
 
       return {
         type: 'textbox',
+        version: '5.3.0',
         left,
         top,
         width: Math.max(width, 100), // Minimum width for text
@@ -113,20 +169,26 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
         fontSize,
         fill: strokeColor,
         stroke: '',
-        strokeWidth: 0
+        strokeWidth: 0,
+        selectable: true,
+        evented: true
       };
     }
 
     case 'Square': {
       return {
         type: 'rect',
+        version: '5.3.0',
         left,
         top,
         width,
         height,
         stroke: strokeColor,
         strokeWidth,
-        fill: 'transparent'
+        fill: 'transparent',
+        strokeUniform: true,
+        selectable: true,
+        evented: true
       };
     }
 
@@ -134,12 +196,16 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
       const radius = Math.min(width, height) / 2;
       return {
         type: 'circle',
+        version: '5.3.0',
         left: left + width / 2 - radius,
         top: top + height / 2 - radius,
         radius,
         stroke: strokeColor,
         strokeWidth,
-        fill: 'transparent'
+        fill: 'transparent',
+        strokeUniform: true,
+        selectable: true,
+        evented: true
       };
     }
 
@@ -153,13 +219,17 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
       
       return {
         type: 'line',
+        version: '5.3.0',
         x1,
         y1: pageHeight - y1, // Flip Y
         x2,
         y2: pageHeight - y2, // Flip Y
         stroke: strokeColor,
         strokeWidth,
-        fill: ''
+        fill: '',
+        strokeUniform: true,
+        selectable: true,
+        evented: true
       };
     }
 
@@ -181,6 +251,7 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
 
       return {
         type: 'polygon',
+        version: '5.3.0',
         left,
         top,
         width,
@@ -188,7 +259,10 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
         points,
         stroke: strokeColor,
         strokeWidth,
-        fill: 'transparent'
+        fill: 'transparent',
+        strokeUniform: true,
+        selectable: true,
+        evented: true
       };
     }
 
@@ -209,6 +283,7 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
 
       return {
         type: 'rect',
+        version: '5.3.0',
         left,
         top,
         width,
@@ -216,7 +291,9 @@ const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
         fill: fillColor,
         fillOpacity: 0.3,
         stroke: '',
-        strokeWidth: 0
+        strokeWidth: 0,
+        selectable: true,
+        evented: true
       };
     }
 
