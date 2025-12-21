@@ -749,7 +749,17 @@ const PageAnnotationLayer = memo(({
 
     if (annotations && annotations.objects && annotations.objects.length > 0) {
       annotations.objects.forEach(objData => {
-        util.enlivenObjects([objData], (enlivenedObjects) => {
+        // Normalize type names between Fabric.js versions (5.x uses lowercase, 6.x uses PascalCase)
+        const normalizedObjData = { ...objData };
+        if (normalizedObjData.type) {
+          normalizedObjData.type = normalizedObjData.type.toLowerCase();
+        }
+
+        util.enlivenObjects([normalizedObjData], (enlivenedObjects) => {
+          if (!enlivenedObjects || enlivenedObjects.length === 0) {
+            console.warn(`[Page ${pageNumber}] Initial load: object enlivened but returned empty`, objData);
+            return;
+          }
           enlivenedObjects.forEach(obj => {
             obj.set({ strokeUniform: true });
             // Store spaceId on object if not already set (for backward compatibility)
@@ -766,7 +776,8 @@ const PageAnnotationLayer = memo(({
 
             // Fix for imported ink annotations not being interactive
             // Ensure paths (like ink strokes) have per-pixel target finding enabled
-            if (obj.type === 'path') {
+            // Use case-insensitive check for Fabric.js 5.x/6.x compatibility
+            if (obj.type?.toLowerCase() === 'path') {
               obj.set({
                 perPixelTargetFind: true,
                 targetFindTolerance: 5
@@ -2402,7 +2413,8 @@ const PageAnnotationLayer = memo(({
 
               // Fix for imported ink annotations not being interactive
               // Ensure paths (like ink strokes) have per-pixel target finding enabled
-              if (obj.type === 'path') {
+              // Use case-insensitive check for Fabric.js 5.x/6.x compatibility
+              if (obj.type?.toLowerCase() === 'path') {
                 obj.set({
                   perPixelTargetFind: true,
                   targetFindTolerance: 5,
