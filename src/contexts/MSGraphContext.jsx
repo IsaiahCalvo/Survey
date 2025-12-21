@@ -101,9 +101,9 @@ export const MSGraphProvider = ({ children }) => {
                 .select('*')
                 .eq('user_id', user.id)
                 .eq('service_name', 'microsoft')
-                .single();
+                .maybeSingle();
 
-            if (error && error.code !== 'PGRST116') {
+            if (error) {
                 // Silently fail - table might not be ready
                 return null;
             }
@@ -203,18 +203,13 @@ export const MSGraphProvider = ({ children }) => {
                             .select('*')
                             .eq('user_id', user.id)
                             .eq('service_name', 'microsoft')
-                            .single();
+                            .maybeSingle();
 
-                        // Silently ignore errors (schema cache not ready or no rows)
-                        // PGRST116 = no rows found, 406 = schema not ready
+                        // Silently ignore errors
                         if (error) {
                             if (isSchemaError(error)) {
                                 // Mark table as unavailable to prevent repeated requests
                                 setConnectedServicesAvailable(false);
-                                return;
-                            }
-                            if (error.code !== 'PGRST116') {
-                                console.log('Connected services query error, skipping restore check');
                             }
                             return;
                         }
