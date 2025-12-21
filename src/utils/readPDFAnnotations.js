@@ -9,7 +9,9 @@ import { PDFDocument, PDFName } from 'pdf-lib';
  * Convert PDF annotation to Fabric.js format
  */
 const pdfAnnotationToFabric = (pdfAnnot, pageNumber, pageHeight) => {
-  const subtype = pdfAnnot.get(PDFName.of('Subtype'))?.toString();
+  const subtypeRaw = pdfAnnot.get(PDFName.of('Subtype'))?.toString();
+  // PDF subtypes come with a leading slash (e.g., "/Ink"), normalize by removing it
+  const subtype = subtypeRaw ? subtypeRaw.replace(/^\//, '') : null;
   const rect = pdfAnnot.get(PDFName.of('Rect'));
   
   if (!rect || !Array.isArray(rect.array)) {
@@ -341,7 +343,14 @@ export const readAnnotationsFromPDF = async (pdfFile) => {
           const annot = pdfDoc.context.lookup(annotRef);
           if (!annot) return;
 
-          const subtype = annot.get(PDFName.of('Subtype'))?.toString();
+          const subtypeRaw = annot.get(PDFName.of('Subtype'))?.toString();
+          // PDF subtypes come with a leading slash (e.g., "/Ink"), normalize by removing it
+          const subtype = subtypeRaw ? subtypeRaw.replace(/^\//, '') : null;
+          
+          if (!subtype) {
+            console.warn(`[PDF Import] Annotation has no subtype on page ${pageNumber}`);
+            continue;
+          }
           
           // Check if supported
           const supportedTypes = ['Ink', 'FreeText', 'Square', 'Circle', 'Line', 'Polygon', 'Highlight'];
@@ -352,10 +361,11 @@ export const readAnnotationsFromPDF = async (pdfFile) => {
               pageAnnotations.push(fabricObj);
             }
           } else {
-            // Track unsupported types
+            // Track unsupported types (use normalized subtype for cleaner messages)
             const count = unsupportedTypes.get(subtype) || 0;
             unsupportedTypes.set(subtype, count + 1);
             // Annotation is preserved in PDF, just not imported
+            console.log(`[PDF Import] Skipping unsupported annotation type: ${subtype} on page ${pageNumber}`);
           }
         } catch (error) {
           console.warn(`Error reading annotation on page ${pageNumber}:`, error);

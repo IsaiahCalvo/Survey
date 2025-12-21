@@ -10540,15 +10540,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setIsLoadingPDF(true);
 
         let arrayBuffer;
+        let annotationArrayBuffer; // Clone for annotation reading
         if (typeof pdfFile.arrayBuffer === 'function') {
           // Local file
           arrayBuffer = await pdfFile.arrayBuffer();
+          // Clone immediately before PDF.js might detach it
+          // Create a new ArrayBuffer and copy the data
+          annotationArrayBuffer = new ArrayBuffer(arrayBuffer.byteLength);
+          new Uint8Array(annotationArrayBuffer).set(new Uint8Array(arrayBuffer));
         } else if (pdfFile.filePath) {
           // Supabase file - download it
           console.log('Downloading PDF from Supabase:', pdfFile.filePath);
           const blob = await downloadFromStorage(pdfFile.filePath);
           if (!blob) throw new Error('Failed to download PDF');
           arrayBuffer = await blob.arrayBuffer();
+          // Clone immediately before PDF.js might detach it
+          // Create a new ArrayBuffer and copy the data
+          annotationArrayBuffer = new ArrayBuffer(arrayBuffer.byteLength);
+          new Uint8Array(annotationArrayBuffer).set(new Uint8Array(arrayBuffer));
         } else {
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
@@ -10599,22 +10608,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (currentPdfId) {
             console.log('[PDF Import] Starting annotation import for PDF:', currentPdfId);
             
-            // Clone the ArrayBuffer to avoid "detached ArrayBuffer" error
-            // The original arrayBuffer may have been transferred by PDF.js
-            let annotationArrayBuffer;
-            if (typeof pdfFile.arrayBuffer === 'function') {
-              // For local files, get a fresh copy
-              annotationArrayBuffer = await pdfFile.arrayBuffer();
-            } else if (pdfFile.filePath) {
-              // For Supabase files, download a fresh copy
-              const blob = await downloadFromStorage(pdfFile.filePath);
-              if (!blob) throw new Error('Failed to download PDF for annotation import');
-              annotationArrayBuffer = await blob.arrayBuffer();
-            } else {
-              // Clone the existing arrayBuffer
-              annotationArrayBuffer = arrayBuffer.slice(0);
-            }
-            
+            // Use the cloned ArrayBuffer we created earlier (before PDF.js detached the original)
             // Read annotations from PDF (source of truth)
             const tempFile = { arrayBuffer: () => Promise.resolve(annotationArrayBuffer) };
             const result = await readAnnotationsFromPDF(tempFile);
