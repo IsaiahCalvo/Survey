@@ -313,13 +313,9 @@ const getPathPoints = (pathObj) => {
 // Create an inverted clip path that hides eraser circles
 // Uses a Group of circles with inverted=true so overlapping circles accumulate properly
 const createEraserClipPath = (eraserCircles, bounds, padding = 50) => {
-  const startTime = performance.now();
-  console.log('[createEraserClipPath] Creating clipPath with', eraserCircles?.length || 0, 'circles');
-
   if (!eraserCircles || eraserCircles.length === 0) return null;
 
   // Create circle objects for each eraser position
-  const circleStart = performance.now();
   const circleObjects = eraserCircles.map(circle => {
     return new Circle({
       left: circle.cx - circle.r,
@@ -330,17 +326,13 @@ const createEraserClipPath = (eraserCircles, bounds, padding = 50) => {
       originY: 'top'
     });
   });
-  console.log('[createEraserClipPath] Circle objects created in', (performance.now() - circleStart).toFixed(2), 'ms');
 
   // Create a Group containing all eraser circles
   // With inverted=true, the clipPath shows everything EXCEPT what's inside the circles
-  const groupStart = performance.now();
   const clipGroup = new Group(circleObjects, {
     absolutePositioned: true,
     inverted: true  // This is the key - inverts the clipping so circles become holes
   });
-  console.log('[createEraserClipPath] Group created in', (performance.now() - groupStart).toFixed(2), 'ms');
-  console.log('[createEraserClipPath] Total time:', (performance.now() - startTime).toFixed(2), 'ms');
 
   return clipGroup;
 };
@@ -367,7 +359,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     const pathBounds = pathObj.getBoundingRect ? pathObj.getBoundingRect() : null;
     const boundsTime = performance.now() - boundsStartTime;
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:355', message: 'Bounding rect calculation', data: { boundsTime: boundsTime.toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:355',message:'Bounding rect calculation',data:{boundsTime:boundsTime.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
     // #endregion
     if (!pathBounds) {
       console.log('[erasePathSegment] Could not get bounding rect');
@@ -379,16 +371,16 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     let eraserIntersects = false;
     for (const eraserPoint of eraserPath.points) {
       if (eraserPoint.x >= pathBounds.left - effectiveRadius &&
-        eraserPoint.x <= pathBounds.left + pathBounds.width + effectiveRadius &&
-        eraserPoint.y >= pathBounds.top - effectiveRadius &&
-        eraserPoint.y <= pathBounds.top + pathBounds.height + effectiveRadius) {
+          eraserPoint.x <= pathBounds.left + pathBounds.width + effectiveRadius &&
+          eraserPoint.y >= pathBounds.top - effectiveRadius &&
+          eraserPoint.y <= pathBounds.top + pathBounds.height + effectiveRadius) {
         eraserIntersects = true;
         break;
       }
     }
     const bboxCheckTime = performance.now() - bboxCheckStart;
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:371', message: 'Bounding box check', data: { bboxCheckTime: bboxCheckTime.toFixed(2), pointsChecked: eraserPath.points.length, intersects: eraserIntersects }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:371',message:'Bounding box check',data:{bboxCheckTime:bboxCheckTime.toFixed(2),pointsChecked:eraserPath.points.length,intersects:eraserIntersects},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
     // #endregion
 
     if (!eraserIntersects) {
@@ -408,7 +400,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
       const singleHitTime = performance.now() - singleHitStart;
       // #region agent log
       if (hitTestCount <= 5 || hit) { // Log first 5 and any hits
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:382', message: 'Geometry hit test', data: { hitTestIndex: hitTestCount, singleHitTime: singleHitTime.toFixed(2), hit: hit }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' }) }).catch(() => { });
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:382',message:'Geometry hit test',data:{hitTestIndex:hitTestCount,singleHitTime:singleHitTime.toFixed(2),hit:hit},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
       }
       // #endregion
       if (hit) {
@@ -418,7 +410,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     }
     const hitTestTime = performance.now() - hitTestStart;
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:391', message: 'Total geometry hit test time', data: { hitTestTime: hitTestTime.toFixed(2), testsPerformed: hitTestCount, touchesPath: touchesPath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' }) }).catch(() => { });
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:391',message:'Total geometry hit test time',data:{hitTestTime:hitTestTime.toFixed(2),testsPerformed:hitTestCount,touchesPath:touchesPath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
     // #endregion
 
     if (!touchesPath) {
@@ -435,18 +427,18 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     const MAX_CIRCLES_PER_STROKE = 50; // Limit new circles per stroke
     const samplePoints = eraserPath.points.length > MAX_CIRCLES_PER_STROKE
       ? (() => {
-        // Uniform sampling: take evenly spaced points
-        const step = eraserPath.points.length / MAX_CIRCLES_PER_STROKE;
-        const sampled = [];
-        for (let i = 0; i < eraserPath.points.length; i += step) {
-          sampled.push(eraserPath.points[Math.floor(i)]);
-        }
-        // Always include the last point
-        if (sampled[sampled.length - 1] !== eraserPath.points[eraserPath.points.length - 1]) {
-          sampled.push(eraserPath.points[eraserPath.points.length - 1]);
-        }
-        return sampled;
-      })()
+          // Uniform sampling: take evenly spaced points
+          const step = eraserPath.points.length / MAX_CIRCLES_PER_STROKE;
+          const sampled = [];
+          for (let i = 0; i < eraserPath.points.length; i += step) {
+            sampled.push(eraserPath.points[Math.floor(i)]);
+          }
+          // Always include the last point
+          if (sampled[sampled.length - 1] !== eraserPath.points[eraserPath.points.length - 1]) {
+            sampled.push(eraserPath.points[eraserPath.points.length - 1]);
+          }
+          return sampled;
+        })()
       : eraserPath.points;
 
     // Add new eraser circles from this stroke
@@ -458,12 +450,11 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     }));
     const circleCreateTime = performance.now() - circleCreateStart;
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:420', message: 'Eraser circles creation', data: { circleCreateTime: circleCreateTime.toFixed(2), newCircles: newCircles.length, existingCircles: existingEraserCircles.length, originalPoints: eraserPath.points.length, sampledPoints: samplePoints.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:420',message:'Eraser circles creation',data:{circleCreateTime:circleCreateTime.toFixed(2),newCircles:newCircles.length,existingCircles:existingEraserCircles.length,originalPoints:eraserPath.points.length,sampledPoints:samplePoints.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
     // #endregion
 
     // Merge with existing circles
     const allEraserCircles = [...existingEraserCircles, ...newCircles];
-    console.log('[erasePathSegment] Circles - existing:', existingEraserCircles.length, 'new:', newCircles.length, 'total:', allEraserCircles.length);
 
     // Store the eraser circles on the object for future reference/serialization
     pathObj.eraserCircles = allEraserCircles;
@@ -472,9 +463,8 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     const clipPathStart = performance.now();
     const clipPath = createEraserClipPath(allEraserCircles, pathBounds, 100);
     const clipPathTime = performance.now() - clipPathStart;
-    console.log('[erasePathSegment] ClipPath creation took:', clipPathTime.toFixed(2), 'ms');
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:410', message: 'ClipPath creation', data: { clipPathTime: clipPathTime.toFixed(2), totalCircles: allEraserCircles.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:410',message:'ClipPath creation',data:{clipPathTime:clipPathTime.toFixed(2),totalCircles:allEraserCircles.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
 
     if (clipPath) {
       const setClipStart = performance.now();
@@ -483,7 +473,7 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
         dirty: true
       });
       const setClipTime = performance.now() - setClipStart;
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:414', message: 'ClipPath set operation', data: { setClipTime: setClipTime.toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:414',message:'ClipPath set operation',data:{setClipTime:setClipTime.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
       // #endregion
       console.log('[erasePathSegment] Applied clipPath with', allEraserCircles.length, 'eraser circles');
     }
@@ -565,14 +555,13 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
 
     // #region agent log
     const totalEraseTime = performance.now() - eraseStartTime;
-    console.log('[erasePathSegment] TOTAL TIME:', totalEraseTime.toFixed(2), 'ms for', allEraserCircles.length, 'circles');
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:495', message: 'Total erasePathSegment time', data: { totalEraseTime: totalEraseTime.toFixed(2), totalCircles: allEraserCircles.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:495',message:'Total erasePathSegment time',data:{totalEraseTime:totalEraseTime.toFixed(2),totalCircles:allEraserCircles.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
     // #endregion
     return true;
   } catch (e) {
     console.error('Error in clipPath erasePathSegment:', e);
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:497', message: 'erasePathSegment error', data: { error: e.message }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:497',message:'erasePathSegment error',data:{error:e.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
     // #endregion
     return false;
   }
@@ -749,17 +738,7 @@ const PageAnnotationLayer = memo(({
 
     if (annotations && annotations.objects && annotations.objects.length > 0) {
       annotations.objects.forEach(objData => {
-        // Normalize type names between Fabric.js versions (5.x uses lowercase, 6.x uses PascalCase)
-        const normalizedObjData = { ...objData };
-        if (normalizedObjData.type) {
-          normalizedObjData.type = normalizedObjData.type.toLowerCase();
-        }
-
-        util.enlivenObjects([normalizedObjData], (enlivenedObjects) => {
-          if (!enlivenedObjects || enlivenedObjects.length === 0) {
-            console.warn(`[Page ${pageNumber}] Initial load: object enlivened but returned empty`, objData);
-            return;
-          }
+        util.enlivenObjects([objData], (enlivenedObjects) => {
           enlivenedObjects.forEach(obj => {
             obj.set({ strokeUniform: true });
             // Store spaceId on object if not already set (for backward compatibility)
@@ -772,16 +751,6 @@ const PageAnnotationLayer = memo(({
             // Enforce multiply blend mode for highlights
             if (obj.highlightId || obj.needsBIC) {
               obj.set({ globalCompositeOperation: 'multiply' });
-            }
-
-            // Fix for imported ink annotations not being interactive
-            // Ensure paths (like ink strokes) have per-pixel target finding enabled
-            // Use case-insensitive check for Fabric.js 5.x/6.x compatibility
-            if (obj.type?.toLowerCase() === 'path') {
-              obj.set({
-                perPixelTargetFind: true,
-                targetFindTolerance: 5
-              });
             }
             canvas.add(obj);
           });
@@ -867,17 +836,17 @@ const PageAnnotationLayer = memo(({
           }
         }, 0);
       }
-
+      
       saveCanvas();
     };
 
     // Helper function to check if a point is within an object's bounding box
     const isPointInBoundingBox = (point, obj) => {
       if (!obj) return false;
-
+      
       // Get bounding box accounting for transformations
       const bounds = obj.getBoundingRect(true);
-
+      
       return (
         point.x >= bounds.left &&
         point.x <= bounds.left + bounds.width &&
@@ -888,7 +857,7 @@ const PageAnnotationLayer = memo(({
 
     // Override Fabric.js findTarget to use pixel-perfect selection but allow bounding box manipulation
     const originalFindTarget = canvas.findTarget.bind(canvas);
-    canvas.findTarget = function (e, skipGroup) {
+    canvas.findTarget = function(e, skipGroup) {
       // CRITICAL: First check for control points (rotation handles, scaling handles)
       // This must happen BEFORE our custom logic to ensure control points work
       const activeObject = this.getActiveObject();
@@ -900,10 +869,10 @@ const PageAnnotationLayer = memo(({
           return originalFindTarget(e, skipGroup);
         }
       }
-
+      
       // Apply custom logic for pan and select tools (both allow object manipulation)
       const shouldUseCustomLogic = toolRef.current === 'pan' || toolRef.current === 'select';
-
+      
       if (!shouldUseCustomLogic) {
         return originalFindTarget(e, skipGroup);
       }
@@ -931,7 +900,7 @@ const PageAnnotationLayer = memo(({
     // Handle mouse down for pan/select tools to prevent deselection when clicking within bounding box
     const handleMouseDownForPan = (opt) => {
       const currentTool = toolRef.current;
-
+      
       // Handle pan and select tools (both allow object manipulation)
       if (currentTool !== 'pan' && currentTool !== 'select') {
         return;
@@ -957,7 +926,7 @@ const PageAnnotationLayer = memo(({
       const currentStrokeWidth = strokeWidthRef.current;
       const currentEraserMode = eraserModeRef.current;
       const { x, y } = canvas.getPointer(opt.e);
-
+      
       // Early return for select tool to avoid interfering with selection handlers
       if (currentTool === 'select') {
         return;
@@ -1340,7 +1309,7 @@ const PageAnnotationLayer = memo(({
           const dy = y - lastPoint.y;
           if (dx * dx + dy * dy < MIN_MOVE_DIST * MIN_MOVE_DIST) {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1240', message: 'Mouse move skipped - too small', data: { pointsCount: eraserPath.points.length, dx: dx.toFixed(2), dy: dy.toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1240',message:'Mouse move skipped - too small',data:{pointsCount:eraserPath.points.length,dx:dx.toFixed(2),dy:dy.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
             // #endregion
             return; // Mouse barely moved, skip
           }
@@ -1352,21 +1321,21 @@ const PageAnnotationLayer = memo(({
         const pointAddTime = performance.now();
         const timeSinceLastMove = lastPoint ? (pointAddTime - (eraserPath.lastMoveTime || pointAddTime)) : 0;
         eraserPath.lastMoveTime = pointAddTime;
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1245', message: 'Point collected', data: { pointsCount: eraserPath.points.length, x: x.toFixed(1), y: y.toFixed(1), timeSinceLastMove: timeSinceLastMove.toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1245',message:'Point collected',data:{pointsCount:eraserPath.points.length,x:x.toFixed(1),y:y.toFixed(1),timeSinceLastMove:timeSinceLastMove.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
-        console.log('[Eraser:Move] Point added, total:', eraserPath.points.length, 'pos:', { x: x.toFixed(1), y: y.toFixed(1) });
+        console.log('[Eraser:Move] Point added, total:', eraserPath.points.length, 'pos:', {x: x.toFixed(1), y: y.toFixed(1)});
 
         // Just request render to update eraser overlay visual - DON'T apply clipPath yet
         const renderStart = performance.now();
         canvas.requestRenderAll();
         const renderTime = performance.now() - renderStart;
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1250', message: 'Canvas render time', data: { renderTime: renderTime.toFixed(2), pointsCount: eraserPath.points.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1250',message:'Canvas render time',data:{renderTime:renderTime.toFixed(2),pointsCount:eraserPath.points.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
         console.log('[Eraser:Move] requestRenderAll took:', renderTime.toFixed(2), 'ms');
         // #region agent log
         const totalMoveTime = performance.now() - moveStartTime;
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1252', message: 'Total mouse move handler time', data: { totalTime: totalMoveTime.toFixed(2), pointsCount: eraserPath.points.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1252',message:'Total mouse move handler time',data:{totalTime:totalMoveTime.toFixed(2),pointsCount:eraserPath.points.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         return;
       }
@@ -1407,7 +1376,7 @@ const PageAnnotationLayer = memo(({
           const eraserRadius = eraserSizeRef.current || 20;
           const objects = [...canvas.getObjects()];
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1354', message: 'Mouse up - starting partial erase', data: { totalObjects: objects.length, eraserPoints: eraserPath.points.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1354',message:'Mouse up - starting partial erase',data:{totalObjects:objects.length,eraserPoints:eraserPath.points.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
           // #endregion
           let needsRenderAndSave = false;
           let objectsChecked = 0;
@@ -1449,7 +1418,7 @@ const PageAnnotationLayer = memo(({
               const touchCheckTime = performance.now() - touchCheckStart;
               // #region agent log
               if (touchCheckTime > 1) { // Log slow checks
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1384', message: 'Non-path touch check', data: { touchCheckTime: touchCheckTime.toFixed(2), objType: obj.type, isTouching: isTouching, pointsChecked: eraserPath.points.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' }) }).catch(() => { });
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1384',message:'Non-path touch check',data:{touchCheckTime:touchCheckTime.toFixed(2),objType:obj.type,isTouching:isTouching,pointsChecked:eraserPath.points.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
               }
               // #endregion
               if (isTouching) {
@@ -1461,7 +1430,7 @@ const PageAnnotationLayer = memo(({
 
           // #region agent log
           const mouseUpTime = performance.now() - mouseUpStartTime;
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1392', message: 'Mouse up - partial erase complete', data: { mouseUpTime: mouseUpTime.toFixed(2), objectsChecked: objectsChecked, pathsProcessed: pathsProcessed, nonPathsProcessed: nonPathsProcessed, needsRenderAndSave: needsRenderAndSave }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1392',message:'Mouse up - partial erase complete',data:{mouseUpTime:mouseUpTime.toFixed(2),objectsChecked:objectsChecked,pathsProcessed:pathsProcessed,nonPathsProcessed:nonPathsProcessed,needsRenderAndSave:needsRenderAndSave},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
           // #endregion
 
           if (needsRenderAndSave) {
@@ -1469,7 +1438,7 @@ const PageAnnotationLayer = memo(({
             saveCanvas();
             const saveTime = performance.now() - saveStart;
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1393', message: 'Save canvas time', data: { saveTime: saveTime.toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1393',message:'Save canvas time',data:{saveTime:saveTime.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
             // #endregion
           }
         }
@@ -1482,7 +1451,7 @@ const PageAnnotationLayer = memo(({
         canvas.requestRenderAll();
         // #region agent log
         const finalRenderTime = performance.now() - finalRenderStart;
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1331', message: 'Final canvas render after erase', data: { finalRenderTime: finalRenderTime.toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1331',message:'Final canvas render after erase',data:{finalRenderTime:finalRenderTime.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
         return;
       }
@@ -1604,15 +1573,6 @@ const PageAnnotationLayer = memo(({
     // Track mouse down for selection rectangle
     // AutoCAD/Bluebeam-style: direction determines selection mode
     const handleMouseDownForSelection = (e) => {
-      // DEBUG: Always log mouse down details
-      console.log('[Selection] Mouse Down', {
-        tool: toolRef.current,
-        hasTarget: !!e.target,
-        targetType: e.target?.type,
-        isCanvas: e.target === canvas,
-        pointer: canvas.getPointer(e.e)
-      });
-
       if (toolRef.current !== 'select') {
         return;
       }
@@ -1625,25 +1585,16 @@ const PageAnnotationLayer = memo(({
       // Allow single-click selection of objects - we'll handle that in mouseUp
       // Only skip if this is clearly an object click (not a drag start)
       const isObjectClick = e.target && e.target !== canvas && e.target.type !== undefined;
-
       if (isObjectClick) {
-        console.log('[Selection] Fabric hit object:', e.target.type, {
-          selectable: e.target.selectable,
-          evented: e.target.evented,
-          visible: e.target.visible,
-          perPixelTargetFind: e.target.perPixelTargetFind
-        });
         // Don't initialize selection rect - allow single-click object selection to work normally
         // But also don't prevent the object from being selected
         return;
       }
 
-      console.log('[Selection] Starting custom selection tracking (no Fabric hit)');
-
       // Disable canvas.selection to prevent Fabric.js from interfering with our custom drag selection
       // We'll re-enable it after selection completes to show visual feedback
       canvas.selection = false;
-
+      
       // Get pointer coordinates - use viewport-transformed coordinates for visual rectangle
       // to match Fabric.js object coordinate system (same as other Rect objects in the codebase)
       const pointer = canvas.getPointer(e.e, false);
@@ -1693,7 +1644,7 @@ const PageAnnotationLayer = memo(({
       const pointer = canvas.getPointer(e.e, false);
       // Get absolute coordinates for selection logic (to match object.aCoords)
       const pointerAbsolute = canvas.getPointer(e.e, true);
-
+      
       const startX = selectionRectRef.current.startX; // Viewport-transformed
       const startY = selectionRectRef.current.startY;
       const startXAbsolute = selectionRectRef.current.startXAbsolute; // Absolute
@@ -1709,7 +1660,7 @@ const PageAnnotationLayer = memo(({
       const selTop = Math.min(startY, pointer.y);
       const selWidth = Math.abs(pointer.x - startX);
       const selHeight = Math.abs(pointer.y - startY);
-
+      
       selectionRectRef.current = {
         startX: startX,
         startY: startY,
@@ -1810,9 +1761,6 @@ const PageAnnotationLayer = memo(({
 
       // Only perform selection if there was meaningful drag (more than 5px in either direction)
       if (selWidth > 5 || selHeight > 5) {
-        // ... existing drag selection logic ...
-        console.log('[Selection] Drag detected', { selWidth, selHeight }); // DEBUG LOG
-
         const selRight = selLeft + selWidth;
         const selBottom = selTop + selHeight;
 
@@ -1892,44 +1840,6 @@ const PageAnnotationLayer = memo(({
           canvas.setActiveObject(activeSelection);
         }
         canvas.requestRenderAll();
-      } else {
-        // If drag was too small, treat it as a single click
-        console.log('[Selection] Single click fallback triggered'); // DEBUG LOG
-
-        const pointer = canvas.getPointer(e.e);
-        const allObjects = canvas.getObjects();
-        let hitObject = null;
-        const HIT_TOLERANCE = 10; // Increased tolerance for testing
-
-        // Find topmost object whose geometry contains the click point
-        // Iterate in reverse order (top to bottom) since last added is on top
-        for (let i = allObjects.length - 1; i >= 0; i--) {
-          const obj = allObjects[i];
-          if (!obj.selectable || !obj.visible) continue;
-
-          // DEBUG: Log check
-          // const isPath = obj.type === 'path';
-          // if (isPath) console.log('[Selection] Checking path:', i, obj.left, obj.top, obj.width, obj.height);
-
-          // Use geometry-based hit testing
-          if (isPointOnObject(pointer, obj, HIT_TOLERANCE)) {
-            console.log('[Selection] Hit found:', obj.type, obj); // DEBUG LOG
-            hitObject = obj;
-            break;
-          }
-        }
-
-        if (hitObject) {
-          // Enable selection temporarily to show the object as selected
-          canvas.selection = true;
-          canvas.setActiveObject(hitObject);
-          canvas.requestRenderAll();
-        } else {
-          console.log('[Selection] No hit found in fallback'); // DEBUG LOG
-          // Clicked on empty space - deselect all
-          canvas.discardActiveObject();
-          canvas.requestRenderAll();
-        }
       }
 
       // Clear selection rect and remove visual rectangle
@@ -2332,182 +2242,6 @@ const PageAnnotationLayer = memo(({
       }
     }
   }, [highlightsToRemove, pageNumber, onSaveAnnotations, scale]);
-
-  // Update canvas when annotations prop changes (e.g., after PDF import)
-  const lastAnnotationsRef = useRef(null);
-  const isInitialLoadRef = useRef(true);
-  const lastPageNumberRef = useRef(pageNumber);
-
-  // Reset initial load flag when page changes
-  if (lastPageNumberRef.current !== pageNumber) {
-    isInitialLoadRef.current = true;
-    lastAnnotationsRef.current = null;
-    lastPageNumberRef.current = pageNumber;
-  }
-
-  useEffect(() => {
-    if (!fabricRef.current || !annotations) return;
-
-    // Skip if annotations haven't actually changed (using a simple comparison)
-    const annotationsKey = JSON.stringify(annotations);
-    if (lastAnnotationsRef.current === annotationsKey) return;
-
-    // On initial load, skip this effect - the initialization useEffect handles it
-    if (isInitialLoadRef.current) {
-      isInitialLoadRef.current = false;
-      lastAnnotationsRef.current = annotationsKey;
-      return;
-    }
-
-    lastAnnotationsRef.current = annotationsKey;
-
-    const canvas = fabricRef.current;
-    const currentObjectCount = canvas.getObjects().length;
-
-    // Only update if annotations actually changed and we have new objects to load
-    if (annotations.objects && annotations.objects.length > 0) {
-      console.log(`[Page ${pageNumber}] Updating annotations: ${currentObjectCount} existing, ${annotations.objects.length} new`);
-
-      // DEBUG: Log first object to check data structure
-      console.log(`[Page ${pageNumber}] First object sample:`, JSON.stringify(annotations.objects[0]));
-      console.log(`[Page ${pageNumber}] Fabric util available:`, !!util, 'enlivenObjects available:', !!util?.enlivenObjects);
-
-      // Clear existing objects and reload all annotations
-      canvas.clear();
-
-      try {
-        annotations.objects.forEach((objData, idx) => {
-          // Normalize objData if needed (e.g. handle version differences)
-          if (!objData.type) {
-            console.warn(`[Page ${pageNumber}] Object ${idx} missing type, skipping`, objData);
-            return;
-          }
-
-          // Normalize type names between Fabric.js versions (5.x uses lowercase, 6.x uses PascalCase)
-          const normalizedObjData = { ...objData };
-          if (normalizedObjData.type) {
-            // Convert PascalCase to lowercase for Fabric.js 5.x compatibility
-            normalizedObjData.type = normalizedObjData.type.toLowerCase();
-          }
-
-          util.enlivenObjects([normalizedObjData], (enlivenedObjects) => {
-            console.log(`[Page ${pageNumber}] Enlivened object ${idx} callback`, enlivenedObjects?.length);
-            if (!enlivenedObjects || enlivenedObjects.length === 0) {
-              console.warn(`[Page ${pageNumber}] Object ${idx} enlivened but returned empty`);
-              return;
-            }
-
-            enlivenedObjects.forEach(obj => {
-              obj.set({ strokeUniform: true });
-              // Store spaceId on object if not already set (for backward compatibility)
-              if (!obj.spaceId) {
-                obj.spaceId = objData.spaceId || null;
-              }
-              if (!obj.moduleId) {
-                obj.moduleId = objData.moduleId || null;
-              }
-              // Enforce multiply blend mode for highlights
-              if (obj.highlightId || obj.needsBIC) {
-                obj.set({ globalCompositeOperation: 'multiply' });
-              }
-
-              // Fix for imported ink annotations not being interactive
-              // Ensure paths (like ink strokes) have per-pixel target finding enabled
-              // Use case-insensitive check for Fabric.js 5.x/6.x compatibility
-              if (obj.type?.toLowerCase() === 'path') {
-                obj.set({
-                  perPixelTargetFind: true,
-                  targetFindTolerance: 5,
-                  selectable: true,
-                  evented: true
-                });
-
-                // Ensure pathOffset is set for proper hit detection
-                // Fabric.js uses pathOffset to center paths; if missing, calculate it
-                if (!obj.pathOffset && obj.path && obj.path.length > 0) {
-                  obj.setCoords();
-                }
-              }
-              canvas.add(obj);
-            });
-            // After loading, filter by selectedSpaceId
-            canvas.getObjects().forEach(obj => {
-              const objSpaceId = obj.spaceId || null;
-              const objModuleId = obj.moduleId || null;
-              const currentSpaceId = selectedSpaceIdRef.current;
-              const currentModuleId = selectedModuleIdRef.current;
-              const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
-              const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
-              const isVisible = matchesSpace && matchesModule;
-              obj.set({ visible: isVisible });
-              if (!isVisible) {
-                obj.set({ selectable: false, evented: false });
-              }
-            });
-            canvas.renderAll();
-
-            // DIAGNOSTIC CODE: Verify hit testing for loaded paths
-            enlivenedObjects.forEach((obj, index) => {
-              if (obj.type === 'path') {
-                const bounds = obj.getBoundingRect(true);
-                // Test point at center of bounding box
-                const centerX = bounds.left + bounds.width / 2;
-                const centerY = bounds.top + bounds.height / 2;
-                const testPoint = { x: centerX, y: centerY };
-                const hitTest = isPointOnObject(testPoint, obj, 5);
-
-                // Also test a point on the actual path (first point after transform)
-                const pathData = obj.path;
-                let firstPathPoint = null;
-                if (pathData && pathData.length > 0 && pathData[0][0] === 'M') {
-                  const matrix = obj.calcTransformMatrix ? obj.calcTransformMatrix() : null;
-                  const pathOffset = obj.pathOffset || { x: 0, y: 0 };
-                  // First point in path data
-                  const localX = pathData[0][1] - pathOffset.x;
-                  const localY = pathData[0][2] - pathOffset.y;
-                  if (matrix) {
-                    // Transform local point to canvas coordinates
-                    firstPathPoint = {
-                      x: matrix[0] * localX + matrix[2] * localY + matrix[4],
-                      y: matrix[1] * localX + matrix[3] * localY + matrix[5]
-                    };
-                  }
-                }
-                const hitTestFirstPoint = firstPathPoint ? isPointOnObject(firstPathPoint, obj, 5) : null;
-
-                console.log(`[Diagnostic] Path ${index} loaded:`, {
-                  rect: bounds,
-                  center: testPoint,
-                  hitTestResult: hitTest,
-                  pathLength: obj.path?.length,
-                  strokeWidth: obj.strokeWidth,
-                  selectable: obj.selectable,
-                  evented: obj.evented,
-                  perPixelTargetFind: obj.perPixelTargetFind,
-                  pathOffset: obj.pathOffset,
-                  left: obj.left,
-                  top: obj.top,
-                  width: obj.width,
-                  height: obj.height,
-                  scaleX: obj.scaleX,
-                  scaleY: obj.scaleY,
-                  firstPathPoint,
-                  hitTestFirstPoint
-                });
-              }
-            });
-          });
-        });
-      } catch (e) {
-        console.error(`[Page ${pageNumber}] Error enlivening objects:`, e);
-      }
-    } else if (currentObjectCount > 0) {
-      // If annotations is empty but we have objects, clear them
-      console.log(`[Page ${pageNumber}] Clearing annotations (empty prop)`);
-      canvas.clear();
-      canvas.renderAll();
-    }
-  }, [annotations, pageNumber, selectedSpaceId, selectedModuleId]);
 
   // Filter objects by selected space and regions
   useEffect(() => {

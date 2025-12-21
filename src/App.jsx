@@ -9,7 +9,6 @@ import { uploadExcelFile, getFileMetadata, downloadExcelFileByPath } from './ser
 import PageAnnotationLayer from './PageAnnotationLayer';
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
-import { readAnnotationsFromPDF } from './utils/readPDFAnnotations';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
@@ -10540,24 +10539,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setIsLoadingPDF(true);
 
         let arrayBuffer;
-        let annotationArrayBuffer; // Clone for annotation reading
         if (typeof pdfFile.arrayBuffer === 'function') {
           // Local file
           arrayBuffer = await pdfFile.arrayBuffer();
-          // Clone immediately before PDF.js might detach it
-          // Create a new ArrayBuffer and copy the data
-          annotationArrayBuffer = new ArrayBuffer(arrayBuffer.byteLength);
-          new Uint8Array(annotationArrayBuffer).set(new Uint8Array(arrayBuffer));
         } else if (pdfFile.filePath) {
           // Supabase file - download it
           console.log('Downloading PDF from Supabase:', pdfFile.filePath);
           const blob = await downloadFromStorage(pdfFile.filePath);
           if (!blob) throw new Error('Failed to download PDF');
           arrayBuffer = await blob.arrayBuffer();
-          // Clone immediately before PDF.js might detach it
-          // Create a new ArrayBuffer and copy the data
-          annotationArrayBuffer = new ArrayBuffer(arrayBuffer.byteLength);
-          new Uint8Array(annotationArrayBuffer).set(new Uint8Array(arrayBuffer));
         } else {
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
@@ -10601,92 +10591,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // The simple canvas rendering in PDFPageCanvas will handle rendering on the main thread.
 
         setIsLoadingPDF(false);
-
-        // Import annotations from PDF (PDF-first approach with smart merge)
-        try {
-          const currentPdfId = getPDFId(pdfFile);
-          if (currentPdfId) {
-            console.log('[PDF Import] Starting annotation import for PDF:', currentPdfId);
-            
-            // Use the cloned ArrayBuffer we created earlier (before PDF.js detached the original)
-            // Read annotations from PDF (source of truth)
-            const tempFile = { arrayBuffer: () => Promise.resolve(annotationArrayBuffer) };
-            const result = await readAnnotationsFromPDF(tempFile);
-            const pdfAnnotations = result.annotationsByPage || {};
-            
-            console.log('[PDF Import] Found annotations on pages:', Object.keys(pdfAnnotations));
-            Object.entries(pdfAnnotations).forEach(([pageNum, annots]) => {
-              console.log(`[PDF Import] Page ${pageNum}: ${annots.objects?.length || 0} objects`);
-              if (annots.objects && annots.objects.length > 0) {
-                annots.objects.forEach((obj, idx) => {
-                  console.log(`[PDF Import]   Object ${idx + 1}: type=${obj.type}, left=${obj.left}, top=${obj.top}`);
-                });
-              }
-            });
-            
-            // Load existing annotations from localStorage (may have unsaved work)
-            const localAnnotations = loadAnnotationsByPage(currentPdfId);
-            console.log('[PDF Import] Local annotations on pages:', Object.keys(localAnnotations));
-            
-            // Smart merge: PDF is authoritative, but preserve local unsaved work
-            const merged = { ...pdfAnnotations };
-            
-            Object.entries(localAnnotations).forEach(([pageNum, localAnnots]) => {
-              if (!merged[pageNum]) {
-                // Page doesn't exist in PDF annotations, use local (unsaved work)
-                merged[pageNum] = localAnnots;
-                console.log(`[PDF Import] Page ${pageNum}: Using local annotations only (${localAnnots.objects?.length || 0} objects)`);
-              } else {
-                // Page exists in both - merge objects intelligently
-                const pdfObjects = merged[pageNum].objects || [];
-                const localObjects = localAnnots.objects || [];
-                
-                // Merge: PDF objects first (authoritative), then add local objects
-                // This preserves unsaved local work while respecting PDF as source of truth
-                merged[pageNum] = {
-                  ...merged[pageNum],
-                  objects: [...pdfObjects, ...localObjects]
-                };
-                console.log(`[PDF Import] Page ${pageNum}: Merged ${pdfObjects.length} PDF objects + ${localObjects.length} local objects`);
-              }
-            });
-            
-            // Update state and save merged annotations
-            setAnnotationsByPage(merged);
-            savedAnnotationsByPageRef.current = merged;
-            saveAnnotationsByPage(currentPdfId, merged);
-            
-            console.log('[PDF Import] Saved merged annotations to localStorage');
-            
-            // Track that we've synced
-            localStorage.setItem(`lastSynced_${currentPdfId}`, Date.now().toString());
-            
-            // Show notification if unsupported types were found
-            if (result.unsupportedTypes && result.unsupportedTypes.length > 0) {
-              const message = result.unsupportedTypes
-                .map(({ type, count }) => `${count} ${type} annotation${count > 1 ? 's' : ''}`)
-                .join(', ');
-              
-              console.log('[PDF Import] Unsupported types found:', message);
-              
-              // Use setTimeout to show notification after PDF is fully loaded
-              setTimeout(() => {
-                alert(`Some annotations were preserved in the PDF but not imported (not supported): ${message}. They will remain visible when viewing the PDF in other applications.`);
-              }, 500);
-            }
-            
-            const pdfPageCount = Object.keys(pdfAnnotations).length;
-            if (pdfPageCount > 0) {
-              console.log(`[PDF Import] Successfully imported annotations from ${pdfPageCount} page(s)`);
-            } else {
-              console.log('[PDF Import] No annotations found in PDF');
-            }
-          }
-        } catch (annotationError) {
-          console.error('[PDF Import] Error importing annotations from PDF:', annotationError);
-          console.error('[PDF Import] Error stack:', annotationError.stack);
-          // Don't block PDF loading if annotation import fails
-        }
 
       } catch (error) {
         console.error('Error loading PDF:', error);
