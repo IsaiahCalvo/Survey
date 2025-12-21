@@ -7,6 +7,16 @@ import { supabase, isSupabaseAvailable } from '../supabaseClient';
 
 const MSGraphContext = createContext({});
 
+// Create singleton MSAL instance to prevent multiple initialization warnings
+let msalInstanceSingleton = null;
+const getMsalInstance = async () => {
+    if (!msalInstanceSingleton) {
+        msalInstanceSingleton = new PublicClientApplication(msalConfig);
+        await msalInstanceSingleton.initialize();
+    }
+    return msalInstanceSingleton;
+};
+
 export const useMSGraph = () => {
     const context = useContext(MSGraphContext);
     if (!context) {
@@ -130,8 +140,7 @@ export const MSGraphProvider = ({ children }) => {
 
         const initializeMsal = async () => {
             try {
-                const pca = new PublicClientApplication(msalConfig);
-                await pca.initialize();
+                const pca = await getMsalInstance();
 
                 if (!isMounted) return;
                 setMsalInstance(pca);
