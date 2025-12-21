@@ -1794,7 +1794,7 @@ const RegionSelectionTool = ({
                 border: '1px solid #ccc',
                 borderRadius: '4px',
                 boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-                zIndex: 1000,
+                zIndex: 1004,
                 padding: '4px 0',
                 minWidth: '120px'
               }}
