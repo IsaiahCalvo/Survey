@@ -136,6 +136,59 @@ ipcMain.handle('fs:fileExists', async (event, filePath) => {
   }
 });
 
+// Atomic file write - ensures crash-safe saves by writing to temp file first
+ipcMain.handle('fs:writeFileAtomic', async (event, { path: filePath, data }) => {
+  const tempPath = filePath + '.tmp';
+  const backupPath = filePath + '.bak';
+
+  try {
+    // 1. Write to temp file first
+    fs.writeFileSync(tempPath, Buffer.from(data));
+
+    // 2. Create backup of original (if exists)
+    if (fs.existsSync(filePath)) {
+      // Remove old backup if exists
+      if (fs.existsSync(backupPath)) {
+        fs.unlinkSync(backupPath);
+      }
+      fs.renameSync(filePath, backupPath);
+    }
+
+    // 3. Rename temp to final (atomic on most filesystems)
+    fs.renameSync(tempPath, filePath);
+
+    // 4. Remove backup on success
+    if (fs.existsSync(backupPath)) {
+      fs.unlinkSync(backupPath);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Atomic write failed:', error);
+
+    // Attempt recovery: if backup exists but final doesn't, restore backup
+    if (fs.existsSync(backupPath) && !fs.existsSync(filePath)) {
+      try {
+        fs.renameSync(backupPath, filePath);
+        console.log('Recovered from backup after failed write');
+      } catch (recoveryError) {
+        console.error('Recovery from backup also failed:', recoveryError);
+      }
+    }
+
+    // Clean up temp file if it exists
+    if (fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (cleanupError) {
+        // Ignore cleanup errors
+      }
+    }
+
+    throw error;
+  }
+});
+
 // File watcher handlers
 ipcMain.handle('fileWatcher:start', async (event, { filePath, watchId }) => {
   try {

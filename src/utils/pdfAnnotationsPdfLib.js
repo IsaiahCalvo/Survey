@@ -471,8 +471,13 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
 
     // Check if we're in Electron and have the original file path
     if (window.electronAPI && pdfFilePath) {
-      // Save to original file location (overwrite)
-      await window.electronAPI.writeFile(pdfFilePath, pdfBytes);
+      // Save to original file location using atomic write (crash-safe)
+      if (window.electronAPI.writeFileAtomic) {
+        await window.electronAPI.writeFileAtomic(pdfFilePath, pdfBytes);
+      } else {
+        // Fallback to regular write if atomic not available
+        await window.electronAPI.writeFile(pdfFilePath, pdfBytes);
+      }
     } else {
       // Fallback: Download the file (browser mode or no file path)
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });

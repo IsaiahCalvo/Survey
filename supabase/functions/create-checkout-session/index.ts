@@ -34,7 +34,7 @@ serve(async (req) => {
                     quantity: 1,
                 },
             ],
-            mode: 'payment',
+            mode: 'subscription',
             success_url: 'https://example.com/success', // In future, use req.headers.get('origin') + '/success'
             cancel_url: 'https://example.com/cancel',
         })

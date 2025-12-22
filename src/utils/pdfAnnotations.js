@@ -385,9 +385,14 @@ export const savePDFWithAnnotations = async (pdfFile, annotationsByPage, pageSiz
 
     // Check if we're in Electron and have the original file path
     if (window.electronAPI && pdfFile.path) {
-      // Save to original file location (overwrite)
+      // Save to original file location using atomic write (crash-safe)
       console.log(`Saving to original file: ${pdfFile.path}`);
-      await window.electronAPI.writeFile(pdfFile.path, modifiedPdfBytes);
+      if (window.electronAPI.writeFileAtomic) {
+        await window.electronAPI.writeFileAtomic(pdfFile.path, modifiedPdfBytes);
+      } else {
+        // Fallback to regular write if atomic not available
+        await window.electronAPI.writeFile(pdfFile.path, modifiedPdfBytes);
+      }
       console.log('PDF saved successfully to original location with embedded annotations');
     } else {
       // Fallback: Download the file (browser mode or no path available)
