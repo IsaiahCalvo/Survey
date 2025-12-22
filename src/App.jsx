@@ -4808,14 +4808,27 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           alignItems: 'center',
           justifyContent: 'flex-start'
         }}>
-          {!isSelectionMode && (activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates') && (
-            <button
-              onClick={() => { setIsSelectionMode(true); setSelectedIds([]); }}
-              className="btn btn-secondary btn-md"
-            >
-              Select Item
-            </button>
-          )}
+          {!isSelectionMode && (activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates') && (() => {
+            const hasItems = activeSection === 'documents' 
+              ? sortedDocuments.length > 0
+              : activeSection === 'projects'
+              ? projects.length > 0
+              : templates.length > 0;
+            
+            return (
+              <button
+                onClick={() => { setIsSelectionMode(true); setSelectedIds([]); }}
+                className="btn btn-secondary btn-md"
+                disabled={!hasItems}
+                style={!hasItems ? {
+                  opacity: 0.5,
+                  cursor: 'not-allowed'
+                } : {}}
+              >
+                Select
+              </button>
+            );
+          })()}
           {(activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates') && !isSelectionMode && (
             <div ref={viewDropdownRef} style={{ position: 'relative' }}>
               <button
