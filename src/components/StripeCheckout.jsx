@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 
-const StripeCheckout = () => {
+const StripeCheckout = (props) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
@@ -13,6 +13,10 @@ const StripeCheckout = () => {
 
             if (error) {
                 throw error;
+            }
+
+            if (data?.error) {
+                throw new Error(data.error);
             }
 
             if (data?.url) {
@@ -30,25 +34,20 @@ const StripeCheckout = () => {
     };
 
     return (
-        <div className="p-4 border rounded shadow-sm bg-white">
-            <h3 className="text-lg font-semibold mb-2">Upgrade to Pro</h3>
-            <p className="text-gray-600 mb-4">Unlock all premium features.</p>
-
-            {error && (
-                <div className="text-red-500 text-sm mb-3">
-                    Error: {error}
-                </div>
-            )}
-
+        <>
             <button
                 onClick={handleSubscribe}
                 disabled={loading}
-                className={`px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
+                className={props.className || 'px-4 py-2 bg-blue-600 text-white rounded'}
             >
-                {loading ? 'Processing...' : 'Subscribe Now'}
+                {loading ? 'Processing...' : (props.children || 'Subscribe Now')}
             </button>
-        </div>
+            {error && (
+                <div style={{ color: 'red', marginTop: '8px', fontSize: '13px' }}>
+                    Error: {error}
+                </div>
+            )}
+        </>
     );
 };
 

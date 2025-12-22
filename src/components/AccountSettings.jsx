@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useMSGraph } from '../contexts/MSGraphContext';
 import { supabase } from '../supabaseClient';
 import Icon from '../Icons';
+import StripeCheckout from './StripeCheckout';
 import './AccountSettings.css';
 
 export const AccountSettings = ({ isOpen, onClose }) => {
@@ -550,9 +551,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       </ul>
                     </div>
                     <div className="account-subscription-actions">
-                      <button className="account-btn-purple">
+                      <StripeCheckout className="account-btn-purple">
                         Upgrade to Pro
-                      </button>
+                      </StripeCheckout>
                     </div>
                   </div>
                 </div>
