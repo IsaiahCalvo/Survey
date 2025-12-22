@@ -88,7 +88,18 @@ function pdfColorToHex(colorArray, annotation = null) {
  * PDF coordinates have origin at bottom-left, Fabric.js at top-left
  */
 function convertInkToFabricPath(annotation, pageHeight, scale = 1) {
-  console.log('[pdfAnnotationImporter] Converting Ink annotation:', annotation);
+  console.log('[pdfAnnotationImporter] Converting Ink annotation:', JSON.stringify({
+    id: annotation.id,
+    subtype: annotation.subtype,
+    color: annotation.color,
+    borderColor: annotation.borderColor,
+    borderStyle: annotation.borderStyle,
+    borderWidth: annotation.borderWidth,
+    inkLists: annotation.inkLists ? `${annotation.inkLists.length} lists` : 'none',
+    rect: annotation.rect,
+    // Log all keys to see what properties Adobe provides
+    allKeys: Object.keys(annotation)
+  }, null, 2));
 
   if (!annotation.inkLists || annotation.inkLists.length === 0) {
     console.log('[pdfAnnotationImporter] No inkLists found in annotation');
@@ -210,7 +221,7 @@ function convertHighlightToFabricRect(annotation, pageHeight, scale = 1) {
   const width = right - left;
   const height = top - bottom;
 
-  const color = pdfColorToHex(annotation.color || [1, 1, 0]); // Default yellow
+  const color = pdfColorToHex(annotation.color || [1, 1, 0], annotation); // Default yellow
 
   return {
     type: 'rect',
@@ -222,6 +233,11 @@ function convertHighlightToFabricRect(annotation, pageHeight, scale = 1) {
     opacity: 0.3, // Typical highlight opacity
     stroke: null,
     strokeWidth: 0,
+    // Required Fabric.js properties for proper interaction
+    selectable: true,
+    evented: true,
+    hasControls: true,
+    hasBorders: true,
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
@@ -248,7 +264,7 @@ function convertFreeTextToFabricTextbox(annotation, pageHeight, scale = 1) {
   const height = top - bottom;
 
   const text = annotation.contents || '';
-  const color = pdfColorToHex(annotation.color || [0, 0, 0]);
+  const color = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
   const fontSize = annotation.defaultAppearanceData?.fontSize || 12;
 
   return {
@@ -261,6 +277,11 @@ function convertFreeTextToFabricTextbox(annotation, pageHeight, scale = 1) {
     fill: color,
     fontSize: fontSize * scale,
     fontFamily: 'sans-serif',
+    // Required Fabric.js properties for proper interaction
+    selectable: true,
+    evented: true,
+    hasControls: true,
+    hasBorders: true,
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
@@ -286,8 +307,8 @@ function convertSquareToFabricRect(annotation, pageHeight, scale = 1) {
   const width = right - left;
   const height = top - bottom;
 
-  const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0]);
-  const fillColor = annotation.interiorColor ? pdfColorToHex(annotation.interiorColor) : null;
+  const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
+  const fillColor = annotation.interiorColor ? pdfColorToHex(annotation.interiorColor, annotation) : null;
   const strokeWidth = annotation.borderStyle?.width || 1;
 
   return {
@@ -300,6 +321,11 @@ function convertSquareToFabricRect(annotation, pageHeight, scale = 1) {
     stroke: strokeColor,
     strokeWidth: strokeWidth * scale,
     strokeUniform: true,
+    // Required Fabric.js properties for proper interaction
+    selectable: true,
+    evented: true,
+    hasControls: true,
+    hasBorders: true,
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
@@ -329,8 +355,8 @@ function convertCircleToFabricCircle(annotation, pageHeight, scale = 1) {
   // Fabric.js Circle is actually a circle, but we'll approximate ellipses
   const radius = Math.min(width, height) / 2;
 
-  const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0]);
-  const fillColor = annotation.interiorColor ? pdfColorToHex(annotation.interiorColor) : null;
+  const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
+  const fillColor = annotation.interiorColor ? pdfColorToHex(annotation.interiorColor, annotation) : null;
   const strokeWidth = annotation.borderStyle?.width || 1;
 
   return {
@@ -345,6 +371,11 @@ function convertCircleToFabricCircle(annotation, pageHeight, scale = 1) {
     // If it's an ellipse, store the original dimensions
     scaleX: width / (radius * 2),
     scaleY: height / (radius * 2),
+    // Required Fabric.js properties for proper interaction
+    selectable: true,
+    evented: true,
+    hasControls: true,
+    hasBorders: true,
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
@@ -370,9 +401,13 @@ function convertLineToFabricLine(annotation, pageHeight, scale = 1) {
       y1: (pageHeight - rect[1]) * scale,
       x2: rect[2] * scale,
       y2: (pageHeight - rect[3]) * scale,
-      stroke: pdfColorToHex(annotation.color || [0, 0, 0]),
+      stroke: pdfColorToHex(annotation.color || [0, 0, 0], annotation),
       strokeWidth: (annotation.borderStyle?.width || 1) * scale,
       strokeUniform: true,
+      selectable: true,
+      evented: true,
+      hasControls: true,
+      hasBorders: true,
       isPdfImported: true,
       pdfAnnotationId: annotation.id,
       pdfAnnotationType: 'Line',
@@ -380,7 +415,7 @@ function convertLineToFabricLine(annotation, pageHeight, scale = 1) {
     };
   }
 
-  const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0]);
+  const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
   const strokeWidth = annotation.borderStyle?.width || 1;
 
   return {
@@ -392,6 +427,11 @@ function convertLineToFabricLine(annotation, pageHeight, scale = 1) {
     stroke: strokeColor,
     strokeWidth: strokeWidth * scale,
     strokeUniform: true,
+    // Required Fabric.js properties for proper interaction
+    selectable: true,
+    evented: true,
+    hasControls: true,
+    hasBorders: true,
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
@@ -417,7 +457,7 @@ function convertUnderlineToFabricRect(annotation, pageHeight, scale = 1) {
   const width = right - left;
   const height = Math.max(2, (top - bottom) * 0.1); // Thin line
 
-  const color = pdfColorToHex(annotation.color || [1, 0, 0]); // Default red
+  const color = pdfColorToHex(annotation.color || [1, 0, 0], annotation); // Default red
 
   // Position at bottom for underline, middle for strikeout
   const isStrikeOut = annotation.subtype === 'StrikeOut';
@@ -432,6 +472,11 @@ function convertUnderlineToFabricRect(annotation, pageHeight, scale = 1) {
     fill: color,
     stroke: null,
     strokeWidth: 0,
+    // Required Fabric.js properties for proper interaction
+    selectable: true,
+    evented: true,
+    hasControls: true,
+    hasBorders: true,
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,

@@ -776,6 +776,26 @@ const PageAnnotationLayer = memo(({
             if (!obj.moduleId) {
               obj.moduleId = objData.moduleId || null;
             }
+            // Preserve imported PDF annotation properties
+            if (objData.isPdfImported) {
+              obj.isPdfImported = true;
+              obj.pdfAnnotationId = objData.pdfAnnotationId;
+              obj.pdfAnnotationType = objData.pdfAnnotationType;
+              obj.layer = objData.layer || 'pdf-annotations';
+              // Ensure imported objects are interactive
+              obj.set({
+                selectable: true,
+                evented: true,
+                hasControls: true,
+                hasBorders: true,
+                perPixelTargetFind: true,
+                targetFindTolerance: 5
+              });
+            }
+            // Preserve layer property for all objects
+            if (objData.layer) {
+              obj.layer = objData.layer;
+            }
             // Enforce multiply blend mode for highlights
             if (obj.highlightId || obj.needsBIC) {
               obj.set({ globalCompositeOperation: 'multiply' });
