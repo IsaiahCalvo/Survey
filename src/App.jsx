@@ -2120,6 +2120,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
+  const handleEnterSelectionMode = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setIsSelectionMode(true);
+    setSelectedIds([]);
+  };
+
   const selectAllCurrent = () => {
     const items = getCurrentItems();
     setSelectedIds(items.map(i => i.id));
@@ -2678,6 +2687,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         bVal = new Date(bVal);
       }
 
+
       if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -2700,6 +2710,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
     return [...filtered].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   }, [templates, searchQuery]);
+
+  // Derived state for selection mode availability
+  const hasItems = activeSection === 'documents'
+    ? sortedDocuments.length > 0
+    : activeSection === 'projects'
+      ? projects.length > 0
+      : templates.length > 0;
 
   const handleDocumentClick = async (doc) => {
     try {
@@ -4808,55 +4825,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           alignItems: 'center',
           justifyContent: 'flex-start'
         }}>
-          {!isSelectionMode && (activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates') && (() => {
-            const hasItems = activeSection === 'documents' 
-              ? sortedDocuments.length > 0
-              : activeSection === 'projects'
-              ? projects.length > 0
-              : templates.length > 0;
-            
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4818',message:'Select button render check',data:{activeSection,isSelectionMode,hasItems,willShowButton:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
-            
-            const buttonDisabled = !hasItems;
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4823',message:'Button render with disabled state',data:{activeSection,hasItems,buttonDisabled},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
-            
-            return (
-              <button
-                onMouseDown={(e) => {
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4827',message:'Select button mousedown',data:{activeSection,hasItems,buttonDisabled},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
-                  // #endregion
-                }}
-                onClick={(e) => {
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4831',message:'Select button clicked',data:{activeSection,hasItems,isSelectionModeBefore:isSelectionMode,selectedIdsBefore:selectedIds,eventType:e.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
-                  // #endregion
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsSelectionMode(true);
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4836',message:'Called setIsSelectionMode(true)',data:{activeSection},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
-                  // #endregion
-                  setSelectedIds([]);
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4839',message:'Called setSelectedIds([])',data:{activeSection},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
-                  // #endregion
-                }}
-                className="btn btn-secondary btn-md"
-                disabled={buttonDisabled}
-                style={buttonDisabled ? {
-                  opacity: 0.5,
-                  cursor: 'not-allowed'
-                } : {}}
-              >
-                Select
-              </button>
-            );
-          })()}
+          {!isSelectionMode && (activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates') && (
+            <button
+              onClick={handleEnterSelectionMode}
+              className="btn btn-secondary btn-md"
+              disabled={!hasItems}
+              style={!hasItems ? {
+                opacity: 0.5,
+                cursor: 'not-allowed'
+              } : {}}
+            >
+              Select
+            </button>
+          )}
           {(activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates') && !isSelectionMode && (
             <div ref={viewDropdownRef} style={{ position: 'relative' }}>
               <button
@@ -4998,10 +4979,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         {
           // #region agent log
           (() => {
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4981',message:'Checking selection mode render condition',data:{isSelectionMode,activeSection,willRender:!!isSelectionMode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:4981', message: 'Checking selection mode render condition', data: { isSelectionMode, activeSection, willRender: !!isSelectionMode }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
             return isSelectionMode;
           })() && (
-          // #endregion
+            // #endregion
             <div style={{
               padding: '0 32px 16px 32px',
               display: 'flex',
@@ -5061,7 +5042,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                 >
                   Move/Copy
                   <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-                    <path d="M2 3L4 5L6 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M2 3L4 5L6 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
                 {isMoveCopyDropdownOpen && (
@@ -7825,17 +7806,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setLastDrawTool(activeTool);
       try {
         localStorage.setItem('lastDrawTool', activeTool);
-      } catch (e) {}
+      } catch (e) { }
     } else if (['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
       setLastShapeTool(activeTool);
       try {
         localStorage.setItem('lastShapeTool', activeTool);
-      } catch (e) {}
+      } catch (e) { }
     } else if (['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
       setLastReviewTool(activeTool);
       try {
         localStorage.setItem('lastReviewTool', activeTool);
-      } catch (e) {}
+      } catch (e) { }
     }
   }, [activeTool]);
 
@@ -11869,13 +11850,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Locate item on PDF (Forward Navigation)
   const handleLocateItemOnPDF = useCallback((highlight) => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11441',message:'handleLocateItemOnPDF called',data:{highlight:highlight?{pageNumber:highlight.pageNumber,bounds:highlight.bounds,hasBounds:!!highlight.bounds}:null,scrollMode,scale},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11441', message: 'handleLocateItemOnPDF called', data: { highlight: highlight ? { pageNumber: highlight.pageNumber, bounds: highlight.bounds, hasBounds: !!highlight.bounds } : null, scrollMode, scale }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
     // #endregion
     if (!highlight) return;
     const { pageNumber, bounds } = highlight;
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11446',message:'Extracted highlight data',data:{pageNumber,bounds,hasBounds:!!bounds,boundsKeys:bounds?Object.keys(bounds):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11446', message: 'Extracted highlight data', data: { pageNumber, bounds, hasBounds: !!bounds, boundsKeys: bounds ? Object.keys(bounds) : [] }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
     // #endregion
 
     // Zoom in a little (e.g., 1.5x or +20% depending on current scale, but user asked for "zooming in on it a little")
@@ -11885,7 +11866,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Zoom to 1.5x or current scale if higher
       const targetScale = Math.max(scale, 1.5);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11450',message:'Scale calculation',data:{currentScale:scale,targetScale,willChange:targetScale!==scale,hasZoomController:!!zoomControllerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11450', message: 'Scale calculation', data: { currentScale: scale, targetScale, willChange: targetScale !== scale, hasZoomController: !!zoomControllerRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
       // #endregion
       if (targetScale !== scale) {
         setScale(targetScale);
@@ -11894,7 +11875,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     if (scrollMode === 'single') {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11457',message:'Single page mode - no scrolling',data:{pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11457', message: 'Single page mode - no scrolling', data: { pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' }) }).catch(() => { });
       // #endregion
       setPageNum(pageNumber);
     } else {
@@ -11907,42 +11888,42 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11477',message:'Double RAF callback executing',data:{pageNumber,scale,hasZoomController:!!zoomControllerRef.current,zoomControllerScale:zoomControllerRef.current?.getScale?.()},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'B'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11477', message: 'Double RAF callback executing', data: { pageNumber, scale, hasZoomController: !!zoomControllerRef.current, zoomControllerScale: zoomControllerRef.current?.getScale?.() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v3', hypothesisId: 'B' }) }).catch(() => { });
           // #endregion
-        const targetContainer = pageContainersRef.current[pageNumber];
-        const container = containerRef.current;
+          const targetContainer = pageContainersRef.current[pageNumber];
+          const container = containerRef.current;
 
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11485',message:'Container refs check',data:{hasTargetContainer:!!targetContainer,hasContainer:!!container,pageNumber,availablePages:Object.keys(pageContainersRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'D'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11485', message: 'Container refs check', data: { hasTargetContainer: !!targetContainer, hasContainer: !!container, pageNumber, availablePages: Object.keys(pageContainersRef.current) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v3', hypothesisId: 'D' }) }).catch(() => { });
           // #endregion
 
-        if (targetContainer && container) {
+          if (targetContainer && container) {
             // First, ensure the page is in view using scrollIntoView (won't scroll if already visible)
             targetContainer.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
-            
+
             // Wait for scrollIntoView to complete, then calculate positions
             // Use double RAF to ensure layout has settled
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
                 // Now get accurate measurements after scrollIntoView
-          const containerRect = container.getBoundingClientRect();
-          const targetRect = targetContainer.getBoundingClientRect();
-          const computedStyles = window.getComputedStyle(container);
-          const paddingTop = parseFloat(computedStyles.paddingTop || '0');
+                const containerRect = container.getBoundingClientRect();
+                const targetRect = targetContainer.getBoundingClientRect();
+                const computedStyles = window.getComputedStyle(container);
+                const paddingTop = parseFloat(computedStyles.paddingTop || '0');
                 const paddingLeft = parseFloat(computedStyles.paddingLeft || '0');
                 const containerWidth = container.clientWidth;
                 const containerHeight = container.clientHeight;
-                
+
                 // Calculate page container's position in scroll coordinates
                 // Now that element is in view, getBoundingClientRect() will work correctly
                 const pageContainerScrollTop = container.scrollTop + (targetRect.top - containerRect.top);
                 const pageContainerScrollLeft = container.scrollLeft + (targetRect.left - containerRect.left);
-                
+
                 let scrollTop = pageContainerScrollTop - paddingTop;
                 let scrollLeft = pageContainerScrollLeft - paddingLeft;
-                
+
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11500',message:'Page container scroll position after scrollIntoView',data:{pageContainerScrollTop,pageContainerScrollLeft,containerScrollTop:container.scrollTop,containerScrollLeft:container.scrollLeft,containerRectTop:containerRect.top,containerRectLeft:containerRect.left,targetRectTop:targetRect.top,targetRectLeft:targetRect.left,targetRectWidth:targetRect.width,paddingTop,paddingLeft,scrollTopAfterPadding:scrollTop,scrollLeftAfterPadding:scrollLeft},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v13',hypothesisId:'E'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11500', message: 'Page container scroll position after scrollIntoView', data: { pageContainerScrollTop, pageContainerScrollLeft, containerScrollTop: container.scrollTop, containerScrollLeft: container.scrollLeft, containerRectTop: containerRect.top, containerRectLeft: containerRect.left, targetRectTop: targetRect.top, targetRectLeft: targetRect.left, targetRectWidth: targetRect.width, paddingTop, paddingLeft, scrollTopAfterPadding: scrollTop, scrollLeftAfterPadding: scrollLeft }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'E' }) }).catch(() => { });
                 // #endregion
                 // Add bounds offset if available
                 if (bounds) {
@@ -11957,7 +11938,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   const scaledWidth = boundsWidth * currentScale;
 
                   // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11518',message:'Bounds calculation',data:{bounds,currentScale,scale,boundsY,boundsX,boundsHeight,boundsWidth,scaledTop,scaledLeft,scaledHeight,scaledWidth,usingZoomController:!!zoomControllerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v13',hypothesisId:'A'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11518', message: 'Bounds calculation', data: { bounds, currentScale, scale, boundsY, boundsX, boundsHeight, boundsWidth, scaledTop, scaledLeft, scaledHeight, scaledWidth, usingZoomController: !!zoomControllerRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'A' }) }).catch(() => { });
                   // #endregion
 
                   // Vertical positioning: add bounds offset and center
@@ -11968,11 +11949,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   // Horizontal positioning: Calculate using scroll coordinates
                   // Get page container dimensions
                   const pageContainerWidth = targetContainer.offsetWidth;
-                  
+
                   // Find the PDF canvas to get its actual width
                   const pdfCanvas = targetContainer.querySelector('canvas');
                   let pdfPageWidth = pageContainerWidth;
-                  
+
                   if (pdfCanvas) {
                     const canvasRect = pdfCanvas.getBoundingClientRect();
                     pdfPageWidth = canvasRect.width;
@@ -11982,42 +11963,42 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       pdfPageWidth = pageHeights[pageNumber] * 0.7 * currentScale;
                     }
                   }
-                  
+
                   // Calculate where the PDF page starts within the page container
                   // Since pages are centered (justifyContent: 'center'), PDF starts at: (containerWidth - pdfPageWidth) / 2 from container left
                   const pdfPageLeftOffsetInContainer = (pageContainerWidth - pdfPageWidth) / 2;
-                  
+
                   // PDF page's left edge in scroll coordinates
                   const pdfPageLeftInScroll = pageContainerScrollLeft + pdfPageLeftOffsetInContainer;
-                  
+
                   // Calculate highlight center position
                   const highlightCenterX = boundsX + (boundsWidth / 2);
                   const scaledHighlightCenterX = highlightCenterX * currentScale;
-                  
+
                   // Highlight center in scroll coordinates
                   const highlightCenterInScroll = pdfPageLeftInScroll + scaledHighlightCenterX;
-                  
+
                   // To center the highlight, we want: highlightCenterInScroll = scrollLeft + (containerWidth / 2)
                   // Therefore: scrollLeft = highlightCenterInScroll - (containerWidth / 2)
                   scrollLeft = highlightCenterInScroll - (containerWidth / 2);
-                  
+
                   // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11550',message:'Horizontal scroll calculation',data:{boundsX,boundsWidth,highlightCenterX,scaledHighlightCenterX,pdfPageWidth,pageContainerWidth,targetRectWidth:targetRect.width,containerScrollLeft:container.scrollLeft,pageContainerScrollLeft,pdfPageLeftOffsetInContainer,pdfPageLeftInScroll,highlightCenterInScroll,containerWidth,calculatedScrollLeft:highlightCenterInScroll - (containerWidth / 2),finalScrollLeft:scrollLeft,hasCanvas:!!pdfCanvas},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v13',hypothesisId:'E'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11550', message: 'Horizontal scroll calculation', data: { boundsX, boundsWidth, highlightCenterX, scaledHighlightCenterX, pdfPageWidth, pageContainerWidth, targetRectWidth: targetRect.width, containerScrollLeft: container.scrollLeft, pageContainerScrollLeft, pdfPageLeftOffsetInContainer, pdfPageLeftInScroll, highlightCenterInScroll, containerWidth, calculatedScrollLeft: highlightCenterInScroll - (containerWidth / 2), finalScrollLeft: scrollLeft, hasCanvas: !!pdfCanvas }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'E' }) }).catch(() => { });
                   // #endregion
 
                   // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11529',message:'Final scroll calculation',data:{scrollTop,scrollLeft,containerHeight,containerWidth,centerOffsetY,scaledHeight,scaledWidth},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v13',hypothesisId:'E'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11529', message: 'Final scroll calculation', data: { scrollTop, scrollLeft, containerHeight, containerWidth, centerOffsetY, scaledHeight, scaledWidth }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'E' }) }).catch(() => { });
                   // #endregion
                 } else {
                   // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11533',message:'No bounds available',data:{scrollTop,scrollLeft},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v13',hypothesisId:'C'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11533', message: 'No bounds available', data: { scrollTop, scrollLeft }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'C' }) }).catch(() => { });
                   // #endregion
                 }
 
                 const finalScrollTop = Math.max(0, Math.min(scrollTop, container.scrollHeight - container.clientHeight));
                 const finalScrollLeft = Math.max(0, Math.min(scrollLeft, container.scrollWidth - container.clientWidth));
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11539',message:'Scrolling to final position',data:{finalScrollTop,finalScrollLeft,scrollTop,scrollLeft,containerScrollHeight:container.scrollHeight,containerScrollWidth:container.scrollWidth,containerClientHeight:container.clientHeight,containerClientWidth:container.clientWidth},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v13',hypothesisId:'E'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11539', message: 'Scrolling to final position', data: { finalScrollTop, finalScrollLeft, scrollTop, scrollLeft, containerScrollHeight: container.scrollHeight, containerScrollWidth: container.scrollWidth, containerClientHeight: container.clientHeight, containerClientWidth: container.clientWidth }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'E' }) }).catch(() => { });
                 // #endregion
                 container.scrollTo({
                   top: finalScrollTop,
@@ -12026,13 +12007,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 });
               });
             });
-        } else {
+          } else {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11547',message:'Container not found - fallback to goToPage',data:{pageNumber,hasTargetContainer:!!targetContainer,hasContainer:!!container},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'D'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11547', message: 'Container not found - fallback to goToPage', data: { pageNumber, hasTargetContainer: !!targetContainer, hasContainer: !!container }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v3', hypothesisId: 'D' }) }).catch(() => { });
             // #endregion
-          // If page not mounted, fallback to standard page navigation
-          goToPage(pageNumber);
-        }
+            // If page not mounted, fallback to standard page navigation
+            goToPage(pageNumber);
+          }
         });
       });
     }
@@ -12914,9 +12895,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               }
             }}
             className={`btn btn-md ${showSurveyPanel ? 'btn-active' : 'btn-default'}`}
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
               gap: '8px',
               fontSize: '14px',
               fontWeight: '600',
@@ -13774,11 +13755,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               <Icon name="minus" size={18} />
             </button>
 
-            <div 
+            <div
               onClick={() => zoomInputRef.current?.focus()}
-              style={{ 
-                position: 'relative', 
-                display: 'flex', 
+              style={{
+                position: 'relative',
+                display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 width: '56px',
@@ -13793,11 +13774,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             >
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <div style={{ display: 'inline-grid', alignItems: 'center' }}>
-                  <span style={{ 
-                    gridArea: '1/1', 
-                    visibility: 'hidden', 
-                    fontSize: '13px', 
-                    fontFamily: FONT_FAMILY, 
+                  <span style={{
+                    gridArea: '1/1',
+                    visibility: 'hidden',
+                    fontSize: '13px',
+                    fontFamily: FONT_FAMILY,
                     fontWeight: '500',
                     letterSpacing: '-0.2px',
                     whiteSpace: 'pre',
@@ -14835,30 +14816,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 }}
               >
                 {isSurveyPanelCollapsed && (
-                <button
-                  onClick={() => {
-                    setIsSurveyPanelCollapsed(prev => !prev);
-                    requestAnimationFrame(() => {
-                      zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-                    });
-                  }}
-                  style={{
+                  <button
+                    onClick={() => {
+                      setIsSurveyPanelCollapsed(prev => !prev);
+                      requestAnimationFrame(() => {
+                        zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+                      });
+                    }}
+                    style={{
                       background: 'rgb(51, 51, 51)',
-                    border: 'none',
+                      border: 'none',
                       color: 'rgb(153, 153, 153)',
-                    cursor: 'pointer',
-                    padding: '4px',
-                    borderRadius: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       transition: 'background 0.15s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
                     onMouseLeave={(e) => e.currentTarget.style.background = 'rgb(51, 51, 51)'}
-                >
+                  >
                     <Icon name="chevronLeft" size={16} color="#999" />
-                </button>
+                  </button>
                 )}
               </div>
 
@@ -15703,7 +15684,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   const allItemsSelected = itemSelectedCount === highlightCount && highlightCount > 0;
 
                                   return (
-                                    <div key={category.id} style={{ 
+                                    <div key={category.id} style={{
                                       marginBottom: categorySelectModeActive ? '0' : '4px',
                                       border: '1px solid #444',
                                       borderRadius: '4px',
