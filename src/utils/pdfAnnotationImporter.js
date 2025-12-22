@@ -41,16 +41,46 @@ export async function extractAnnotationsFromPage(page) {
 }
 
 /**
- * Convert PDF color array [r, g, b] (0-1 range) to hex string
+ * Convert PDF color to hex string
+ * Handles various color formats from different PDF creators
  */
-function pdfColorToHex(colorArray) {
-  if (!colorArray || colorArray.length < 3) {
+function pdfColorToHex(colorArray, annotation = null) {
+  // Try to get color from multiple possible locations
+  let color = colorArray;
+
+  // If no direct color, try annotation's color property
+  if ((!color || color.length === 0) && annotation) {
+    color = annotation.color;
+  }
+
+  // Try borderColor as fallback
+  if ((!color || color.length === 0) && annotation?.borderColor) {
+    color = annotation.borderColor;
+  }
+
+  // Default to black if no color found
+  if (!color || !Array.isArray(color) || color.length === 0) {
+    console.log('[pdfAnnotationImporter] No color found, defaulting to black');
     return '#000000';
   }
-  const r = Math.round(colorArray[0] * 255).toString(16).padStart(2, '0');
-  const g = Math.round(colorArray[1] * 255).toString(16).padStart(2, '0');
-  const b = Math.round(colorArray[2] * 255).toString(16).padStart(2, '0');
-  return `#${r}${g}${b}`;
+
+  // Handle grayscale (single value)
+  if (color.length === 1) {
+    const gray = Math.round(color[0] * 255).toString(16).padStart(2, '0');
+    return `#${gray}${gray}${gray}`;
+  }
+
+  // Handle RGB (3 values, 0-1 range)
+  if (color.length >= 3) {
+    const r = Math.round(color[0] * 255).toString(16).padStart(2, '0');
+    const g = Math.round(color[1] * 255).toString(16).padStart(2, '0');
+    const b = Math.round(color[2] * 255).toString(16).padStart(2, '0');
+    console.log(`[pdfAnnotationImporter] Parsed color: RGB(${color[0]}, ${color[1]}, ${color[2]}) -> #${r}${g}${b}`);
+    return `#${r}${g}${b}`;
+  }
+
+  console.log('[pdfAnnotationImporter] Unknown color format, defaulting to black:', color);
+  return '#000000';
 }
 
 /**
@@ -58,12 +88,16 @@ function pdfColorToHex(colorArray) {
  * PDF coordinates have origin at bottom-left, Fabric.js at top-left
  */
 function convertInkToFabricPath(annotation, pageHeight, scale = 1) {
+  console.log('[pdfAnnotationImporter] Converting Ink annotation:', annotation);
+
   if (!annotation.inkLists || annotation.inkLists.length === 0) {
+    console.log('[pdfAnnotationImporter] No inkLists found in annotation');
     return null;
   }
 
   // Build SVG path string from ink lists
   let pathData = [];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
   annotation.inkLists.forEach(inkList => {
     if (!inkList || inkList.length < 2) return;
@@ -74,26 +108,35 @@ function convertInkToFabricPath(annotation, pageHeight, scale = 1) {
     if (Array.isArray(inkList[0])) {
       // Flat array format [x1, y1, x2, y2...]
       for (let i = 0; i < inkList.length; i += 2) {
-        points.push({
-          x: inkList[i] * scale,
-          y: (pageHeight - inkList[i + 1]) * scale // Flip Y
-        });
+        const x = inkList[i] * scale;
+        const y = (pageHeight - inkList[i + 1]) * scale; // Flip Y
+        points.push({ x, y });
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
       }
     } else if (typeof inkList[0] === 'object') {
       // Object format [{x, y}, ...]
       inkList.forEach(pt => {
-        points.push({
-          x: pt.x * scale,
-          y: (pageHeight - pt.y) * scale // Flip Y
-        });
+        const x = pt.x * scale;
+        const y = (pageHeight - pt.y) * scale; // Flip Y
+        points.push({ x, y });
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
       });
     } else {
       // Flat number array
       for (let i = 0; i < inkList.length; i += 2) {
-        points.push({
-          x: inkList[i] * scale,
-          y: (pageHeight - inkList[i + 1]) * scale // Flip Y
-        });
+        const x = inkList[i] * scale;
+        const y = (pageHeight - inkList[i + 1]) * scale; // Flip Y
+        points.push({ x, y });
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
       }
     }
 
@@ -109,11 +152,19 @@ function convertInkToFabricPath(annotation, pageHeight, scale = 1) {
   });
 
   if (pathData.length === 0) {
+    console.log('[pdfAnnotationImporter] No path data generated');
     return null;
   }
 
-  const color = pdfColorToHex(annotation.color);
-  const strokeWidth = annotation.borderStyle?.width || 1;
+  // Get color - pass annotation for fallback color sources
+  const color = pdfColorToHex(annotation.color, annotation);
+  const strokeWidth = annotation.borderStyle?.width || annotation.borderWidth || 2;
+
+  console.log(`[pdfAnnotationImporter] Created path with color: ${color}, strokeWidth: ${strokeWidth}`);
+
+  // Calculate path bounds for proper positioning
+  const width = maxX - minX;
+  const height = maxY - minY;
 
   return {
     type: 'path',
@@ -124,6 +175,15 @@ function convertInkToFabricPath(annotation, pageHeight, scale = 1) {
     strokeLineCap: 'round',
     strokeLineJoin: 'round',
     strokeUniform: true,
+    // Required Fabric.js properties for proper interaction
+    selectable: true,
+    evented: true,
+    hasControls: true,
+    hasBorders: true,
+    lockMovementX: false,
+    lockMovementY: false,
+    perPixelTargetFind: true,
+    targetFindTolerance: 5,
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
@@ -412,6 +472,9 @@ export function convertPdfAnnotationToFabric(annotation, pageHeight, scale = 1) 
   }
 }
 
+// Annotation types that should be silently ignored (common companion annotations)
+const SILENT_IGNORE_SUBTYPES = ['Link', 'Popup', 'Widget'];
+
 /**
  * Categorize annotations into supported and unsupported
  * @param {Array} annotations - Array of PDF.js annotations
@@ -424,8 +487,8 @@ export function categorizeAnnotations(annotations) {
   annotations.forEach(annotation => {
     if (SUPPORTED_SUBTYPES.includes(annotation.subtype)) {
       supported.push(annotation);
-    } else if (annotation.subtype && annotation.subtype !== 'Link') {
-      // Links are very common and expected, don't report them as "unsupported"
+    } else if (annotation.subtype && !SILENT_IGNORE_SUBTYPES.includes(annotation.subtype)) {
+      // Only report types that are truly unsupported (not common companion annotations)
       unsupported.push(annotation);
     }
   });
