@@ -4957,11 +4957,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         {
           isSelectionMode && (
             <div style={{
-              marginTop: '4px',
-              padding: '4px',
-              background: 'transparent',
-              border: '1px solid transparent',
-              borderRadius: '4px',
+              padding: '0 32px 16px 32px',
               display: 'flex',
               gap: '4px',
               alignItems: 'center',
