@@ -4815,9 +4815,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               ? projects.length > 0
               : templates.length > 0;
             
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4818',message:'Select button render check',data:{activeSection,isSelectionMode,hasItems,willShowButton:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+            // #endregion
+            
             return (
               <button
-                onClick={() => { setIsSelectionMode(true); setSelectedIds([]); }}
+                onClick={() => {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4820',message:'Select button clicked',data:{activeSection,hasItems,isSelectionModeBefore:isSelectionMode,selectedIdsBefore:selectedIds},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                  // #endregion
+                  setIsSelectionMode(true);
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4824',message:'Called setIsSelectionMode(true)',data:{activeSection},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                  // #endregion
+                  setSelectedIds([]);
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4827',message:'Called setSelectedIds([])',data:{activeSection},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                  // #endregion
+                }}
                 className="btn btn-secondary btn-md"
                 disabled={!hasItems}
                 style={!hasItems ? {
@@ -4968,7 +4984,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
         {/* Selection Mode Actions */}
         {
-          isSelectionMode && (
+          // #region agent log
+          (() => {
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4981',message:'Checking selection mode render condition',data:{isSelectionMode,activeSection,willRender:!!isSelectionMode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            return isSelectionMode;
+          })() && (
+          // #endregion
             <div style={{
               padding: '0 32px 16px 32px',
               display: 'flex',
