@@ -104,6 +104,10 @@ ipcMain.handle('shell:openPath', async (event, path) => {
   return await shell.openPath(path);
 });
 
+ipcMain.handle('shell:openExternal', async (event, url) => {
+  return await shell.openExternal(url);
+});
+
 ipcMain.handle('fs:readFile', async (event, path) => {
   try {
     const data = fs.readFileSync(path);
