@@ -4938,44 +4938,154 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         {
           isSelectionMode && (
             <div style={{
-              padding: '0 32px 16px 32px',
+              marginTop: '4px',
+              padding: '4px',
+              background: 'transparent',
+              border: '1px solid transparent',
+              borderRadius: '4px',
               display: 'flex',
-              gap: '8px',
-              justifyContent: 'flex-start'
+              gap: '4px',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              flexWrap: 'nowrap'
             }}>
               <button
                 onClick={selectAllCurrent}
-                className="btn btn-secondary btn-md"
+                style={{
+                  padding: '4px 5px',
+                  background: 'rgb(68, 68, 68)',
+                  color: 'rgb(221, 221, 221)',
+                  border: '1px solid rgb(74, 144, 226)',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: '400',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  width: '70px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgb(68, 68, 68)';
+                }}
               >
                 Select All
               </button>
               <button
                 onClick={handleBulkCopy}
-                className="btn btn-default btn-md"
+                style={{
+                  padding: '4px 5px',
+                  background: 'rgb(68, 68, 68)',
+                  color: 'rgb(221, 221, 221)',
+                  border: '1px solid rgb(74, 144, 226)',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: '400',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  width: '70px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgb(68, 68, 68)';
+                }}
               >
                 Copy
               </button>
               <button
                 onClick={handleBulkShare}
-                className="btn btn-success btn-md"
+                style={{
+                  padding: '4px 5px',
+                  background: 'rgb(68, 68, 68)',
+                  color: 'rgb(221, 221, 221)',
+                  border: '1px solid rgb(74, 144, 226)',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: '400',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  width: '70px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgb(68, 68, 68)';
+                }}
               >
                 Share
               </button>
               <button
                 onClick={handleBulkMove}
-                className="btn btn-primary btn-md"
+                style={{
+                  padding: '4px 5px',
+                  background: 'rgb(68, 68, 68)',
+                  color: 'rgb(221, 221, 221)',
+                  border: '1px solid rgb(74, 144, 226)',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: '400',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  width: '70px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgb(68, 68, 68)';
+                }}
               >
                 Move
               </button>
               <button
                 onClick={handleBulkDelete}
-                className="btn btn-danger btn-md"
+                style={{
+                  padding: '4px 5px',
+                  background: 'rgb(68, 68, 68)',
+                  color: 'rgb(255, 102, 102)',
+                  border: '1px solid rgb(204, 68, 68)',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: '400',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  width: '70px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#444';
+                  e.currentTarget.style.color = '#ff6666';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgb(68, 68, 68)';
+                  e.currentTarget.style.color = 'rgb(255, 102, 102)';
+                }}
               >
                 Delete
               </button>
               <button
                 onClick={exitSelectionMode}
-                className="btn btn-secondary btn-md"
+                style={{
+                  padding: '4px 5px',
+                  background: 'rgb(68, 68, 68)',
+                  color: 'rgb(221, 221, 221)',
+                  border: '1px solid rgb(74, 144, 226)',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: '400',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  width: '70px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgb(68, 68, 68)';
+                }}
               >
                 Cancel
               </button>
