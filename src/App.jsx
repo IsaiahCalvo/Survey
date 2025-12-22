@@ -9,6 +9,7 @@ import { uploadExcelFile, getFileMetadata, downloadExcelFileByPath } from './ser
 import PageAnnotationLayer from './PageAnnotationLayer';
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
+import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
@@ -42,6 +43,7 @@ import { AccountSettings } from './components/AccountSettings';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import BallInCourtIndicator from './components/BallInCourtIndicator';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
+import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { supabase } from './supabaseClient';
 
@@ -7510,6 +7512,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
+  const [unsupportedAnnotationTypes, setUnsupportedAnnotationTypes] = useState([]); // PDF annotation types we can't edit
+  const [showUnsupportedNotice, setShowUnsupportedNotice] = useState(false); // Show notification about unsupported annotations
+  const [annotationLayerVisibility, setAnnotationLayerVisibility] = useState({
+    'native': true,
+    'pdf-annotations': true
+  }); // Layer visibility toggles
   const [eraserMode, setEraserMode] = useState(() => {
     try {
       const saved = localStorage.getItem('eraserMode');
@@ -10452,12 +10460,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [downloadFromStorage, pdfFile]);
 
-  // Manual save function for annotations (triggered by Cmd/Ctrl+S)
-  const handleSaveDocument = useCallback(async () => {
+  // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
+  // silent=true skips alerts (for auto-save)
+  const handleSaveDocument = useCallback(async (silent = false) => {
     if (!pdfId || !pdfFile) return;
 
     try {
-      console.log('Saving document with embedded annotations...');
+      console.log('Saving document with embedded annotations...', silent ? '(auto-save)' : '');
       console.log('PDF file path:', pdfFilePath);
 
       // Save PDF with embedded annotations (overwrites original file if path available)
@@ -10473,15 +10482,60 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
 
       console.log('Document saved successfully');
-      alert('PDF saved with annotations! The file has been updated.');
+      if (!silent) {
+        alert('PDF saved with annotations! The file has been updated.');
+      }
 
       // Sync survey data to Supabase (separate from PDF file)
       await saveSurveyDataToSupabase(highlightAnnotations, spaces, selectedTemplate);
     } catch (error) {
       console.error('Error saving document:', error);
-      alert('Error saving PDF: ' + error.message);
+      if (!silent) {
+        alert('Error saving PDF: ' + error.message);
+      }
     }
   }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath, onUnsavedAnnotationsChange]);
+
+  // Auto-save every 30 seconds when there are unsaved changes and a file path is available
+  useEffect(() => {
+    // Only enable auto-save if we have a file path (local file) and unsaved changes
+    if (!pdfFilePath || !hasUnsavedAnnotations) {
+      return;
+    }
+
+    const autoSaveInterval = setInterval(() => {
+      console.log('Auto-saving document...');
+      handleSaveDocument(true); // silent=true for auto-save
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(autoSaveInterval);
+  }, [pdfFilePath, hasUnsavedAnnotations, handleSaveDocument]);
+
+  // Handle app quit - save before closing
+  useEffect(() => {
+    if (!window.electronAPI?.onBeforeQuit) {
+      return;
+    }
+
+    const handleBeforeQuit = async () => {
+      console.log('App is quitting, saving document...');
+      if (pdfFilePath && hasUnsavedAnnotations) {
+        try {
+          await handleSaveDocument(true); // silent=true
+          console.log('Document saved before quit');
+        } catch (error) {
+          console.error('Error saving before quit:', error);
+        }
+      }
+      // Notify main process that save is complete
+      if (window.electronAPI?.notifySaveComplete) {
+        window.electronAPI.notifySaveComplete();
+      }
+    };
+
+    const removeListener = window.electronAPI.onBeforeQuit(handleBeforeQuit);
+    return removeListener;
+  }, [pdfFilePath, hasUnsavedAnnotations, handleSaveDocument]);
 
   // Load note content when note dialog opens
   useEffect(() => {
@@ -10585,6 +10639,45 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         pageRenderCacheRef.current.clear();
         setRenderedPages(new Set());
         lastScaleRef.current = scale;
+
+        // Import existing PDF annotations as editable Fabric.js objects
+        try {
+          console.log('Importing PDF annotations...');
+          const { annotationsByPage: importedAnnotations, unsupportedTypes } = await importAnnotationsFromPdf(pdf);
+
+          if (Object.keys(importedAnnotations).length > 0) {
+            console.log(`Imported annotations from ${Object.keys(importedAnnotations).length} pages`);
+            // Merge imported annotations with any existing annotations
+            setAnnotationsByPage(prev => {
+              const merged = { ...prev };
+              Object.entries(importedAnnotations).forEach(([pageNum, pageData]) => {
+                if (merged[pageNum]) {
+                  // Merge objects, keeping existing and adding imported
+                  merged[pageNum] = {
+                    ...merged[pageNum],
+                    objects: [
+                      ...(merged[pageNum].objects || []),
+                      ...(pageData.objects || [])
+                    ]
+                  };
+                } else {
+                  merged[pageNum] = pageData;
+                }
+              });
+              return merged;
+            });
+          }
+
+          // Track unsupported annotation types for notification
+          if (unsupportedTypes.length > 0) {
+            console.log('Unsupported annotation types found:', unsupportedTypes);
+            setUnsupportedAnnotationTypes(unsupportedTypes);
+            setShowUnsupportedNotice(true);
+          }
+        } catch (importError) {
+          console.error('Error importing PDF annotations:', importError);
+          // Don't block PDF loading if annotation import fails
+        }
 
         // Worker-based rendering is disabled because pdfFile is loaded from Supabase Storage
         // as a URL/blob, not as a File object with an .id property.
@@ -12453,6 +12546,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   return (
     <>
+      {/* Unsupported Annotations Notice */}
+      {showUnsupportedNotice && unsupportedAnnotationTypes.length > 0 && (
+        <UnsupportedAnnotationsNotice
+          unsupportedTypes={unsupportedAnnotationTypes}
+          onDismiss={() => setShowUnsupportedNotice(false)}
+        />
+      )}
+
       {/* Eraser Cursor Overlay */}
       {activeTool === 'eraser' && eraserCursorPos.visible && (
         <div
@@ -12845,6 +12946,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 eraserMode={eraserMode}
                                 eraserSize={eraserSize}
                                 showSurveyPanel={showSurveyPanel}
+                                layerVisibility={annotationLayerVisibility}
                               />
                             )}
                             {/* Space Region Dimming Overlay */}
@@ -12972,6 +13074,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             eraserMode={eraserMode}
                             eraserSize={eraserSize}
                             showSurveyPanel={showSurveyPanel}
+                            layerVisibility={annotationLayerVisibility}
                           />
                         )}
                         {/* Space Region Dimming Overlay */}

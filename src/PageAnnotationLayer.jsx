@@ -643,7 +643,8 @@ const PageAnnotationLayer = memo(({
   activeRegions = null,
   eraserMode = 'partial', // 'partial' | 'entire'
   eraserSize = 20, // Eraser radius in pixels
-  showSurveyPanel = false // Whether survey mode is active
+  showSurveyPanel = false, // Whether survey mode is active
+  layerVisibility = { 'native': true, 'pdf-annotations': true } // Layer visibility toggles
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
@@ -662,6 +663,7 @@ const PageAnnotationLayer = memo(({
   const eraserModeRef = useRef(eraserMode);
   const eraserSizeRef = useRef(eraserSize);
   const lastPartialEraseTimeRef = useRef(0); // Throttle timestamp for partial erasing
+  const layerVisibilityRef = useRef(layerVisibility);
   // Selection rect tracks start position and direction for AutoCAD-style selection
   const selectionRectRef = useRef(null);
   const selectionRectObjRef = useRef(null); // Temporary rectangle object for visual feedback
@@ -698,6 +700,32 @@ const PageAnnotationLayer = memo(({
   useEffect(() => {
     eraserModeRef.current = eraserMode;
   }, [eraserMode]);
+
+  // Keep layerVisibility ref in sync
+  useEffect(() => {
+    layerVisibilityRef.current = layerVisibility;
+    // Update object visibility when layer visibility changes
+    if (fabricRef.current) {
+      fabricRef.current.getObjects().forEach(obj => {
+        const objLayer = obj.layer || 'native'; // Default to 'native' for objects without layer
+        const layerVisible = layerVisibilityRef.current[objLayer] !== false;
+        if (!layerVisible) {
+          obj.set({ visible: false, selectable: false, evented: false });
+        } else {
+          // Re-check other visibility conditions (space, module)
+          const objSpaceId = obj.spaceId || null;
+          const objModuleId = obj.moduleId || null;
+          const currentSpaceId = selectedSpaceIdRef.current;
+          const currentModuleId = selectedModuleIdRef.current;
+          const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
+          const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
+          const isVisible = matchesSpace && matchesModule;
+          obj.set({ visible: isVisible, selectable: isVisible, evented: isVisible });
+        }
+      });
+      fabricRef.current.renderAll();
+    }
+  }, [layerVisibility]);
 
   useEffect(() => {
     eraserSizeRef.current = eraserSize;
@@ -754,15 +782,17 @@ const PageAnnotationLayer = memo(({
             }
             canvas.add(obj);
           });
-          // After loading, filter by selectedSpaceId
+          // After loading, filter by selectedSpaceId, selectedModuleId, and layer visibility
           canvas.getObjects().forEach(obj => {
             const objSpaceId = obj.spaceId || null;
             const objModuleId = obj.moduleId || null;
+            const objLayer = obj.layer || 'native'; // Default to 'native' for objects without layer
             const currentSpaceId = selectedSpaceIdRef.current;
             const currentModuleId = selectedModuleIdRef.current;
             const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
             const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
-            const isVisible = matchesSpace && matchesModule;
+            const layerVisible = layerVisibilityRef.current[objLayer] !== false;
+            const isVisible = matchesSpace && matchesModule && layerVisible;
             obj.set({ visible: isVisible });
             if (!isVisible) {
               obj.set({ selectable: false, evented: false });
@@ -779,7 +809,7 @@ const PageAnnotationLayer = memo(({
       if (!fabricRef.current) return;
       try {
         // Include spaceId in the saved JSON to preserve space associations
-        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'globalCompositeOperation']);
+        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
@@ -2160,7 +2190,7 @@ const PageAnnotationLayer = memo(({
 
       // Save annotations
       try {
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
@@ -2235,7 +2265,7 @@ const PageAnnotationLayer = memo(({
 
       // Save annotations
       try {
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error after removal:`, e);

@@ -23,5 +23,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('fileWatcher:error', subscription);
     return () => ipcRenderer.removeListener('fileWatcher:error', subscription);
-  }
+  },
+
+  // App lifecycle APIs
+  onBeforeQuit: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('app:beforeQuit', subscription);
+    return () => ipcRenderer.removeListener('app:beforeQuit', subscription);
+  },
+  notifySaveComplete: () => ipcRenderer.send('app:saveComplete')
 });

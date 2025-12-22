@@ -430,6 +430,13 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           return;
         }
 
+        // Skip objects that were imported from the PDF - they're already in the PDF's Annots array
+        // If they were modified, we should still write them (future enhancement: track dirty state)
+        // For now, we skip imported objects to avoid duplicates
+        if (obj.isPdfImported) {
+          return;
+        }
+
         const objType = obj.type?.toLowerCase();
         let annotRef = null;
 

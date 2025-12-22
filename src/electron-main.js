@@ -247,16 +247,62 @@ ipcMain.handle('fileWatcher:stop', async (event, watchId) => {
   }
 });
 
+// Track if we're in the process of quitting
+let isQuitting = false;
+
 app.whenReady().then(() => {
   createWindow();
 });
 
-app.on('before-quit', () => {
-  // Clean up all file watchers
-  fileWatchers.forEach((watcher) => {
-    watcher.close();
-  });
-  fileWatchers.clear();
+app.on('before-quit', (event) => {
+  if (!isQuitting) {
+    event.preventDefault();
+    isQuitting = true;
+
+    // Notify all windows to save their work
+    const windows = BrowserWindow.getAllWindows();
+
+    if (windows.length === 0) {
+      app.quit();
+      return;
+    }
+
+    // Send save request to all windows
+    let windowsResponded = 0;
+    const checkAndQuit = () => {
+      windowsResponded++;
+      if (windowsResponded >= windows.length) {
+        // All windows have responded, now quit
+        setTimeout(() => {
+          // Clean up file watchers
+          fileWatchers.forEach((watcher) => {
+            watcher.close();
+          });
+          fileWatchers.clear();
+          app.quit();
+        }, 100);
+      }
+    };
+
+    windows.forEach((win) => {
+      if (win.isDestroyed()) {
+        checkAndQuit();
+        return;
+      }
+
+      // Send message to renderer to save
+      win.webContents.send('app:beforeQuit');
+
+      // Give each window 5 seconds to save, then continue
+      setTimeout(checkAndQuit, 5000);
+    });
+  }
+});
+
+// Handle save completion from renderer
+ipcMain.on('app:saveComplete', () => {
+  // This is just for logging, actual quit happens via timeout
+  console.log('Renderer completed saving');
 });
 
 app.on('window-all-closed', () => {
