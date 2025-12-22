@@ -1383,6 +1383,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [isMoveCopyDropdownOpen, setIsMoveCopyDropdownOpen] = useState(false);
+  const moveCopyDropdownRef = useRef(null);
   const [templateName, setTemplateName] = useState('');
   const [templateVisibility, setTemplateVisibility] = useState('personal'); // 'personal' | 'shared'
   const [modules, setModules] = useState([]); // { id, name, categories: [ { id, name, checklist: [ { id, text } ] } ] }
@@ -1670,6 +1672,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isViewDropdownOpen]);
+
+  // Close Move/Copy dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (moveCopyDropdownRef.current && !moveCopyDropdownRef.current.contains(event.target)) {
+        setIsMoveCopyDropdownOpen(false);
+      }
+    };
+
+    if (isMoveCopyDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMoveCopyDropdownOpen]);
 
   // Color picker closing is handled by the overlay onClick, no need for separate handler
 
@@ -4972,29 +4991,115 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               >
                 Select All
               </button>
-              <button
-                onClick={handleBulkCopy}
-                style={{
-                  padding: '4px 5px',
-                  background: 'rgb(68, 68, 68)',
-                  color: 'rgb(221, 221, 221)',
-                  border: '1px solid rgb(74, 144, 226)',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  fontWeight: '400',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  width: '70px'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#444';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgb(68, 68, 68)';
-                }}
-              >
-                Copy
-              </button>
+              <div ref={moveCopyDropdownRef} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setIsMoveCopyDropdownOpen(!isMoveCopyDropdownOpen)}
+                  style={{
+                    padding: '4px 5px',
+                    background: 'rgb(68, 68, 68)',
+                    color: 'rgb(221, 221, 221)',
+                    border: '1px solid rgb(74, 144, 226)',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: '400',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    width: '85px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#444';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgb(68, 68, 68)';
+                  }}
+                >
+                  Move/Copy
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                    <path d="M2 3L4 5L6 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                {isMoveCopyDropdownOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    marginTop: '4px',
+                    background: '#1b1b1b',
+                    borderRadius: '4px',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+                    border: '1px solid #333',
+                    zIndex: 1000,
+                    minWidth: '100px',
+                    overflow: 'hidden'
+                  }}>
+                    <button
+                      onClick={() => {
+                        handleBulkMove();
+                        setIsMoveCopyDropdownOpen(false);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: '0',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: '400',
+                        color: '#eaeaea',
+                        display: 'flex',
+                        alignItems: 'center',
+                        textAlign: 'left',
+                        fontFamily: FONT_FAMILY,
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      Move
+                    </button>
+                    <div style={{ width: '100%', height: '1px', background: '#333' }} />
+                    <button
+                      onClick={() => {
+                        handleBulkCopy();
+                        setIsMoveCopyDropdownOpen(false);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: '0',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: '400',
+                        color: '#eaeaea',
+                        display: 'flex',
+                        alignItems: 'center',
+                        textAlign: 'left',
+                        fontFamily: FONT_FAMILY,
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleBulkShare}
                 style={{
@@ -5017,29 +5122,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                 }}
               >
                 Share
-              </button>
-              <button
-                onClick={handleBulkMove}
-                style={{
-                  padding: '4px 5px',
-                  background: 'rgb(68, 68, 68)',
-                  color: 'rgb(221, 221, 221)',
-                  border: '1px solid rgb(74, 144, 226)',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  fontWeight: '400',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  width: '70px'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#444';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgb(68, 68, 68)';
-                }}
-              >
-                Move
               </button>
               <button
                 onClick={handleBulkDelete}
