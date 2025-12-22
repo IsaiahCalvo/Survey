@@ -4819,24 +4819,36 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4818',message:'Select button render check',data:{activeSection,isSelectionMode,hasItems,willShowButton:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
             // #endregion
             
+            const buttonDisabled = !hasItems;
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4823',message:'Button render with disabled state',data:{activeSection,hasItems,buttonDisabled},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
+            
             return (
               <button
-                onClick={() => {
+                onMouseDown={(e) => {
                   // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4820',message:'Select button clicked',data:{activeSection,hasItems,isSelectionModeBefore:isSelectionMode,selectedIdsBefore:selectedIds},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4827',message:'Select button mousedown',data:{activeSection,hasItems,buttonDisabled},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
                   // #endregion
+                }}
+                onClick={(e) => {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4831',message:'Select button clicked',data:{activeSection,hasItems,isSelectionModeBefore:isSelectionMode,selectedIdsBefore:selectedIds,eventType:e.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+                  // #endregion
+                  e.preventDefault();
+                  e.stopPropagation();
                   setIsSelectionMode(true);
                   // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4824',message:'Called setIsSelectionMode(true)',data:{activeSection},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4836',message:'Called setIsSelectionMode(true)',data:{activeSection},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
                   // #endregion
                   setSelectedIds([]);
                   // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4827',message:'Called setSelectedIds([])',data:{activeSection},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:4839',message:'Called setSelectedIds([])',data:{activeSection},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
                   // #endregion
                 }}
                 className="btn btn-secondary btn-md"
-                disabled={!hasItems}
-                style={!hasItems ? {
+                disabled={buttonDisabled}
+                style={buttonDisabled ? {
                   opacity: 0.5,
                   cursor: 'not-allowed'
                 } : {}}
