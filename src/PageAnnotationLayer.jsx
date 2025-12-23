@@ -714,6 +714,35 @@ const PageAnnotationLayer = memo(({
     eraserSizeRef.current = eraserSize;
   }, [eraserSize]);
 
+  // Update canvas properties when tool or styles change
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    canvas.isDrawingMode = tool === 'pen' || tool === 'highlighter';
+
+    // Disable Fabric.js built-in selection for Pan tool (we want drag-to-pan)
+    // Also disable for Select tool.
+    canvas.selection = false;
+
+    // Prevent Fabric.js from finding targets for eraser tool
+    canvas.skipTargetFind = tool === 'eraser';
+
+    // Update cursors
+    canvas.defaultCursor = (tool === 'eraser' ? 'crosshair' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
+    canvas.hoverCursor = canvas.defaultCursor;
+
+    // Update brush properties
+    if (canvas.freeDrawingBrush) {
+      const c = tool === 'highlighter' ? highlightColor : strokeColor;
+      const w = tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth;
+      canvas.freeDrawingBrush.color = c;
+      canvas.freeDrawingBrush.width = w;
+    }
+
+    canvas.requestRenderAll();
+  }, [tool, strokeColor, strokeWidth, highlightColor]);
+
   // Initialize canvas only once
   useEffect(() => {
     if (!canvasRef.current || !width || !height || isInitializedRef.current) return;
@@ -721,13 +750,19 @@ const PageAnnotationLayer = memo(({
     // console.log(`[Page ${pageNumber}] Initializing canvas`);
     isInitializedRef.current = true;
 
+    // Detect platform for modifier key handling
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0 || 
+                  navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
+
     const canvas = new Canvas(canvasRef.current, {
       width: width * scale,
       height: height * scale,
       backgroundColor: 'transparent',
       // Disable Fabric.js built-in selection for select tool - we use custom selection handlers
       // Only enable built-in selection for pan tool (for object manipulation)
-      selection: tool === 'pan',
+      // Disable Fabric.js built-in selection for Pan tool (we use drag-to-pan)
+      // Also disable for Select tool as we use custom selection handlers
+      selection: false,
       isDrawingMode: tool === 'pen' || tool === 'highlighter',
       // Ensure canvas is interactive to receive mouse events
       interactive: true,
@@ -738,6 +773,10 @@ const PageAnnotationLayer = memo(({
       selectionLineWidth: 1,
       selectionDashArray: null,
       selectionFullyContained: true, // Will be toggled based on drag direction
+      // Allow free scaling by default (aspect ratio unlocked)
+      uniformScaling: false
+      // Note: We don't set uniScaleKey because we handle modifier keys manually
+      // in handleObjectScaling to ensure platform-specific behavior (Command on Mac, Control on Windows)
     });
 
     const brush = new PencilBrush(canvas);
@@ -751,10 +790,14 @@ const PageAnnotationLayer = memo(({
       annotations.objects.forEach(objData => {
         util.enlivenObjects([objData], (enlivenedObjects) => {
           enlivenedObjects.forEach(obj => {
-            obj.set({ 
+            obj.set({
               strokeUniform: true,
-              uniformScaling: false  // Allow free scaling by default
+              uniformScaling: false,  // Allow free scaling by default
+              lockUniScaling: false   // Allow free scaling on corner handles
             });
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:757', message: 'Object loaded from annotations', data: { type: obj.type, uniformScaling: obj.uniformScaling, lockUniScaling: obj.lockUniScaling, hasUniformScaling: 'uniformScaling' in obj }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
+            // #endregion
             // Store spaceId on object if not already set (for backward compatibility)
             if (!obj.spaceId) {
               obj.spaceId = objData.spaceId || null;
@@ -824,30 +867,14 @@ const PageAnnotationLayer = memo(({
       }
     };
 
-    const setBrushForTool = () => {
-      canvas.isDrawingMode = tool === 'pen' || tool === 'highlighter';
-      // Disable Fabric.js built-in selection marquee for pan tool - we want drag to pan, not select
-      canvas.selection = false;
-      // Prevent Fabric.js from finding targets for eraser tool - we handle it ourselves with geometry checks
-      // This prevents bounding-box based selection when clicking in empty space
-      canvas.skipTargetFind = tool === 'eraser';
-      canvas.defaultCursor = (tool === 'eraser' ? 'crosshair' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
-      canvas.hoverCursor = canvas.defaultCursor;
-      const c = tool === 'highlighter' ? highlightColor : strokeColor;
-      const w = tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth;
-      canvas.freeDrawingBrush.color = c;
-      canvas.freeDrawingBrush.width = w;
-    };
-
-    setBrushForTool();
-
     const handlePathCreated = (e) => {
       if (e.path) {
         e.path.set({
           strokeUniform: true,
           perPixelTargetFind: true, // Enable pixel-perfect hit detection for selection
           targetFindTolerance: 5, // Add small tolerance for easier selection
-          uniformScaling: false  // Allow free scaling by default
+          uniformScaling: false,  // Allow free scaling by default
+          lockUniScaling: false   // Allow free scaling on corner handles
         });
         // Store current selectedSpaceId on the path
         if (selectedSpaceIdRef.current) {
@@ -881,30 +908,55 @@ const PageAnnotationLayer = memo(({
     // Track when Fabric.js starts transforming (scaling/rotating) an object
     const handleObjectScaling = (e) => {
       isFabricTransformingRef.current = true;
-      
-      // Check if Cmd (macOS) or Ctrl (Windows) is pressed
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:882', message: 'handleObjectScaling called', data: { hasEvent: !!e, hasTarget: !!e?.target, targetType: e?.target?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
+      // #endregion
+
+      // Check modifier key: Command on macOS, Control on Windows
       const originalEvent = e.e;
-      const isModifierPressed = originalEvent && (originalEvent.metaKey || originalEvent.ctrlKey);
+      if (!originalEvent) return;
       
+      // Detect platform
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0 || 
+                    navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
+      
+      // Use Command on macOS, Control on Windows
+      const isModifierPressed = isMac ? originalEvent.metaKey : originalEvent.ctrlKey;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:888', message: 'Modifier key check', data: { hasOriginalEvent: !!originalEvent, isMac, metaKey: originalEvent?.metaKey, ctrlKey: originalEvent?.ctrlKey, isModifierPressed }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
+      // #endregion
+
       // Get the object being scaled
       const obj = e.target;
       if (!obj) return;
-      
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:895', message: 'Object scaling state before logic', data: { type: obj.type, scaleX: obj.scaleX, scaleY: obj.scaleY, uniformScaling: obj.uniformScaling, lockUniScaling: obj.lockUniScaling }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
+      // #endregion
+
+      // In Fabric.js v4+, we use canvas.uniformScaling and canvas.uniScaleKey
+      // Set uniformScaling dynamically based on modifier key
+      // Note: uniScaleKey is set to 'ctrlKey' but we need to handle both Ctrl and Cmd
+      // So we'll set uniformScaling directly on the canvas
       if (isModifierPressed) {
-        // Lock aspect ratio: make scaleX and scaleY equal
-        // Use the larger of the two scales to maintain size while preserving aspect ratio
-        const currentScaleX = obj.scaleX;
-        const currentScaleY = obj.scaleY;
-        const avgScale = (currentScaleX + currentScaleY) / 2;
-        
-        // Apply uniform scaling
-        obj.set({
-          scaleX: avgScale,
-          scaleY: avgScale
-        });
+        // Temporarily enable uniform scaling when modifier is pressed
+        canvas.uniformScaling = true;
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:905', message: 'Uniform scaling enabled', data: { scaleX: obj.scaleX, scaleY: obj.scaleY, canvasUniformScaling: canvas.uniformScaling }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
+        // #endregion
+      } else {
+        // Ensure uniform scaling is disabled for free scaling
+        canvas.uniformScaling = false;
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:910', message: 'Free scaling enabled', data: { scaleX: obj.scaleX, scaleY: obj.scaleY, canvasUniformScaling: canvas.uniformScaling }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' }) }).catch(() => { });
+        // #endregion
       }
       // If modifier is not pressed, allow free scaling (no action needed - uniformScaling: false handles this)
-      
+
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:880', message: 'Fabric.js object scaling started', data: { targetType: e.target?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'I' }) }).catch(() => { });
       // #endregion
@@ -920,6 +972,12 @@ const PageAnnotationLayer = memo(({
     // Track when Fabric.js stops transforming - reset flag when modification completes
     const handleObjectModifiedEnd = (e) => {
       isFabricTransformingRef.current = false;
+
+      // Reset canvas uniformScaling to default (false) after scaling ends
+      if (canvas) {
+        canvas.uniformScaling = false;
+      }
+
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:894', message: 'Fabric.js object transform ended', data: { targetType: e.target?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'I' }) }).catch(() => { });
       // #endregion
@@ -976,6 +1034,7 @@ const PageAnnotationLayer = memo(({
         return originalFindTarget(e, skipGroup);
       }
 
+
       const pointer = this.getPointer(e);
 
       // Use pixel-perfect detection first for selection
@@ -1005,16 +1064,20 @@ const PageAnnotationLayer = memo(({
         return;
       }
 
+      // No isTrusted check needed - we are not dispatching synthetic events anymore
+
       const pointer = canvas.getPointer(opt.e);
       const activeObject = canvas.getActiveObject();
-
-      // Reset drag tracking
       const nativeEvent = opt.e;
+
+      // Reset drag tracking with CLIENT coordinates for stable panning
       panDragStartRef.current = {
-        x: pointer.x,
+        x: pointer.x, // Keep for object geometry checks
         y: pointer.y,
-        clientX: nativeEvent?.clientX,
-        clientY: nativeEvent?.clientY
+        clientX: nativeEvent.clientX,
+        clientY: nativeEvent.clientY,
+        lastClientX: nativeEvent.clientX, // Track last frame for delta scrolling
+        lastClientY: nativeEvent.clientY
       };
       panDragDistanceRef.current = 0;
       panInteractionTypeRef.current = null;
@@ -1028,15 +1091,12 @@ const PageAnnotationLayer = memo(({
         }
         // Check if click is on a control point
         if (activeObject.oCoords) {
-          // We need to use the raw event point for _findTargetCorner
-          const canvasPointer = canvas.getPointer(opt.e);
           const corner = activeObject._findTargetCorner(opt.e, true);
 
           if (corner) {
             // Hit a handle!
             panInteractionTypeRef.current = 'transform';
             // Fabric.js will handle the actual transform interaction automatically
-            // We just need to ensure we don't try to pan or move the body
             return;
           }
         }
@@ -1044,14 +1104,13 @@ const PageAnnotationLayer = memo(({
 
       // PRIORITY 2: Check for body of currently selected item
       if (activeObject) {
-        // Use geometry-based hit testing to check if click is on the actual object
-        const HIT_TOLERANCE = 5;
-        const isOnSelectedBody = isPointOnObject(pointer, activeObject, HIT_TOLERANCE);
+        // Use Bounding Box hit testing for easier selection as requested
+        const isOnSelectedBody = isPointInBoundingBox(pointer, activeObject);
 
         if (isOnSelectedBody) {
           // Click is on selected item body - allow move
           panInteractionTypeRef.current = 'move';
-          // Prevent container panning
+          // Prevent default to stop native browser behaviors
           opt.e.preventDefault();
           opt.e.stopPropagation();
           // Fabric.js will handle the drag automatically
@@ -1062,7 +1121,6 @@ const PageAnnotationLayer = memo(({
       // PRIORITY 3: Check for body of unselected item
       const allObjects = canvas.getObjects();
       let hitUnselectedObject = null;
-      const HIT_TOLERANCE = 5;
 
       // Find topmost unselected object whose geometry contains the click point
       for (let i = allObjects.length - 1; i >= 0; i--) {
@@ -1070,7 +1128,8 @@ const PageAnnotationLayer = memo(({
         if (!obj.selectable || !obj.visible) continue;
         if (obj === activeObject) continue; // Skip selected object (already checked)
 
-        if (isPointOnObject(pointer, obj, HIT_TOLERANCE)) {
+        // USE BOUNDING BOX CHECK as requested by user
+        if (isPointInBoundingBox(pointer, obj)) {
           hitUnselectedObject = obj;
           break;
         }
@@ -1083,23 +1142,17 @@ const PageAnnotationLayer = memo(({
         panInteractionTypeRef.current = 'select-or-pan';
         // Store reference to the hit object
         panDragStartRef.current.hitObject = hitUnselectedObject;
-        // Prevent container panning initially (we'll decide on mouse move/up)
+        // Prevent default
         opt.e.preventDefault();
         opt.e.stopPropagation();
         return;
       }
 
       // PRIORITY 4: Empty space / Canvas
-      // If there's an active object, don't dispatch to container immediately
-      // Wait to see if Fabric.js handles it as a transform first
-      // We'll check on mousemove if Fabric.js is transforming
+      // If there's an active object, check if Fabric is handling a transform
       if (activeObject) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1005', message: 'Active object exists - deferring container dispatch to check for transform', data: { hasActiveObject: true, pointerX: pointer.x, pointerY: pointer.y }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'O' }) }).catch(() => { });
-        // #endregion
-        // Set interaction type to 'wait-for-transform' - we'll check on mousemove
+        // Set interaction type to 'wait-for-transform'
         panInteractionTypeRef.current = 'wait-for-transform';
-        // Prevent container panning for now - we'll allow it on mousemove if no transform
         opt.e.preventDefault();
         opt.e.stopPropagation();
         return;
@@ -1107,58 +1160,18 @@ const PageAnnotationLayer = memo(({
 
       // Allow panning the canvas
       panInteractionTypeRef.current = 'pan';
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1104', message: 'Empty space detected in pan tool', data: { panInteractionType: 'pan', hasActiveObject: !!activeObject, pointerX: pointer.x, pointerY: pointer.y }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-      // #endregion
 
-      // If there's an active object, deselect it first (user clicked empty space)
-      // But we already checked for transform handles above, so it's safe to deselect
+      // If there's an active object, deselect it (user clicked empty space)
       if (activeObject) {
         canvas.discardActiveObject();
         canvas.requestRenderAll();
       }
 
-      // Trigger container panning by dispatching mousedown event on container
-      // Find the container element using data-testid or by finding scrollable parent
-      const nativeEvent = opt.e;
-      const canvasElement = canvasRef.current;
-      if (canvasElement && nativeEvent) {
-        // Try to find container by data-testid first
-        let containerElement = document.querySelector('[data-testid="pdf-container"]');
-        // If not found, traverse up from canvas to find scrollable container
-        if (!containerElement) {
-          let parent = canvasElement.parentElement;
-          while (parent && parent !== document.body) {
-            const computedStyle = window.getComputedStyle(parent);
-            if (computedStyle.overflow === 'auto' || computedStyle.overflowY === 'auto' || computedStyle.overflowX === 'auto') {
-              containerElement = parent;
-              break;
-            }
-            parent = parent.parentElement;
-          }
-        }
-        if (containerElement) {
-          // Dispatch synthetic mousedown event on container to trigger its panning
-          const syntheticEvent = new MouseEvent('mousedown', {
-            bubbles: true,
-            cancelable: true,
-            clientX: nativeEvent.clientX,
-            clientY: nativeEvent.clientY,
-            button: nativeEvent.button,
-            buttons: nativeEvent.buttons,
-            view: nativeEvent.view
-          });
-          containerElement.dispatchEvent(syntheticEvent);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1142', message: 'Dispatched synthetic mousedown on container', data: { containerFound: !!containerElement, clientX: nativeEvent.clientX, clientY: nativeEvent.clientY }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-          // #endregion
-        }
-      }
-      // Note: We don't prevent default here - let the event flow naturally
-      // The container will handle panning via the synthetic event we dispatched
+      // We don't dispatch synthetic events anymore.
+      // Panning will happen in mouseMove by updating container.scrollLeft/Top
     };
 
-    // Handle mouse move for pan tool drag distance tracking
+    // Handle mouse move for pan tool drag distance tracking and panning
     const handleMouseMoveForPan = (opt) => {
       const currentTool = toolRef.current;
 
@@ -1166,129 +1179,71 @@ const PageAnnotationLayer = memo(({
         return;
       }
 
-      const pointer = canvas.getPointer(opt.e);
+      const nativeEvent = opt.e;
       const start = panDragStartRef.current;
 
-      // Calculate drag distance
-      const dx = pointer.x - start.x;
-      const dy = pointer.y - start.y;
+      // Calculate drag distance using CLIENT coordinates (stable during scroll)
+      const dx = nativeEvent.clientX - start.clientX;
+      const dy = nativeEvent.clientY - start.clientY;
       const distance = Math.sqrt(dx * dx + dy * dy);
       panDragDistanceRef.current = distance;
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1065', message: 'Pan tool mouse move', data: { interactionType: panInteractionTypeRef.current, distance: distance.toFixed(2), dx: dx.toFixed(2), dy: dy.toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-      // #endregion
-
-      // If we're in 'select-or-pan' mode and drag distance > 5px, switch to panning
+      // Handle 'select-or-pan' -> switch to 'pan' if dragged far enough
       if (panInteractionTypeRef.current === 'select-or-pan' && distance > 5) {
         panInteractionTypeRef.current = 'pan';
-        // Prevent object selection - allow canvas panning
-        opt.e.preventDefault();
-        opt.e.stopPropagation();
-
-        // Dispatch synthetic mousedown to container to start panning IMMEDIATELY associated with this drag
-        // This ensures the container picks up the pan gesture even though we delayed it
-        const nativeEvent = opt.e;
-        const containerElement = document.querySelector('[data-testid="pdf-container"]');
-        if (!containerElement) {
-          // Fallback to finding scrollable parent if testid not found (reusing logic from below)
-          let parent = canvasRef.current?.parentElement;
-          while (parent && parent !== document.body) {
-            const computedStyle = window.getComputedStyle(parent);
-            if (computedStyle.overflow === 'auto' || computedStyle.overflowY === 'auto' || computedStyle.overflowX === 'auto') {
-              // containerElement = parent; // Can't assign to const, but logic is effectively same as main block
-              // We'll just dispatch to this parent if main container not found
-              const syntheticMousedown = new MouseEvent('mousedown', {
-                bubbles: true,
-                cancelable: true,
-                clientX: panDragStartRef.current.clientX || nativeEvent.clientX,
-                clientY: panDragStartRef.current.clientY || nativeEvent.clientY,
-                button: nativeEvent.button,
-                buttons: nativeEvent.buttons,
-                view: nativeEvent.view
-              });
-              parent.dispatchEvent(syntheticMousedown);
-              break;
-            }
-            parent = parent.parentElement;
-          }
-        } else if (containerElement && nativeEvent) {
-          const syntheticMousedown = new MouseEvent('mousedown', {
-            bubbles: true,
-            cancelable: true,
-            clientX: panDragStartRef.current.clientX || nativeEvent.clientX,
-            clientY: panDragStartRef.current.clientY || nativeEvent.clientY,
-            button: nativeEvent.button,
-            buttons: nativeEvent.buttons,
-            view: nativeEvent.view
-          });
-          containerElement.dispatchEvent(syntheticMousedown);
-        }
+        // Don't select the object, start panning instead
+        panDragStartRef.current.hitObject = null;
       }
 
-      // Check if Fabric.js is transforming - if so, switch to transform mode and prevent panning
+      // Check if Fabric.js is transforming
       const activeObject = canvas.getActiveObject();
       const isTransforming = isFabricTransformingRef.current ||
         (activeObject && (activeObject.isScaling || activeObject.isRotating));
 
-      // If we're waiting to see if it's a transform, check now
+      // Handle 'wait-for-transform' check
       if (panInteractionTypeRef.current === 'wait-for-transform') {
         if (isTransforming) {
-          // Fabric.js is transforming - switch to transform mode
           panInteractionTypeRef.current = 'transform';
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1195', message: 'Fabric.js transforming detected - switching to transform mode', data: { isFabricTransforming: isFabricTransformingRef.current, isScaling: activeObject?.isScaling, isRotating: activeObject?.isRotating }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'O' }) }).catch(() => { });
-          // #endregion
         } else if (distance > 5) {
-          // Not transforming and moved > 5px - it's empty space panning
+          // Not transforming and moved > 5px -> empty space panning
           panInteractionTypeRef.current = 'pan';
-          // Dispatch mousedown to container to start panning
-          const nativeEvent = opt.e;
-          const containerElement = document.querySelector('[data-testid="pdf-container"]');
-          if (containerElement && nativeEvent) {
-            const syntheticMousedown = new MouseEvent('mousedown', {
-              bubbles: true,
-              cancelable: true,
-              clientX: panDragStartRef.current.clientX || nativeEvent.clientX,
-              clientY: panDragStartRef.current.clientY || nativeEvent.clientY,
-              button: nativeEvent.button,
-              buttons: nativeEvent.buttons,
-              view: nativeEvent.view
-            });
-            containerElement.dispatchEvent(syntheticMousedown);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1210', message: 'Empty space panning detected - dispatching mousedown to container', data: { distance: distance }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'O' }) }).catch(() => { });
-            // #endregion
-          }
         }
       }
 
-      // If we're in 'pan' mode (empty space), dispatch mousemove to container for panning
-      // BUT NOT if we're in 'transform' or 'move' mode (those should only affect the annotation)
-      // ALSO NOT if Fabric.js is currently transforming an object (scaling/rotating)
+      // PERFORM PANNING
       if (panInteractionTypeRef.current === 'pan' && !isTransforming) {
-        const nativeEvent = opt.e;
-        const containerElement = document.querySelector('[data-testid="pdf-container"]');
-        if (containerElement && nativeEvent) {
-          const syntheticEvent = new MouseEvent('mousemove', {
-            bubbles: true,
-            cancelable: true,
-            clientX: nativeEvent.clientX,
-            clientY: nativeEvent.clientY,
-            button: nativeEvent.button,
-            buttons: nativeEvent.buttons,
-            view: nativeEvent.view
-          });
-          containerElement.dispatchEvent(syntheticEvent);
+        // Calculate delta since last frame
+        const deltaX = nativeEvent.clientX - start.lastClientX;
+        const deltaY = nativeEvent.clientY - start.lastClientY;
+
+        // Find container and scroll it
+        const canvasElement = canvasRef.current;
+        let containerElement = document.querySelector('[data-testid="pdf-container"]');
+        if (!containerElement && canvasElement) {
+          let parent = canvasElement.parentElement;
+          while (parent && parent !== document.body) {
+            const style = window.getComputedStyle(parent);
+            if (style.overflow === 'auto' || style.overflowY === 'auto' || style.overflowX === 'auto') {
+              containerElement = parent;
+              break;
+            }
+            parent = parent.parentElement;
+          }
         }
-      } else if (panInteractionTypeRef.current === 'transform' || panInteractionTypeRef.current === 'move' || panInteractionTypeRef.current === 'wait-for-transform' || isTransforming) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1202', message: 'Transform/move/wait mode or Fabric transforming - NOT dispatching to container', data: { interactionType: panInteractionTypeRef.current, isFabricTransforming: isFabricTransformingRef.current, isScaling: activeObject?.isScaling, isRotating: activeObject?.isRotating }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'O' }) }).catch(() => { });
-        // #endregion
-        // Prevent container panning during transform/move/wait
+
+        if (containerElement) {
+          // Scroll in the opposite direction of drag (drag view)
+          containerElement.scrollLeft -= deltaX;
+          containerElement.scrollTop -= deltaY;
+        }
+
         opt.e.preventDefault();
         opt.e.stopPropagation();
       }
+
+      // Update last client position for next frame
+      start.lastClientX = nativeEvent.clientX;
+      start.lastClientY = nativeEvent.clientY;
     };
 
     // Handle mouse up for pan tool click selection
@@ -1306,69 +1261,18 @@ const PageAnnotationLayer = memo(({
           canvas.setActiveObject(hitObject);
           canvas.requestRenderAll();
         }
-      }
-
-      // Handle wait-for-transform mode
-      if (panInteractionTypeRef.current === 'wait-for-transform') {
-        if (isFabricTransformingRef.current) {
-          // It was a transform - nothing to do
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1228', message: 'Wait-for-transform mouseup - was transform', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'O' }) }).catch(() => { });
-          // #endregion
-        } else if (panDragDistanceRef.current > 5) {
-          // It was panning - dispatch mouseup to container
-          const nativeEvent = opt.e;
-          const containerElement = document.querySelector('[data-testid="pdf-container"]');
-          if (containerElement && nativeEvent) {
-            const syntheticEvent = new MouseEvent('mouseup', {
-              bubbles: true,
-              cancelable: true,
-              clientX: nativeEvent.clientX,
-              clientY: nativeEvent.clientY,
-              button: nativeEvent.button,
-              buttons: nativeEvent.buttons,
-              view: nativeEvent.view
-            });
-            containerElement.dispatchEvent(syntheticEvent);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1245', message: 'Wait-for-transform mouseup - was panning, dispatched mouseup', data: { distance: panDragDistanceRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'O' }) }).catch(() => { });
-            // #endregion
-          }
-        } else {
-          // Click (no drag) - deselect
+      } else if (panInteractionTypeRef.current === 'pan') {
+        // If we were panning and stopped, just reset.
+        // No need to dispatch mouseup to container since we manually scrolled.
+      } else if (panInteractionTypeRef.current === 'wait-for-transform') {
+        // Clicked on object but didn't drag or transform -> deselect
+        if (panDragDistanceRef.current <= 5 && !isFabricTransformingRef.current) {
           const activeObject = canvas.getActiveObject();
           if (activeObject) {
             canvas.discardActiveObject();
             canvas.requestRenderAll();
           }
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1256', message: 'Wait-for-transform mouseup - was click, deselected', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'O' }) }).catch(() => { });
-          // #endregion
         }
-      } else if (panInteractionTypeRef.current === 'pan') {
-        // If we were in 'pan' mode (empty space), dispatch mouseup to container
-        // BUT NOT if we're in 'transform' or 'move' mode
-        const nativeEvent = opt.e;
-        const containerElement = document.querySelector('[data-testid="pdf-container"]');
-        if (containerElement && nativeEvent) {
-          const syntheticEvent = new MouseEvent('mouseup', {
-            bubbles: true,
-            cancelable: true,
-            clientX: nativeEvent.clientX,
-            clientY: nativeEvent.clientY,
-            button: nativeEvent.button,
-            buttons: nativeEvent.buttons,
-            view: nativeEvent.view
-          });
-          containerElement.dispatchEvent(syntheticEvent);
-        }
-      } else if (panInteractionTypeRef.current === 'transform' || panInteractionTypeRef.current === 'move') {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1160', message: 'Transform/move mode mouseup - NOT dispatching to container', data: { interactionType: panInteractionTypeRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' }) }).catch(() => { });
-        // #endregion
-        // CRITICAL: We DO NOT prevent default or stop propagation here.
-        // Fabric.js needs the mouseup event to complete the transform/move action and reset its internal state.
-        // If we stop propagation, Fabric.js stays in "transforming" mode (sticky grabber).
       }
 
       // Reset tracking
@@ -1613,7 +1517,8 @@ const PageAnnotationLayer = memo(({
           strokeUniform: true,
           selectable: false,
           evented: false,
-          uniformScaling: false
+          uniformScaling: false,
+          lockUniScaling: false   // Allow free scaling on corner handles
         });
         ds.isDrawingShape = true;
         ds.startX = x;
@@ -1625,15 +1530,18 @@ const PageAnnotationLayer = memo(({
         canvas.add(temp);
         return;
       } else if (currentTool === 'rect') {
-        temp = new Rect({ left: x, top: y, width: 1, height: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false });
+        temp = new Rect({ left: x, top: y, width: 1, height: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1599', message: 'Rect created', data: { uniformScaling: temp.uniformScaling, lockUniScaling: temp.lockUniScaling }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
+        // #endregion
       } else if (currentTool === 'ellipse') {
-        temp = new Circle({ left: x, top: y, radius: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, originX: 'left', originY: 'top', uniformScaling: false });
+        temp = new Circle({ left: x, top: y, radius: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, originX: 'left', originY: 'top', uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'line' || currentTool === 'underline' || currentTool === 'strikeout') {
-        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false });
+        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'arrow') {
-        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false });
+        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'squiggly') {
-        temp = new Polyline([[x, y]], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false });
+        temp = new Polyline([[x, y]], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'note') {
         const note = new Group([
           new Rect({ width: 18, height: 18, fill: '#ffeb3b', rx: 4, ry: 4 }),
@@ -2534,7 +2442,8 @@ const PageAnnotationLayer = memo(({
             excludeFromExport: false,
             strokeUniform: true,
             globalCompositeOperation: 'multiply',
-            uniformScaling: false
+            uniformScaling: false,
+            lockUniScaling: false   // Allow free scaling on corner handles
           });
           // Store the highlightId and needsBIC flag on the object for later reference
           rect.set({ highlightId: highlight.highlightId, needsBIC: true });
@@ -2569,7 +2478,8 @@ const PageAnnotationLayer = memo(({
             excludeFromExport: false,
             strokeUniform: true,
             globalCompositeOperation: 'multiply',
-            uniformScaling: false
+            uniformScaling: false,
+            lockUniScaling: false   // Allow free scaling on corner handles
           });
           // Store the highlightId if available
           if (highlight.highlightId) {

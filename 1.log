@@ -2,167 +2,45 @@ chunk-F2KOVKPX.js?v=20d15701:28 Download the React DevTools for a better develop
 PDFWorkerManager.js:5 PDFWorkerManager: Creating PDF worker
 PDFWorkerManager.js:7 PDFWorkerManager: PDF worker created successfully
 App.jsx:1635 Syncing documents from Supabase: 0 []
-authConfig.js:36 [Tue, 23 Dec 2025 04:57:27 GMT] : [] : @azure/msal-browser@4.26.2 : Info - MSAL.js was last initialized by version: 4.26.2
+authConfig.js:36 [Tue, 23 Dec 2025 05:12:43 GMT] : [] : @azure/msal-browser@4.26.2 : Info - MSAL.js was last initialized by version: 4.26.2
 pdfRender.worker.js:3 PDF Worker initialized
 App.jsx:1635 Syncing documents from Supabase: 1 [{…}]
 App.jsx:1635 Syncing documents from Supabase: 1 [{…}]
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
 App.jsx:1635 Syncing documents from Supabase: 0 []
 App.jsx:1635 Syncing documents from Supabase: 1 [{…}]
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
 App.jsx:10990 Importing PDF annotations...
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
 App.jsx:10994 Imported annotations from 25 pages
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
-PageAnnotationLayer.jsx:948 Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
-isTransparent @ fabric.js:1572
-isTargetTransparent @ fabric.js:12124
-_checkTarget @ fabric.js:12435
-_searchPossibleTargets @ fabric.js:12462
-findTarget @ fabric.js:12410
-canvas.findTarget @ PageAnnotationLayer.jsx:948
-_cacheTransformEventData @ fabric.js:13692
-__onMouseMove @ fabric.js:13718
-_onMouseMove @ fabric.js:13332
-Show 8 more frames
-PageAnnotationLayer.jsx:954 Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
-isTransparent @ fabric.js:1572
-isTargetTransparent @ fabric.js:12144
-_checkTarget @ fabric.js:12435
-_searchPossibleTargets @ fabric.js:12462
-findTarget @ fabric.js:12400
-canvas.findTarget @ PageAnnotationLayer.jsx:954
-_cacheTransformEventData @ fabric.js:13692
-__onMouseDown @ fabric.js:13592
-_onMouseDown @ fabric.js:13274
-Show 8 more frames
-fabric.js:17849 Uncaught TypeError: Cannot read properties of undefined (reading 'x')
-    at klass._findTargetCorner (fabric.js:17849:24)
-    at klass.handleMouseDownForPan (PageAnnotationLayer.jsx:1005:39)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-_findTargetCorner @ fabric.js:17849
-handleMouseDownForPan @ PageAnnotationLayer.jsx:1005
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 5 more frames
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-fabric.js:17849 Uncaught TypeError: Cannot read properties of undefined (reading 'x')
-    at klass._findTargetCorner (fabric.js:17849:24)
-    at klass.handleMouseDownForPan (PageAnnotationLayer.jsx:1005:39)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-_findTargetCorner @ fabric.js:17849
-handleMouseDownForPan @ PageAnnotationLayer.jsx:1005
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 5 more frames
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-fabric.js:17849 Uncaught TypeError: Cannot read properties of undefined (reading 'x')
-    at klass._findTargetCorner (fabric.js:17849:24)
-    at klass.handleMouseDownForPan (PageAnnotationLayer.jsx:1005:39)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-_findTargetCorner @ fabric.js:17849
-handleMouseDownForPan @ PageAnnotationLayer.jsx:1005
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 5 more frames
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-fabric.js:17849 Uncaught TypeError: Cannot read properties of undefined (reading 'x')
-    at klass._findTargetCorner (fabric.js:17849:24)
-    at klass.handleMouseDownForPan (PageAnnotationLayer.jsx:1005:39)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-_findTargetCorner @ fabric.js:17849
-handleMouseDownForPan @ PageAnnotationLayer.jsx:1005
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 5 more frames
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-fabric.js:17849 Uncaught TypeError: Cannot read properties of undefined (reading 'x')
-    at klass._findTargetCorner (fabric.js:17849:24)
-    at klass.handleMouseDownForPan (PageAnnotationLayer.jsx:1005:39)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-_findTargetCorner @ fabric.js:17849
-handleMouseDownForPan @ PageAnnotationLayer.jsx:1005
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 5 more frames
-fabric.js:17849 Uncaught TypeError: Cannot read properties of undefined (reading 'x')
-    at klass._findTargetCorner (fabric.js:17849:24)
-    at klass.handleMouseDownForPan (PageAnnotationLayer.jsx:1005:39)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-_findTargetCorner @ fabric.js:17849
-handleMouseDownForPan @ PageAnnotationLayer.jsx:1005
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 5 more frames
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
-fabric.js:17849 Uncaught TypeError: Cannot read properties of undefined (reading 'x')
-    at klass._findTargetCorner (fabric.js:17849:24)
-    at klass.handleMouseDownForPan (PageAnnotationLayer.jsx:1005:39)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-_findTargetCorner @ fabric.js:17849
-handleMouseDownForPan @ PageAnnotationLayer.jsx:1005
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 5 more frames
-fabric.js:17849 Uncaught TypeError: Cannot read properties of undefined (reading 'x')
-    at klass._findTargetCorner (fabric.js:17849:24)
-    at klass.handleMouseDownForPan (PageAnnotationLayer.jsx:1005:39)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-_findTargetCorner @ fabric.js:17849
-handleMouseDownForPan @ PageAnnotationLayer.jsx:1005
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 5 more frames
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
