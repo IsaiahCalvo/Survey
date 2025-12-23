@@ -20,8 +20,13 @@ const StripeCheckout = (props) => {
             }
 
             if (data?.url) {
-                // Use the exposed IPC handler to open the URL in the default browser
-                await window.electronAPI.openExternal(data.url);
+                // Use Electron API if available, otherwise open in new tab (for web browser testing)
+                if (window.electronAPI?.openExternal) {
+                    await window.electronAPI.openExternal(data.url);
+                } else {
+                    // Fallback for web browser (non-Electron environment)
+                    window.open(data.url, '_blank');
+                }
             } else {
                 throw new Error('No checkout URL returned');
             }
