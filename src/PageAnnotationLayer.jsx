@@ -987,7 +987,9 @@ const PageAnnotationLayer = memo(({
       panInteractionTypeRef.current = null;
 
       // PRIORITY 1: Check for transform handle (grabber) of currently selected item
-      if (activeObject && activeObject._findTargetCorner) {
+      // Instead of calling _findTargetCorner (which is unreliable), we check if the click
+      // is near any control point by manually checking the oCoords
+      if (activeObject) {
         if (!activeObject.oCoords) {
           try {
             activeObject.setCoords();
@@ -995,23 +997,41 @@ const PageAnnotationLayer = memo(({
             // Silently ignore
           }
         }
-        if (activeObject.oCoords && activeObject.oCoords.tl) {
-          try {
-            const control = activeObject._findTargetCorner(opt.e.e, true);
+        if (activeObject.oCoords) {
+          // Check if click is near any control point (grabber)
+          // Control points are at corners and edges: tl, tr, bl, br, mt, mb, ml, mr, mtr (rotate)
+          const controlSize = (activeObject.cornerSize || 13) + 5; // Add tolerance
+          const controls = ['tl', 'tr', 'bl', 'br', 'mt', 'mb', 'ml', 'mr', 'mtr'];
+          let hitControl = null;
+          
+          for (const controlName of controls) {
+            const control = activeObject.oCoords[controlName];
             if (control) {
-              // Click is on a control point - allow resize/rotate
-              // Fabric.js will handle this automatically
-              panInteractionTypeRef.current = 'transform';
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:980',message:'Transform handle clicked',data:{control:control,interactionType:'transform'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-              // #endregion
-              // Prevent container panning
-              opt.e.preventDefault();
-              opt.e.stopPropagation();
-              return;
+              const dx = pointer.x - control.x;
+              const dy = pointer.y - control.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              if (distance <= controlSize) {
+                hitControl = controlName;
+                break;
+              }
             }
-          } catch (err) {
-            // Silently ignore
+          }
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1008',message:'PRIORITY 1 transform handle check',data:{hitControl:hitControl,hasOCoords:!!activeObject.oCoords,pointerX:pointer.x,pointerY:pointer.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'M'})}).catch(()=>{});
+          // #endregion
+          
+          if (hitControl) {
+            // Click is on a control point - allow resize/rotate
+            // Fabric.js will handle this automatically
+            panInteractionTypeRef.current = 'transform';
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1018',message:'Transform handle clicked in PRIORITY 1',data:{control:hitControl,interactionType:'transform'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'M'})}).catch(()=>{});
+            // #endregion
+            // Prevent container panning
+            opt.e.preventDefault();
+            opt.e.stopPropagation();
+            return;
           }
         }
       }
@@ -1065,8 +1085,8 @@ const PageAnnotationLayer = memo(({
 
       // PRIORITY 4: Empty space / Canvas
       // BUT FIRST: Double-check if this might be a transform handle click
-      // Fabric.js might not have detected it yet, so we need to check manually
-      if (activeObject && activeObject._findTargetCorner) {
+      // Use the same manual control point checking as PRIORITY 1
+      if (activeObject) {
         if (!activeObject.oCoords) {
           try {
             activeObject.setCoords();
@@ -1074,21 +1094,38 @@ const PageAnnotationLayer = memo(({
             // Silently ignore
           }
         }
-        if (activeObject.oCoords && activeObject.oCoords.tl) {
-          try {
-            const control = activeObject._findTargetCorner(opt.e.e, true);
+        if (activeObject.oCoords) {
+          // Check if click is near any control point (grabber)
+          const controlSize = (activeObject.cornerSize || 13) + 5; // Add tolerance
+          const controls = ['tl', 'tr', 'bl', 'br', 'mt', 'mb', 'ml', 'mr', 'mtr'];
+          let hitControl = null;
+          
+          for (const controlName of controls) {
+            const control = activeObject.oCoords[controlName];
             if (control) {
-              // This IS a transform handle - don't pan, let Fabric.js handle it
-              panInteractionTypeRef.current = 'transform';
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1045',message:'Transform handle detected in empty space check',data:{control:control},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'J'})}).catch(()=>{});
-              // #endregion
-              opt.e.preventDefault();
-              opt.e.stopPropagation();
-              return;
+              const dx = pointer.x - control.x;
+              const dy = pointer.y - control.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              if (distance <= controlSize) {
+                hitControl = controlName;
+                break;
+              }
             }
-          } catch (err) {
-            // Silently ignore
+          }
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1068',message:'PRIORITY 4 transform handle check',data:{hitControl:hitControl,hasOCoords:!!activeObject.oCoords,pointerX:pointer.x,pointerY:pointer.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'M'})}).catch(()=>{});
+          // #endregion
+          
+          if (hitControl) {
+            // This IS a transform handle - don't pan, let Fabric.js handle it
+            panInteractionTypeRef.current = 'transform';
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1082',message:'Transform handle detected in empty space check',data:{control:hitControl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'M'})}).catch(()=>{});
+            // #endregion
+            opt.e.preventDefault();
+            opt.e.stopPropagation();
+            return;
           }
         }
       }
@@ -1096,13 +1133,16 @@ const PageAnnotationLayer = memo(({
       // Allow panning the canvas
       panInteractionTypeRef.current = 'pan';
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1065',message:'Empty space detected in pan tool',data:{panInteractionType:'pan',hasActiveObject:!!activeObject,pointerX:pointer.x,pointerY:pointer.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1104',message:'Empty space detected in pan tool',data:{panInteractionType:'pan',hasActiveObject:!!activeObject,pointerX:pointer.x,pointerY:pointer.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
-      // Deselect if there's an active object
+      
+      // If there's an active object, deselect it first (user clicked empty space)
+      // But we already checked for transform handles above, so it's safe to deselect
       if (activeObject) {
         canvas.discardActiveObject();
         canvas.requestRenderAll();
       }
+      
       // Trigger container panning by dispatching mousedown event on container
       // Find the container element using data-testid or by finding scrollable parent
       const nativeEvent = opt.e.e;
@@ -1135,7 +1175,7 @@ const PageAnnotationLayer = memo(({
           });
           containerElement.dispatchEvent(syntheticEvent);
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1095',message:'Dispatched synthetic mousedown on container',data:{containerFound:!!containerElement,clientX:nativeEvent.clientX,clientY:nativeEvent.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1142',message:'Dispatched synthetic mousedown on container',data:{containerFound:!!containerElement,clientX:nativeEvent.clientX,clientY:nativeEvent.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
           // #endregion
         }
       }
