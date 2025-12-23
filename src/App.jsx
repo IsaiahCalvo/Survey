@@ -1836,27 +1836,49 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // Background Upload Process
       (async () => {
         try {
-          // Upload file to Supabase Storage
-          // (projectId is captured from outer scope)
-
-          // Parallelize upload and page counting
+          // Upload file to Supabase Storage immediately (non-blocking)
+          // Start upload first to get it going as fast as possible
           const uploadPromise = uploadToStorage(file, projectId || 'general');
+          
+          // Get page count in parallel, but don't block document creation on it
+          // This allows the document to be created immediately after upload
           const pageCountPromise = (async () => {
-            const arrayBuffer = await file.arrayBuffer();
-            const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            return pdfDoc.numPages;
+            try {
+              const arrayBuffer = await file.arrayBuffer();
+              const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+              return pdfDoc.numPages;
+            } catch (err) {
+              console.error('Error getting page count:', err);
+              return null; // Return null if page count fails, we'll update it later
+            }
           })();
 
-          const [filePath, pageCount] = await Promise.all([uploadPromise, pageCountPromise]);
+          // Wait for upload to complete first (most important)
+          const filePath = await uploadPromise;
 
-          // Create document record in Supabase
-          // This automatically updates the local state via useDocuments hook
+          // Create document record immediately after upload completes
+          // Use null for page_count initially, update it later when available
           const newDoc = await createSupabaseDocument({
             name: file.name,
             file_path: filePath,
             file_size: file.size,
-            page_count: pageCount,
+            page_count: null, // Set to null initially, will update in background
             project_id: projectId || null
+          });
+
+          // Update page count in background (non-blocking)
+          // This allows the UI to be responsive while page count is calculated
+          pageCountPromise.then(async (pageCount) => {
+            if (pageCount !== null && newDoc) {
+              try {
+                await updateSupabaseDocument(newDoc.id, { page_count: pageCount });
+                console.log(`Updated page count for ${file.name}: ${pageCount} pages`);
+              } catch (err) {
+                console.error('Error updating page count:', err);
+              }
+            }
+          }).catch(err => {
+            console.error('Error getting page count in background:', err);
           });
 
           // Refresh global document list to update counts
@@ -1950,36 +1972,75 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     const uploadErrors = [];
     let successCount = 0;
 
-    for (const file of files) {
+    // Process files in parallel for better performance
+    const filePromises = files.map(async (file) => {
       try {
         console.log(`Uploading file: ${file.name} (${file.size} bytes)`);
 
-        // Upload file to storage
-        const filePath = await uploadToStorage(file, newProject.id);
+        // Start upload and page count in parallel
+        const uploadPromise = uploadToStorage(file, newProject.id);
+        const pageCountPromise = (async () => {
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            return pdfDoc.numPages;
+          } catch (err) {
+            console.error(`Error getting page count for ${file.name}:`, err);
+            return null;
+          }
+        })();
+
+        // Wait for upload to complete first
+        const filePath = await uploadPromise;
         console.log(`File uploaded to storage: ${filePath}`);
 
-        // Get page count from PDF
-        const arrayBuffer = await file.arrayBuffer();
-        const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const pageCount = pdfDoc.numPages;
-        console.log(`PDF has ${pageCount} pages`);
-
-        // Create document record (this links the document to the project via project_id)
+        // Create document record immediately after upload
+        // Use null for page_count initially, will update in background
         const doc = await createSupabaseDocument({
           name: file.name,
           file_path: filePath,
           file_size: file.size,
-          page_count: pageCount,
+          page_count: null,
           project_id: newProject.id
         });
+
+        // Update page count in background (non-blocking)
+        pageCountPromise.then(async (pageCount) => {
+          if (pageCount !== null) {
+            try {
+              console.log(`PDF has ${pageCount} pages`);
+              await updateSupabaseDocument(doc.id, { page_count: pageCount });
+            } catch (err) {
+              console.error(`Error updating page count for ${file.name}:`, err);
+            }
+          }
+        }).catch(err => {
+          console.error(`Error getting page count for ${file.name}:`, err);
+        });
+
         console.log('Document record created:', doc);
-        successCount++;
+        return { success: true, file: file.name };
       } catch (err) {
         console.error(`Error uploading file ${file.name}:`, err);
-        uploadErrors.push({ fileName: file.name, error: err.message || err.toString() });
-        // Continue with other files even if one fails
+        return { 
+          success: false, 
+          file: file.name, 
+          error: err.message || err.toString() 
+        };
       }
-    }
+    });
+
+    // Wait for all files to process
+    const results = await Promise.all(filePromises);
+    
+    // Count successes and collect errors
+    results.forEach(result => {
+      if (result.success) {
+        successCount++;
+      } else {
+        uploadErrors.push({ fileName: result.file, error: result.error });
+      }
+    });
 
     // If no files were successfully uploaded, throw an error
     if (successCount === 0) {
