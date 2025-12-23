@@ -2146,10 +2146,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
 
     const handleDocumentClick = (e) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2144', message: 'Document click handler called', data: { targetTag: e.target?.tagName, targetId: e.target?.id, targetClass: e.target?.className }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'A' }) }).catch(() => { });
-      // #endregion
-      
       const target = e.target;
       
       // Check if clicking within the selection mode actions container
@@ -2164,14 +2160,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // Only prevent exit if clicking within selection mode actions OR on an item container
       const shouldPreventExit = isInSelectionModeActions || isItemContainer;
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2162', message: 'Document click exit prevention check', data: { shouldPreventExit, isInSelectionModeActions, isItemContainer, targetTag: target?.tagName, willExit: !shouldPreventExit }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'C' }) }).catch(() => { });
-      // #endregion
-
       if (!shouldPreventExit) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2166', message: 'Exiting selection mode from document click', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'A' }) }).catch(() => { });
-        // #endregion
         exitSelectionMode();
       }
     };
@@ -2186,16 +2175,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
   // Handle clicking outside items to exit selection mode (container-level handler as backup)
   const handleContainerClick = (e) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2142', message: 'handleContainerClick called', data: { isSelectionMode, activeSection, targetTag: e.target?.tagName, targetId: e.target?.id, targetClass: e.target?.className, currentTargetTag: e.currentTarget?.tagName }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'A' }) }).catch(() => { });
-    // #endregion
-    
     // Only exit if we're in selection mode and in one of the relevant sections
     if (isSelectionMode && (activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates')) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2145', message: 'Selection mode active, checking elements', data: { targetTag: e.target?.tagName, targetId: e.target?.id }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'C' }) }).catch(() => { });
-      // #endregion
-      
       const target = e.target;
       
       // Check if clicking within the selection mode actions container (Select All, Move/Copy, Share, Delete, Cancel buttons)
@@ -2212,20 +2193,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // All other clicks (including other buttons like settings, upload, create project, etc.) should exit
       const shouldPreventExit = isInSelectionModeActions || isItemContainer;
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2168', message: 'Exit prevention check result', data: { shouldPreventExit, isInSelectionModeActions, isItemContainer, targetTag: target?.tagName, willExit: !shouldPreventExit }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'C' }) }).catch(() => { });
-      // #endregion
-
       if (!shouldPreventExit) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2171', message: 'Exiting selection mode', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'A' }) }).catch(() => { });
-        // #endregion
         exitSelectionMode();
       }
-    } else {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2175', message: 'Not exiting - conditions not met', data: { isSelectionMode, activeSection }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'B' }) }).catch(() => { });
-      // #endregion
     }
   };
 
