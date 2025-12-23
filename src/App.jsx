@@ -12978,70 +12978,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
           <div style={{ width: '1px', height: '16px', background: '#555' }} />
 
-          {/* View Mode Toggle */}
-          <button
-            onClick={toggleScrollMode}
-            className="btn btn-default btn-sm"
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Icon name={scrollMode === 'continuous' ? 'pages' : 'pageSingle'} size={16} />
-            {scrollMode === 'continuous' ? 'Continuous' : 'Single Page'}
-          </button>
-
-          {/* Page Navigation */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              onClick={goToPreviousPage}
-              disabled={pageNum <= 1}
-              className="btn btn-default btn-icon-sm"
-            >
-              <Icon name="chevronLeft" size={16} />
-            </button>
-
-            <input
-              ref={pageInputRef}
-              type="text"
-              data-page-number-input
-              value={pageInputValue}
-              onChange={handlePageInputChange}
-              onKeyDown={handlePageInputKeyDown}
-              onBlur={handlePageInputBlur}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              aria-label="Current page"
-              style={{
-                width: '48px',
-                padding: '3px 8px',
-                background: '#444',
-                color: '#ddd',
-                border: '1px solid #555',
-                borderRadius: '5px',
-                fontSize: '13px',
-                fontFamily: FONT_FAMILY,
-                fontWeight: '500',
-                letterSpacing: '-0.2px',
-                textAlign: 'center'
-              }}
-            />
-
-            <span style={{
-              color: '#999',
-              fontSize: '13px',
-              fontFamily: FONT_FAMILY,
-              fontWeight: '400'
-            }}>
-              / {numPages}
-            </span>
-
-            <button
-              onClick={goToNextPage}
-              disabled={pageNum >= numPages}
-              className="btn btn-default btn-icon-sm"
-            >
-              <Icon name="chevronRight" size={16} />
-            </button>
-          </div>
-
           {/* Survey Button */}
           <button
             onClick={() => {
@@ -13722,7 +13658,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             gap: '12px',
             fontSize: '14px',
             fontFamily: FONT_FAMILY,
-            flexShrink: 0
+            flexShrink: 0,
+            position: 'relative'
           }}
         >
           {/* Left Spacer */}
@@ -14080,6 +14017,85 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   })}
                 </div>
               )}
+            </div>
+
+            {/* View Mode Toggle */}
+            <button
+              onClick={toggleScrollMode}
+              className="btn btn-default btn-sm"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                justifyContent: 'center',
+                paddingLeft: '10px',
+                paddingRight: '10px',
+                position: 'absolute',
+                left: '8px'
+              }}
+            >
+              <Icon name={scrollMode === 'continuous' ? 'pages' : 'pageSingle'} size={16} />
+              {scrollMode === 'continuous' ? 'Continuous' : 'Single Page'}
+            </button>
+
+            {/* Page Navigation */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              position: 'absolute',
+              left: '114px'
+            }}>
+              <button
+                onClick={goToPreviousPage}
+                disabled={pageNum <= 1}
+                className="btn btn-default btn-icon-sm"
+              >
+                <Icon name="chevronLeft" size={16} />
+              </button>
+
+              <input
+                ref={pageInputRef}
+                type="text"
+                data-page-number-input
+                value={pageInputValue}
+                onChange={handlePageInputChange}
+                onKeyDown={handlePageInputKeyDown}
+                onBlur={handlePageInputBlur}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                aria-label="Current page"
+                style={{
+                  width: '48px',
+                  padding: '3px 8px',
+                  background: '#444',
+                  color: '#ddd',
+                  border: '1px solid #555',
+                  borderRadius: '5px',
+                  fontSize: '13px',
+                  fontFamily: FONT_FAMILY,
+                  fontWeight: '500',
+                  letterSpacing: '-0.2px',
+                  textAlign: 'center'
+                }}
+              />
+
+              <span style={{
+                color: '#999',
+                fontSize: '13px',
+                fontFamily: FONT_FAMILY,
+                fontWeight: '400'
+              }}>
+                / {numPages}
+              </span>
+
+              <button
+                onClick={goToNextPage}
+                disabled={pageNum >= numPages}
+                className="btn btn-default btn-icon-sm"
+              >
+                <Icon name="chevronRight" size={16} />
+              </button>
             </div>
           </div>
         </div>
