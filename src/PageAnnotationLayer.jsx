@@ -1177,12 +1177,7 @@ const PageAnnotationLayer = memo(({
       const handleSize = (obj.cornerSize || 12) / 2; // Half the handle size
       const totalRadius = handleSize + buffer; // Handle radius + buffer zone
 
-      console.log('🎯 [PROXIMITY CHECK] Corner handle proximity test:', {
-        point: { x: point.x.toFixed(2), y: point.y.toFixed(2) },
-        handleSize: handleSize.toFixed(2),
-        buffer: buffer.toFixed(2),
-        totalRadius: totalRadius.toFixed(2)
-      });
+      console.log('🎯 [PROXIMITY] point=(' + point.x.toFixed(2) + ',' + point.y.toFixed(2) + ') handleSize=' + handleSize.toFixed(2) + ' buffer=' + buffer.toFixed(2) + ' totalRadius=' + totalRadius.toFixed(2));
 
       let closestCorner = null;
       let minDistance = Infinity;
@@ -1201,12 +1196,7 @@ const PageAnnotationLayer = memo(({
           closestCorner = cornerKey;
         }
 
-        console.log(`  📍 Corner ${cornerKey}:`, {
-          cornerPos: { x: corner.x.toFixed(2), y: corner.y.toFixed(2) },
-          distance: distance.toFixed(2),
-          inProximityZone: distance > handleSize && distance <= totalRadius,
-          onHandle: distance <= handleSize
-        });
+        console.log('  📍 Corner ' + cornerKey + ': pos=(' + corner.x.toFixed(2) + ',' + corner.y.toFixed(2) + ') dist=' + distance.toFixed(2) + ' inProximity=' + (distance > handleSize && distance <= totalRadius) + ' onHandle=' + (distance <= handleSize));
 
         // Check if point is in the buffer zone (outside handle but within buffer)
         if (distance > handleSize && distance <= totalRadius) {
@@ -2883,19 +2873,16 @@ const PageAnnotationLayer = memo(({
         const isOutsideBody = !isOnBody;
 
         // 🔍 DEBUG: Cursor position tracking
-        console.log('🖱️ [CURSOR] Position Check:', {
-          pointer: { x: pointer.x.toFixed(2), y: pointer.y.toFixed(2) },
-          isOnBody,
-          isOutsideBody,
-          proximityCorner,
-          handles: {
-            isOnAnyHandle,
-            isOnCornerHandle,
-            isOnEdgeHandle
-          },
-          modifierHeld: isModifierHeld,
-          willShowRotateCursor: (proximityCorner && !isOnAnyHandle) || (isModifierHeld && isOutsideBody && !isOnAnyHandle)
-        });
+        console.log('🖱️ [CURSOR] Position:',
+          'x=' + pointer.x.toFixed(2),
+          'y=' + pointer.y.toFixed(2),
+          '| isOnBody=' + isOnBody,
+          '| isOutside=' + isOutsideBody,
+          '| proximity=' + (proximityCorner || 'none'),
+          '| onHandle=' + isOnAnyHandle,
+          '| modifier=' + isModifierHeld,
+          '| willRotate=' + ((proximityCorner && !isOnAnyHandle) || (isModifierHeld && isOutsideBody && !isOnAnyHandle))
+        );
 
         // STRICT CURSOR HIERARCHY - Show rotate cursor ONLY in Outer Zone:
         // 1. In proximity zone (outside body, near corners, but not on any handle), OR
