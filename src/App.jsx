@@ -8091,104 +8091,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [expandedCategories, setExpandedCategories] = useState({}); // { [categoryId]: boolean }
   const [expandedHighlights, setExpandedHighlights] = useState({}); // { [highlightId]: boolean }
 
-  // Undo/Redo history state
-  const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations }
-  const [redoHistory, setRedoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations }
-  const isUndoingRef = useRef(false); // Flag to prevent saving history during undo/redo
-  const lastSavedStateRef = useRef(null); // Track last saved state to avoid duplicate saves
 
-  // Save current state to undo history
-  const saveToHistory = useCallback(() => {
-    if (isUndoingRef.current) return; // Don't save during undo/redo operations
-
-    const currentState = {
-      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
-      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations))
-    };
-
-    // Avoid saving if state hasn't changed
-    const stateString = JSON.stringify(currentState);
-    if (lastSavedStateRef.current === stateString) return;
-    lastSavedStateRef.current = stateString;
-
-    setUndoHistory(prev => {
-      const newHistory = [...prev, currentState];
-      // Limit history to 50 entries
-      if (newHistory.length > 50) {
-        return newHistory.slice(1);
-      }
-      return newHistory;
-    });
-    setRedoHistory([]); // Clear redo history when new action is performed
-  }, [annotationsByPage, highlightAnnotations]);
-
-  // Undo function
-  const handleUndo = useCallback(() => {
-    if (undoHistory.length < 2) return;
-
-    isUndoingRef.current = true;
-    const stateToRestore = undoHistory[undoHistory.length - 2];
-    const stateToRedo = undoHistory[undoHistory.length - 1];
-
-    // Save current state (which is the last item in undoHistory) to redo history
-    setRedoHistory(prev => [stateToRedo, ...prev]);
-
-    // Restore previous state
-    setAnnotationsByPage(stateToRestore.annotationsByPage);
-    setHighlightAnnotations(stateToRestore.highlightAnnotations);
-    lastSavedStateRef.current = JSON.stringify(stateToRestore);
-
-    // Remove from undo history
-    setUndoHistory(prev => prev.slice(0, -1));
-
-    setTimeout(() => {
-      isUndoingRef.current = false;
-    }, 100);
-  }, [undoHistory]);
-
-  // Redo function
-  const handleRedo = useCallback(() => {
-    if (redoHistory.length === 0) return;
-
-    isUndoingRef.current = true;
-    const stateToRestore = redoHistory[0];
-
-    // Save current state to undo history before redoing
-    const currentState = {
-      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
-      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations))
-    };
-    setUndoHistory(prev => [...prev, currentState]);
-
-    // Restore state
-    setAnnotationsByPage(stateToRestore.annotationsByPage);
-    setHighlightAnnotations(stateToRestore.highlightAnnotations);
-    lastSavedStateRef.current = JSON.stringify(stateToRestore);
-
-    // Remove from redo history
-    setRedoHistory(prev => prev.slice(1));
-
-    setTimeout(() => {
-      isUndoingRef.current = false;
-    }, 100);
-  }, [redoHistory, annotationsByPage, highlightAnnotations]);
-
-  // Check if undo is possible
-  const canUndo = undoHistory.length > 1;
-
-  // Check if redo is possible
-  const canRedo = redoHistory.length > 0;
-
-  // Save to history when annotations change (debounced)
-  useEffect(() => {
-    if (isUndoingRef.current) return;
-
-    const timeoutId = setTimeout(() => {
-      saveToHistory();
-    }, 300); // Debounce by 300ms to avoid saving on every keystroke/change
-
-    return () => clearTimeout(timeoutId);
-  }, [annotationsByPage, highlightAnnotations, saveToHistory]);
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(null); // Category selected for highlighting
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
@@ -8552,6 +8455,109 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       console.error('Error saving sidebar data:', e);
     }
   }, [pdfId, pageNames, bookmarks, spaces, activeSpaceId, pageTransformations]);
+
+  // Undo/Redo history state
+  const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
+  const [redoHistory, setRedoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
+  const isUndoingRef = useRef(false); // Flag to prevent saving history during undo/redo
+  const lastSavedStateRef = useRef(null); // Track last saved state to avoid duplicate saves
+
+  // Save current state to undo history
+  const saveToHistory = useCallback(() => {
+    if (isUndoingRef.current) return; // Don't save during undo/redo operations
+
+    const currentState = {
+      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
+      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations)),
+      spaces: JSON.parse(JSON.stringify(spaces || []))
+    };
+
+    // Avoid saving if state hasn't changed
+    const stateString = JSON.stringify(currentState);
+    if (lastSavedStateRef.current === stateString) return;
+    lastSavedStateRef.current = stateString;
+
+    setUndoHistory(prev => {
+      const newHistory = [...prev, currentState];
+      // Limit history to 50 entries
+      if (newHistory.length > 50) {
+        return newHistory.slice(1);
+      }
+      return newHistory;
+    });
+    setRedoHistory([]); // Clear redo history when new action is performed
+  }, [annotationsByPage, highlightAnnotations]);
+
+  // Undo function
+  const handleUndo = useCallback(() => {
+    if (undoHistory.length < 2) return;
+
+    isUndoingRef.current = true;
+    const stateToRestore = undoHistory[undoHistory.length - 2];
+    const stateToRedo = undoHistory[undoHistory.length - 1];
+
+    // Save current state (which is the last item in undoHistory) to redo history
+    setRedoHistory(prev => [stateToRedo, ...prev]);
+
+    // Restore previous state
+    setAnnotationsByPage(stateToRestore.annotationsByPage);
+    setHighlightAnnotations(stateToRestore.highlightAnnotations);
+    setSpaces(stateToRestore.spaces || []);
+    lastSavedStateRef.current = JSON.stringify(stateToRestore);
+
+    // Remove from undo history
+    setUndoHistory(prev => prev.slice(0, -1));
+
+    setTimeout(() => {
+      isUndoingRef.current = false;
+    }, 100);
+  }, [undoHistory]);
+
+  // Redo function
+  const handleRedo = useCallback(() => {
+    if (redoHistory.length === 0) return;
+
+    isUndoingRef.current = true;
+    const stateToRestore = redoHistory[0];
+
+    // Save current state to undo history before redoing
+    const currentState = {
+      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
+      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations)),
+      spaces: JSON.parse(JSON.stringify(spaces || []))
+    };
+    setUndoHistory(prev => [...prev, currentState]);
+
+    // Restore state
+    setAnnotationsByPage(stateToRestore.annotationsByPage);
+    setHighlightAnnotations(stateToRestore.highlightAnnotations);
+    setSpaces(stateToRestore.spaces || []);
+    lastSavedStateRef.current = JSON.stringify(stateToRestore);
+
+    // Remove from redo history
+    setRedoHistory(prev => prev.slice(1));
+
+    setTimeout(() => {
+      isUndoingRef.current = false;
+    }, 100);
+  }, [redoHistory, annotationsByPage, highlightAnnotations]);
+
+  // Check if undo is possible
+  const canUndo = undoHistory.length > 1;
+
+  // Check if redo is possible
+  const canRedo = redoHistory.length > 0;
+
+  // Save to history when annotations change (debounced)
+  useEffect(() => {
+    if (isUndoingRef.current) return;
+
+    const timeoutId = setTimeout(() => {
+      saveToHistory();
+    }, 300); // Debounce by 300ms to avoid saving on every keystroke/change
+
+    return () => clearTimeout(timeoutId);
+  }, [annotationsByPage, highlightAnnotations, spaces, saveToHistory]);
 
   // Sidebar handlers
   const handleDuplicatePage = useCallback(async (pageNumber) => {

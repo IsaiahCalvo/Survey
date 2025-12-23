@@ -4,7 +4,7 @@ import React, { useEffect, useRef, memo } from 'react';
 // This must happen before any canvas contexts are created by Fabric
 if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype._willReadFrequentlyPatched) {
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function(contextType, options = {}) {
+  HTMLCanvasElement.prototype.getContext = function (contextType, options = {}) {
     if (contextType === '2d') {
       return originalGetContext.call(this, contextType, { ...options, willReadFrequently: true });
     }
@@ -758,6 +758,7 @@ const PageAnnotationLayer = memo(({
   const isFabricTransformingRef = useRef(false); // Track if Fabric.js is currently transforming an object
   // Rotation tracking for modifier-based rotation
   const rotationStateRef = useRef(null); // { object, startAngle, startPointer, center }
+  const lastSavedAnnotationsRef = useRef(null); // Track last saved annotations to detect external updates (Undo/Redo)
 
   // Keep highlight callback refs in sync
   useEffect(() => {
@@ -849,6 +850,88 @@ const PageAnnotationLayer = memo(({
     canvas.requestRenderAll();
   }, [tool, strokeColor, strokeWidth, highlightColor]);
 
+  // Helper to load annotations into canvas
+  const loadAnnotations = (annotationsData) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    canvas.clear();
+    canvas.setBackgroundColor('transparent', () => { });
+
+    if (annotationsData && annotationsData.objects && annotationsData.objects.length > 0) {
+      util.enlivenObjects(annotationsData.objects, (enlivenedObjects) => {
+        enlivenedObjects.forEach((obj, index) => {
+          const objData = annotationsData.objects[index];
+
+          obj.set({
+            strokeUniform: true,
+            uniformScaling: false,
+            lockUniScaling: false,
+            centeredRotation: true
+          });
+
+          // Restore space/module association
+          if (!obj.spaceId) obj.spaceId = objData.spaceId || null;
+          if (!obj.moduleId) obj.moduleId = objData.moduleId || null;
+
+          // Preserve imported PDF annotation properties
+          if (objData.isPdfImported) {
+            obj.isPdfImported = true;
+            obj.pdfAnnotationId = objData.pdfAnnotationId;
+            obj.pdfAnnotationType = objData.pdfAnnotationType;
+            obj.layer = objData.layer || 'pdf-annotations';
+            obj.set({
+              selectable: true, evented: true, hasControls: true, hasBorders: true,
+              perPixelTargetFind: true, targetFindTolerance: 5
+            });
+          }
+
+          // Preserve layer property
+          if (objData.layer) obj.layer = objData.layer;
+
+          // Enforce multiply blend mode for highlights
+          if (obj.highlightId || obj.needsBIC) {
+            obj.set({ globalCompositeOperation: 'multiply' });
+          }
+
+          // Apply visibility filter
+          const objLayer = obj.layer || 'native';
+          const layerVisible = layerVisibilityRef.current[objLayer] !== false;
+
+          const objSpaceId = obj.spaceId || null;
+          const objModuleId = obj.moduleId || null;
+          const currentSpaceId = selectedSpaceIdRef.current;
+          const currentModuleId = selectedModuleIdRef.current;
+          const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
+          const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
+
+          const isVisible = matchesSpace && matchesModule && layerVisible;
+          obj.set({ visible: isVisible, selectable: isVisible, evented: isVisible });
+
+          canvas.add(obj);
+          obj.setCoords();
+        });
+        canvas.renderAll();
+      });
+    }
+  };
+
+  // Sync canvas with annotations prop (handles Undo/Redo)
+  useEffect(() => {
+    if (!fabricRef.current || !annotations) return;
+
+    // Skip reload if the update originated from us (internal save)
+    if (lastSavedAnnotationsRef.current === annotations) {
+      return;
+    }
+
+    // External update (Undo/Redo or initial load from parent), reload canvas
+    loadAnnotations(annotations);
+
+    // Mark this version as "seen" to prevent echo
+    lastSavedAnnotationsRef.current = annotations;
+  }, [annotations]);
+
   // Initialize canvas only once
   useEffect(() => {
     if (!canvasRef.current || !width || !height || isInitializedRef.current) return;
@@ -893,79 +976,14 @@ const PageAnnotationLayer = memo(({
     fabricRef.current = canvas;
 
 
-    if (annotations && annotations.objects && annotations.objects.length > 0) {
-      annotations.objects.forEach(objData => {
-        util.enlivenObjects([objData], (enlivenedObjects) => {
-          enlivenedObjects.forEach(obj => {
-            obj.set({
-              strokeUniform: true,
-              uniformScaling: false,  // Allow free scaling by default
-              lockUniScaling: false,   // Allow free scaling on corner handles
-              centeredRotation: true  // Ensure rotation happens around center point
-            });
-            // Store spaceId on object if not already set (for backward compatibility)
-            if (!obj.spaceId) {
-              obj.spaceId = objData.spaceId || null;
-            }
-            if (!obj.moduleId) {
-              obj.moduleId = objData.moduleId || null;
-            }
-            // Preserve imported PDF annotation properties
-            if (objData.isPdfImported) {
-              obj.isPdfImported = true;
-              obj.pdfAnnotationId = objData.pdfAnnotationId;
-              obj.pdfAnnotationType = objData.pdfAnnotationType;
-              obj.layer = objData.layer || 'pdf-annotations';
-              // Ensure imported objects are interactive
-              obj.set({
-                selectable: true,
-                evented: true,
-                hasControls: true,
-                hasBorders: true,
-                perPixelTargetFind: true,
-                targetFindTolerance: 5
-              });
-            }
-            // Preserve layer property for all objects
-            if (objData.layer) {
-              obj.layer = objData.layer;
-            }
-            // Enforce multiply blend mode for highlights
-            if (obj.highlightId || obj.needsBIC) {
-              obj.set({ globalCompositeOperation: 'multiply' });
-            }
-            canvas.add(obj);
-            // Ensure control points are calculated for proper interaction
-            obj.setCoords();
-          });
-          // After loading, filter by selectedSpaceId, selectedModuleId, and layer visibility
-          canvas.getObjects().forEach(obj => {
-            const objSpaceId = obj.spaceId || null;
-            const objModuleId = obj.moduleId || null;
-            const objLayer = obj.layer || 'native'; // Default to 'native' for objects without layer
-            const currentSpaceId = selectedSpaceIdRef.current;
-            const currentModuleId = selectedModuleIdRef.current;
-            const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
-            const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
-            const layerVisible = layerVisibilityRef.current[objLayer] !== false;
-            const isVisible = matchesSpace && matchesModule && layerVisible;
-            obj.set({ visible: isVisible });
-            if (!isVisible) {
-              obj.set({ selectable: false, evented: false });
-            }
-          });
-          canvas.renderAll();
-        });
-      });
-    } else {
-      // no-op; start with empty canvas
-    }
+    loadAnnotations(annotations);
 
     const saveCanvas = () => {
       if (!fabricRef.current) return;
       try {
         // Include spaceId in the saved JSON to preserve space associations
         const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+        lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
@@ -1037,7 +1055,7 @@ const PageAnnotationLayer = memo(({
 
     const handleObjectScaling = (e) => {
       isFabricTransformingRef.current = true;
-      
+
       // Hide controls immediately when scaling starts
       hideControls();
 
@@ -1070,7 +1088,7 @@ const PageAnnotationLayer = memo(({
 
     const handleObjectRotating = (e) => {
       isFabricTransformingRef.current = true;
-      
+
       // Hide controls immediately when rotating starts
       hideControls();
     };
@@ -1078,7 +1096,7 @@ const PageAnnotationLayer = memo(({
     // Handle object moving event
     const handleObjectMoving = (e) => {
       isFabricTransformingRef.current = true;
-      
+
       // Hide controls immediately when moving starts
       hideControls();
     };
@@ -1284,7 +1302,7 @@ const PageAnnotationLayer = memo(({
       // Only handle pan tool (select tool has its own handler)
       if (currentTool !== 'pan') {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Early return - wrong tool',data:{currentTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'Early return - wrong tool', data: { currentTool }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'A' }) }).catch(() => { });
         // #endregion
         return;
       }
@@ -1294,9 +1312,9 @@ const PageAnnotationLayer = memo(({
       const pointer = canvas.getPointer(opt.e);
       const activeObject = canvas.getActiveObject();
       const nativeEvent = opt.e;
-      
+
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Handler called',data:{hasActiveObject:!!activeObject,pointer:{x:pointer.x,y:pointer.y},target:opt.target?.type||'canvas'},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'Handler called', data: { hasActiveObject: !!activeObject, pointer: { x: pointer.x, y: pointer.y }, target: opt.target?.type || 'canvas' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'A' }) }).catch(() => { });
       // #endregion
 
       // Reset drag tracking with CLIENT coordinates for stable panning
@@ -1326,7 +1344,7 @@ const PageAnnotationLayer = memo(({
             // Hit a handle!
             panInteractionTypeRef.current = 'transform';
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Hit handle - transform',data:{corner},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'Hit handle - transform', data: { corner }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'E' }) }).catch(() => { });
             // #endregion
             // Fabric.js will handle the actual transform interaction automatically
             return;
@@ -1339,11 +1357,11 @@ const PageAnnotationLayer = memo(({
         const isOnSelectedBody = isPointInBoundingBox(pointer, activeObject);
         const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
         const isOutsideBody = !isOnSelectedBody;
-        
+
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 2 - Modifier rotation check',data:{isOnSelectedBody,isOutsideBody,isOnHandle,willStartRotation:isOutsideBody&&!isOnHandle,modifierPressed:isModifierPressed(nativeEvent)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 2 - Modifier rotation check', data: { isOnSelectedBody, isOutsideBody, isOnHandle, willStartRotation: isOutsideBody && !isOnHandle, modifierPressed: isModifierPressed(nativeEvent) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'B' }) }).catch(() => { });
         // #endregion
-        
+
         // If modifier is pressed and clicking OUTSIDE the object body (not on a handle), start rotation
         // Clicking INSIDE should allow normal move behavior (handled by PRIORITY 4)
         // Clicking ON handles should allow normal resize behavior (handled by PRIORITY 1)
@@ -1356,7 +1374,7 @@ const PageAnnotationLayer = memo(({
             center: activeObject.getCenterPoint()
           };
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 2 - Rotation state SET (modifier)',data:{startAngle:rotationStateRef.current.startAngle,center:rotationStateRef.current.center,interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 2 - Rotation state SET (modifier)', data: { startAngle: rotationStateRef.current.startAngle, center: rotationStateRef.current.center, interactionType: panInteractionTypeRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'D' }) }).catch(() => { });
           // #endregion
           opt.e.preventDefault();
           opt.e.stopPropagation();
@@ -1364,7 +1382,7 @@ const PageAnnotationLayer = memo(({
         }
         // #region agent log
         else {
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 2 - Modifier held but conditions not met',data:{isOnSelectedBody,isOutsideBody,isOnHandle},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 2 - Modifier held but conditions not met', data: { isOnSelectedBody, isOutsideBody, isOnHandle }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'B' }) }).catch(() => { });
         }
         // #endregion
         // If modifier is held but clicking inside, let it fall through to normal move behavior
@@ -1374,11 +1392,11 @@ const PageAnnotationLayer = memo(({
       if (activeObject) {
         const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
         const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
-        
+
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 3 - Proximity rotation check',data:{proximityCorner,isOnHandle,willStartRotation:proximityCorner&&!isOnHandle,pointer:{x:pointer.x,y:pointer.y}},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 3 - Proximity rotation check', data: { proximityCorner, isOnHandle, willStartRotation: proximityCorner && !isOnHandle, pointer: { x: pointer.x, y: pointer.y } }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'C' }) }).catch(() => { });
         // #endregion
-        
+
         // If in proximity zone (but not directly on handle), allow rotation
         if (proximityCorner && !isOnHandle) {
           panInteractionTypeRef.current = 'rotate';
@@ -1389,7 +1407,7 @@ const PageAnnotationLayer = memo(({
             center: activeObject.getCenterPoint()
           };
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 3 - Rotation state SET (proximity)',data:{startAngle:rotationStateRef.current.startAngle,center:rotationStateRef.current.center,interactionType:panInteractionTypeRef.current,proximityCorner},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 3 - Rotation state SET (proximity)', data: { startAngle: rotationStateRef.current.startAngle, center: rotationStateRef.current.center, interactionType: panInteractionTypeRef.current, proximityCorner }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'D' }) }).catch(() => { });
           // #endregion
           opt.e.preventDefault();
           opt.e.stopPropagation();
@@ -1447,7 +1465,7 @@ const PageAnnotationLayer = memo(({
       // If there's an active object, check if Fabric is handling a transform
       if (activeObject) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 6 - Empty space with active object',data:{hasActiveObject:!!activeObject,pointer:{x:pointer.x,y:pointer.y}},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 6 - Empty space with active object', data: { hasActiveObject: !!activeObject, pointer: { x: pointer.x, y: pointer.y } }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'E' }) }).catch(() => { });
         // #endregion
         // Set interaction type to 'wait-for-transform'
         panInteractionTypeRef.current = 'wait-for-transform';
@@ -1489,34 +1507,34 @@ const PageAnnotationLayer = memo(({
       // Handle rotation
       // #region agent log
       if (panInteractionTypeRef.current === 'rotate' || rotationStateRef.current) {
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Rotation check',data:{interactionType:panInteractionTypeRef.current,hasRotationState:!!rotationStateRef.current,willProcess:panInteractionTypeRef.current==='rotate'&&!!rotationStateRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseMoveForPan', message: 'Rotation check', data: { interactionType: panInteractionTypeRef.current, hasRotationState: !!rotationStateRef.current, willProcess: panInteractionTypeRef.current === 'rotate' && !!rotationStateRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'D' }) }).catch(() => { });
       }
       // #endregion
-      
+
       if (panInteractionTypeRef.current === 'rotate' && rotationStateRef.current) {
         const rotationState = rotationStateRef.current;
         const obj = rotationState.object;
-        
+
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Processing rotation',data:{hasRotationState:!!rotationStateRef.current,interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseMoveForPan', message: 'Processing rotation', data: { hasRotationState: !!rotationStateRef.current, interactionType: panInteractionTypeRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'D' }) }).catch(() => { });
         // #endregion
-        
+
         // Calculate angle from center to current pointer
         const center = rotationState.center;
         const currentAngle = Math.atan2(
           pointer.y - center.y,
           pointer.x - center.x
         ) * 180 / Math.PI;
-        
+
         // Calculate angle from center to start pointer
         const startAngle = Math.atan2(
           rotationState.startPointer.y - center.y,
           rotationState.startPointer.x - center.x
         ) * 180 / Math.PI;
-        
+
         // Calculate rotation delta
         const deltaAngle = currentAngle - startAngle;
-        
+
         // Apply rotation
         const newAngle = rotationState.startAngle + deltaAngle;
         obj.set({
@@ -1525,19 +1543,19 @@ const PageAnnotationLayer = memo(({
         });
         obj.setCoords();
         canvas.requestRenderAll();
-        
+
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Rotation applied',data:{newAngle,deltaAngle,startAngle:rotationState.startAngle,objAngle:obj.angle},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseMoveForPan', message: 'Rotation applied', data: { newAngle, deltaAngle, startAngle: rotationState.startAngle, objAngle: obj.angle }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'D' }) }).catch(() => { });
         // #endregion
-        
+
         opt.e.preventDefault();
         opt.e.stopPropagation();
         return;
       }
-      
+
       // #region agent log
       if (panInteractionTypeRef.current === 'rotate' && !rotationStateRef.current) {
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Rotation type set but no state',data:{interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseMoveForPan', message: 'Rotation type set but no state', data: { interactionType: panInteractionTypeRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
       }
       // #endregion
 
@@ -1615,7 +1633,7 @@ const PageAnnotationLayer = memo(({
 
       // Save canvas after rotation (before resetting interaction type)
       const wasRotating = panInteractionTypeRef.current === 'rotate';
-      
+
       // If we were tracking an unselected item and drag was < 5px, select it
       if (panInteractionTypeRef.current === 'select-or-pan' && panDragDistanceRef.current <= 5) {
         const hitObject = panDragStartRef.current.hitObject;
@@ -1642,7 +1660,7 @@ const PageAnnotationLayer = memo(({
       panDragDistanceRef.current = 0;
       panInteractionTypeRef.current = null;
       rotationStateRef.current = null;
-      
+
       // Save canvas after rotation
       if (wasRotating) {
         saveCanvas();
@@ -3117,12 +3135,12 @@ const PageAnnotationLayer = memo(({
 
       // Check if this is a highlight that needs special handling
       const isHighlight = activeObject.highlightId != null;
-      
+
       if (isHighlight && onHighlightDeletedRef.current) {
         // Get bounds for highlight deletion callback
         const bounds = activeObject.getBoundingRect(true);
         const highlightId = activeObject.highlightId;
-        
+
         // Remove from canvas first
         canvas.remove(activeObject);
         canvas.discardActiveObject();
