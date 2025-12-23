@@ -13114,7 +13114,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               gap: '4px',
               transform: 'matrix(1, 0, 0, 1, 0, -0.591158) rotate(180deg) scaleX(-1)'
             }}
-            title="Redo"
+            onMouseEnter={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setTooltip({ visible: true, text: 'Redo', x: rect.left + rect.width / 2, y: rect.top - 10 });
+            }}
+            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
           >
             <Icon name="redo" size={14} />
           </button>
