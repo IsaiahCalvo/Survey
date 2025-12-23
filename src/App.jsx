@@ -1607,6 +1607,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // View mode dropdown state
   const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
   const viewDropdownRef = useRef(null);
+  const selectionModeActionsRef = useRef(null);
 
   // Load view mode from localStorage (only UI preference, not data)
   useEffect(() => {
@@ -2136,7 +2137,97 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
   const clearSelection = () => setSelectedIds([]);
 
-  const exitSelectionMode = () => { setIsSelectionMode(false); setSelectedIds([]); };
+  const exitSelectionMode = useCallback(() => { setIsSelectionMode(false); setSelectedIds([]); }, []);
+
+  // Document-level click handler to exit selection mode when clicking outside items
+  useEffect(() => {
+    if (!isSelectionMode || (activeSection !== 'documents' && activeSection !== 'projects' && activeSection !== 'templates')) {
+      return;
+    }
+
+    const handleDocumentClick = (e) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2144', message: 'Document click handler called', data: { targetTag: e.target?.tagName, targetId: e.target?.id, targetClass: e.target?.className }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'A' }) }).catch(() => { });
+      // #endregion
+      
+      const target = e.target;
+      
+      // Check if clicking within the selection mode actions container
+      const isInSelectionModeActions = selectionModeActionsRef.current && selectionModeActionsRef.current.contains(target);
+      
+      // Check if clicking on an item container (grid item div or table row)
+      const isItemContainer = target.closest('tr[style*="cursor: pointer"]') || 
+                             (target.closest('div[style*="cursor: pointer"]') && 
+                              target.closest('div[style*="cursor: pointer"]')?.style?.cursor === 'pointer' &&
+                              !target.closest('div[style*="cursor: pointer"]')?.closest('button'));
+      
+      // Only prevent exit if clicking within selection mode actions OR on an item container
+      const shouldPreventExit = isInSelectionModeActions || isItemContainer;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2162', message: 'Document click exit prevention check', data: { shouldPreventExit, isInSelectionModeActions, isItemContainer, targetTag: target?.tagName, willExit: !shouldPreventExit }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'C' }) }).catch(() => { });
+      // #endregion
+
+      if (!shouldPreventExit) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2166', message: 'Exiting selection mode from document click', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'A' }) }).catch(() => { });
+        // #endregion
+        exitSelectionMode();
+      }
+    };
+
+    // Use capture phase to catch clicks before they're handled by other elements
+    document.addEventListener('click', handleDocumentClick, true);
+    
+    return () => {
+      document.removeEventListener('click', handleDocumentClick, true);
+    };
+  }, [isSelectionMode, activeSection, exitSelectionMode]);
+
+  // Handle clicking outside items to exit selection mode (container-level handler as backup)
+  const handleContainerClick = (e) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2142', message: 'handleContainerClick called', data: { isSelectionMode, activeSection, targetTag: e.target?.tagName, targetId: e.target?.id, targetClass: e.target?.className, currentTargetTag: e.currentTarget?.tagName }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'A' }) }).catch(() => { });
+    // #endregion
+    
+    // Only exit if we're in selection mode and in one of the relevant sections
+    if (isSelectionMode && (activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates')) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2145', message: 'Selection mode active, checking elements', data: { targetTag: e.target?.tagName, targetId: e.target?.id }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'C' }) }).catch(() => { });
+      // #endregion
+      
+      const target = e.target;
+      
+      // Check if clicking within the selection mode actions container (Select All, Move/Copy, Share, Delete, Cancel buttons)
+      const isInSelectionModeActions = selectionModeActionsRef.current && selectionModeActionsRef.current.contains(target);
+      
+      // Check if clicking on an item container (grid item div or table row)
+      // Items have onClick handlers that stop propagation, but we check here as a safety measure
+      const isItemContainer = target.closest('tr[style*="cursor: pointer"]') || 
+                             (target.closest('div[style*="cursor: pointer"]') && 
+                              target.closest('div[style*="cursor: pointer"]')?.style?.cursor === 'pointer' &&
+                              !target.closest('div[style*="cursor: pointer"]')?.closest('button'));
+      
+      // Only prevent exit if clicking within selection mode actions OR on an item container
+      // All other clicks (including other buttons like settings, upload, create project, etc.) should exit
+      const shouldPreventExit = isInSelectionModeActions || isItemContainer;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2168', message: 'Exit prevention check result', data: { shouldPreventExit, isInSelectionModeActions, isItemContainer, targetTag: target?.tagName, willExit: !shouldPreventExit }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'C' }) }).catch(() => { });
+      // #endregion
+
+      if (!shouldPreventExit) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2171', message: 'Exiting selection mode', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'A' }) }).catch(() => { });
+        // #endregion
+        exitSelectionMode();
+      }
+    } else {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:2175', message: 'Not exiting - conditions not met', data: { isSelectionMode, activeSection }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'B' }) }).catch(() => { });
+      // #endregion
+    }
+  };
 
   const handleSectionNavClick = (section, { resetProject = false, resetTemplate = false } = {}) => {
     if (section !== activeSection && isSelectionMode) {
@@ -4127,7 +4218,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   useImperativeHandle(ref, () => ({
     openTemplateModal,
     openEditTemplateModal,
-    closeTemplateModal: () => setIsTemplateModalOpen(false)
+    closeTemplateModal: () => setIsTemplateModalOpen(false),
+    exitSelectionMode
   }));
 
   const openEditTemplateModal = (templateId, options = {}) => {
@@ -4412,13 +4504,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   };
 
   return (
-    <div style={{
-      height: '100%',
-      minHeight: 0,
-      display: 'flex',
-      background: '#1E1E1E',
-      fontFamily: FONT_FAMILY
-    }}>
+    <div
+      onClick={handleContainerClick}
+      style={{
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        background: '#1E1E1E',
+        fontFamily: FONT_FAMILY
+      }}>
       {/* Sidebar */}
       <div style={{
         width: '200px',
@@ -4983,14 +5077,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             return isSelectionMode;
           })() && (
             // #endregion
-            <div style={{
-              padding: '0 32px 16px 32px',
-              display: 'flex',
-              gap: '4px',
-              alignItems: 'center',
-              justifyContent: 'flex-start',
-              flexWrap: 'nowrap'
-            }}>
+            <div 
+              ref={selectionModeActionsRef}
+              style={{
+                padding: '0 32px 16px 32px',
+                display: 'flex',
+                gap: '4px',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                flexWrap: 'nowrap'
+              }}>
               <button
                 onClick={selectAllCurrent}
                 style={{
@@ -6983,12 +7079,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         }
 
         {/* Content Section */}
-        <div style={{
-          flex: 1,
-          padding: '32px',
-          overflow: 'auto',
-          background: '#1E1E1E'
-        }}>
+        <div
+          onClick={handleContainerClick}
+          style={{
+            flex: 1,
+            padding: '32px',
+            overflow: 'auto',
+            background: '#1E1E1E'
+          }}>
           {/* Empty State switching */}
           {activeSection === 'documents' && sortedDocuments.length === 0 ? (
             <div style={{
@@ -7084,11 +7182,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               <p style={{ fontSize: '14px' }}>Add PDFs to this template to start editing</p>
             </div>
           ) : viewMode === 'grid' ? (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-              gap: '12px'
-            }}>
+            <div
+              onClick={handleContainerClick}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                gap: '12px'
+              }}>
               {(activeSection === 'documents' ? sortedDocuments : activeSection === 'projects' ? (selectedProjectId ? (supabaseDocuments || []).map(doc => ({
                 id: doc.id,
                 name: doc.name,
@@ -7387,12 +7487,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               ))}
             </div>
           ) : (
-            <div style={{
-              background: '#2a2a2a',
-              borderRadius: '12px',
-              overflow: 'hidden',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-            }}>
+            <div
+              onClick={handleContainerClick}
+              style={{
+                background: '#2a2a2a',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+              }}>
               {activeSection === 'documents' ? (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -7673,6 +7775,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const { uploadDataFile, downloadDocument: downloadFromStorage } = useStorage();
   const { updateDocument: updateSupabaseDocument } = useDocuments(null);
+  const { features } = useAuth();
 
   const initialZoomPrefsRef = useRef(null);
   if (!initialZoomPrefsRef.current) {
@@ -10192,6 +10295,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [spaces, annotationsByPage, scale]);
 
   const handleExportSpaceToPDF = useCallback(async (spaceId) => {
+    if (!features?.excelExport) {
+      alert('Space PDF Export is a Pro feature. Please upgrade.');
+      return;
+    }
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
       alert('Space not found.');
@@ -13035,6 +13142,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
           {/* Sidebar */}
           <PDFSidebar
+            features={features}
             pdfDoc={pdfDoc}
             numPages={numPages}
             pageNum={pageNum}
@@ -19422,6 +19530,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               <div>
                 <button
                   onClick={async () => {
+                    if (!features?.sso) {
+                      alert('OneDrive integration is an Enterprise feature. Please upgrade.');
+                      return;
+                    }
                     try {
                       await msLogin();
                       // Modal will stay open to show connected status
@@ -19588,6 +19700,18 @@ export default function App() {
   const handleTabClick = (tabId) => {
     const tab = tabs.find(t => t.id === tabId);
     if (tab) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:19699', message: 'handleTabClick called', data: { tabId, isHome: tab?.isHome, hasExitFunction: !!dashboardRef.current?.exitSelectionMode }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run5', hypothesisId: 'A' }) }).catch(() => { });
+      // #endregion
+      
+      // Exit selection mode when switching tabs
+      if (dashboardRef.current?.exitSelectionMode) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:19707', message: 'Calling exitSelectionMode from handleTabClick', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run5', hypothesisId: 'A' }) }).catch(() => { });
+        // #endregion
+        dashboardRef.current.exitSelectionMode();
+      }
+      
       setActiveTabId(tabId);
       if (tab.isHome) {
         // Home tab - show dashboard

@@ -53,7 +53,8 @@ const PDFSidebar = ({
   scale,
   tabId,
   onPageDrop,
-  onToggleCollapse
+  onToggleCollapse,
+  features
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces'
@@ -166,9 +167,9 @@ const PDFSidebar = ({
                   }
                 }}
               >
-                <Icon 
-                  name={tab.icon} 
-                  size={16} 
+                <Icon
+                  name={tab.icon}
+                  size={16}
                   color={activeTab === tab.id ? '#4A90E2' : '#999'}
                 />
                 <span>{tab.label}</span>
@@ -206,7 +207,7 @@ const PDFSidebar = ({
                 activeSpacePages={activeSpacePages}
                 scale={scale}
                 tabId={tabId}
-                onPageDragStart={onPageDrop ? () => {} : undefined}
+                onPageDragStart={onPageDrop ? () => { } : undefined}
               />
             )}
             {activeTab === 'search' && (
@@ -250,6 +251,7 @@ const PDFSidebar = ({
                 onExportSpacePDF={onExportSpacePDF}
                 isRegionSelectionActive={isRegionSelectionActive}
                 numPages={numPages}
+                features={features}
               />
             )}
           </div>
@@ -304,9 +306,9 @@ const PDFSidebar = ({
                   e.currentTarget.style.background = 'transparent';
                 }}
               >
-                <Icon 
-                  name={tab.icon} 
-                  size={20} 
+                <Icon
+                  name={tab.icon}
+                  size={20}
                   color="#999"
                   style={{ width: '20px', height: '20px', flexShrink: 0 }}
                 />

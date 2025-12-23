@@ -74,7 +74,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onRequestRegionEdit,
   onRemovePage,
   onExitSpace,
-  isRegionSelectionActive = false
+  isRegionSelectionActive = false,
+  features
 }) {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isExportHovered, setIsExportHovered] = useState(false);
@@ -424,7 +425,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
-                  onClick={() => setIsExportMenuOpen((open) => !open)}
+                  onClick={() => {
+                    if (!features?.excelExport) {
+                      alert('Exporting Spaces is a Pro feature.');
+                      return;
+                    }
+                    setIsExportMenuOpen((open) => !open);
+                  }}
                   onMouseEnter={() => setIsExportHovered(true)}
                   onMouseLeave={() => setIsExportHovered(false)}
                   style={{
@@ -777,7 +784,8 @@ const SpacesPanel = ({
   onExportSpaceCSV,
   onExportSpacePDF,
   isRegionSelectionActive = false,
-  numPages
+  numPages,
+  features
 }) => {
   const [newSpaceName, setNewSpaceName] = useState('');
   const [editingSpace, setEditingSpace] = useState(null);
@@ -992,56 +1000,74 @@ const SpacesPanel = ({
         </h3>
 
         {/* Create Space Input */}
-        <div style={{
-          display: 'flex',
-          gap: '8px'
-        }}>
-          <input
-            type="text"
-            placeholder="New space name"
-            value={newSpaceName}
-            onChange={(e) => setNewSpaceName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleCreateSpace();
-              }
-            }}
-            style={{
-              flex: 1,
-              padding: '8px 10px',
-              background: '#2b2b2b',
-              color: '#ddd',
-              border: '1px solid #3a3a3a',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontFamily: FONT_FAMILY,
-              outline: 'none'
-            }}
-            onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}
-            onBlur={(e) => e.currentTarget.style.borderColor = '#d0d0d0'}
-          />
-          <button
-            onClick={handleCreateSpace}
-            style={{
-              padding: '8px 12px',
-              background: '#4A90E2',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: FONT_FAMILY
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#357abd'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#4A90E2'}
-          >
-            <Icon name="plus" size={14} color="#ffffff" />
-          </button>
-        </div>
+        {/* Create Space Input - Gated */}
+        {features?.advancedSurvey ? (
+          <div style={{
+            display: 'flex',
+            gap: '8px'
+          }}>
+            <input
+              type="text"
+              placeholder="New space name"
+              value={newSpaceName}
+              onChange={(e) => setNewSpaceName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleCreateSpace();
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: '8px 10px',
+                background: '#2b2b2b',
+                color: '#ddd',
+                border: '1px solid #3a3a3a',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontFamily: FONT_FAMILY,
+                outline: 'none'
+              }}
+              onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}
+              onBlur={(e) => e.currentTarget.style.borderColor = '#d0d0d0'}
+            />
+            <button
+              onClick={handleCreateSpace}
+              style={{
+                padding: '8px 12px',
+                background: '#4A90E2',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontFamily: FONT_FAMILY
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#357abd'}
+              onMouseLeave={(e) => e.currentTarget.style.background = '#4A90E2'}
+            >
+              <Icon name="plus" size={14} color="#ffffff" />
+            </button>
+          </div>
+        ) : (
+          <div style={{
+            padding: '10px',
+            background: '#2b2b2b',
+            border: '1px solid #3a3a3a',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: '#aaa',
+            fontSize: '12px'
+          }}>
+            <Icon name="lock" size={14} color="#aaa" />
+            <span>Upgrade to Pro to create Spaces</span>
+          </div>
+        )}
       </div>
 
       {/* Spaces List */}
@@ -1107,6 +1133,7 @@ const SpacesPanel = ({
                     onRequestRegionEdit={(spaceId, pageId) => onRequestRegionEdit?.(spaceId, pageId)}
                     onRemovePage={handleRemovePage}
                     isRegionSelectionActive={isRegionSelectionActive}
+                    features={features}
                   />
                 );
               })}
