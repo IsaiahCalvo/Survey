@@ -354,9 +354,14 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     const strokeWidth = pathObj.strokeWidth || 3;
     const effectiveRadius = eraserRadius + (strokeWidth / 2); // Account for stroke width
 
+    // Ensure object coordinates are calculated (important for imported paths)
+    if (pathObj.setCoords) {
+      pathObj.setCoords();
+    }
+
     // Get the path's bounding box
     const boundsStartTime = performance.now();
-    const pathBounds = pathObj.getBoundingRect ? pathObj.getBoundingRect() : null;
+    const pathBounds = pathObj.getBoundingRect ? pathObj.getBoundingRect(true) : null; // true = force recalculation
     const boundsTime = performance.now() - boundsStartTime;
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:355', message: 'Bounding rect calculation', data: { boundsTime: boundsTime.toFixed(2) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
@@ -364,6 +369,20 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
     if (!pathBounds) {
       console.log('[erasePathSegment] Could not get bounding rect');
       return false;
+    }
+
+    // Debug: log bounds and first eraser point
+    if (eraserPath.points.length > 0) {
+      const firstPoint = eraserPath.points[0];
+      console.log('[erasePathSegment] Bounds:', {
+        left: pathBounds.left.toFixed(1),
+        top: pathBounds.top.toFixed(1),
+        right: (pathBounds.left + pathBounds.width).toFixed(1),
+        bottom: (pathBounds.top + pathBounds.height).toFixed(1)
+      }, 'EraserPoint:', {
+        x: firstPoint.x.toFixed(1),
+        y: firstPoint.y.toFixed(1)
+      }, 'EffectiveRadius:', effectiveRadius);
     }
 
     // OPTIMIZATION: Quick bounding box rejection check
@@ -913,26 +932,26 @@ const PageAnnotationLayer = memo(({
       // CRITICAL: First check for control points (rotation handles, scaling handles)
       // This must happen BEFORE our custom logic to ensure control points work
       const activeObject = this.getActiveObject();
-      if (activeObject) {
+      if (activeObject && activeObject._findTargetCorner) {
         // Ensure control points are calculated before checking
         if (!activeObject.oCoords) {
           try {
             activeObject.setCoords();
           } catch (err) {
-            console.warn('Failed to setCoords on active object:', err);
+            // Silently ignore - object may not be fully initialized
           }
         }
-        // Check if click is on a control point (with safety check)
-        try {
-          const control = activeObject._findTargetCorner && activeObject.oCoords
-            ? activeObject._findTargetCorner(e.e, true)
-            : null;
-          if (control) {
-            // Click is on a control point - use original findTarget to let Fabric.js handle it
-            return originalFindTarget(e, skipGroup);
+        // Check if click is on a control point (only if oCoords exists and has valid data)
+        if (activeObject.oCoords && activeObject.oCoords.tl) {
+          try {
+            const control = activeObject._findTargetCorner(e.e, true);
+            if (control) {
+              // Click is on a control point - use original findTarget to let Fabric.js handle it
+              return originalFindTarget(e, skipGroup);
+            }
+          } catch (err) {
+            // Silently ignore control point check errors
           }
-        } catch (err) {
-          console.warn('Error checking control points:', err);
         }
       }
 

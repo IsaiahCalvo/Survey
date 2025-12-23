@@ -123,7 +123,6 @@ function pdfColorToHex(colorInput, annotation = null) {
   }
 
   const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-  console.log(`[pdfAnnotationImporter] Parsed color: RGB(${r}, ${g}, ${b}) -> ${hex}`);
   return hex;
 }
 
@@ -132,21 +131,7 @@ function pdfColorToHex(colorInput, annotation = null) {
  * PDF coordinates have origin at bottom-left, Fabric.js at top-left
  */
 function convertInkToFabricPath(annotation, pageHeight, scale = 1) {
-  console.log('[pdfAnnotationImporter] Converting Ink annotation:', JSON.stringify({
-    id: annotation.id,
-    subtype: annotation.subtype,
-    color: annotation.color,
-    borderColor: annotation.borderColor,
-    borderStyle: annotation.borderStyle,
-    borderWidth: annotation.borderWidth,
-    inkLists: annotation.inkLists ? `${annotation.inkLists.length} lists` : 'none',
-    rect: annotation.rect,
-    // Log all keys to see what properties Adobe provides
-    allKeys: Object.keys(annotation)
-  }, null, 2));
-
   if (!annotation.inkLists || annotation.inkLists.length === 0) {
-    console.log('[pdfAnnotationImporter] No inkLists found in annotation');
     return null;
   }
 
@@ -207,15 +192,12 @@ function convertInkToFabricPath(annotation, pageHeight, scale = 1) {
   });
 
   if (pathData.length === 0) {
-    console.log('[pdfAnnotationImporter] No path data generated');
     return null;
   }
 
   // Get color - pass annotation for fallback color sources
   const color = pdfColorToHex(annotation.color, annotation);
   const strokeWidth = annotation.borderStyle?.width || annotation.borderWidth || 2;
-
-  console.log(`[pdfAnnotationImporter] Created path with color: ${color}, strokeWidth: ${strokeWidth}`);
 
   // Calculate path bounds for proper positioning
   const width = maxX - minX;
