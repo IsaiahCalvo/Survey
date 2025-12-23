@@ -795,9 +795,6 @@ const PageAnnotationLayer = memo(({
               uniformScaling: false,  // Allow free scaling by default
               lockUniScaling: false   // Allow free scaling on corner handles
             });
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:757', message: 'Object loaded from annotations', data: { type: obj.type, uniformScaling: obj.uniformScaling, lockUniScaling: obj.lockUniScaling, hasUniformScaling: 'uniformScaling' in obj }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-            // #endregion
             // Store spaceId on object if not already set (for backward compatibility)
             if (!obj.spaceId) {
               obj.spaceId = objData.spaceId || null;
@@ -909,10 +906,6 @@ const PageAnnotationLayer = memo(({
     const handleObjectScaling = (e) => {
       isFabricTransformingRef.current = true;
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:882', message: 'handleObjectScaling called', data: { hasEvent: !!e, hasTarget: !!e?.target, targetType: e?.target?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-      // #endregion
-
       // Check modifier key: Command on macOS, Control on Windows
       const originalEvent = e.e;
       if (!originalEvent) return;
@@ -921,52 +914,27 @@ const PageAnnotationLayer = memo(({
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0 || 
                     navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
       
-      // Use Command on macOS, Control on Windows
-      const isModifierPressed = isMac ? originalEvent.metaKey : originalEvent.ctrlKey;
-
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:888', message: 'Modifier key check', data: { hasOriginalEvent: !!originalEvent, isMac, metaKey: originalEvent?.metaKey, ctrlKey: originalEvent?.ctrlKey, isModifierPressed }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-      // #endregion
+      // Use Command on macOS, Control on Windows - STRICTLY one or the other, not both
+      const isModifierPressed = isMac 
+        ? originalEvent.metaKey && !originalEvent.ctrlKey  // Mac: ONLY Command, ignore Control
+        : originalEvent.ctrlKey && !originalEvent.metaKey; // Windows: ONLY Control, ignore Command
 
       // Get the object being scaled
       const obj = e.target;
       if (!obj) return;
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:895', message: 'Object scaling state before logic', data: { type: obj.type, scaleX: obj.scaleX, scaleY: obj.scaleY, uniformScaling: obj.uniformScaling, lockUniScaling: obj.lockUniScaling }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
-      // #endregion
-
-      // In Fabric.js v4+, we use canvas.uniformScaling and canvas.uniScaleKey
       // Set uniformScaling dynamically based on modifier key
-      // Note: uniScaleKey is set to 'ctrlKey' but we need to handle both Ctrl and Cmd
-      // So we'll set uniformScaling directly on the canvas
       if (isModifierPressed) {
         // Temporarily enable uniform scaling when modifier is pressed
         canvas.uniformScaling = true;
-
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:905', message: 'Uniform scaling enabled', data: { scaleX: obj.scaleX, scaleY: obj.scaleY, canvasUniformScaling: canvas.uniformScaling }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
-        // #endregion
       } else {
         // Ensure uniform scaling is disabled for free scaling
         canvas.uniformScaling = false;
-
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:910', message: 'Free scaling enabled', data: { scaleX: obj.scaleX, scaleY: obj.scaleY, canvasUniformScaling: canvas.uniformScaling }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' }) }).catch(() => { });
-        // #endregion
       }
-      // If modifier is not pressed, allow free scaling (no action needed - uniformScaling: false handles this)
-
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:880', message: 'Fabric.js object scaling started', data: { targetType: e.target?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'I' }) }).catch(() => { });
-      // #endregion
     };
 
     const handleObjectRotating = (e) => {
       isFabricTransformingRef.current = true;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:887', message: 'Fabric.js object rotating started', data: { targetType: e.target?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'I' }) }).catch(() => { });
-      // #endregion
     };
 
     // Track when Fabric.js stops transforming - reset flag when modification completes
@@ -977,10 +945,6 @@ const PageAnnotationLayer = memo(({
       if (canvas) {
         canvas.uniformScaling = false;
       }
-
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:894', message: 'Fabric.js object transform ended', data: { targetType: e.target?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'I' }) }).catch(() => { });
-      // #endregion
     };
 
     // Helper function to check if a point is within an object's bounding box
@@ -1531,9 +1495,6 @@ const PageAnnotationLayer = memo(({
         return;
       } else if (currentTool === 'rect') {
         temp = new Rect({ left: x, top: y, width: 1, height: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1599', message: 'Rect created', data: { uniformScaling: temp.uniformScaling, lockUniScaling: temp.lockUniScaling }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-        // #endregion
       } else if (currentTool === 'ellipse') {
         temp = new Circle({ left: x, top: y, radius: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, originX: 'left', originY: 'top', uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'line' || currentTool === 'underline' || currentTool === 'strikeout') {
