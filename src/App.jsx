@@ -19670,15 +19670,8 @@ export default function App() {
   const handleTabClick = (tabId) => {
     const tab = tabs.find(t => t.id === tabId);
     if (tab) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:19699', message: 'handleTabClick called', data: { tabId, isHome: tab?.isHome, hasExitFunction: !!dashboardRef.current?.exitSelectionMode }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run5', hypothesisId: 'A' }) }).catch(() => { });
-      // #endregion
-      
       // Exit selection mode when switching tabs
       if (dashboardRef.current?.exitSelectionMode) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:19707', message: 'Calling exitSelectionMode from handleTabClick', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run5', hypothesisId: 'A' }) }).catch(() => { });
-        // #endregion
         dashboardRef.current.exitSelectionMode();
       }
       
