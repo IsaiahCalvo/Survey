@@ -751,7 +751,10 @@ const PageAnnotationLayer = memo(({
       annotations.objects.forEach(objData => {
         util.enlivenObjects([objData], (enlivenedObjects) => {
           enlivenedObjects.forEach(obj => {
-            obj.set({ strokeUniform: true });
+            obj.set({ 
+              strokeUniform: true,
+              uniformScaling: false  // Allow free scaling by default
+            });
             // Store spaceId on object if not already set (for backward compatibility)
             if (!obj.spaceId) {
               obj.spaceId = objData.spaceId || null;
@@ -843,7 +846,8 @@ const PageAnnotationLayer = memo(({
         e.path.set({
           strokeUniform: true,
           perPixelTargetFind: true, // Enable pixel-perfect hit detection for selection
-          targetFindTolerance: 5 // Add small tolerance for easier selection
+          targetFindTolerance: 5, // Add small tolerance for easier selection
+          uniformScaling: false  // Allow free scaling by default
         });
         // Store current selectedSpaceId on the path
         if (selectedSpaceIdRef.current) {
@@ -877,6 +881,30 @@ const PageAnnotationLayer = memo(({
     // Track when Fabric.js starts transforming (scaling/rotating) an object
     const handleObjectScaling = (e) => {
       isFabricTransformingRef.current = true;
+      
+      // Check if Cmd (macOS) or Ctrl (Windows) is pressed
+      const originalEvent = e.e;
+      const isModifierPressed = originalEvent && (originalEvent.metaKey || originalEvent.ctrlKey);
+      
+      // Get the object being scaled
+      const obj = e.target;
+      if (!obj) return;
+      
+      if (isModifierPressed) {
+        // Lock aspect ratio: make scaleX and scaleY equal
+        // Use the larger of the two scales to maintain size while preserving aspect ratio
+        const currentScaleX = obj.scaleX;
+        const currentScaleY = obj.scaleY;
+        const avgScale = (currentScaleX + currentScaleY) / 2;
+        
+        // Apply uniform scaling
+        obj.set({
+          scaleX: avgScale,
+          scaleY: avgScale
+        });
+      }
+      // If modifier is not pressed, allow free scaling (no action needed - uniformScaling: false handles this)
+      
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:880', message: 'Fabric.js object scaling started', data: { targetType: e.target?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'I' }) }).catch(() => { });
       // #endregion
@@ -981,7 +1009,7 @@ const PageAnnotationLayer = memo(({
       const activeObject = canvas.getActiveObject();
 
       // Reset drag tracking
-      const nativeEvent = opt.e.e;
+      const nativeEvent = opt.e;
       panDragStartRef.current = {
         x: pointer.x,
         y: pointer.y,
@@ -1002,7 +1030,7 @@ const PageAnnotationLayer = memo(({
         if (activeObject.oCoords) {
           // We need to use the raw event point for _findTargetCorner
           const canvasPointer = canvas.getPointer(opt.e);
-          const corner = activeObject._findTargetCorner(opt.e.e, true);
+          const corner = activeObject._findTargetCorner(opt.e, true);
 
           if (corner) {
             // Hit a handle!
@@ -1092,7 +1120,7 @@ const PageAnnotationLayer = memo(({
 
       // Trigger container panning by dispatching mousedown event on container
       // Find the container element using data-testid or by finding scrollable parent
-      // nativeEvent is already declared at top of function
+      const nativeEvent = opt.e;
       const canvasElement = canvasRef.current;
       if (canvasElement && nativeEvent) {
         // Try to find container by data-testid first
@@ -1160,7 +1188,7 @@ const PageAnnotationLayer = memo(({
 
         // Dispatch synthetic mousedown to container to start panning IMMEDIATELY associated with this drag
         // This ensures the container picks up the pan gesture even though we delayed it
-        const nativeEvent = opt.e.e;
+        const nativeEvent = opt.e;
         const containerElement = document.querySelector('[data-testid="pdf-container"]');
         if (!containerElement) {
           // Fallback to finding scrollable parent if testid not found (reusing logic from below)
@@ -1215,7 +1243,7 @@ const PageAnnotationLayer = memo(({
           // Not transforming and moved > 5px - it's empty space panning
           panInteractionTypeRef.current = 'pan';
           // Dispatch mousedown to container to start panning
-          const nativeEvent = opt.e.e;
+          const nativeEvent = opt.e;
           const containerElement = document.querySelector('[data-testid="pdf-container"]');
           if (containerElement && nativeEvent) {
             const syntheticMousedown = new MouseEvent('mousedown', {
@@ -1239,7 +1267,7 @@ const PageAnnotationLayer = memo(({
       // BUT NOT if we're in 'transform' or 'move' mode (those should only affect the annotation)
       // ALSO NOT if Fabric.js is currently transforming an object (scaling/rotating)
       if (panInteractionTypeRef.current === 'pan' && !isTransforming) {
-        const nativeEvent = opt.e.e;
+        const nativeEvent = opt.e;
         const containerElement = document.querySelector('[data-testid="pdf-container"]');
         if (containerElement && nativeEvent) {
           const syntheticEvent = new MouseEvent('mousemove', {
@@ -1289,7 +1317,7 @@ const PageAnnotationLayer = memo(({
           // #endregion
         } else if (panDragDistanceRef.current > 5) {
           // It was panning - dispatch mouseup to container
-          const nativeEvent = opt.e.e;
+          const nativeEvent = opt.e;
           const containerElement = document.querySelector('[data-testid="pdf-container"]');
           if (containerElement && nativeEvent) {
             const syntheticEvent = new MouseEvent('mouseup', {
@@ -1320,7 +1348,7 @@ const PageAnnotationLayer = memo(({
       } else if (panInteractionTypeRef.current === 'pan') {
         // If we were in 'pan' mode (empty space), dispatch mouseup to container
         // BUT NOT if we're in 'transform' or 'move' mode
-        const nativeEvent = opt.e.e;
+        const nativeEvent = opt.e;
         const containerElement = document.querySelector('[data-testid="pdf-container"]');
         if (containerElement && nativeEvent) {
           const syntheticEvent = new MouseEvent('mouseup', {
@@ -1338,9 +1366,9 @@ const PageAnnotationLayer = memo(({
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1160', message: 'Transform/move mode mouseup - NOT dispatching to container', data: { interactionType: panInteractionTypeRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' }) }).catch(() => { });
         // #endregion
-        // Prevent container panning during transform/move
-        opt.e.preventDefault();
-        opt.e.stopPropagation();
+        // CRITICAL: We DO NOT prevent default or stop propagation here.
+        // Fabric.js needs the mouseup event to complete the transform/move action and reset its internal state.
+        // If we stop propagation, Fabric.js stays in "transforming" mode (sticky grabber).
       }
 
       // Reset tracking
@@ -1584,7 +1612,8 @@ const PageAnnotationLayer = memo(({
           strokeDashArray: [5, 5],
           strokeUniform: true,
           selectable: false,
-          evented: false
+          evented: false,
+          uniformScaling: false
         });
         ds.isDrawingShape = true;
         ds.startX = x;
@@ -1596,15 +1625,15 @@ const PageAnnotationLayer = memo(({
         canvas.add(temp);
         return;
       } else if (currentTool === 'rect') {
-        temp = new Rect({ left: x, top: y, width: 1, height: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true });
+        temp = new Rect({ left: x, top: y, width: 1, height: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false });
       } else if (currentTool === 'ellipse') {
-        temp = new Circle({ left: x, top: y, radius: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, originX: 'left', originY: 'top' });
+        temp = new Circle({ left: x, top: y, radius: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, originX: 'left', originY: 'top', uniformScaling: false });
       } else if (currentTool === 'line' || currentTool === 'underline' || currentTool === 'strikeout') {
-        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true });
+        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false });
       } else if (currentTool === 'arrow') {
-        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true });
+        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false });
       } else if (currentTool === 'squiggly') {
-        temp = new Polyline([[x, y]], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true });
+        temp = new Polyline([[x, y]], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false });
       } else if (currentTool === 'note') {
         const note = new Group([
           new Rect({ width: 18, height: 18, fill: '#ffeb3b', rx: 4, ry: 4 }),
@@ -2504,7 +2533,8 @@ const PageAnnotationLayer = memo(({
             evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
             excludeFromExport: false,
             strokeUniform: true,
-            globalCompositeOperation: 'multiply'
+            globalCompositeOperation: 'multiply',
+            uniformScaling: false
           });
           // Store the highlightId and needsBIC flag on the object for later reference
           rect.set({ highlightId: highlight.highlightId, needsBIC: true });
@@ -2538,7 +2568,8 @@ const PageAnnotationLayer = memo(({
             evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
             excludeFromExport: false,
             strokeUniform: true,
-            globalCompositeOperation: 'multiply'
+            globalCompositeOperation: 'multiply',
+            uniformScaling: false
           });
           // Store the highlightId if available
           if (highlight.highlightId) {

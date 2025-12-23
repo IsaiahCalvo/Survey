@@ -136,3 +136,33 @@ _onMouseDown @ fabric.js:13274
 Show 5 more frames
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
+fabric.js:17849 Uncaught TypeError: Cannot read properties of undefined (reading 'x')
+    at klass._findTargetCorner (fabric.js:17849:24)
+    at klass.handleMouseDownForPan (PageAnnotationLayer.jsx:1005:39)
+    at klass.fire (fabric.js:334:52)
+    at klass._handleEvent (fabric.js:13513:12)
+    at klass.__onMouseDown (fabric.js:13667:12)
+    at klass._onMouseDown (fabric.js:13274:12)
+_findTargetCorner @ fabric.js:17849
+handleMouseDownForPan @ PageAnnotationLayer.jsx:1005
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseDown @ fabric.js:13667
+_onMouseDown @ fabric.js:13274
+Show 5 more frames
+fabric.js:17849 Uncaught TypeError: Cannot read properties of undefined (reading 'x')
+    at klass._findTargetCorner (fabric.js:17849:24)
+    at klass.handleMouseDownForPan (PageAnnotationLayer.jsx:1005:39)
+    at klass.fire (fabric.js:334:52)
+    at klass._handleEvent (fabric.js:13513:12)
+    at klass.__onMouseDown (fabric.js:13667:12)
+    at klass._onMouseDown (fabric.js:13274:12)
+_findTargetCorner @ fabric.js:17849
+handleMouseDownForPan @ PageAnnotationLayer.jsx:1005
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseDown @ fabric.js:13667
+_onMouseDown @ fabric.js:13274
+Show 5 more frames
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
