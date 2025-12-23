@@ -1,4 +1,18 @@
 import React, { useEffect, useRef, memo } from 'react';
+
+// Globally patch getContext BEFORE importing Fabric.js to prevent willReadFrequently warnings
+// This must happen before any canvas contexts are created by Fabric
+if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype._willReadFrequentlyPatched) {
+  const originalGetContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function(contextType, options = {}) {
+    if (contextType === '2d') {
+      return originalGetContext.call(this, contextType, { ...options, willReadFrequently: true });
+    }
+    return originalGetContext.call(this, contextType, options);
+  };
+  HTMLCanvasElement.prototype._willReadFrequentlyPatched = true;
+}
+
 import { fabric as fabricLib } from 'fabric';
 const { Canvas, Rect, Circle, Line, Triangle, Textbox, PencilBrush, Polyline, Group, util, Path } = fabricLib;
 // Note: polygon-clipping removed - using clipPath-based erasing instead
@@ -846,17 +860,6 @@ const PageAnnotationLayer = memo(({
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
       navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
 
-    // Temporarily monkey-patch HTMLCanvasElement.prototype.getContext globally
-    // to ensure all canvas contexts created by Fabric.js use willReadFrequently
-    // This prevents Chrome warnings about frequent getImageData calls
-    const originalProtoGetContext = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function(contextType, options = {}) {
-      if (contextType === '2d') {
-        return originalProtoGetContext.call(this, contextType, { ...options, willReadFrequently: true });
-      }
-      return originalProtoGetContext.call(this, contextType, options);
-    };
-
     const canvas = new Canvas(canvasRef.current, {
       width: width * scale,
       height: height * scale,
@@ -881,9 +884,6 @@ const PageAnnotationLayer = memo(({
       // Note: We don't set uniScaleKey because we handle modifier keys manually
       // in handleObjectScaling to ensure platform-specific behavior (Command on Mac, Control on Windows)
     });
-
-    // Restore the original getContext method after Fabric.js initialization
-    HTMLCanvasElement.prototype.getContext = originalProtoGetContext;
 
     const brush = new PencilBrush(canvas);
     brush.color = strokeColor;
