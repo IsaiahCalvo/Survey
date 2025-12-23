@@ -2,15 +2,26 @@ import { fabric } from 'fabric';
 
 /**
  * Renders a pill-shaped control (rounded rectangle)
+ * Rotates with the object to stay parallel to bounding box edges
  */
 const renderPillControl = (ctx, left, top, styleOverride, fabricObject) => {
     const size = styleOverride.cornerSize || 24;
     const width = size * 1.5; // Wider than tall
     const height = size / 2.5; // Thinner height
-    const x = left - width / 2;
-    const y = top - height / 2;
+    
+    // Get object rotation angle in radians
+    const angle = fabricObject ? (fabricObject.angle || 0) * Math.PI / 180 : 0;
 
     ctx.save();
+    
+    // Translate to control center and rotate
+    ctx.translate(left, top);
+    ctx.rotate(angle);
+    
+    // Draw centered at origin (0, 0) after transform
+    const x = -width / 2;
+    const y = -height / 2;
+    
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, height / 2);
     ctx.fillStyle = '#ffffff';
@@ -28,15 +39,26 @@ const renderPillControl = (ctx, left, top, styleOverride, fabricObject) => {
 
 /**
  * Renders a vertical pill-shaped control (for left/right handles)
+ * Rotates with the object to stay parallel to bounding box edges
  */
 const renderVerticalPillControl = (ctx, left, top, styleOverride, fabricObject) => {
     const size = styleOverride.cornerSize || 24;
     const width = size / 2.5; // Thinner width
     const height = size * 1.5; // Taller than wide
-    const x = left - width / 2;
-    const y = top - height / 2;
+    
+    // Get object rotation angle in radians
+    const angle = fabricObject ? (fabricObject.angle || 0) * Math.PI / 180 : 0;
 
     ctx.save();
+    
+    // Translate to control center and rotate
+    ctx.translate(left, top);
+    ctx.rotate(angle);
+    
+    // Draw centered at origin (0, 0) after transform
+    const x = -width / 2;
+    const y = -height / 2;
+    
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, width / 2);
     ctx.fillStyle = '#ffffff';
@@ -55,15 +77,23 @@ const renderVerticalPillControl = (ctx, left, top, styleOverride, fabricObject) 
 
 /**
  * Renders a circular rotation control with icon
+ * Rotates with the object to maintain orientation relative to the object
  */
 const renderRotationControl = (ctx, left, top, styleOverride, fabricObject) => {
     const size = 24;
-    const x = left;
-    const y = top;
+    
+    // Get object rotation angle in radians
+    const angle = fabricObject ? (fabricObject.angle || 0) * Math.PI / 180 : 0;
 
     ctx.save();
+    
+    // Translate to control center and rotate
+    ctx.translate(left, top);
+    ctx.rotate(angle);
+    
+    // Draw circle centered at origin (0, 0) after transform
     ctx.beginPath();
-    ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+    ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#e0e0e0';
     ctx.lineWidth = 1;
@@ -83,14 +113,14 @@ const renderRotationControl = (ctx, left, top, styleOverride, fabricObject) => {
 
     // Draw arrow arc
     const r = size * 0.25;
-    ctx.arc(x, y, r, 0, Math.PI * 1.5);
+    ctx.arc(0, 0, r, 0, Math.PI * 1.5);
     ctx.stroke();
 
     // Draw arrow head
     ctx.beginPath();
-    // End point of arc is at (x + r * cos(1.5PI), y + r * sin(1.5PI)) => (x, y-r)
-    const arrowX = x;
-    const arrowY = y - r;
+    // End point of arc is at (0, -r) after rotation
+    const arrowX = 0;
+    const arrowY = -r;
     ctx.moveTo(arrowX, arrowY);
     ctx.lineTo(arrowX + 3, arrowY - 1);
     ctx.moveTo(arrowX, arrowY);

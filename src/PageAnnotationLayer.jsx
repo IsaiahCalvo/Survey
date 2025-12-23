@@ -991,8 +991,34 @@ const PageAnnotationLayer = memo(({
     };
 
     // Track when Fabric.js starts transforming (scaling/rotating) an object
+    // Helper function to hide controls on active object
+    const hideControls = () => {
+      const activeObject = canvas.getActiveObject();
+      if (activeObject) {
+        // Store original hasControls state if not already stored
+        if (activeObject._originalHasControls === undefined) {
+          activeObject._originalHasControls = activeObject.hasControls;
+        }
+        activeObject.set('hasControls', false);
+        canvas.requestRenderAll();
+      }
+    };
+
+    // Helper function to show controls on active object
+    const showControls = () => {
+      const activeObject = canvas.getActiveObject();
+      if (activeObject && activeObject._originalHasControls !== undefined) {
+        activeObject.set('hasControls', activeObject._originalHasControls);
+        delete activeObject._originalHasControls;
+        canvas.requestRenderAll();
+      }
+    };
+
     const handleObjectScaling = (e) => {
       isFabricTransformingRef.current = true;
+      
+      // Hide controls immediately when scaling starts
+      hideControls();
 
       // Check modifier key: Command on macOS, Control on Windows
       const originalEvent = e.e;
@@ -1023,11 +1049,25 @@ const PageAnnotationLayer = memo(({
 
     const handleObjectRotating = (e) => {
       isFabricTransformingRef.current = true;
+      
+      // Hide controls immediately when rotating starts
+      hideControls();
+    };
+
+    // Handle object moving event
+    const handleObjectMoving = (e) => {
+      isFabricTransformingRef.current = true;
+      
+      // Hide controls immediately when moving starts
+      hideControls();
     };
 
     // Track when Fabric.js stops transforming - reset flag when modification completes
     const handleObjectModifiedEnd = (e) => {
       isFabricTransformingRef.current = false;
+
+      // Show controls again when transformation ends
+      showControls();
 
       // Reset canvas uniformScaling to default (false) after scaling ends
       if (canvas) {
@@ -2242,6 +2282,7 @@ const PageAnnotationLayer = memo(({
     });
     canvas.on('object:scaling', handleObjectScaling);
     canvas.on('object:rotating', handleObjectRotating);
+    canvas.on('object:moving', handleObjectMoving);
     canvas.on('path:created', handlePathCreated);
     canvas.on('mouse:down', handleMouseDown);
     canvas.on('mouse:move', handleMouseMove);
