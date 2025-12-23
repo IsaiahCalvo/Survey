@@ -1,255 +1,76 @@
-chunk-F2KOVKPX.js?v=20d15701:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-PDFWorkerManager.js:5 PDFWorkerManager: Creating PDF worker
-PDFWorkerManager.js:7 PDFWorkerManager: PDF worker created successfully
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:1635 Syncing documents from Supabase: 0 []
-authConfig.js:36 [Tue, 23 Dec 2025 03:47:44 GMT] : [] : @azure/msal-browser@4.26.2 : Info - MSAL.js was last initialized by version: 4.26.2
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:1635 Syncing documents from Supabase: 1 [{…}]
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-pdfRender.worker.js:3 PDF Worker initialized
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:1635 Syncing documents from Supabase: 1 [{…}]
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:5046     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_CONNECTION_REFUSED
-(anonymous) @ App.jsx:5046
-Dashboard2 @ App.jsx:5048
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateForwardRef @ chunk-DSUIPI7G.js:21214
-beginWork @ chunk-DSUIPI7G.js:22835
-beginWork$1 @ chunk-DSUIPI7G.js:26642
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
+App.jsx:11607 Unable to preventDefault inside passive event listener invocation.
+preventDefault @ chunk-DSUIPI7G.js:12649
+(anonymous) @ App.jsx:11607
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchContinuousEvent @ chunk-DSUIPI7G.js:12350
+Show 16 more frames
+App.jsx:11607 Unable to preventDefault inside passive event listener invocation.
+preventDefault @ chunk-DSUIPI7G.js:12649
+(anonymous) @ App.jsx:11607
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchContinuousEvent @ chunk-DSUIPI7G.js:12350
+Show 16 more frames
+App.jsx:11607 Unable to preventDefault inside passive event listener invocation.
+preventDefault @ chunk-DSUIPI7G.js:12649
+(anonymous) @ App.jsx:11607
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchContinuousEvent @ chunk-DSUIPI7G.js:12350
+Show 16 more frames
+App.jsx:11607 Unable to preventDefault inside passive event listener invocation.
+preventDefault @ chunk-DSUIPI7G.js:12649
+(anonymous) @ App.jsx:11607
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchContinuousEvent @ chunk-DSUIPI7G.js:12350
+Show 16 more frames

@@ -11622,6 +11622,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, []);
 
+  // Attach wheel event listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, [handleWheel]);
+
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
     // Only allow pan when:
@@ -12082,25 +12094,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   // To center the highlight, we want: highlightCenterInScroll = scrollLeft + (containerWidth / 2)
                   // Therefore: scrollLeft = highlightCenterInScroll - (containerWidth / 2)
                   scrollLeft = highlightCenterInScroll - (containerWidth / 2);
-
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11550', message: 'Horizontal scroll calculation', data: { boundsX, boundsWidth, highlightCenterX, scaledHighlightCenterX, pdfPageWidth, pageContainerWidth, targetRectWidth: targetRect.width, containerScrollLeft: container.scrollLeft, pageContainerScrollLeft, pdfPageLeftOffsetInContainer, pdfPageLeftInScroll, highlightCenterInScroll, containerWidth, calculatedScrollLeft: highlightCenterInScroll - (containerWidth / 2), finalScrollLeft: scrollLeft, hasCanvas: !!pdfCanvas }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'E' }) }).catch(() => { });
-                  // #endregion
-
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11529', message: 'Final scroll calculation', data: { scrollTop, scrollLeft, containerHeight, containerWidth, centerOffsetY, scaledHeight, scaledWidth }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'E' }) }).catch(() => { });
-                  // #endregion
                 } else {
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11533', message: 'No bounds available', data: { scrollTop, scrollLeft }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'C' }) }).catch(() => { });
-                  // #endregion
                 }
 
                 const finalScrollTop = Math.max(0, Math.min(scrollTop, container.scrollHeight - container.clientHeight));
                 const finalScrollLeft = Math.max(0, Math.min(scrollLeft, container.scrollWidth - container.clientWidth));
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11539', message: 'Scrolling to final position', data: { finalScrollTop, finalScrollLeft, scrollTop, scrollLeft, containerScrollHeight: container.scrollHeight, containerScrollWidth: container.scrollWidth, containerClientHeight: container.clientHeight, containerClientWidth: container.clientWidth }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'E' }) }).catch(() => { });
-                // #endregion
                 container.scrollTo({
                   top: finalScrollTop,
                   left: finalScrollLeft,
@@ -12109,9 +12107,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               });
             });
           } else {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11547', message: 'Container not found - fallback to goToPage', data: { pageNumber, hasTargetContainer: !!targetContainer, hasContainer: !!container }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v3', hypothesisId: 'D' }) }).catch(() => { });
-            // #endregion
             // If page not mounted, fallback to standard page navigation
             goToPage(pageNumber);
           }
@@ -13177,7 +13172,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            onWheel={handleWheel}
             style={containerStyle}
             data-testid="pdf-container"
           >
