@@ -892,6 +892,17 @@ const PageAnnotationLayer = memo(({
 
     fabricRef.current = canvas;
 
+    // 🔍 DEBUG: Rotation debugging enabled
+    console.log('🚀 [DEBUG MODE] Rotation mechanics debugging ACTIVE for page', pageNumber);
+    console.log('📋 [DEBUG INFO] Tracking:', {
+      cursorPosition: 'Inside/Outside bounding box',
+      proximityDetection: 'Corner handle proximity zones',
+      handleDetection: 'Corner and edge handles',
+      rotationTriggers: 'Modifier key + proximity zones',
+      selectionState: 'Object selection during rotation',
+      rotationCalculation: 'Angle calculations and application'
+    });
+
     if (annotations && annotations.objects && annotations.objects.length > 0) {
       annotations.objects.forEach(objData => {
         util.enlivenObjects([objData], (enlivenedObjects) => {
@@ -899,7 +910,12 @@ const PageAnnotationLayer = memo(({
             obj.set({
               strokeUniform: true,
               uniformScaling: false,  // Allow free scaling by default
-              lockUniScaling: false   // Allow free scaling on corner handles
+              lockUniScaling: false,   // Allow free scaling on corner handles
+              centeredRotation: true  // Ensure rotation happens around center point
+            });
+            // Disable Fabric.js built-in rotation control - we use custom rotation
+            obj.setControlsVisibility({
+              mtr: false  // Completely disable rotation control (not just hide it)
             });
             // Store spaceId on object if not already set (for backward compatibility)
             if (!obj.spaceId) {
@@ -977,7 +993,12 @@ const PageAnnotationLayer = memo(({
           perPixelTargetFind: true, // Enable pixel-perfect hit detection for selection
           targetFindTolerance: 5, // Add small tolerance for easier selection
           uniformScaling: false,  // Allow free scaling by default
-          lockUniScaling: false   // Allow free scaling on corner handles
+          lockUniScaling: false,   // Allow free scaling on corner handles
+          centeredRotation: true  // Ensure rotation happens around center point
+        });
+        // Disable Fabric.js built-in rotation control - we use custom rotation
+        e.path.setControlsVisibility({
+          mtr: false  // Completely disable rotation control (not just hide it)
         });
         // Store current selectedSpaceId on the path
         if (selectedSpaceIdRef.current) {
@@ -1100,21 +1121,41 @@ const PageAnnotationLayer = memo(({
       // Get bounding box accounting for transformations
       const bounds = obj.getBoundingRect(true);
 
-      return (
+      const isInside = (
         point.x >= bounds.left &&
         point.x <= bounds.left + bounds.width &&
         point.y >= bounds.top &&
         point.y <= bounds.top + bounds.height
       );
+
+      console.log('📦 [BOUNDING BOX] Point inside check:', {
+        point: { x: point.x.toFixed(2), y: point.y.toFixed(2) },
+        bounds: {
+          left: bounds.left.toFixed(2),
+          top: bounds.top.toFixed(2),
+          right: (bounds.left + bounds.width).toFixed(2),
+          bottom: (bounds.top + bounds.height).toFixed(2),
+          width: bounds.width.toFixed(2),
+          height: bounds.height.toFixed(2)
+        },
+        isInside
+      });
+
+      return isInside;
     };
 
     // Helper function to check if modifier key is pressed (Command on Mac, Control on Windows)
     const isModifierPressed = (event) => {
       // Check for Command (Mac) or Control (Windows/Linux)
       const result = event.metaKey || event.ctrlKey;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:isModifierPressed',message:'Modifier check',data:{metaKey:event.metaKey,ctrlKey:event.ctrlKey,result:result},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
+
+      console.log('⌨️ [MODIFIER KEY] Check:', {
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        isPressed: result,
+        platform: navigator.platform
+      });
+
       return result;
     };
 
@@ -1122,9 +1163,6 @@ const PageAnnotationLayer = memo(({
     // Returns the corner handle key if in proximity, null otherwise
     const getCornerHandleInProximity = (point, obj, buffer = 17.5) => {
       if (!obj || !obj.oCoords) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:getCornerHandleInProximity',message:'Early return - no obj or oCoords',data:{hasObj:!!obj,hasOCoords:!!(obj&&obj.oCoords)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         return null;
       }
 
@@ -1132,15 +1170,22 @@ const PageAnnotationLayer = memo(({
       try {
         obj.setCoords();
       } catch (e) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:getCornerHandleInProximity',message:'setCoords failed',data:{error:e.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         return null;
       }
 
       const corners = ['tl', 'tr', 'bl', 'br'];
       const handleSize = (obj.cornerSize || 12) / 2; // Half the handle size
       const totalRadius = handleSize + buffer; // Handle radius + buffer zone
+
+      console.log('🎯 [PROXIMITY CHECK] Corner handle proximity test:', {
+        point: { x: point.x.toFixed(2), y: point.y.toFixed(2) },
+        handleSize: handleSize.toFixed(2),
+        buffer: buffer.toFixed(2),
+        totalRadius: totalRadius.toFixed(2)
+      });
+
+      let closestCorner = null;
+      let minDistance = Infinity;
 
       for (const cornerKey of corners) {
         const corner = obj.oCoords[cornerKey];
@@ -1151,18 +1196,26 @@ const PageAnnotationLayer = memo(({
         const dy = point.y - corner.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestCorner = cornerKey;
+        }
+
+        console.log(`  📍 Corner ${cornerKey}:`, {
+          cornerPos: { x: corner.x.toFixed(2), y: corner.y.toFixed(2) },
+          distance: distance.toFixed(2),
+          inProximityZone: distance > handleSize && distance <= totalRadius,
+          onHandle: distance <= handleSize
+        });
+
         // Check if point is in the buffer zone (outside handle but within buffer)
         if (distance > handleSize && distance <= totalRadius) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:getCornerHandleInProximity',message:'Proximity detected',data:{cornerKey,distance,handleSize,totalRadius,point:{x:point.x,y:point.y},corner:{x:corner.x,y:corner.y}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
+          console.log(`✅ [PROXIMITY CHECK] Found proximity zone at corner ${cornerKey}`);
           return cornerKey;
         }
       }
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:getCornerHandleInProximity',message:'No proximity found',data:{point:{x:point.x,y:point.y},handleSize,totalRadius},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
+      console.log(`❌ [PROXIMITY CHECK] No proximity zone (closest: ${closestCorner} at ${minDistance.toFixed(2)}px)`);
       return null;
     };
 
@@ -2298,31 +2351,65 @@ const PageAnnotationLayer = memo(({
         const isModifierHeld = isModifierPressed(nativeEvent);
         const isOnBody = isPointInBoundingBox(pointer, activeObject);
         const isOnAnyHandle = isPointOnAnyHandle(pointer, activeObject);
+        const isOnCornerHandle = isPointOnCornerHandle(pointer, activeObject);
+        const isOnEdgeHandle = isPointOnEdgeHandle(pointer, activeObject);
         const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
         const isOutsideBody = !isOnBody;
 
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForSelection',message:'Hit-testing hierarchy check',data:{isModifierHeld,isOnBody,isOutsideBody,isOnAnyHandle,proximityCorner,willStartRotation:(isModifierHeld&&isOutsideBody&&!isOnAnyHandle)||(proximityCorner&&!isOnAnyHandle)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
+        // 🔍 DEBUG: Mouse down hit-testing
+        console.log('⬇️ [MOUSE DOWN] Hit-Testing Hierarchy:', {
+          pointer: { x: pointer.x.toFixed(2), y: pointer.y.toFixed(2) },
+          objectType: activeObject.type,
+          position: {
+            isOnBody,
+            isOutsideBody,
+            proximityCorner
+          },
+          handles: {
+            isOnAnyHandle,
+            isOnCornerHandle,
+            isOnEdgeHandle
+          },
+          modifierHeld: isModifierHeld,
+          rotationTriggerCheck: {
+            modifierAndOutside: isModifierHeld && isOutsideBody && !isOnAnyHandle,
+            proximityZone: proximityCorner && !isOnAnyHandle,
+            willTriggerRotation: (isModifierHeld && isOutsideBody && !isOnAnyHandle) || (proximityCorner && !isOnAnyHandle)
+          },
+          currentActiveObject: !!activeObject,
+          objectAngle: activeObject.angle || 0
+        });
 
         // STRICT ROTATION TRIGGER - ONLY in Outer Zone:
         // 1. Modifier is held AND clicking OUTSIDE the bounding box (not on any handle), OR
         // 2. In proximity zone (outside body, near corners, but not on any handle)
         // Priority: Handles > Inside Body (Move) > Outside Body (Rotate)
         if ((isModifierHeld && isOutsideBody && !isOnAnyHandle) || (proximityCorner && !isOnAnyHandle)) {
+          const center = activeObject.getCenterPoint();
           selectRotationStateRef.current = {
             object: activeObject,
             startAngle: activeObject.angle || 0,
             startPointer: { x: pointer.x, y: pointer.y },
-            center: activeObject.getCenterPoint()
+            center: center
           };
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForSelection',message:'Rotation state set (select tool)',data:{startAngle:selectRotationStateRef.current.startAngle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
+
+          console.log('🔄 [ROTATION START] Rotation state initialized:', {
+            startAngle: selectRotationStateRef.current.startAngle,
+            center: { x: center.x.toFixed(2), y: center.y.toFixed(2) },
+            startPointer: { x: pointer.x.toFixed(2), y: pointer.y.toFixed(2) },
+            trigger: isModifierHeld ? 'MODIFIER_KEY' : 'PROXIMITY_ZONE'
+          });
+
           // Prevent Fabric.js from handling this as a move
           e.e.preventDefault();
           e.e.stopPropagation();
           return;
+        } else {
+          console.log('❌ [ROTATION] NOT triggered - reason:', {
+            onHandle: isOnAnyHandle ? 'ON_HANDLE (priority override)' : false,
+            insideBody: isOnBody && !proximityCorner ? 'INSIDE_BODY (move zone)' : false,
+            noModifier: !isModifierHeld && !proximityCorner ? 'NO_MODIFIER_OR_PROXIMITY' : false
+          });
         }
       }
 
@@ -2392,40 +2479,79 @@ const PageAnnotationLayer = memo(({
         const rotationState = selectRotationStateRef.current;
         const obj = rotationState.object;
         const pointer = canvas.getPointer(e.e);
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForSelection',message:'Processing rotation (select tool)',data:{hasRotationState:!!selectRotationStateRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-        
+        const activeObject = canvas.getActiveObject();
+
+        // 🔍 DEBUG: Rotation in progress
+        console.log('🔄 [ROTATION MOVE] Processing rotation:', {
+          hasRotationState: true,
+          objectStillActive: activeObject === obj,
+          objectType: obj.type,
+          pointer: { x: pointer.x.toFixed(2), y: pointer.y.toFixed(2) }
+        });
+
         // Calculate angle from center to current pointer
         const center = rotationState.center;
         const currentAngle = Math.atan2(
           pointer.y - center.y,
           pointer.x - center.x
         ) * 180 / Math.PI;
-        
+
         // Calculate angle from center to start pointer
         const startAngle = Math.atan2(
           rotationState.startPointer.y - center.y,
           rotationState.startPointer.x - center.x
         ) * 180 / Math.PI;
-        
+
         // Calculate rotation delta
         const deltaAngle = currentAngle - startAngle;
-        
+
         // Apply rotation
         const newAngle = rotationState.startAngle + deltaAngle;
+
+        console.log('🔄 [ROTATION MOVE] Applying rotation:', {
+          center: { x: center.x.toFixed(2), y: center.y.toFixed(2) },
+          startAngle: rotationState.startAngle.toFixed(2),
+          currentAngle: currentAngle.toFixed(2),
+          startPointerAngle: startAngle.toFixed(2),
+          deltaAngle: deltaAngle.toFixed(2),
+          newAngle: newAngle.toFixed(2),
+          previousObjectAngle: obj.angle?.toFixed(2) || '0.00',
+          objectOrigin: { x: obj.originX, y: obj.originY },
+          centeredRotation: obj.centeredRotation
+        });
+
+        // Save center point before rotation
+        const centerBefore = obj.getCenterPoint();
+
+        // Apply rotation around center
         obj.set({
           angle: newAngle,
           dirty: true
         });
+
+        // Get new center after rotation
+        const centerAfter = obj.getCenterPoint();
+
+        // If center moved, adjust position to keep it fixed
+        if (centerBefore.x !== centerAfter.x || centerBefore.y !== centerAfter.y) {
+          const offsetX = centerBefore.x - centerAfter.x;
+          const offsetY = centerBefore.y - centerAfter.y;
+          obj.set({
+            left: obj.left + offsetX,
+            top: obj.top + offsetY
+          });
+          console.log('🔧 [ROTATION MOVE] Center adjusted:', {
+            centerBefore: { x: centerBefore.x.toFixed(2), y: centerBefore.y.toFixed(2) },
+            centerAfter: { x: centerAfter.x.toFixed(2), y: centerAfter.y.toFixed(2) },
+            offset: { x: offsetX.toFixed(2), y: offsetY.toFixed(2) }
+          });
+        }
+
         obj.setCoords();
         canvas.requestRenderAll();
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForSelection',message:'Rotation applied (select tool)',data:{newAngle,deltaAngle,objAngle:obj.angle},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-        
+
+        console.log('✅ [ROTATION MOVE] Rotation applied - new angle:', obj.angle.toFixed(2));
+
         e.e.preventDefault();
         e.e.stopPropagation();
         return;
@@ -2507,12 +2633,32 @@ const PageAnnotationLayer = memo(({
 
       // Save canvas after rotation (before resetting rotation state)
       const wasRotating = selectRotationStateRef.current !== null;
+      const activeObject = canvas.getActiveObject();
+
+      console.log('⬆️ [MOUSE UP] Selection tool:', {
+        wasRotating,
+        hasSelectionRect: !!selectionRectRef.current,
+        hasRotationState: !!selectRotationStateRef.current,
+        activeObjectStillSelected: !!activeObject,
+        activeObjectType: activeObject?.type
+      });
 
       // Handle rotation-only case (no selection rectangle)
       if (!selectionRectRef.current && selectRotationStateRef.current) {
+        const rotatedObject = selectRotationStateRef.current.object;
+        const finalAngle = rotatedObject.angle || 0;
+
+        console.log('🔄 [ROTATION END] Rotation completed:', {
+          finalAngle: finalAngle.toFixed(2),
+          objectType: rotatedObject.type,
+          objectStillActive: canvas.getActiveObject() === rotatedObject,
+          willSaveChanges: !!onAnnotationsChangeRef.current
+        });
+
         // Rotation ended - save canvas state
         selectRotationStateRef.current = null;
         if (wasRotating && onAnnotationsChangeRef.current) {
+          console.log('💾 [ROTATION END] Saving annotation changes...');
           onAnnotationsChangeRef.current();
         }
         return;
@@ -2673,6 +2819,30 @@ const PageAnnotationLayer = memo(({
       }
     };
 
+    // 🔍 DEBUG: Selection tracking
+    canvas.on('selection:created', (e) => {
+      console.log('🎯 [SELECTION] Object selected:', {
+        target: e.selected?.[0]?.type || e.target?.type,
+        objectCount: e.selected?.length || 1,
+        angle: e.selected?.[0]?.angle || e.target?.angle || 0
+      });
+    });
+
+    canvas.on('selection:updated', (e) => {
+      console.log('🔄 [SELECTION] Selection changed:', {
+        newTarget: e.selected?.[0]?.type || e.target?.type,
+        deselected: e.deselected?.[0]?.type,
+        angle: e.selected?.[0]?.angle || e.target?.angle || 0
+      });
+    });
+
+    canvas.on('selection:cleared', (e) => {
+      console.log('❌ [SELECTION] Selection cleared:', {
+        wasSelected: e.deselected?.[0]?.type,
+        finalAngle: e.deselected?.[0]?.angle || 0
+      });
+    });
+
     // Register main handlers first (they'll be called last due to LIFO)
     canvas.on('object:modified', (e) => {
       handleObjectModified(e);
@@ -2706,9 +2876,26 @@ const PageAnnotationLayer = memo(({
       if (activeObject) {
         const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
         const isOnAnyHandle = isPointOnAnyHandle(pointer, activeObject);
+        const isOnCornerHandle = isPointOnCornerHandle(pointer, activeObject);
+        const isOnEdgeHandle = isPointOnEdgeHandle(pointer, activeObject);
         const isModifierHeld = isModifierPressed(nativeEvent);
         const isOnBody = isPointInBoundingBox(pointer, activeObject);
         const isOutsideBody = !isOnBody;
+
+        // 🔍 DEBUG: Cursor position tracking
+        console.log('🖱️ [CURSOR] Position Check:', {
+          pointer: { x: pointer.x.toFixed(2), y: pointer.y.toFixed(2) },
+          isOnBody,
+          isOutsideBody,
+          proximityCorner,
+          handles: {
+            isOnAnyHandle,
+            isOnCornerHandle,
+            isOnEdgeHandle
+          },
+          modifierHeld: isModifierHeld,
+          willShowRotateCursor: (proximityCorner && !isOnAnyHandle) || (isModifierHeld && isOutsideBody && !isOnAnyHandle)
+        });
 
         // STRICT CURSOR HIERARCHY - Show rotate cursor ONLY in Outer Zone:
         // 1. In proximity zone (outside body, near corners, but not on any handle), OR
@@ -2716,9 +2903,11 @@ const PageAnnotationLayer = memo(({
         // Priority: Handles > Inside Body (Move) > Outside Body (Rotate)
         if ((proximityCorner && !isOnAnyHandle) || (isModifierHeld && isOutsideBody && !isOnAnyHandle)) {
           // Use 'alias' cursor for rotation (circular arrow)
+          console.log('✅ [CURSOR] Setting ROTATE cursor (alias)');
           canvas.defaultCursor = 'alias';
           canvas.hoverCursor = 'alias';
         } else {
+          console.log('⚪ [CURSOR] Setting DEFAULT cursor');
           canvas.defaultCursor = 'default';
           canvas.hoverCursor = currentTool === 'pan' ? 'move' : 'default';
         }

@@ -1,188 +1,1055 @@
-chunk-F2KOVKPX.js?v=20d15701:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-PDFWorkerManager.js:5 PDFWorkerManager: Creating PDF worker
-PDFWorkerManager.js:7 PDFWorkerManager: PDF worker created successfully
-App.jsx:1643 Syncing documents from Supabase: 0 []
-authConfig.js:36 [Tue, 23 Dec 2025 07:44:37 GMT] : [] : @azure/msal-browser@4.26.2 : Info - MSAL.js was last initialized by version: 4.26.2
-pdfRender.worker.js:3 PDF Worker initialized
-App.jsx:1643 Syncing documents from Supabase: 1 [{…}]
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1643 Syncing documents from Supabase: 1 [{…}]
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+ PDF Worker initialized
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ Warning: TT: undefined function: 32
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 81.84px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 81.84px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 81.80px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 81.80px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 81.80px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 81.80px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 82.77px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 82.77px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 82.77px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 83.75px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 83.75px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 84.75px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 84.74px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 84.74px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 85.74px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 85.74px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 85.74px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 85.74px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 85.74px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 86.74px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 86.74px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 86.74px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 86.76px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 86.76px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 86.76px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 87.76px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 88.78px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 88.82px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 89.82px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 89.82px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 90.87px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 90.87px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 91.93px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 91.93px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 92.92px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 92.92px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 92.99px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 93.99px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 93.99px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 93.99px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 93.99px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.99px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.99px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.99px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.99px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.99px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.92px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.92px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.92px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.86px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.86px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.86px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.86px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.82px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.82px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.82px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 94.82px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 92.82px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 89.78px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ⚪ [CURSOR] Setting DEFAULT cursor
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 86.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 85.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 83.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 82.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 81.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 81.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 80.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 80.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 79.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 78.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 77.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 75.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 74.79px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 72.80px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 71.84px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 69.85px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 68.85px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 67.85px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 67.85px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 66.92px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+   📍 Corner tr: Object
+   📍 Corner bl: Object
+   📍 Corner br: Object
+ ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 65.92px)
+ ⌨️ [MODIFIER KEY] Check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🖱️ [CURSOR] Position Check: Object
+ ✅ [CURSOR] Setting ROTATE cursor (alias)
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 📦 [BOUNDING BOX] Point inside check: Object
+ 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+   📍 Corner tl: Object
+console-listener.js:71   📍 Corner tr: Object
+console-listener.js:71   📍 Corner bl: Object
+console-listener.js:71   📍 Corner br: Object
+console-listener.js:71 ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 65.92px)
+console-listener.js:71 ⌨️ [MODIFIER KEY] Check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🖱️ [CURSOR] Position Check: Object
+console-listener.js:71 ✅ [CURSOR] Setting ROTATE cursor (alias)
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+console-listener.js:71   📍 Corner tl: Object
+console-listener.js:71   📍 Corner tr: Object
+console-listener.js:71   📍 Corner bl: Object
+console-listener.js:71   📍 Corner br: Object
+console-listener.js:71 ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 65.92px)
+console-listener.js:71 ⌨️ [MODIFIER KEY] Check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🖱️ [CURSOR] Position Check: Object
+console-listener.js:71 ✅ [CURSOR] Setting ROTATE cursor (alias)
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+console-listener.js:71   📍 Corner tl: Object
+console-listener.js:71   📍 Corner tr: Object
+console-listener.js:71   📍 Corner bl: Object
+console-listener.js:71   📍 Corner br: Object
+console-listener.js:71 ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 64.92px)
+console-listener.js:71 ⌨️ [MODIFIER KEY] Check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🖱️ [CURSOR] Position Check: Object
+console-listener.js:71 ✅ [CURSOR] Setting ROTATE cursor (alias)
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+console-listener.js:71   📍 Corner tl: Object
+console-listener.js:71   📍 Corner tr: Object
+console-listener.js:71   📍 Corner bl: Object
+console-listener.js:71   📍 Corner br: Object
+console-listener.js:71 ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 64.92px)
+console-listener.js:71 ⌨️ [MODIFIER KEY] Check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🖱️ [CURSOR] Position Check: Object
+console-listener.js:71 ✅ [CURSOR] Setting ROTATE cursor (alias)
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+console-listener.js:71   📍 Corner tl: Object
+console-listener.js:71   📍 Corner tr: Object
+console-listener.js:71   📍 Corner bl: Object
+console-listener.js:71   📍 Corner br: Object
+console-listener.js:71 ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 64.92px)
+console-listener.js:71 ⌨️ [MODIFIER KEY] Check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🖱️ [CURSOR] Position Check: Object
+console-listener.js:71 ✅ [CURSOR] Setting ROTATE cursor (alias)
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+console-listener.js:71   📍 Corner tl: Object
+console-listener.js:71   📍 Corner tr: Object
+console-listener.js:71   📍 Corner bl: Object
+console-listener.js:71   📍 Corner br: Object
+console-listener.js:71 ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 64.92px)
+console-listener.js:71 ⌨️ [MODIFIER KEY] Check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🖱️ [CURSOR] Position Check: Object
+console-listener.js:71 ✅ [CURSOR] Setting ROTATE cursor (alias)
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🎯 [PROXIMITY CHECK] Corner handle proximity test: Object
+console-listener.js:71   📍 Corner tl: Object
+console-listener.js:71   📍 Corner tr: Object
+console-listener.js:71   📍 Corner bl: Object
+console-listener.js:71   📍 Corner br: Object
+console-listener.js:71 ❌ [PROXIMITY CHECK] No proximity zone (closest: bl at 63.92px)
+console-listener.js:71 ⌨️ [MODIFIER KEY] Check: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 🖱️ [CURSOR] Position Check: Object
+console-listener.js:71 ✅ [CURSOR] Setting ROTATE cursor (alias)
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 ❌ [SELECTION] Selection cleared: Object
+console-listener.js:71 📦 [BOUNDING BOX] Point inside check: Object
+console-listener.js:71 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766520778595.pdf
+console-listener.js:71 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766520778595.pdf
+console-listener.js:71 🚀 [DEBUG MODE] Rotation mechanics debugging ACTIVE for page 2
+console-listener.js:71 📋 [DEBUG INFO] Tracking: {cursorPosition: 'Inside/Outside bounding box', proximityDetection: 'Corner handle proximity zones', handleDetection: 'Corner and edge handles', rotationTriggers: 'Modifier key + proximity zones', selectionState: 'Object selection during rotation', …}
+console-listener.js:71 🚀 [DEBUG MODE] Rotation mechanics debugging ACTIVE for page 3
+console-listener.js:71 📋 [DEBUG INFO] Tracking: {cursorPosition: 'Inside/Outside bounding box', proximityDetection: 'Corner handle proximity zones', handleDetection: 'Corner and edge handles', rotationTriggers: 'Modifier key + proximity zones', selectionState: 'Object selection during rotation', …}
+console-listener.js:71 🚀 [DEBUG MODE] Rotation mechanics debugging ACTIVE for page 4
+console-listener.js:71 📋 [DEBUG INFO] Tracking: {cursorPosition: 'Inside/Outside bounding box', proximityDetection: 'Corner handle proximity zones', handleDetection: 'Corner and edge handles', rotationTriggers: 'Modifier key + proximity zones', selectionState: 'Object selection during rotation', …}
+console-listener.js:71 🚀 [DEBUG MODE] Rotation mechanics debugging ACTIVE for page 5
+console-listener.js:71 📋 [DEBUG INFO] Tracking: {cursorPosition: 'Inside/Outside bounding box', proximityDetection: 'Corner handle proximity zones', handleDetection: 'Corner and edge handles', rotationTriggers: 'Modifier key + proximity zones', selectionState: 'Object selection during rotation', …}
+console-listener.js:71 🚀 [DEBUG MODE] Rotation mechanics debugging ACTIVE for page 6
+console-listener.js:71 📋 [DEBUG INFO] Tracking: {cursorPosition: 'Inside/Outside bounding box', proximityDetection: 'Corner handle proximity zones', handleDetection: 'Corner and edge handles', rotationTriggers: 'Modifier key + proximity zones', selectionState: 'Object selection during rotation', …}
+console-listener.js:71 🚀 [DEBUG MODE] Rotation mechanics debugging ACTIVE for page 7
+console-listener.js:71 📋 [DEBUG INFO] Tracking: {cursorPosition: 'Inside/Outside bounding box', proximityDetection: 'Corner handle proximity zones', handleDetection: 'Corner and edge handles', rotationTriggers: 'Modifier key + proximity zones', selectionState: 'Object selection during rotation', …}
+console-listener.js:71 🚀 [DEBUG MODE] Rotation mechanics debugging ACTIVE for page 8
+console-listener.js:71 📋 [DEBUG INFO] Tracking: {cursorPosition: 'Inside/Outside bounding box', proximityDetection: 'Corner handle proximity zones', handleDetection: 'Corner and edge handles', rotationTriggers: 'Modifier key + proximity zones', selectionState: 'Object selection during rotation', …}
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+console-listener.js:71 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766520778595.pdf
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1643 Syncing documents from Supabase: 0 []
-App.jsx:1643 Syncing documents from Supabase: 1 [{…}]
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-App.jsx:11098 Importing PDF annotations...
-App.jsx:11102 Imported annotations from 26 pages
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-PageAnnotationLayer.jsx:1671 [Eraser] MouseDown - pointer: Point {x: 257.9935900254418, y: 527.2043832192657} radius: 20 mode: partial
-PageAnnotationLayer.jsx:1678 [Eraser] Objects on canvas: 1 [{…}]
-PageAnnotationLayer.jsx:1704 [Eraser] Hit test for path : false
-PageAnnotationLayer.jsx:1726 [Eraser] Target found: none
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 2 pos: {x: '256.5', y: '529.5'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 3 pos: {x: '255.7', y: '531.8'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 4 pos: {x: '254.2', y: '535.6'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 5 pos: {x: '252.7', y: '538.6'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 6 pos: {x: '251.9', y: '541.7'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 7 pos: {x: '251.1', y: '544.7'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 8 pos: {x: '251.1', y: '547.8'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 9 pos: {x: '251.1', y: '550.0'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 10 pos: {x: '251.1', y: '552.3'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 11 pos: {x: '251.1', y: '554.6'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 12 pos: {x: '251.1', y: '558.4'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.10 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 13 pos: {x: '253.4', y: '561.5'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 14 pos: {x: '257.2', y: '563.7'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 15 pos: {x: '261.0', y: '566.0'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 16 pos: {x: '264.8', y: '567.5'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 17 pos: {x: '270.9', y: '569.8'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.10 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 18 pos: {x: '278.5', y: '572.1'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.10 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 19 pos: {x: '284.6', y: '574.4'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 20 pos: {x: '290.0', y: '576.7'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 21 pos: {x: '294.5', y: '579.0'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.10 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 22 pos: {x: '301.4', y: '582.8'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 23 pos: {x: '308.2', y: '587.3'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 24 pos: {x: '312.0', y: '590.4'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 25 pos: {x: '316.6', y: '594.9'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 26 pos: {x: '320.4', y: '599.5'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 27 pos: {x: '323.4', y: '603.3'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 28 pos: {x: '325.7', y: '606.4'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 29 pos: {x: '328.0', y: '610.9'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 30 pos: {x: '329.5', y: '615.5'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 31 pos: {x: '330.3', y: '619.3'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 32 pos: {x: '331.1', y: '623.1'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 33 pos: {x: '331.8', y: '626.1'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 34 pos: {x: '331.8', y: '629.2'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.10 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 35 pos: {x: '331.1', y: '631.5'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 36 pos: {x: '330.3', y: '633.8'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 37 pos: {x: '328.0', y: '636.0'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 38 pos: {x: '325.7', y: '637.6'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.10 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 39 pos: {x: '322.7', y: '639.8'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 40 pos: {x: '319.6', y: '640.6'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 41 pos: {x: '315.8', y: '642.1'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.10 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 42 pos: {x: '312.8', y: '642.9'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 43 pos: {x: '310.5', y: '643.6'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 44 pos: {x: '308.2', y: '643.6'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 45 pos: {x: '305.9', y: '644.4'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 46 pos: {x: '303.7', y: '644.4'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 47 pos: {x: '301.4', y: '645.2'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 48 pos: {x: '299.1', y: '645.2'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 49 pos: {x: '296.0', y: '645.2'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 50 pos: {x: '293.0', y: '645.2'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 51 pos: {x: '290.7', y: '645.2'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 52 pos: {x: '290.0', y: '642.9'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-PageAnnotationLayer.jsx:2026 [Eraser:Move] Point added, total: 53 pos: {x: '290.0', y: '639.8'}
-PageAnnotationLayer.jsx:2032 [Eraser:Move] requestRenderAll took: 0.00 ms
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-PageAnnotationLayer.jsx:2509 Uncaught TypeError: Cannot read properties of null (reading 'startX')
-    at klass.handleMouseUpForSelection (PageAnnotationLayer.jsx:2509:47)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseUp (fabric.js:13448:12)
-    at klass._onMouseUp (fabric.js:13315:12)
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:2509
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-PageAnnotationLayer.jsx:2509 Uncaught TypeError: Cannot read properties of null (reading 'startX')
-    at klass.handleMouseUpForSelection (PageAnnotationLayer.jsx:2509:47)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseUp (fabric.js:13448:12)
-    at klass._onMouseUp (fabric.js:13315:12)
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:2509
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
