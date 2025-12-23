@@ -9,7 +9,13 @@ const StripeCheckout = (props) => {
         setLoading(true);
         setError(null);
         try {
-            const { data, error } = await supabase.functions.invoke('create-checkout-session');
+            // Pass tier and billing period to checkout session
+            const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+                body: {
+                    tier: props.tier || 'pro',
+                    billingPeriod: props.billingPeriod || 'monthly'
+                }
+            });
 
             if (error) {
                 throw error;
