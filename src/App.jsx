@@ -11986,18 +11986,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (zoomControllerRef.current) {
       // Zoom to 1.5x or current scale if higher
       const targetScale = Math.max(scale, 1.5);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11450', message: 'Scale calculation', data: { currentScale: scale, targetScale, willChange: targetScale !== scale, hasZoomController: !!zoomControllerRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-      // #endregion
       if (targetScale !== scale) {
         setScale(targetScale);
       }
     }
 
     if (scrollMode === 'single') {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11457', message: 'Single page mode - no scrolling', data: { pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' }) }).catch(() => { });
-      // #endregion
       setPageNum(pageNumber);
     } else {
       // Continuous mode
@@ -12008,15 +12002,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Use double requestAnimationFrame to ensure DOM has updated after scale change
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11477', message: 'Double RAF callback executing', data: { pageNumber, scale, hasZoomController: !!zoomControllerRef.current, zoomControllerScale: zoomControllerRef.current?.getScale?.() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v3', hypothesisId: 'B' }) }).catch(() => { });
-          // #endregion
           const targetContainer = pageContainersRef.current[pageNumber];
           const container = containerRef.current;
-
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11485', message: 'Container refs check', data: { hasTargetContainer: !!targetContainer, hasContainer: !!container, pageNumber, availablePages: Object.keys(pageContainersRef.current) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v3', hypothesisId: 'D' }) }).catch(() => { });
-          // #endregion
 
           if (targetContainer && container) {
             // First, ensure the page is in view using scrollIntoView (won't scroll if already visible)
@@ -12043,9 +12030,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 let scrollTop = pageContainerScrollTop - paddingTop;
                 let scrollLeft = pageContainerScrollLeft - paddingLeft;
 
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11500', message: 'Page container scroll position after scrollIntoView', data: { pageContainerScrollTop, pageContainerScrollLeft, containerScrollTop: container.scrollTop, containerScrollLeft: container.scrollLeft, containerRectTop: containerRect.top, containerRectLeft: containerRect.left, targetRectTop: targetRect.top, targetRectLeft: targetRect.left, targetRectWidth: targetRect.width, paddingTop, paddingLeft, scrollTopAfterPadding: scrollTop, scrollLeftAfterPadding: scrollLeft }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'E' }) }).catch(() => { });
-                // #endregion
                 // Add bounds offset if available
                 if (bounds) {
                   const currentScale = zoomControllerRef.current ? zoomControllerRef.current.getScale() : scale;
@@ -12057,10 +12041,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   const scaledLeft = boundsX * currentScale;
                   const scaledHeight = boundsHeight * currentScale;
                   const scaledWidth = boundsWidth * currentScale;
-
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11518', message: 'Bounds calculation', data: { bounds, currentScale, scale, boundsY, boundsX, boundsHeight, boundsWidth, scaledTop, scaledLeft, scaledHeight, scaledWidth, usingZoomController: !!zoomControllerRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v13', hypothesisId: 'A' }) }).catch(() => { });
-                  // #endregion
 
                   // Vertical positioning: add bounds offset and center
                   scrollTop += scaledTop;
