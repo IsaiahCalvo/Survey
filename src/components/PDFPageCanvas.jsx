@@ -33,9 +33,12 @@ const PDFPageCanvas = ({ page, scale, onFinishRender }) => {
         context.clearRect(0, 0, canvas.width, canvas.height);
 
         // Render the page
+        // Disable annotation rendering - we import editable annotations as Fabric.js objects
+        // AnnotationMode: 0 = DISABLE, 1 = ENABLE, 2 = ENABLE_FORMS, 3 = ENABLE_STORAGE
         renderTaskRef.current = page.render({
             canvasContext: context,
-            viewport: viewport
+            viewport: viewport,
+            annotationMode: 0 // Disable PDF.js annotation rendering
         });
 
         renderTaskRef.current.promise

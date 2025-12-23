@@ -113,7 +113,7 @@ export const AuthProvider = ({ children }) => {
 
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    
+
     // Refresh the page to clear cached user documents, projects, and templates
     window.location.reload();
   };
@@ -174,6 +174,13 @@ export const AuthProvider = ({ children }) => {
     updateProfile,
     isAuthenticated: !!user,
     isSupabaseAvailable: isSupabaseAvailable(),
+    plan: user?.app_metadata?.plan || 'free',
+    features: {
+      cloudSync: ['pro', 'enterprise'].includes(user?.app_metadata?.plan || 'free'),
+      advancedSurvey: ['pro', 'enterprise'].includes(user?.app_metadata?.plan || 'free'),
+      excelExport: ['pro', 'enterprise'].includes(user?.app_metadata?.plan || 'free'),
+      sso: (user?.app_metadata?.plan || 'free') === 'enterprise',
+    }
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

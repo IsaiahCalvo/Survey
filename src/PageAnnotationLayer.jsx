@@ -801,6 +801,8 @@ const PageAnnotationLayer = memo(({
               obj.set({ globalCompositeOperation: 'multiply' });
             }
             canvas.add(obj);
+            // Ensure control points are calculated for proper interaction
+            obj.setCoords();
           });
           // After loading, filter by selectedSpaceId, selectedModuleId, and layer visibility
           canvas.getObjects().forEach(obj => {
@@ -912,11 +914,25 @@ const PageAnnotationLayer = memo(({
       // This must happen BEFORE our custom logic to ensure control points work
       const activeObject = this.getActiveObject();
       if (activeObject) {
-        // Check if click is on a control point
-        const control = activeObject._findTargetCorner ? activeObject._findTargetCorner(e.e, true) : null;
-        if (control) {
-          // Click is on a control point - use original findTarget to let Fabric.js handle it
-          return originalFindTarget(e, skipGroup);
+        // Ensure control points are calculated before checking
+        if (!activeObject.oCoords) {
+          try {
+            activeObject.setCoords();
+          } catch (err) {
+            console.warn('Failed to setCoords on active object:', err);
+          }
+        }
+        // Check if click is on a control point (with safety check)
+        try {
+          const control = activeObject._findTargetCorner && activeObject.oCoords
+            ? activeObject._findTargetCorner(e.e, true)
+            : null;
+          if (control) {
+            // Click is on a control point - use original findTarget to let Fabric.js handle it
+            return originalFindTarget(e, skipGroup);
+          }
+        } catch (err) {
+          console.warn('Error checking control points:', err);
         }
       }
 

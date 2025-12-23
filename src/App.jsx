@@ -1407,7 +1407,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [moveCopyMode, setMoveCopyMode] = useState('copy'); // 'move' | 'copy'
   // Ball in Court entities: { id, name, color }
   // Auth state and user dropdown menu
-  const { user, isAuthenticated, signOut, signInWithGoogle } = useAuth();
+  const { user, isAuthenticated, signOut, signInWithGoogle, features } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount } = useMSGraph();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
@@ -8921,6 +8921,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [getUserInitials]);
 
   const handleExportSurveyToExcel = useCallback(async (targetPath = null) => {
+    if (!features?.excelExport) {
+      alert('Excel Export is a Pro feature. Please upgrade to use this tool.');
+      return;
+    }
     // If called from event handler, targetPath will be the event object
     if (targetPath && typeof targetPath !== 'string') targetPath = null;
     if (!selectedTemplate) {
@@ -10423,7 +10427,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     setActiveSpaceId(spaceId);
     setRegionSelectionPage(pageId);
-    setShowRegionSelection(true);
+    if (features?.advancedSurvey) {
+      setShowRegionSelection(true);
+    } else {
+      alert('The Region Selection Tool is a Pro feature. Please upgrade to use this tool.');
+    }
     goToPage(pageId, { fallback: 'nearest' });
   }, [spaces, goToPage]);
 
@@ -10678,6 +10686,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
   const handleSaveDocument = useCallback(async (silent = false) => {
+    // Feature Gate: Cloud Sync
+    if (!features?.cloudSync) {
+      if (!silent) console.log('Cloud sync skipped (Free Plan)');
+      // Ensure we still save locally if possible
+    }
     if (!pdfId || !pdfFile) return;
 
     try {
@@ -10702,7 +10715,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
 
       // Sync survey data to Supabase (separate from PDF file)
-      await saveSurveyDataToSupabase(highlightAnnotations, spaces, selectedTemplate);
+      if (features?.cloudSync) {
+        await saveSurveyDataToSupabase(highlightAnnotations, spaces, selectedTemplate);
+      } else {
+        console.log('Skipping Supabase sync (Free Plan)');
+      }
     } catch (error) {
       console.error('Error saving document:', error);
       if (!silent) {
