@@ -651,6 +651,7 @@ const PageAnnotationLayer = memo(({
   const panDragStartRef = useRef(null);
   const panDragDistanceRef = useRef(0);
   const panInteractionTypeRef = useRef(null); // 'transform' | 'move' | 'select' | 'pan' | null
+  const isFabricTransformingRef = useRef(false); // Track if Fabric.js is currently transforming an object
 
   // Keep highlight callback refs in sync
   useEffect(() => {
@@ -874,6 +875,29 @@ const PageAnnotationLayer = memo(({
       saveCanvas();
     };
 
+    // Track when Fabric.js starts transforming (scaling/rotating) an object
+    const handleObjectScaling = (e) => {
+      isFabricTransformingRef.current = true;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:880',message:'Fabric.js object scaling started',data:{targetType:e.target?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
+      // #endregion
+    };
+
+    const handleObjectRotating = (e) => {
+      isFabricTransformingRef.current = true;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:887',message:'Fabric.js object rotating started',data:{targetType:e.target?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
+      // #endregion
+    };
+
+    // Track when Fabric.js stops transforming - reset flag when modification completes
+    const handleObjectModifiedEnd = (e) => {
+      isFabricTransformingRef.current = false;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:894',message:'Fabric.js object transform ended',data:{targetType:e.target?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
+      // #endregion
+    };
+
     // Helper function to check if a point is within an object's bounding box
     const isPointInBoundingBox = (point, obj) => {
       if (!obj) return false;
@@ -1040,10 +1064,39 @@ const PageAnnotationLayer = memo(({
       }
 
       // PRIORITY 4: Empty space / Canvas
+      // BUT FIRST: Double-check if this might be a transform handle click
+      // Fabric.js might not have detected it yet, so we need to check manually
+      if (activeObject && activeObject._findTargetCorner) {
+        if (!activeObject.oCoords) {
+          try {
+            activeObject.setCoords();
+          } catch (err) {
+            // Silently ignore
+          }
+        }
+        if (activeObject.oCoords && activeObject.oCoords.tl) {
+          try {
+            const control = activeObject._findTargetCorner(opt.e.e, true);
+            if (control) {
+              // This IS a transform handle - don't pan, let Fabric.js handle it
+              panInteractionTypeRef.current = 'transform';
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1045',message:'Transform handle detected in empty space check',data:{control:control},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'J'})}).catch(()=>{});
+              // #endregion
+              opt.e.preventDefault();
+              opt.e.stopPropagation();
+              return;
+            }
+          } catch (err) {
+            // Silently ignore
+          }
+        }
+      }
+
       // Allow panning the canvas
       panInteractionTypeRef.current = 'pan';
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1041',message:'Empty space detected in pan tool',data:{panInteractionType:'pan',hasActiveObject:!!activeObject,pointerX:pointer.x,pointerY:pointer.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1065',message:'Empty space detected in pan tool',data:{panInteractionType:'pan',hasActiveObject:!!activeObject,pointerX:pointer.x,pointerY:pointer.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
       // Deselect if there's an active object
       if (activeObject) {
@@ -1082,7 +1135,7 @@ const PageAnnotationLayer = memo(({
           });
           containerElement.dispatchEvent(syntheticEvent);
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1068',message:'Dispatched synthetic mousedown on container',data:{containerFound:!!containerElement,clientX:nativeEvent.clientX,clientY:nativeEvent.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1095',message:'Dispatched synthetic mousedown on container',data:{containerFound:!!containerElement,clientX:nativeEvent.clientX,clientY:nativeEvent.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
           // #endregion
         }
       }
@@ -1121,7 +1174,12 @@ const PageAnnotationLayer = memo(({
 
       // If we're in 'pan' mode (empty space), dispatch mousemove to container for panning
       // BUT NOT if we're in 'transform' or 'move' mode (those should only affect the annotation)
-      if (panInteractionTypeRef.current === 'pan') {
+      // ALSO NOT if Fabric.js is currently transforming an object (scaling/rotating)
+      const activeObject = canvas.getActiveObject();
+      const isTransforming = isFabricTransformingRef.current || 
+        (activeObject && (activeObject.isScaling || activeObject.isRotating));
+      
+      if (panInteractionTypeRef.current === 'pan' && !isTransforming) {
         const nativeEvent = opt.e.e;
         const containerElement = document.querySelector('[data-testid="pdf-container"]');
         if (containerElement && nativeEvent) {
@@ -1136,9 +1194,9 @@ const PageAnnotationLayer = memo(({
           });
           containerElement.dispatchEvent(syntheticEvent);
         }
-      } else if (panInteractionTypeRef.current === 'transform' || panInteractionTypeRef.current === 'move') {
+      } else if (panInteractionTypeRef.current === 'transform' || panInteractionTypeRef.current === 'move' || isTransforming) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1133',message:'Transform/move mode - NOT dispatching to container',data:{interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1145',message:'Transform/move mode or Fabric transforming - NOT dispatching to container',data:{interactionType:panInteractionTypeRef.current,isFabricTransforming:isFabricTransformingRef.current,isScaling:activeObject?.isScaling,isRotating:activeObject?.isRotating},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
         // #endregion
         // Prevent container panning during transform/move
         opt.e.preventDefault();
@@ -2096,7 +2154,12 @@ const PageAnnotationLayer = memo(({
     };
 
     // Register main handlers first (they'll be called last due to LIFO)
-    canvas.on('object:modified', handleObjectModified);
+    canvas.on('object:modified', (e) => {
+      handleObjectModified(e);
+      handleObjectModifiedEnd(e); // Also reset transform flag
+    });
+    canvas.on('object:scaling', handleObjectScaling);
+    canvas.on('object:rotating', handleObjectRotating);
     canvas.on('path:created', handlePathCreated);
     canvas.on('mouse:down', handleMouseDown);
     canvas.on('mouse:move', handleMouseMove);
