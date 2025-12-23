@@ -2269,11 +2269,10 @@ const PageAnnotationLayer = memo(({
         // #endregion
 
         // Start rotation if:
-        // 1. Modifier is held and clicking OUTSIDE body (not on handle), OR
+        // 1. Modifier is held and clicking ANYWHERE on the annotation (not on handle), OR
         // 2. In proximity zone (but not on handle)
-        // Clicking INSIDE with modifier should allow normal move (don't intercept)
         // Clicking ON handles should allow normal resize (don't intercept)
-        if ((isModifierHeld && isOutsideBody && !isOnHandle) || (proximityCorner && !isOnHandle)) {
+        if ((isModifierHeld && !isOnHandle) || (proximityCorner && !isOnHandle)) {
           selectRotationStateRef.current = {
             object: activeObject,
             startAngle: activeObject.angle || 0,
@@ -2659,11 +2658,11 @@ const PageAnnotationLayer = memo(({
 
         // Show rotate cursor if:
         // 1. In proximity zone (but not on handle), OR
-        // 2. Modifier is held and cursor is OUTSIDE the boundary box (not on handle)
-        if ((proximityCorner && !isOnHandle) || (isModifierHeld && isOutsideBody && !isOnHandle)) {
-          // Use 'grab' cursor for rotation (or use a custom rotation cursor if available)
-          canvas.defaultCursor = 'grab';
-          canvas.hoverCursor = 'grab';
+        // 2. Modifier is held and cursor is on the annotation (not on handle)
+        if ((proximityCorner && !isOnHandle) || (isModifierHeld && isOnBody && !isOnHandle)) {
+          // Use 'alias' cursor for rotation (circular arrow)
+          canvas.defaultCursor = 'alias';
+          canvas.hoverCursor = 'alias';
         } else {
           canvas.defaultCursor = 'default';
           canvas.hoverCursor = currentTool === 'pan' ? 'move' : 'default';
