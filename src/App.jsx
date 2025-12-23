@@ -2147,16 +2147,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     const handleDocumentClick = (e) => {
       const target = e.target;
-      
+
       // Check if clicking within the selection mode actions container
       const isInSelectionModeActions = selectionModeActionsRef.current && selectionModeActionsRef.current.contains(target);
-      
+
       // Check if clicking on an item container (grid item div or table row)
-      const isItemContainer = target.closest('tr[style*="cursor: pointer"]') || 
-                             (target.closest('div[style*="cursor: pointer"]') && 
-                              target.closest('div[style*="cursor: pointer"]')?.style?.cursor === 'pointer' &&
-                              !target.closest('div[style*="cursor: pointer"]')?.closest('button'));
-      
+      const isItemContainer = target.closest('tr[style*="cursor: pointer"]') ||
+        (target.closest('div[style*="cursor: pointer"]') &&
+          target.closest('div[style*="cursor: pointer"]')?.style?.cursor === 'pointer' &&
+          !target.closest('div[style*="cursor: pointer"]')?.closest('button'));
+
       // Only prevent exit if clicking within selection mode actions OR on an item container
       const shouldPreventExit = isInSelectionModeActions || isItemContainer;
 
@@ -2167,7 +2167,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     // Use capture phase to catch clicks before they're handled by other elements
     document.addEventListener('click', handleDocumentClick, true);
-    
+
     return () => {
       document.removeEventListener('click', handleDocumentClick, true);
     };
@@ -2178,17 +2178,17 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     // Only exit if we're in selection mode and in one of the relevant sections
     if (isSelectionMode && (activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates')) {
       const target = e.target;
-      
+
       // Check if clicking within the selection mode actions container (Select All, Move/Copy, Share, Delete, Cancel buttons)
       const isInSelectionModeActions = selectionModeActionsRef.current && selectionModeActionsRef.current.contains(target);
-      
+
       // Check if clicking on an item container (grid item div or table row)
       // Items have onClick handlers that stop propagation, but we check here as a safety measure
-      const isItemContainer = target.closest('tr[style*="cursor: pointer"]') || 
-                             (target.closest('div[style*="cursor: pointer"]') && 
-                              target.closest('div[style*="cursor: pointer"]')?.style?.cursor === 'pointer' &&
-                              !target.closest('div[style*="cursor: pointer"]')?.closest('button'));
-      
+      const isItemContainer = target.closest('tr[style*="cursor: pointer"]') ||
+        (target.closest('div[style*="cursor: pointer"]') &&
+          target.closest('div[style*="cursor: pointer"]')?.style?.cursor === 'pointer' &&
+          !target.closest('div[style*="cursor: pointer"]')?.closest('button'));
+
       // Only prevent exit if clicking within selection mode actions OR on an item container
       // All other clicks (including other buttons like settings, upload, create project, etc.) should exit
       const shouldPreventExit = isInSelectionModeActions || isItemContainer;
@@ -5042,7 +5042,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         {/* Selection Mode Actions */}
         {
           isSelectionMode && (
-            <div 
+            <div
               ref={selectionModeActionsRef}
               style={{
                 padding: '0 32px 16px 32px',
@@ -8116,30 +8116,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Undo function
   const handleUndo = useCallback(() => {
-    if (undoHistory.length === 0) return;
+    if (undoHistory.length < 2) return;
 
     isUndoingRef.current = true;
-    const stateToRestore = undoHistory[undoHistory.length - 1];
-    
-    // Save current state to redo history before undoing
-    const currentState = {
-      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
-      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations))
-    };
-    setRedoHistory(prev => [currentState, ...prev]);
-    
+    const stateToRestore = undoHistory[undoHistory.length - 2];
+    const stateToRedo = undoHistory[undoHistory.length - 1];
+
+    // Save current state (which is the last item in undoHistory) to redo history
+    setRedoHistory(prev => [stateToRedo, ...prev]);
+
     // Restore previous state
     setAnnotationsByPage(stateToRestore.annotationsByPage);
     setHighlightAnnotations(stateToRestore.highlightAnnotations);
     lastSavedStateRef.current = JSON.stringify(stateToRestore);
-    
+
     // Remove from undo history
     setUndoHistory(prev => prev.slice(0, -1));
 
     setTimeout(() => {
       isUndoingRef.current = false;
     }, 100);
-  }, [undoHistory, annotationsByPage, highlightAnnotations]);
+  }, [undoHistory]);
 
   // Redo function
   const handleRedo = useCallback(() => {
@@ -8147,14 +8144,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     isUndoingRef.current = true;
     const stateToRestore = redoHistory[0];
-    
+
     // Save current state to undo history before redoing
     const currentState = {
       annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
       highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations))
     };
     setUndoHistory(prev => [...prev, currentState]);
-    
+
     // Restore state
     setAnnotationsByPage(stateToRestore.annotationsByPage);
     setHighlightAnnotations(stateToRestore.highlightAnnotations);
@@ -8169,15 +8166,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [redoHistory, annotationsByPage, highlightAnnotations]);
 
   // Check if undo is possible
-  const canUndo = undoHistory.length > 0;
-  
+  const canUndo = undoHistory.length > 1;
+
   // Check if redo is possible
   const canRedo = redoHistory.length > 0;
 
   // Save to history when annotations change (debounced)
   useEffect(() => {
     if (isUndoingRef.current) return;
-    
+
     const timeoutId = setTimeout(() => {
       saveToHistory();
     }, 300); // Debounce by 300ms to avoid saving on every keystroke/change
@@ -11755,12 +11752,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Check if click is on an annotation layer canvas
       // Annotation layers use canvas elements for Fabric.js
       const target = e.target;
-      const isOnAnnotationCanvas = target.tagName === 'CANVAS' && 
+      const isOnAnnotationCanvas = target.tagName === 'CANVAS' &&
         target.closest('.page-container') !== null;
-      
+
       if (isOnAnnotationCanvas) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:1194',message:'Canvas click detected in pan tool',data:{clientX:e.clientX,clientY:e.clientY,canPan:canPan,activeTool:activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:1194', message: 'Canvas click detected in pan tool', data: { clientX: e.clientX, clientY: e.clientY, canPan: canPan, activeTool: activeTool }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
         // #endregion
         // Track canvas mouse down - we'll start panning in handleMouseMove if mouse moves
         // (indicating empty space drag, not annotation interaction)
@@ -11778,7 +11775,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       // Click is on empty space or PDF background - allow container panning
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11710',message:'Starting panning on non-canvas click',data:{clientX:e.clientX,clientY:e.clientY,targetTag:e.target.tagName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11710', message: 'Starting panning on non-canvas click', data: { clientX: e.clientX, clientY: e.clientY, targetTag: e.target.tagName }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' }) }).catch(() => { });
       // #endregion
       setIsPanning(true);
       setPanStart({
@@ -11797,20 +11794,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         container.scrollTop = panStart.y - e.clientY;
       }
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11723',message:'Panning active',data:{scrollLeft:container?.scrollLeft,scrollTop:container?.scrollTop,clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11723', message: 'Panning active', data: { scrollLeft: container?.scrollLeft, scrollTop: container?.scrollTop, clientX: e.clientX, clientY: e.clientY }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
       // #endregion
     } else if (activeTool === 'pan' && !showRegionSelection && canPan && canvasMouseDownRef.current) {
       // Check if mouse has moved enough to start panning (empty space drag on canvas)
       const start = canvasMouseDownRef.current;
       const moveDistance = Math.sqrt(
-        Math.pow(e.clientX - start.clientX, 2) + 
+        Math.pow(e.clientX - start.clientX, 2) +
         Math.pow(e.clientY - start.clientY, 2)
       );
-      
+
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11729',message:'Canvas drag detected, checking distance',data:{moveDistance:moveDistance.toFixed(2),threshold:5,willStartPanning:moveDistance>5,clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11729', message: 'Canvas drag detected, checking distance', data: { moveDistance: moveDistance.toFixed(2), threshold: 5, willStartPanning: moveDistance > 5, clientX: e.clientX, clientY: e.clientY }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
       // #endregion
-      
+
       // Start panning if mouse moved more than 5px (same threshold as annotation selection)
       if (moveDistance > 5) {
         setIsPanning(true);
@@ -11820,7 +11817,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
         canvasMouseDownRef.current = null; // Clear after starting pan
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11736',message:'Starting panning from canvas drag',data:{panStartX:start.x,panStartY:start.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11736', message: 'Starting panning from canvas drag', data: { panStartX: start.x, panStartY: start.y }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
         // #endregion
       }
     }
@@ -19892,7 +19889,7 @@ export default function App() {
       if (dashboardRef.current?.exitSelectionMode) {
         dashboardRef.current.exitSelectionMode();
       }
-      
+
       setActiveTabId(tabId);
       if (tab.isHome) {
         // Home tab - show dashboard
