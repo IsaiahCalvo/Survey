@@ -751,8 +751,8 @@ const PageAnnotationLayer = memo(({
     isInitializedRef.current = true;
 
     // Detect platform for modifier key handling
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0 || 
-                  navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
+      navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
 
     const canvas = new Canvas(canvasRef.current, {
       width: width * scale,
@@ -909,13 +909,13 @@ const PageAnnotationLayer = memo(({
       // Check modifier key: Command on macOS, Control on Windows
       const originalEvent = e.e;
       if (!originalEvent) return;
-      
+
       // Detect platform
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0 || 
-                    navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
-      
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
+        navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
+
       // Use Command on macOS, Control on Windows - STRICTLY one or the other, not both
-      const isModifierPressed = isMac 
+      const isModifierPressed = isMac
         ? originalEvent.metaKey && !originalEvent.ctrlKey  // Mac: ONLY Command, ignore Control
         : originalEvent.ctrlKey && !originalEvent.metaKey; // Windows: ONLY Control, ignore Command
 
@@ -2225,7 +2225,7 @@ const PageAnnotationLayer = memo(({
     canvas.isDrawingMode = tool === 'pen' || tool === 'highlighter';
     // Disable Fabric.js built-in selection for select tool - we use custom selection handlers
     // Only enable built-in selection for pan tool (for object manipulation)
-    canvas.selection = tool === 'pan';
+    canvas.selection = false;
     // Prevent Fabric.js from finding targets for eraser tool - we handle it ourselves with geometry checks
     canvas.skipTargetFind = tool === 'eraser';
     canvas.defaultCursor = (tool === 'eraser' ? 'crosshair' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
