@@ -1256,11 +1256,19 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
       }
       // If we have a filePath, download the document
       else if (filePath && downloadDocument) {
+        // Check if filePath looks like a local filesystem path
+        if (filePath.includes('/Users/') || filePath.includes('\\') || filePath.startsWith('/') || filePath.includes(':')) {
+          console.warn('Invalid Supabase storage path (looks like local path):', filePath);
+          setIsLoading(false);
+          return;
+        }
         try {
+          console.log('Downloading for thumbnail from:', filePath);
           const blob = await downloadDocument(filePath);
           arrayBuffer = await blob.arrayBuffer();
         } catch (error) {
           console.error('Error downloading document for thumbnail:', error);
+          console.error('File path was:', filePath);
           setIsLoading(false);
           return;
         }
