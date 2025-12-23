@@ -13091,7 +13091,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               alignItems: 'center',
               gap: '4px'
             }}
-            title="Undo"
+            onMouseEnter={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setTooltip({ visible: true, text: 'Undo', x: rect.left + rect.width / 2, y: rect.top - 10 });
+            }}
+            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
           >
             <Icon name="undo" size={14} />
           </button>
