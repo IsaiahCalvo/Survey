@@ -8082,6 +8082,109 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [highlightAnnotations, setHighlightAnnotations] = useState({}); // { [highlightId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
   const [expandedCategories, setExpandedCategories] = useState({}); // { [categoryId]: boolean }
   const [expandedHighlights, setExpandedHighlights] = useState({}); // { [highlightId]: boolean }
+
+  // Undo/Redo history state
+  const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations }
+  const [redoHistory, setRedoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations }
+  const isUndoingRef = useRef(false); // Flag to prevent saving history during undo/redo
+  const lastSavedStateRef = useRef(null); // Track last saved state to avoid duplicate saves
+
+  // Save current state to undo history
+  const saveToHistory = useCallback(() => {
+    if (isUndoingRef.current) return; // Don't save during undo/redo operations
+
+    const currentState = {
+      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
+      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations))
+    };
+
+    // Avoid saving if state hasn't changed
+    const stateString = JSON.stringify(currentState);
+    if (lastSavedStateRef.current === stateString) return;
+    lastSavedStateRef.current = stateString;
+
+    setUndoHistory(prev => {
+      const newHistory = [...prev, currentState];
+      // Limit history to 50 entries
+      if (newHistory.length > 50) {
+        return newHistory.slice(1);
+      }
+      return newHistory;
+    });
+    setRedoHistory([]); // Clear redo history when new action is performed
+  }, [annotationsByPage, highlightAnnotations]);
+
+  // Undo function
+  const handleUndo = useCallback(() => {
+    if (undoHistory.length === 0) return;
+
+    isUndoingRef.current = true;
+    const stateToRestore = undoHistory[undoHistory.length - 1];
+    
+    // Save current state to redo history before undoing
+    const currentState = {
+      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
+      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations))
+    };
+    setRedoHistory(prev => [currentState, ...prev]);
+    
+    // Restore previous state
+    setAnnotationsByPage(stateToRestore.annotationsByPage);
+    setHighlightAnnotations(stateToRestore.highlightAnnotations);
+    lastSavedStateRef.current = JSON.stringify(stateToRestore);
+    
+    // Remove from undo history
+    setUndoHistory(prev => prev.slice(0, -1));
+
+    setTimeout(() => {
+      isUndoingRef.current = false;
+    }, 100);
+  }, [undoHistory, annotationsByPage, highlightAnnotations]);
+
+  // Redo function
+  const handleRedo = useCallback(() => {
+    if (redoHistory.length === 0) return;
+
+    isUndoingRef.current = true;
+    const stateToRestore = redoHistory[0];
+    
+    // Save current state to undo history before redoing
+    const currentState = {
+      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
+      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations))
+    };
+    setUndoHistory(prev => [...prev, currentState]);
+    
+    // Restore state
+    setAnnotationsByPage(stateToRestore.annotationsByPage);
+    setHighlightAnnotations(stateToRestore.highlightAnnotations);
+    lastSavedStateRef.current = JSON.stringify(stateToRestore);
+
+    // Remove from redo history
+    setRedoHistory(prev => prev.slice(1));
+
+    setTimeout(() => {
+      isUndoingRef.current = false;
+    }, 100);
+  }, [redoHistory, annotationsByPage, highlightAnnotations]);
+
+  // Check if undo is possible
+  const canUndo = undoHistory.length > 0;
+  
+  // Check if redo is possible
+  const canRedo = redoHistory.length > 0;
+
+  // Save to history when annotations change (debounced)
+  useEffect(() => {
+    if (isUndoingRef.current) return;
+    
+    const timeoutId = setTimeout(() => {
+      saveToHistory();
+    }, 300); // Debounce by 300ms to avoid saving on every keystroke/change
+
+    return () => clearTimeout(timeoutId);
+  }, [annotationsByPage, highlightAnnotations, saveToHistory]);
+
   const [selectedCategoryId, setSelectedCategoryId] = useState(null); // Category selected for highlighting
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingHighlightName, setPendingHighlightName] = useState(null); // { highlight, categoryId } when prompting for name
@@ -12974,6 +13077,44 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             className="btn btn-default btn-sm"
           >
             <Icon name="arrowLeft" size={14} style={{ marginRight: '4px' }} /> Back
+          </button>
+
+          <div style={{ width: '1px', height: '16px', background: '#555' }} />
+
+          {/* Undo Button */}
+          <button
+            onClick={handleUndo}
+            disabled={!canUndo}
+            className="btn btn-default btn-sm"
+            style={{
+              padding: '4px 8px',
+              opacity: canUndo ? 1 : 0.4,
+              cursor: canUndo ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            title="Undo"
+          >
+            <Icon name="undo" size={14} />
+          </button>
+
+          {/* Redo Button */}
+          <button
+            onClick={handleRedo}
+            disabled={!canRedo}
+            className="btn btn-default btn-sm"
+            style={{
+              padding: '4px 8px',
+              opacity: canRedo ? 1 : 0.4,
+              cursor: canRedo ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            title="Redo"
+          >
+            <Icon name="redo" size={14} />
           </button>
 
           <div style={{ width: '1px', height: '16px', background: '#555' }} />
