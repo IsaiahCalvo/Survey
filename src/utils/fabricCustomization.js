@@ -1,4 +1,41 @@
 import { fabric } from 'fabric';
+import rotateIconSvg from '../assets/rotate-icon.svg';
+
+// Cache for the rotate icon image
+let rotateIconImage = null;
+let rotateIconLoading = false;
+let rotateIconLoadCallbacks = [];
+
+/**
+ * Load the rotate icon SVG as an image
+ */
+const loadRotateIcon = (callback) => {
+    if (rotateIconImage) {
+        callback(rotateIconImage);
+        return;
+    }
+
+    rotateIconLoadCallbacks.push(callback);
+
+    if (rotateIconLoading) {
+        return;
+    }
+
+    rotateIconLoading = true;
+    const img = new Image();
+    img.onload = () => {
+        rotateIconImage = img;
+        rotateIconLoading = false;
+        rotateIconLoadCallbacks.forEach(cb => cb(img));
+        rotateIconLoadCallbacks = [];
+    };
+    img.onerror = () => {
+        rotateIconLoading = false;
+        rotateIconLoadCallbacks = [];
+        console.warn('Failed to load rotate icon');
+    };
+    img.src = rotateIconSvg;
+};
 
 /**
  * Renders a pill-shaped control (rounded rectangle)
@@ -104,34 +141,61 @@ const renderRotationControl = (ctx, left, top, styleOverride, fabricObject) => {
     ctx.fill();
     ctx.stroke();
 
-    // Draw rotation icon (simple circular arrow)
-    ctx.beginPath();
-    ctx.strokeStyle = '#5c5c5c'; // Dark grey icon
-    ctx.lineWidth = 1.5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    // Draw rotation icon from SVG
+    if (rotateIconImage) {
+        // Clear shadow for icon
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        
+        // Draw the icon centered, scaled to fit inside the circle
+        const iconSize = size * 0.7; // 70% of circle size
+        ctx.drawImage(
+            rotateIconImage,
+            -iconSize / 2,
+            -iconSize / 2,
+            iconSize,
+            iconSize
+        );
+    } else {
+        // Fallback: Draw simple rotation icon if SVG hasn't loaded yet
+        ctx.beginPath();
+        ctx.strokeStyle = '#5c5c5c'; // Dark grey icon
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
-    // Draw arrow arc
-    const r = size * 0.25;
-    ctx.arc(0, 0, r, 0, Math.PI * 1.5);
-    ctx.stroke();
+        // Draw arrow arc
+        const r = size * 0.25;
+        ctx.arc(0, 0, r, 0, Math.PI * 1.5);
+        ctx.stroke();
 
-    // Draw arrow head
-    ctx.beginPath();
-    // End point of arc is at (0, -r) after rotation
-    const arrowX = 0;
-    const arrowY = -r;
-    ctx.moveTo(arrowX, arrowY);
-    ctx.lineTo(arrowX + 3, arrowY - 1);
-    ctx.moveTo(arrowX, arrowY);
-    ctx.lineTo(arrowX + 1, arrowY + 3);
-    ctx.stroke();
+        // Draw arrow head
+        ctx.beginPath();
+        // End point of arc is at (0, -r) after rotation
+        const arrowX = 0;
+        const arrowY = -r;
+        ctx.moveTo(arrowX, arrowY);
+        ctx.lineTo(arrowX + 3, arrowY - 1);
+        ctx.moveTo(arrowX, arrowY);
+        ctx.lineTo(arrowX + 1, arrowY + 3);
+        ctx.stroke();
+        
+        // Try to load the icon if not already loading
+        loadRotateIcon(() => {
+            // Icon loaded, but we can't redraw here - it will be drawn on next render
+        });
+    }
 
     ctx.restore();
 };
 
 export const configureFabricOverrides = () => {
     if (!fabric) return;
+
+    // Preload the rotate icon
+    loadRotateIcon(() => {
+        // Icon loaded and cached
+    });
 
     // -- 1. Global Object Styling --
     fabric.Object.prototype.set({
@@ -208,10 +272,12 @@ export const configureFabricOverrides = () => {
         }
     });
 
-    // Rotation handle (mtr) removed - using modifier-based rotation instead
-    // Disable the rotation handle
+    // Rotation handle at top center of bounding box
     if (standardControls.mtr) {
-        standardControls.mtr.visible = false;
+        standardControls.mtr.visible = true;
+        standardControls.mtr.render = renderRotationControl;
+        standardControls.mtr.cornerSize = 24;
+        standardControls.mtr.offsetY = -40; // Position 40px above the top edge
     }
 
 };
