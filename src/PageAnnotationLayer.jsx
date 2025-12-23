@@ -846,6 +846,17 @@ const PageAnnotationLayer = memo(({
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
       navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
 
+    // Temporarily monkey-patch HTMLCanvasElement.prototype.getContext globally
+    // to ensure all canvas contexts created by Fabric.js use willReadFrequently
+    // This prevents Chrome warnings about frequent getImageData calls
+    const originalProtoGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function(contextType, options = {}) {
+      if (contextType === '2d') {
+        return originalProtoGetContext.call(this, contextType, { ...options, willReadFrequently: true });
+      }
+      return originalProtoGetContext.call(this, contextType, options);
+    };
+
     const canvas = new Canvas(canvasRef.current, {
       width: width * scale,
       height: height * scale,
@@ -870,6 +881,9 @@ const PageAnnotationLayer = memo(({
       // Note: We don't set uniScaleKey because we handle modifier keys manually
       // in handleObjectScaling to ensure platform-specific behavior (Command on Mac, Control on Windows)
     });
+
+    // Restore the original getContext method after Fabric.js initialization
+    HTMLCanvasElement.prototype.getContext = originalProtoGetContext;
 
     const brush = new PencilBrush(canvas);
     brush.color = strokeColor;
@@ -1480,12 +1494,15 @@ const PageAnnotationLayer = memo(({
         
         // Apply rotation
         const newAngle = rotationState.startAngle + deltaAngle;
-        obj.set('angle', newAngle);
+        obj.set({
+          angle: newAngle,
+          dirty: true
+        });
         obj.setCoords();
-        canvas.renderAll();
+        canvas.requestRenderAll();
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Rotation applied',data:{newAngle,deltaAngle,startAngle:rotationState.startAngle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Rotation applied',data:{newAngle,deltaAngle,startAngle:rotationState.startAngle,objAngle:obj.angle},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
         
         opt.e.preventDefault();
@@ -2362,12 +2379,15 @@ const PageAnnotationLayer = memo(({
         
         // Apply rotation
         const newAngle = rotationState.startAngle + deltaAngle;
-        obj.set('angle', newAngle);
+        obj.set({
+          angle: newAngle,
+          dirty: true
+        });
         obj.setCoords();
-        canvas.renderAll();
+        canvas.requestRenderAll();
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForSelection',message:'Rotation applied (select tool)',data:{newAngle,deltaAngle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForSelection',message:'Rotation applied (select tool)',data:{newAngle,deltaAngle,objAngle:obj.angle},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
         
         e.e.preventDefault();

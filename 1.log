@@ -1,198 +1,140 @@
-App.jsx:1635 Syncing documents from Supabase: 0 []
-App.jsx:1635 Syncing documents from Supabase: 1 [{…}]
-App.jsx:11090 Importing PDF annotations...
-App.jsx:11094 Imported annotations from 26 pages
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-(anonymous) @ helpers.ts:5
-(anonymous) @ helpers.ts:5
-(anonymous) @ fetch.ts:82
-(anonymous) @ fetch.ts:81
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-_handleRequest @ fetch.ts:79
-(anonymous) @ fetch.ts:99
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-get @ fetch.ts:97
-downloadFn @ StorageFileApi.ts:549
-(anonymous) @ BlobDownloadBuilder.ts:44
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ BlobDownloadBuilder.ts:42
-getPromise @ BlobDownloadBuilder.ts:37
-then @ BlobDownloadBuilder.ts:22
-Show 20 more frames
-App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1263
-await in generateThumbnail (async)
-(anonymous) @ App.jsx:1323
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
+chunk-F2KOVKPX.js?v=20d15701:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+PDFWorkerManager.js:5 PDFWorkerManager: Creating PDF worker
+PDFWorkerManager.js:7 PDFWorkerManager: PDF worker created successfully
+App.jsx:1643 Syncing documents from Supabase: 0 []
+authConfig.js:36 [Tue, 23 Dec 2025 07:32:15 GMT] : [] : @azure/msal-browser@4.26.2 : Info - MSAL.js was last initialized by version: 4.26.2
+App.jsx:1643 Syncing documents from Supabase: 1 [{…}]
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1643 Syncing documents from Supabase: 1 [{…}]
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+pdfRender.worker.js:3 PDF Worker initialized
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1643 Syncing documents from Supabase: 1 [{…}]
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
-fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-(anonymous) @ helpers.ts:5
-(anonymous) @ helpers.ts:5
-(anonymous) @ fetch.ts:82
-(anonymous) @ fetch.ts:81
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-_handleRequest @ fetch.ts:79
-(anonymous) @ fetch.ts:99
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-get @ fetch.ts:97
-downloadFn @ StorageFileApi.ts:549
-(anonymous) @ BlobDownloadBuilder.ts:44
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ BlobDownloadBuilder.ts:42
-getPromise @ BlobDownloadBuilder.ts:37
-then @ BlobDownloadBuilder.ts:22
-Show 20 more frames
-App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1263
-await in generateThumbnail (async)
-(anonymous) @ App.jsx:1323
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-(anonymous) @ helpers.ts:5
-(anonymous) @ helpers.ts:5
-(anonymous) @ fetch.ts:82
-(anonymous) @ fetch.ts:81
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-_handleRequest @ fetch.ts:79
-(anonymous) @ fetch.ts:99
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-get @ fetch.ts:97
-downloadFn @ StorageFileApi.ts:549
-(anonymous) @ BlobDownloadBuilder.ts:44
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ BlobDownloadBuilder.ts:42
-getPromise @ BlobDownloadBuilder.ts:37
-then @ BlobDownloadBuilder.ts:22
-Show 20 more frames
-App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1263
-await in generateThumbnail (async)
-(anonymous) @ App.jsx:1323
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-(anonymous) @ helpers.ts:5
-(anonymous) @ helpers.ts:5
-(anonymous) @ fetch.ts:82
-(anonymous) @ fetch.ts:81
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-_handleRequest @ fetch.ts:79
-(anonymous) @ fetch.ts:99
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-get @ fetch.ts:97
-downloadFn @ StorageFileApi.ts:549
-(anonymous) @ BlobDownloadBuilder.ts:44
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ BlobDownloadBuilder.ts:42
-getPromise @ BlobDownloadBuilder.ts:37
-then @ BlobDownloadBuilder.ts:22
-Show 20 more frames
-App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1263
-await in generateThumbnail (async)
-(anonymous) @ App.jsx:1323
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
-PageAnnotationLayer.jsx:1224 Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1643 Syncing documents from Supabase: 0 []
+App.jsx:1643 Syncing documents from Supabase: 1 [{…}]
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+App.jsx:11098 Importing PDF annotations...
+App.jsx:11102 Imported annotations from 26 pages
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+PageAnnotationLayer.jsx:1229 Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
 isTransparent @ fabric.js:1572
 isTargetTransparent @ fabric.js:12124
 _checkTarget @ fabric.js:12435
 _searchPossibleTargets @ fabric.js:12462
 findTarget @ fabric.js:12410
-canvas.findTarget @ PageAnnotationLayer.jsx:1224
+canvas.findTarget @ PageAnnotationLayer.jsx:1229
 _cacheTransformEventData @ fabric.js:13692
 __onMouseWheel @ fabric.js:13844
 _onMouseWheel @ fabric.js:13098
 Show 8 more frames
+PageAnnotationLayer.jsx:1229 Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
+isTransparent @ fabric.js:1572
+isTargetTransparent @ fabric.js:12144
+_checkTarget @ fabric.js:12435
+_searchPossibleTargets @ fabric.js:12462
+findTarget @ fabric.js:12400
+canvas.findTarget @ PageAnnotationLayer.jsx:1229
+_cacheTransformEventData @ fabric.js:13692
+__onMouseDown @ fabric.js:13592
+_onMouseDown @ fabric.js:13274
+Show 8 more frames
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
+PageAnnotationLayer.jsx:1662 [Eraser] MouseDown - pointer: Point {x: 631.6657218911996, y: 601.027742515183} radius: 20 mode: partial
+PageAnnotationLayer.jsx:1669 [Eraser] Objects on canvas: 1 [{…}]
+PageAnnotationLayer.jsx:1695 [Eraser] Hit test for path : true
+PageAnnotationLayer.jsx:1717 [Eraser] Target found: path
+PageAnnotationLayer.jsx:1793 [Eraser] Calling erasePathSegment for single-click partial erase
+PageAnnotationLayer.jsx:1795 [Eraser] erasePathSegment result: true
+App.jsx:1266 Downloading for thumbnail from: 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1766474213872.pdf
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
+PageAnnotationLayer.jsx:1662 [Eraser] MouseDown - pointer: Point {x: 630.1436358143534, y: 593.4170869176658} radius: 20 mode: partial
+PageAnnotationLayer.jsx:1669 [Eraser] Objects on canvas: 1 [{…}]
+PageAnnotationLayer.jsx:1695 [Eraser] Hit test for path : false
+PageAnnotationLayer.jsx:1717 [Eraser] Target found: none
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 2 pos: {x: '630.1', y: '591.1'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 3 pos: {x: '630.1', y: '588.1'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 4 pos: {x: '629.4', y: '585.8'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 5 pos: {x: '628.6', y: '583.5'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.10 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 6 pos: {x: '627.9', y: '581.2'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 7 pos: {x: '626.3', y: '579.0'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 8 pos: {x: '624.8', y: '576.7'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 9 pos: {x: '623.3', y: '573.6'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 10 pos: {x: '621.0', y: '571.3'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 11 pos: {x: '619.5', y: '569.8'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 12 pos: {x: '618.0', y: '568.3'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 13 pos: {x: '615.7', y: '566.0'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.10 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 14 pos: {x: '614.2', y: '564.5'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.10 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 15 pos: {x: '611.9', y: '563.0'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 16 pos: {x: '610.4', y: '560.7'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 17 pos: {x: '608.1', y: '559.2'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.10 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 18 pos: {x: '606.6', y: '556.9'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 19 pos: {x: '604.3', y: '554.6'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.10 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 20 pos: {x: '602.7', y: '553.1'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 21 pos: {x: '600.5', y: '550.8'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.10 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 22 pos: {x: '598.9', y: '549.3'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:2017 [Eraser:Move] Point added, total: 23 pos: {x: '596.7', y: '547.8'}
+PageAnnotationLayer.jsx:2023 [Eraser:Move] requestRenderAll took: 0.00 ms
+PageAnnotationLayer.jsx:1662 [Eraser] MouseDown - pointer: Point {x: 581.4368813552729, y: 534.0539732570312} radius: 20 mode: partial
+PageAnnotationLayer.jsx:1669 [Eraser] Objects on canvas: 1 [{…}]
+PageAnnotationLayer.jsx:1695 [Eraser] Hit test for path : true
+PageAnnotationLayer.jsx:1717 [Eraser] Target found: path
+PageAnnotationLayer.jsx:1793 [Eraser] Calling erasePathSegment for single-click partial erase
+PageAnnotationLayer.jsx:1795 [Eraser] erasePathSegment result: false
