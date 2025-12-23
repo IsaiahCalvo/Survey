@@ -426,7 +426,7 @@ const Icon = ({ name, size = 16, color = 'currentColor', style, className }) => 
 
     // Undo icon
     undo: (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(180deg) scaleX(-1)' }} className={className}>
         <path d="M9 14H14C17.3137 14 20 11.3137 20 8C20 4.68629 17.3137 2 14 2H9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M9 14V19L3 14L9 9V14Z" fill={color} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
