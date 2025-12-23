@@ -8108,6 +8108,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [strokeWidthInputValue, setStrokeWidthInputValue] = useState(String(strokeWidth));
   const [isStrokeWidthFocused, setIsStrokeWidthFocused] = useState(false);
 
+  // Input field state for eraser size (similar to stroke width)
+  const [eraserSizeInputValue, setEraserSizeInputValue] = useState(String(eraserSize));
+  const [isEraserSizeFocused, setIsEraserSizeFocused] = useState(false);
+
   // Sync tool properties when activeTool or pdfId changes (load per-tool preferences)
   useEffect(() => {
     if (!pdfId) return;
@@ -8130,6 +8134,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setStrokeWidthInputValue(String(strokeWidth));
     }
   }, [strokeWidth, isStrokeWidthFocused]);
+
+  // Sync eraserSizeInputValue when eraserSize changes (but not while focused)
+  useEffect(() => {
+    if (!isEraserSizeFocused) {
+      setEraserSizeInputValue(String(eraserSize));
+    }
+  }, [eraserSize, isEraserSizeFocused]);
 
   // Handlers to update both local state AND persist to tool preferences
   const handleStrokeColorChange = useCallback((color) => {
@@ -8180,6 +8191,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       handleStrokeWidthChange(clamped);
     }
   }, [strokeWidthInputValue, handleStrokeWidthChange]);
+
+  // Handle eraser size input changes (allows empty string while typing)
+  const handleEraserSizeInputChange = useCallback((e) => {
+    const value = e.target.value;
+    // Allow empty string or valid numbers
+    if (value === '' || /^\d+$/.test(value)) {
+      setEraserSizeInputValue(value);
+    }
+  }, []);
+
+  // Commit eraser size value on blur (clamp to valid range)
+  const handleEraserSizeInputBlur = useCallback(() => {
+    setIsEraserSizeFocused(false);
+    const parsed = parseInt(eraserSizeInputValue, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      // Reset to minimum if empty or invalid
+      setEraserSizeInputValue('1');
+      setEraserSize(1);
+    } else {
+      const clamped = Math.min(Math.max(parsed, 1), 100);
+      setEraserSizeInputValue(String(clamped));
+      setEraserSize(clamped);
+    }
+  }, [eraserSizeInputValue]);
 
   // Item copy state (was transfer)
   const [transferState, setTransferState] = useState(null); // { mode: 'select'|'prompt'|'checklist', sourceSpaceId, items, destSpaceId }
@@ -12878,9 +12913,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             height: eraserSize * 2 * scale,
             borderRadius: '50%',
             backgroundColor: 'rgba(128, 128, 128, 0.2)',
-            border: '2px solid rgba(100, 100, 100, 0.6)',
+            border: `${Math.max(1, 2 * scale)}px solid rgba(100, 100, 100, 0.6)`,
             pointerEvents: 'none',
-            zIndex: 99999
+            zIndex: 99999,
+            transition: 'width 0.1s ease, height 0.1s ease, left 0.1s ease, top 0.1s ease, border-width 0.1s ease'
           }}
         />
       )}
@@ -13820,10 +13856,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 inputMode="numeric"
                 pattern="[0-9]*"
                 className="no-spin-buttons"
-                value={strokeWidthInputValue}
-                onChange={handleStrokeWidthInputChange}
-                onFocus={() => setIsStrokeWidthFocused(true)}
-                onBlur={handleStrokeWidthInputBlur}
+                value={activeTool === 'eraser' ? eraserSizeInputValue : strokeWidthInputValue}
+                onChange={activeTool === 'eraser' ? handleEraserSizeInputChange : handleStrokeWidthInputChange}
+                onFocus={() => activeTool === 'eraser' ? setIsEraserSizeFocused(true) : setIsStrokeWidthFocused(true)}
+                onBlur={activeTool === 'eraser' ? handleEraserSizeInputBlur : handleStrokeWidthInputBlur}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.target.blur();
