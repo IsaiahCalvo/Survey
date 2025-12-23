@@ -1195,6 +1195,40 @@ const PageAnnotationLayer = memo(({
       return false;
     };
 
+    // Helper function to check if point is on an edge handle (ml, mr, mt, mb)
+    const isPointOnEdgeHandle = (point, obj) => {
+      if (!obj || !obj.oCoords) return false;
+
+      try {
+        obj.setCoords();
+      } catch (e) {
+        return false;
+      }
+
+      const handleSize = 12; // Edge handle half-width/height
+      const edges = ['ml', 'mr', 'mt', 'mb'];
+
+      for (const edgeKey of edges) {
+        const edge = obj.oCoords[edgeKey];
+        if (!edge) continue;
+
+        const dx = point.x - edge.x;
+        const dy = point.y - edge.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance <= handleSize) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    // Helper function to check if point is on ANY control handle (corner or edge)
+    const isPointOnAnyHandle = (point, obj) => {
+      return isPointOnCornerHandle(point, obj) || isPointOnEdgeHandle(point, obj);
+    };
+
     // Override Fabric.js findTarget to use pixel-perfect selection but allow bounding box manipulation
     const originalFindTarget = canvas.findTarget.bind(canvas);
     canvas.findTarget = function (e, skipGroup) {
@@ -2256,23 +2290,26 @@ const PageAnnotationLayer = memo(({
       const activeObject = canvas.getActiveObject();
       const nativeEvent = e.e;
 
-      // Check for modifier-based rotation or proximity-based rotation on selected object
+      // STRICT HIT-TESTING HIERARCHY for selected objects:
+      // 1. Edge/Handle Zone (Scale): On any handle → allow default resize/scale behavior
+      // 2. Inner Zone (Move): Inside bounding box → allow default move behavior
+      // 3. Outer Zone (Rotate): Outside bounding box → rotation only
       if (activeObject) {
         const isModifierHeld = isModifierPressed(nativeEvent);
         const isOnBody = isPointInBoundingBox(pointer, activeObject);
-        const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
+        const isOnAnyHandle = isPointOnAnyHandle(pointer, activeObject);
         const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
         const isOutsideBody = !isOnBody;
 
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForSelection',message:'Rotation check (select tool)',data:{isModifierHeld,isOnBody,isOutsideBody,isOnHandle,proximityCorner,willStartRotation:(isModifierHeld&&isOutsideBody&&!isOnHandle)||(proximityCorner&&!isOnHandle)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForSelection',message:'Hit-testing hierarchy check',data:{isModifierHeld,isOnBody,isOutsideBody,isOnAnyHandle,proximityCorner,willStartRotation:(isModifierHeld&&isOutsideBody&&!isOnAnyHandle)||(proximityCorner&&!isOnAnyHandle)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
 
-        // Start rotation if:
-        // 1. Modifier is held and clicking ANYWHERE on the annotation (not on handle), OR
-        // 2. In proximity zone (but not on handle)
-        // Clicking ON handles should allow normal resize (don't intercept)
-        if ((isModifierHeld && !isOnHandle) || (proximityCorner && !isOnHandle)) {
+        // STRICT ROTATION TRIGGER - ONLY in Outer Zone:
+        // 1. Modifier is held AND clicking OUTSIDE the bounding box (not on any handle), OR
+        // 2. In proximity zone (outside body, near corners, but not on any handle)
+        // Priority: Handles > Inside Body (Move) > Outside Body (Rotate)
+        if ((isModifierHeld && isOutsideBody && !isOnAnyHandle) || (proximityCorner && !isOnAnyHandle)) {
           selectRotationStateRef.current = {
             object: activeObject,
             startAngle: activeObject.angle || 0,
@@ -2471,7 +2508,17 @@ const PageAnnotationLayer = memo(({
       // Save canvas after rotation (before resetting rotation state)
       const wasRotating = selectRotationStateRef.current !== null;
 
-      // Handle single-click object selection (no drag)
+      // Handle rotation-only case (no selection rectangle)
+      if (!selectionRectRef.current && selectRotationStateRef.current) {
+        // Rotation ended - save canvas state
+        selectRotationStateRef.current = null;
+        if (wasRotating && onAnnotationsChangeRef.current) {
+          onAnnotationsChangeRef.current();
+        }
+        return;
+      }
+
+      // Handle single-click object selection (no drag, no rotation)
       if (!selectionRectRef.current && !selectRotationStateRef.current) {
         // Use geometry-based hit testing for single-click selection
         const pointer = canvas.getPointer(e.e);
@@ -2500,6 +2547,13 @@ const PageAnnotationLayer = memo(({
           canvas.discardActiveObject();
           canvas.requestRenderAll();
         }
+        return;
+      }
+
+      // Handle selection rectangle case (drag selection)
+      // Add null check to prevent errors if selectionRectRef was cleared elsewhere
+      if (!selectionRectRef.current) {
+        selectRotationStateRef.current = null;
         return;
       }
 
@@ -2651,15 +2705,16 @@ const PageAnnotationLayer = memo(({
 
       if (activeObject) {
         const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
-        const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
+        const isOnAnyHandle = isPointOnAnyHandle(pointer, activeObject);
         const isModifierHeld = isModifierPressed(nativeEvent);
         const isOnBody = isPointInBoundingBox(pointer, activeObject);
         const isOutsideBody = !isOnBody;
 
-        // Show rotate cursor if:
-        // 1. In proximity zone (but not on handle), OR
-        // 2. Modifier is held and cursor is on the annotation (not on handle)
-        if ((proximityCorner && !isOnHandle) || (isModifierHeld && isOnBody && !isOnHandle)) {
+        // STRICT CURSOR HIERARCHY - Show rotate cursor ONLY in Outer Zone:
+        // 1. In proximity zone (outside body, near corners, but not on any handle), OR
+        // 2. Modifier is held AND cursor is OUTSIDE the bounding box (not on any handle)
+        // Priority: Handles > Inside Body (Move) > Outside Body (Rotate)
+        if ((proximityCorner && !isOnAnyHandle) || (isModifierHeld && isOutsideBody && !isOnAnyHandle)) {
           // Use 'alias' cursor for rotation (circular arrow)
           canvas.defaultCursor = 'alias';
           canvas.hoverCursor = 'alias';

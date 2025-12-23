@@ -13484,14 +13484,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       <div style={{
                         position: 'relative',
                         transform: getPageTransform(pageNum),
-                        transformOrigin: 'center center'
+                        transformOrigin: 'center center',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
                       }}>
-                        <canvas
-                          ref={el => canvasRef.current[pageNum] = el}
-                          style={{
-                            display: 'block',
-                            background: '#fff',
-                            boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+                        <PDFPageCanvas
+                          page={pageObjects[pageNum]}
+                          scale={scale}
+                          onFinishRender={() => {
+                            setRenderedPages(prev => new Set([...prev, pageNum]));
                           }}
                         />
                         {pageSizes[pageNum] && pageObjects[pageNum] && (
