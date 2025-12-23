@@ -1819,12 +1819,14 @@ const RegionSelectionTool = ({
                   <path
                     key={region.regionId}
                     d={path}
-                    fill="rgba(245, 166, 35, 0.18)"
-                    stroke="#F5A623"
+                    fill="rgba(74, 144, 226, 0.15)"
+                    stroke="#4A90E2"
                     strokeWidth={2.5}
+                    strokeDasharray="none"
                     style={{
                       pointerEvents: effectiveToolType === 'move' ? 'visiblePainted' : 'none',
-                      cursor: effectiveToolType === 'move' ? 'move' : 'default'
+                      cursor: effectiveToolType === 'move' ? 'move' : 'default',
+                      filter: 'drop-shadow(0 2px 4px rgba(74, 144, 226, 0.3))'
                     }}
                     onMouseDown={effectiveToolType === 'move' ? (event) => handleRegionPointerDown(region, event) : undefined}
                   />
@@ -1948,6 +1950,13 @@ const RegionSelectionTool = ({
             const useVertexHandles = vertexCount <= 32;
 
             if (useVertexHandles) {
+              // Calculate bounds for outline
+              const bounds = getRegionBounds(selectedRegion);
+              const boundsLeft = bounds ? bounds.minX * scale : 0;
+              const boundsTop = bounds ? bounds.minY * scale : 0;
+              const boundsWidth = bounds ? (bounds.maxX - bounds.minX) * scale : 0;
+              const boundsHeight = bounds ? (bounds.maxY - bounds.minY) * scale : 0;
+
               // Render handles for each vertex
               const handles = [];
               for (let i = 0; i < vertexCount; i++) {
@@ -1963,19 +1972,49 @@ const RegionSelectionTool = ({
                       left: `${x}px`,
                       top: `${y}px`,
                       transform: 'translate(-50%, -50%)',
-                      width: '12px',
-                      height: '12px',
+                      width: '14px',
+                      height: '14px',
                       borderRadius: '50%',
-                      background: '#F5A623',
-                      border: '2px solid #fff',
+                      background: '#4A90E2',
+                      border: '2.5px solid #1E1E1E',
                       cursor: 'crosshair',
                       pointerEvents: 'auto',
-                      zIndex: 1003
+                      zIndex: 1003,
+                      boxShadow: '0 2px 6px rgba(74, 144, 226, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.2)';
+                      e.currentTarget.style.boxShadow = '0 3px 8px rgba(74, 144, 226, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.2)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)';
+                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(74, 144, 226, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)';
                     }}
                   />
                 );
               }
-              return <>{handles}</>;
+              return (
+                <>
+                  {bounds && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: `${boundsLeft}px`,
+                        top: `${boundsTop}px`,
+                        width: `${boundsWidth}px`,
+                        height: `${boundsHeight}px`,
+                        border: '2px solid #4A90E2',
+                        borderRadius: '2px',
+                        pointerEvents: 'none',
+                        zIndex: 1002,
+                        boxShadow: '0 0 0 1px rgba(74, 144, 226, 0.2), inset 0 0 0 1px rgba(74, 144, 226, 0.1)'
+                      }}
+                    />
+                  )}
+                  {handles}
+                </>
+              );
             } else {
               // Render bounding box handles for complex shapes
               const bounds = getRegionBounds(selectedRegion);
@@ -1987,6 +2026,21 @@ const RegionSelectionTool = ({
 
               return (
                 <>
+                  {/* Bounding box outline */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${left}px`,
+                      top: `${top}px`,
+                      width: `${width}px`,
+                      height: `${height}px`,
+                      border: '2px solid #4A90E2',
+                      borderRadius: '2px',
+                      pointerEvents: 'none',
+                      zIndex: 1002,
+                      boxShadow: '0 0 0 1px rgba(74, 144, 226, 0.2), inset 0 0 0 1px rgba(74, 144, 226, 0.1)'
+                    }}
+                  />
                   {resizeHandles.map(handle => (
                     <div
                       key={handle.key}
@@ -1996,14 +2050,24 @@ const RegionSelectionTool = ({
                         left: `${left + (handle.offsetX * width)}px`,
                         top: `${top + (handle.offsetY * height)}px`,
                         transform: 'translate(-50%, -50%)',
-                        width: '12px',
-                        height: '12px',
+                        width: '14px',
+                        height: '14px',
                         borderRadius: '50%',
-                        background: '#F5A623',
-                        border: '2px solid #fff',
+                        background: '#4A90E2',
+                        border: '2.5px solid #1E1E1E',
                         cursor: handle.cursor,
                         pointerEvents: 'auto',
-                        zIndex: 1003
+                        zIndex: 1003,
+                        boxShadow: '0 2px 6px rgba(74, 144, 226, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.2)';
+                        e.currentTarget.style.boxShadow = '0 3px 8px rgba(74, 144, 226, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.2)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)';
+                        e.currentTarget.style.boxShadow = '0 2px 6px rgba(74, 144, 226, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)';
                       }}
                     />
                   ))}
