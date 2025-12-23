@@ -735,11 +735,15 @@ const PageAnnotationLayer = memo(({
   const selectionRectObjRef = useRef(null); // Temporary rectangle object for visual feedback
   const isErasingRef = useRef(false);
   const eraserPathRef = useRef(null);
+  // Rotation tracking for select tool
+  const selectRotationStateRef = useRef(null); // { object, startAngle, startPointer, center }
   // Pan tool drag tracking for Drawboard PDF-style behavior
   const panDragStartRef = useRef(null);
   const panDragDistanceRef = useRef(0);
-  const panInteractionTypeRef = useRef(null); // 'transform' | 'move' | 'select' | 'pan' | null
+  const panInteractionTypeRef = useRef(null); // 'transform' | 'move' | 'select' | 'pan' | 'rotate' | null
   const isFabricTransformingRef = useRef(false); // Track if Fabric.js is currently transforming an object
+  // Rotation tracking for modifier-based rotation
+  const rotationStateRef = useRef(null); // { object, startAngle, startPointer, center }
 
   // Keep highlight callback refs in sync
   useEffect(() => {
@@ -1090,6 +1094,93 @@ const PageAnnotationLayer = memo(({
       );
     };
 
+    // Helper function to check if modifier key is pressed (Command on Mac, Control on Windows)
+    const isModifierPressed = (event) => {
+      // Check for Command (Mac) or Control (Windows/Linux)
+      const result = event.metaKey || event.ctrlKey;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:isModifierPressed',message:'Modifier check',data:{metaKey:event.metaKey,ctrlKey:event.ctrlKey,result:result},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      return result;
+    };
+
+    // Helper function to check if point is in proximity to corner handles (15-20px buffer)
+    // Returns the corner handle key if in proximity, null otherwise
+    const getCornerHandleInProximity = (point, obj, buffer = 17.5) => {
+      if (!obj || !obj.oCoords) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:getCornerHandleInProximity',message:'Early return - no obj or oCoords',data:{hasObj:!!obj,hasOCoords:!!(obj&&obj.oCoords)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        return null;
+      }
+
+      // Ensure coordinates are up to date
+      try {
+        obj.setCoords();
+      } catch (e) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:getCornerHandleInProximity',message:'setCoords failed',data:{error:e.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        return null;
+      }
+
+      const corners = ['tl', 'tr', 'bl', 'br'];
+      const handleSize = (obj.cornerSize || 12) / 2; // Half the handle size
+      const totalRadius = handleSize + buffer; // Handle radius + buffer zone
+
+      for (const cornerKey of corners) {
+        const corner = obj.oCoords[cornerKey];
+        if (!corner) continue;
+
+        // Calculate distance from point to corner handle center
+        const dx = point.x - corner.x;
+        const dy = point.y - corner.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Check if point is in the buffer zone (outside handle but within buffer)
+        if (distance > handleSize && distance <= totalRadius) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:getCornerHandleInProximity',message:'Proximity detected',data:{cornerKey,distance,handleSize,totalRadius,point:{x:point.x,y:point.y},corner:{x:corner.x,y:corner.y}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          return cornerKey;
+        }
+      }
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:getCornerHandleInProximity',message:'No proximity found',data:{point:{x:point.x,y:point.y},handleSize,totalRadius},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      return null;
+    };
+
+    // Helper function to check if point is directly on a corner handle
+    const isPointOnCornerHandle = (point, obj) => {
+      if (!obj || !obj.oCoords) return false;
+
+      try {
+        obj.setCoords();
+      } catch (e) {
+        return false;
+      }
+
+      const handleSize = (obj.cornerSize || 12) / 2;
+      const corners = ['tl', 'tr', 'bl', 'br'];
+
+      for (const cornerKey of corners) {
+        const corner = obj.oCoords[cornerKey];
+        if (!corner) continue;
+
+        const dx = point.x - corner.x;
+        const dy = point.y - corner.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance <= handleSize) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
     // Override Fabric.js findTarget to use pixel-perfect selection but allow bounding box manipulation
     const originalFindTarget = canvas.findTarget.bind(canvas);
     canvas.findTarget = function (e, skipGroup) {
@@ -1161,6 +1252,10 @@ const PageAnnotationLayer = memo(({
       const pointer = canvas.getPointer(opt.e);
       const activeObject = canvas.getActiveObject();
       const nativeEvent = opt.e;
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Handler called',data:{hasActiveObject:!!activeObject,pointer:{x:pointer.x,y:pointer.y}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
 
       // Reset drag tracking with CLIENT coordinates for stable panning
       panDragStartRef.current = {
@@ -1194,7 +1289,61 @@ const PageAnnotationLayer = memo(({
         }
       }
 
-      // PRIORITY 2: Check for body of currently selected item
+      // PRIORITY 2: Check for modifier-based rotation on selected item
+      if (activeObject && isModifierPressed(nativeEvent)) {
+        const isOnSelectedBody = isPointInBoundingBox(pointer, activeObject);
+        const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Modifier rotation check',data:{isOnSelectedBody,isOnHandle,willStartRotation:isOnSelectedBody&&!isOnHandle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        
+        // If modifier is pressed and clicking on the object body (not on a handle), start rotation
+        if (isOnSelectedBody && !isOnHandle) {
+          panInteractionTypeRef.current = 'rotate';
+          rotationStateRef.current = {
+            object: activeObject,
+            startAngle: activeObject.angle || 0,
+            startPointer: { x: pointer.x, y: pointer.y },
+            center: activeObject.getCenterPoint()
+          };
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Rotation state set (modifier)',data:{startAngle:rotationStateRef.current.startAngle,center:rotationStateRef.current.center},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          opt.e.preventDefault();
+          opt.e.stopPropagation();
+          return;
+        }
+      }
+
+      // PRIORITY 3: Check for proximity-based rotation on selected item
+      if (activeObject) {
+        const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
+        const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Proximity rotation check',data:{proximityCorner,isOnHandle,willStartRotation:proximityCorner&&!isOnHandle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        
+        // If in proximity zone (but not directly on handle), allow rotation
+        if (proximityCorner && !isOnHandle) {
+          panInteractionTypeRef.current = 'rotate';
+          rotationStateRef.current = {
+            object: activeObject,
+            startAngle: activeObject.angle || 0,
+            startPointer: { x: pointer.x, y: pointer.y },
+            center: activeObject.getCenterPoint()
+          };
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Rotation state set (proximity)',data:{startAngle:rotationStateRef.current.startAngle,center:rotationStateRef.current.center},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          opt.e.preventDefault();
+          opt.e.stopPropagation();
+          return;
+        }
+      }
+
+      // PRIORITY 4: Check for body of currently selected item
       if (activeObject) {
         // Use Bounding Box hit testing for easier selection as requested
         const isOnSelectedBody = isPointInBoundingBox(pointer, activeObject);
@@ -1210,7 +1359,7 @@ const PageAnnotationLayer = memo(({
         }
       }
 
-      // PRIORITY 3: Check for body of unselected item
+      // PRIORITY 5: Check for body of unselected item
       const allObjects = canvas.getObjects();
       let hitUnselectedObject = null;
 
@@ -1240,7 +1389,7 @@ const PageAnnotationLayer = memo(({
         return;
       }
 
-      // PRIORITY 4: Empty space / Canvas
+      // PRIORITY 6: Empty space / Canvas
       // If there's an active object, check if Fabric is handling a transform
       if (activeObject) {
         // Set interaction type to 'wait-for-transform'
@@ -1267,12 +1416,64 @@ const PageAnnotationLayer = memo(({
     const handleMouseMoveForPan = (opt) => {
       const currentTool = toolRef.current;
 
-      if (currentTool !== 'pan' || !panDragStartRef.current) {
+      if (currentTool !== 'pan') {
         return;
       }
 
       const nativeEvent = opt.e;
+      const pointer = canvas.getPointer(opt.e);
+
+      if (!panDragStartRef.current) {
+        return;
+      }
+
       const start = panDragStartRef.current;
+
+      // Handle rotation
+      if (panInteractionTypeRef.current === 'rotate' && rotationStateRef.current) {
+        const rotationState = rotationStateRef.current;
+        const obj = rotationState.object;
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Processing rotation',data:{hasRotationState:!!rotationStateRef.current,interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        
+        // Calculate angle from center to current pointer
+        const center = rotationState.center;
+        const currentAngle = Math.atan2(
+          pointer.y - center.y,
+          pointer.x - center.x
+        ) * 180 / Math.PI;
+        
+        // Calculate angle from center to start pointer
+        const startAngle = Math.atan2(
+          rotationState.startPointer.y - center.y,
+          rotationState.startPointer.x - center.x
+        ) * 180 / Math.PI;
+        
+        // Calculate rotation delta
+        const deltaAngle = currentAngle - startAngle;
+        
+        // Apply rotation
+        const newAngle = rotationState.startAngle + deltaAngle;
+        obj.set('angle', newAngle);
+        obj.setCoords();
+        canvas.renderAll();
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Rotation applied',data:{newAngle,deltaAngle,startAngle:rotationState.startAngle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        
+        opt.e.preventDefault();
+        opt.e.stopPropagation();
+        return;
+      }
+      
+      // #region agent log
+      if (panInteractionTypeRef.current === 'rotate' && !rotationStateRef.current) {
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Rotation type set but no state',data:{interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      }
+      // #endregion
 
       // Calculate drag distance using CLIENT coordinates (stable during scroll)
       const dx = nativeEvent.clientX - start.clientX;
@@ -1346,6 +1547,9 @@ const PageAnnotationLayer = memo(({
         return;
       }
 
+      // Save canvas after rotation (before resetting interaction type)
+      const wasRotating = panInteractionTypeRef.current === 'rotate';
+      
       // If we were tracking an unselected item and drag was < 5px, select it
       if (panInteractionTypeRef.current === 'select-or-pan' && panDragDistanceRef.current <= 5) {
         const hitObject = panDragStartRef.current.hitObject;
@@ -1371,6 +1575,12 @@ const PageAnnotationLayer = memo(({
       panDragStartRef.current = null;
       panDragDistanceRef.current = 0;
       panInteractionTypeRef.current = null;
+      rotationStateRef.current = null;
+      
+      // Save canvas after rotation
+      if (wasRotating) {
+        saveCanvas();
+      }
     };
 
     const handleMouseDown = (opt) => {
@@ -2001,6 +2211,41 @@ const PageAnnotationLayer = memo(({
         return;
       }
 
+      const pointer = canvas.getPointer(e.e);
+      const activeObject = canvas.getActiveObject();
+      const nativeEvent = e.e;
+
+      // Check for modifier-based rotation or proximity-based rotation on selected object
+      if (activeObject) {
+        const isModifierHeld = isModifierPressed(nativeEvent);
+        const isOnBody = isPointInBoundingBox(pointer, activeObject);
+        const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
+        const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForSelection',message:'Rotation check (select tool)',data:{isModifierHeld,isOnBody,isOnHandle,proximityCorner,willStartRotation:(isModifierHeld&&isOnBody&&!isOnHandle)||(proximityCorner&&!isOnHandle)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+
+        // Start rotation if:
+        // 1. Modifier is held and clicking on body (not on handle), OR
+        // 2. In proximity zone (but not on handle)
+        if ((isModifierHeld && isOnBody && !isOnHandle) || (proximityCorner && !isOnHandle)) {
+          selectRotationStateRef.current = {
+            object: activeObject,
+            startAngle: activeObject.angle || 0,
+            startPointer: { x: pointer.x, y: pointer.y },
+            center: activeObject.getCenterPoint()
+          };
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForSelection',message:'Rotation state set (select tool)',data:{startAngle:selectRotationStateRef.current.startAngle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          // Prevent Fabric.js from handling this as a move
+          e.e.preventDefault();
+          e.e.stopPropagation();
+          return;
+        }
+      }
+
       // Only track if not clicking on an object (i.e., doing a drag selection)
       // In Fabric.js, e.target is the canvas when clicking empty space, or an object when clicking on one
       // We want to allow selection when clicking on empty canvas (e.target === canvas or e.target is canvas-like)
@@ -2021,7 +2266,7 @@ const PageAnnotationLayer = memo(({
 
       // Get pointer coordinates - use viewport-transformed coordinates for visual rectangle
       // to match Fabric.js object coordinate system (same as other Rect objects in the codebase)
-      const pointer = canvas.getPointer(e.e, false);
+      // Note: pointer is already declared above (line 2164), so we reuse it
       // Also get absolute coordinates for selection logic (to match object.aCoords)
       const pointerAbsolute = canvas.getPointer(e.e, true);
 
@@ -2062,6 +2307,47 @@ const PageAnnotationLayer = memo(({
 
     // Track mouse move to update selection rectangle and visual style based on direction
     const handleMouseMoveForSelection = (e) => {
+      // Handle rotation for select tool
+      if (selectRotationStateRef.current) {
+        const rotationState = selectRotationStateRef.current;
+        const obj = rotationState.object;
+        const pointer = canvas.getPointer(e.e);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForSelection',message:'Processing rotation (select tool)',data:{hasRotationState:!!selectRotationStateRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        
+        // Calculate angle from center to current pointer
+        const center = rotationState.center;
+        const currentAngle = Math.atan2(
+          pointer.y - center.y,
+          pointer.x - center.x
+        ) * 180 / Math.PI;
+        
+        // Calculate angle from center to start pointer
+        const startAngle = Math.atan2(
+          rotationState.startPointer.y - center.y,
+          rotationState.startPointer.x - center.x
+        ) * 180 / Math.PI;
+        
+        // Calculate rotation delta
+        const deltaAngle = currentAngle - startAngle;
+        
+        // Apply rotation
+        const newAngle = rotationState.startAngle + deltaAngle;
+        obj.set('angle', newAngle);
+        obj.setCoords();
+        canvas.renderAll();
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForSelection',message:'Rotation applied (select tool)',data:{newAngle,deltaAngle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        
+        e.e.preventDefault();
+        e.e.stopPropagation();
+        return;
+      }
+
       if (!selectionRectRef.current) return;
 
       // Get viewport-transformed coordinates for visual rectangle (to match cursor position)
@@ -2132,11 +2418,15 @@ const PageAnnotationLayer = memo(({
     const handleMouseUpForSelection = (e) => {
       if (toolRef.current !== 'select') {
         selectionRectRef.current = null;
+        selectRotationStateRef.current = null;
         return;
       }
 
+      // Save canvas after rotation (before resetting rotation state)
+      const wasRotating = selectRotationStateRef.current !== null;
+
       // Handle single-click object selection (no drag)
-      if (!selectionRectRef.current) {
+      if (!selectionRectRef.current && !selectRotationStateRef.current) {
         // Use geometry-based hit testing for single-click selection
         const pointer = canvas.getPointer(e.e);
         const allObjects = canvas.getObjects();
@@ -2273,6 +2563,14 @@ const PageAnnotationLayer = memo(({
         canvas.renderAll();
       }
       selectionRectRef.current = null;
+      
+      // Reset rotation state and save if rotation occurred
+      if (wasRotating) {
+        selectRotationStateRef.current = null;
+        saveCanvas();
+      } else {
+        selectRotationStateRef.current = null;
+      }
     };
 
     // Register main handlers first (they'll be called last due to LIFO)
@@ -2289,6 +2587,47 @@ const PageAnnotationLayer = memo(({
     canvas.on('mouse:up', handleMouseUp);
     canvas.on('mouse:dblclick', handleDblClick);
 
+    // Global cursor update handler (works for both pan and select tools)
+    const handleMouseMoveForCursor = (opt) => {
+      const currentTool = toolRef.current;
+      if (currentTool !== 'pan' && currentTool !== 'select') {
+        return;
+      }
+
+      const nativeEvent = opt.e;
+      const pointer = canvas.getPointer(opt.e);
+      const activeObject = canvas.getActiveObject();
+
+      // Only update cursor when not dragging
+      if (panDragStartRef.current || selectionRectRef.current) {
+        return;
+      }
+
+      if (activeObject) {
+        const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
+        const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
+        const isModifierHeld = isModifierPressed(nativeEvent);
+        const isOnBody = isPointInBoundingBox(pointer, activeObject);
+
+        // Show rotate cursor if:
+        // 1. In proximity zone (but not on handle), OR
+        // 2. Modifier is held and on body
+        if ((proximityCorner && !isOnHandle) || (isModifierHeld && isOnBody && !isOnHandle)) {
+          // Use 'grab' cursor for rotation (or 'crosshair' as alternative)
+          canvas.defaultCursor = 'grab';
+          canvas.hoverCursor = 'grab';
+        } else {
+          canvas.defaultCursor = 'default';
+          canvas.hoverCursor = currentTool === 'pan' ? 'move' : 'default';
+        }
+        canvas.renderAll();
+      } else {
+        canvas.defaultCursor = 'default';
+        canvas.hoverCursor = currentTool === 'pan' ? 'move' : 'default';
+        canvas.renderAll();
+      }
+    };
+
     // Register pan tool handlers for Drawboard PDF-style behavior
     canvas.on('mouse:down', handleMouseDownForPan);
     canvas.on('mouse:move', handleMouseMoveForPan);
@@ -2298,6 +2637,9 @@ const PageAnnotationLayer = memo(({
     canvas.on('mouse:down', handleMouseDownForSelection);
     canvas.on('mouse:move', handleMouseMoveForSelection);
     canvas.on('mouse:up', handleMouseUpForSelection);
+
+    // Global cursor update (runs for both pan and select tools)
+    canvas.on('mouse:move', handleMouseMoveForCursor);
 
     return () => {
       // console.log(`[Page ${pageNumber}] Cleanup`);

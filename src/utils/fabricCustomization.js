@@ -208,15 +208,10 @@ export const configureFabricOverrides = () => {
         }
     });
 
-    // Rotation (mtr) - Custom icon, positioned at Bottom Center
+    // Rotation handle (mtr) removed - using modifier-based rotation instead
+    // Disable the rotation handle
     if (standardControls.mtr) {
-        standardControls.mtr.x = 0;       // Center X
-        standardControls.mtr.y = 0.5;     // Bottom Y relative to object center (0.5 = bottom edge)
-        standardControls.mtr.offsetY = 30; // 30px below the bottom edge
-        standardControls.mtr.render = renderRotationControl;
-        standardControls.mtr.cornerSize = 24;
-        standardControls.mtr.withConnection = false; // No connection line
-        standardControls.mtr.cursorStyle = 'grab'; // Or custom rotation cursor
+        standardControls.mtr.visible = false;
     }
 
 };
