@@ -2710,6 +2710,83 @@ const PageAnnotationLayer = memo(({
     canvas.renderAll();
   }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale]);
 
+  // Keyboard handler for deleting selected annotations
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Check if Backspace or Delete key is pressed
+      if (e.key !== 'Backspace' && e.key !== 'Delete') {
+        return;
+      }
+
+      // Check if user is typing in an input field, textarea, or contenteditable element
+      const activeElement = document.activeElement;
+      const isInputFocused = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.isContentEditable ||
+        activeElement.contentEditable === 'true'
+      );
+
+      if (isInputFocused) {
+        return; // Don't delete annotation if user is typing
+      }
+
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      // Get the active object (selected annotation)
+      const activeObject = canvas.getActiveObject();
+      if (!activeObject) return;
+
+      // Prevent default browser behavior (e.g., going back in history)
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Check if this is a highlight that needs special handling
+      const isHighlight = activeObject.highlightId != null;
+      
+      if (isHighlight && onHighlightDeletedRef.current) {
+        // Get bounds for highlight deletion callback
+        const bounds = activeObject.getBoundingRect(true);
+        const highlightId = activeObject.highlightId;
+        
+        // Remove from canvas first
+        canvas.remove(activeObject);
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+
+        // Clean up refs
+        renderedHighlightsRef.current.delete(highlightId);
+        const key = highlightId || `${activeObject.left}-${activeObject.top}-${activeObject.width}-${activeObject.height}`;
+        processedHighlightsRef.current.delete(key);
+
+        // Call highlight deletion callback
+        onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
+      } else {
+        // Regular annotation deletion
+        canvas.remove(activeObject);
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+      }
+
+      // Save the canvas state
+      try {
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+        onSaveAnnotations(pageNumber, canvasJSON);
+      } catch (error) {
+        console.error(`[Page ${pageNumber}] Error saving after deletion:`, error);
+      }
+    };
+
+    // Add event listener to document
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
+
+    // Cleanup on unmount
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
+    };
+  }, [pageNumber, onSaveAnnotations]);
+
   return (
     <div
       style={{
