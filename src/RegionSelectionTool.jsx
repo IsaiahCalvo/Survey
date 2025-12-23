@@ -1819,14 +1819,12 @@ const RegionSelectionTool = ({
                   <path
                     key={region.regionId}
                     d={path}
-                    fill="rgba(74, 144, 226, 0.15)"
-                    stroke="#4A90E2"
+                    fill="rgba(245, 166, 35, 0.18)"
+                    stroke="#F5A623"
                     strokeWidth={2.5}
-                    strokeDasharray="none"
                     style={{
                       pointerEvents: effectiveToolType === 'move' ? 'visiblePainted' : 'none',
-                      cursor: effectiveToolType === 'move' ? 'move' : 'default',
-                      filter: 'drop-shadow(0 2px 4px rgba(74, 144, 226, 0.3))'
+                      cursor: effectiveToolType === 'move' ? 'move' : 'default'
                     }}
                     onMouseDown={effectiveToolType === 'move' ? (event) => handleRegionPointerDown(region, event) : undefined}
                   />
@@ -1950,15 +1948,38 @@ const RegionSelectionTool = ({
             const useVertexHandles = vertexCount <= 32;
 
             if (useVertexHandles) {
-              // Calculate bounds for outline
-              const bounds = getRegionBounds(selectedRegion);
-              const boundsLeft = bounds ? bounds.minX * scale : 0;
-              const boundsTop = bounds ? bounds.minY * scale : 0;
-              const boundsWidth = bounds ? (bounds.maxX - bounds.minX) * scale : 0;
-              const boundsHeight = bounds ? (bounds.maxY - bounds.minY) * scale : 0;
-
               // Render handles for each vertex
+              const bounds = getRegionBounds(selectedRegion);
               const handles = [];
+              
+              // Add boundary box for vertex handles case
+              let boundaryBox = null;
+              if (bounds) {
+                const left = bounds.minX * scale;
+                const top = bounds.minY * scale;
+                const width = (bounds.maxX - bounds.minX) * scale;
+                const height = (bounds.maxY - bounds.minY) * scale;
+                
+                boundaryBox = (
+                  <div
+                    key="boundary-box"
+                    style={{
+                      position: 'absolute',
+                      left: `${left}px`,
+                      top: `${top}px`,
+                      width: `${width}px`,
+                      height: `${height}px`,
+                      background: 'rgba(173, 216, 230, 0.15)',
+                      border: '1.5px dashed rgba(100, 149, 237, 0.8)',
+                      borderRadius: '2px',
+                      pointerEvents: 'none',
+                      zIndex: 1002,
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                );
+              }
+              
               for (let i = 0; i < vertexCount; i++) {
                 const x = selectedRegion.coordinates[i * 2] * scale;
                 const y = selectedRegion.coordinates[i * 2 + 1] * scale;
@@ -1972,49 +1993,20 @@ const RegionSelectionTool = ({
                       left: `${x}px`,
                       top: `${y}px`,
                       transform: 'translate(-50%, -50%)',
-                      width: '14px',
-                      height: '14px',
+                      width: '10px',
+                      height: '10px',
                       borderRadius: '50%',
-                      background: '#4A90E2',
-                      border: '2.5px solid #1E1E1E',
+                      background: '#FFFFFF',
+                      border: '1px solid rgba(0, 0, 0, 0.2)',
                       cursor: 'crosshair',
                       pointerEvents: 'auto',
                       zIndex: 1003,
-                      boxShadow: '0 2px 6px rgba(74, 144, 226, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
-                      transition: 'all 0.15s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.2)';
-                      e.currentTarget.style.boxShadow = '0 3px 8px rgba(74, 144, 226, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.2)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)';
-                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(74, 144, 226, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)';
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)'
                     }}
                   />
                 );
               }
-              return (
-                <>
-                  {bounds && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        left: `${boundsLeft}px`,
-                        top: `${boundsTop}px`,
-                        width: `${boundsWidth}px`,
-                        height: `${boundsHeight}px`,
-                        border: '2px solid #4A90E2',
-                        borderRadius: '2px',
-                        pointerEvents: 'none',
-                        zIndex: 1002,
-                        boxShadow: '0 0 0 1px rgba(74, 144, 226, 0.2), inset 0 0 0 1px rgba(74, 144, 226, 0.1)'
-                      }}
-                    />
-                  )}
-                  {handles}
-                </>
-              );
+              return <>{boundaryBox}{handles}</>;
             } else {
               // Render bounding box handles for complex shapes
               const bounds = getRegionBounds(selectedRegion);
@@ -2024,9 +2016,14 @@ const RegionSelectionTool = ({
               const width = (bounds.maxX - bounds.minX) * scale;
               const height = (bounds.maxY - bounds.minY) * scale;
 
+              // Determine if handle is a corner (circular) or side (oval)
+              const isCornerHandle = (handleKey) => {
+                return ['nw', 'ne', 'se', 'sw'].includes(handleKey);
+              };
+
               return (
                 <>
-                  {/* Bounding box outline */}
+                  {/* Selection boundary box - Drawboard style */}
                   <div
                     style={{
                       position: 'absolute',
@@ -2034,43 +2031,38 @@ const RegionSelectionTool = ({
                       top: `${top}px`,
                       width: `${width}px`,
                       height: `${height}px`,
-                      border: '2px solid #4A90E2',
+                      background: 'rgba(173, 216, 230, 0.15)',
+                      border: '1.5px dashed rgba(100, 149, 237, 0.8)',
                       borderRadius: '2px',
                       pointerEvents: 'none',
                       zIndex: 1002,
-                      boxShadow: '0 0 0 1px rgba(74, 144, 226, 0.2), inset 0 0 0 1px rgba(74, 144, 226, 0.1)'
+                      boxSizing: 'border-box'
                     }}
                   />
-                  {resizeHandles.map(handle => (
-                    <div
-                      key={handle.key}
-                      onMouseDown={(event) => handleResizePointerDown(selectedRegion, handle.key, event)}
-                      style={{
-                        position: 'absolute',
-                        left: `${left + (handle.offsetX * width)}px`,
-                        top: `${top + (handle.offsetY * height)}px`,
-                        transform: 'translate(-50%, -50%)',
-                        width: '14px',
-                        height: '14px',
-                        borderRadius: '50%',
-                        background: '#4A90E2',
-                        border: '2.5px solid #1E1E1E',
-                        cursor: handle.cursor,
-                        pointerEvents: 'auto',
-                        zIndex: 1003,
-                        boxShadow: '0 2px 6px rgba(74, 144, 226, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
-                        transition: 'all 0.15s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.2)';
-                        e.currentTarget.style.boxShadow = '0 3px 8px rgba(74, 144, 226, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.2)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)';
-                        e.currentTarget.style.boxShadow = '0 2px 6px rgba(74, 144, 226, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)';
-                      }}
-                    />
-                  ))}
+                  {resizeHandles.map(handle => {
+                    const isCorner = isCornerHandle(handle.key);
+                    return (
+                      <div
+                        key={handle.key}
+                        onMouseDown={(event) => handleResizePointerDown(selectedRegion, handle.key, event)}
+                        style={{
+                          position: 'absolute',
+                          left: `${left + (handle.offsetX * width)}px`,
+                          top: `${top + (handle.offsetY * height)}px`,
+                          transform: 'translate(-50%, -50%)',
+                          width: isCorner ? '10px' : '12px',
+                          height: isCorner ? '10px' : '8px',
+                          borderRadius: isCorner ? '50%' : '4px',
+                          background: '#FFFFFF',
+                          border: '1px solid rgba(0, 0, 0, 0.2)',
+                          cursor: handle.cursor,
+                          pointerEvents: 'auto',
+                          zIndex: 1003,
+                          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)'
+                        }}
+                      />
+                    );
+                  })}
                 </>
               );
             }
