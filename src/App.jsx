@@ -5041,12 +5041,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
         {/* Selection Mode Actions */}
         {
-          // #region agent log
-          (() => {
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:4981', message: 'Checking selection mode render condition', data: { isSelectionMode, activeSection, willRender: !!isSelectionMode }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-            return isSelectionMode;
-          })() && (
-            // #endregion
+          isSelectionMode && (
             <div 
               ref={selectionModeActionsRef}
               style={{
@@ -11982,15 +11977,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Locate item on PDF (Forward Navigation)
   const handleLocateItemOnPDF = useCallback((highlight) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11441', message: 'handleLocateItemOnPDF called', data: { highlight: highlight ? { pageNumber: highlight.pageNumber, bounds: highlight.bounds, hasBounds: !!highlight.bounds } : null, scrollMode, scale }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-    // #endregion
     if (!highlight) return;
     const { pageNumber, bounds } = highlight;
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11446', message: 'Extracted highlight data', data: { pageNumber, bounds, hasBounds: !!bounds, boundsKeys: bounds ? Object.keys(bounds) : [] }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-    // #endregion
 
     // Zoom in a little (e.g., 1.5x or +20% depending on current scale, but user asked for "zooming in on it a little")
     // Let's set a target scale. If current scale is small, zoom in.

@@ -371,20 +371,6 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
       return false;
     }
 
-    // Debug: log bounds and first eraser point
-    if (eraserPath.points.length > 0) {
-      const firstPoint = eraserPath.points[0];
-      console.log('[erasePathSegment] Bounds:', {
-        left: pathBounds.left.toFixed(1),
-        top: pathBounds.top.toFixed(1),
-        right: (pathBounds.left + pathBounds.width).toFixed(1),
-        bottom: (pathBounds.top + pathBounds.height).toFixed(1)
-      }, 'EraserPoint:', {
-        x: firstPoint.x.toFixed(1),
-        y: firstPoint.y.toFixed(1)
-      }, 'EffectiveRadius:', effectiveRadius);
-    }
-
     // OPTIMIZATION: Quick bounding box rejection check
     const bboxCheckStart = performance.now();
     let eraserIntersects = false;
