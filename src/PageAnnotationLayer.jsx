@@ -9,6 +9,11 @@ import {
   isObjectFullyInRect,
   getObjectGeometryBounds
 } from './utils/geometryHitTest';
+import { splitPathDataByEraser, booleanErasePath } from './utils/geometryEraser';
+import { configureFabricOverrides } from './utils/fabricCustomization';
+
+// Apply custom Drawboard-style controls and selection visuals
+configureFabricOverrides();
 
 // Helper function to check if a point is within eraser radius of any point in eraser path
 const isPointNearEraserPath = (point, eraserPath, eraserRadius) => {
@@ -340,6 +345,89 @@ const createEraserClipPath = (eraserCircles, bounds, padding = 50) => {
 // Helper function to erase part of a path using CLIP PATH approach
 // The eraser circles become holes in a clip mask - much more performant than polygon boolean ops
 const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
+  if (!pathObj || !pathObj.path || !eraserPath || !eraserPath.points.length) return false;
+
+  // Use destructive path fragmentation (splitting) instead of masking
+  // UPDATED: Use boolean subtraction for "cookie cutter" effect
+  const result = booleanErasePath(pathObj, eraserPath, eraserRadius);
+
+  // result can be null (no change), empty array (fully erased), or object { pathData, isConvertedToOutline }
+  if (result) {
+    let newPathData = null;
+    let isConverted = false;
+
+    if (Array.isArray(result)) {
+      // Legacy or direct array return (fully erased or simplistic split)
+      newPathData = result;
+    } else {
+      newPathData = result.pathData;
+      isConverted = result.isConvertedToOutline;
+    }
+
+    // Check if path actually changed
+    // if (JSON.stringify(newPathData) === JSON.stringify(pathObj.path)) {
+    //   return false;
+    // }
+
+    // Update the path data
+    pathObj.path = newPathData;
+
+    // If converted to outline, swap stroke and fill
+    if (isConverted) {
+      // If it was already a filled path (from previous erase), we keep it as is.
+      // If it was a stroke, we essentially "bake" the stroke into the fill.
+      const originalStroke = pathObj.stroke; // Keep original color
+
+      // Ensure we don't double-convert if it's already converted?
+      // Note: booleanErasePath assumes input is a stroke. If input is already filled (strokeWidth=0), 
+      // booleanErasePath handles it (ideally). 
+      // My implementation of booleanErasePath currently assumes stroke -> outline.
+      // If re-erasing an already converted path, we should handle that in booleanErasePath or here.
+      // For now, let's assume booleanErasePath converts stroke->outline polygon.
+
+      // Only convert if it has a stroke width (implies it was a stroke)
+      if (pathObj.strokeWidth > 0) {
+        pathObj.set({
+          stroke: 'transparent',
+          strokeWidth: 0,
+          fill: originalStroke || pathObj.fill
+        });
+      }
+    }
+
+    // Recalculate dimensions and offsets for the new path
+    if (pathObj._calcDimensions) {
+      const dims = pathObj._calcDimensions();
+      pathObj.set({
+        width: dims.width,
+        height: dims.height,
+        pathOffset: {
+          x: dims.left + dims.width / 2,
+          y: dims.top + dims.height / 2
+        }
+      });
+    }
+
+    // Resetting coords is crucial for correct hit box reflow
+    pathObj.setCoords();
+
+    // Remove legacy masking if present
+    if (pathObj.clipPath) {
+      pathObj.set('clipPath', null);
+    }
+    if (pathObj.eraserCircles) {
+      delete pathObj.eraserCircles;
+    }
+
+    pathObj.dirty = true;
+
+    return true; // indicated change occurred
+  }
+
+  return false;
+};
+
+const erasePathSegment_Deprecated = (pathObj, eraserPath, eraserRadius, canvas) => {
   // #region agent log
   const eraseStartTime = performance.now();
   // #endregion

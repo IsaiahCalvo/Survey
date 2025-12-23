@@ -1969,9 +1969,9 @@ const RegionSelectionTool = ({
                       top: `${top}px`,
                       width: `${width}px`,
                       height: `${height}px`,
-                      background: 'rgba(173, 216, 230, 0.15)',
-                      border: '1.5px dashed rgba(100, 149, 237, 0.8)',
-                      borderRadius: '2px',
+                      background: 'transparent',
+                      border: '1px solid #87CEEB',
+                      borderRadius: '0px',
                       pointerEvents: 'none',
                       zIndex: 1002,
                       boxSizing: 'border-box'
@@ -1995,13 +1995,12 @@ const RegionSelectionTool = ({
                       transform: 'translate(-50%, -50%)',
                       width: '10px',
                       height: '10px',
-                      borderRadius: '50%',
-                      background: '#FFFFFF',
-                      border: '1px solid rgba(0, 0, 0, 0.2)',
+                      borderRadius: '0px',
+                      background: 'transparent',
+                      border: '1px solid #87CEEB',
                       cursor: 'crosshair',
                       pointerEvents: 'auto',
-                      zIndex: 1003,
-                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)'
+                      zIndex: 1003
                     }}
                   />
                 );
@@ -2016,11 +2015,6 @@ const RegionSelectionTool = ({
               const width = (bounds.maxX - bounds.minX) * scale;
               const height = (bounds.maxY - bounds.minY) * scale;
 
-              // Determine if handle is a corner (circular) or side (oval)
-              const isCornerHandle = (handleKey) => {
-                return ['nw', 'ne', 'se', 'sw'].includes(handleKey);
-              };
-
               return (
                 <>
                   {/* Selection boundary box - Drawboard style */}
@@ -2031,16 +2025,15 @@ const RegionSelectionTool = ({
                       top: `${top}px`,
                       width: `${width}px`,
                       height: `${height}px`,
-                      background: 'rgba(173, 216, 230, 0.15)',
-                      border: '1.5px dashed rgba(100, 149, 237, 0.8)',
-                      borderRadius: '2px',
+                      background: 'transparent',
+                      border: '1px solid #87CEEB',
+                      borderRadius: '0px',
                       pointerEvents: 'none',
                       zIndex: 1002,
                       boxSizing: 'border-box'
                     }}
                   />
                   {resizeHandles.map(handle => {
-                    const isCorner = isCornerHandle(handle.key);
                     return (
                       <div
                         key={handle.key}
@@ -2050,15 +2043,14 @@ const RegionSelectionTool = ({
                           left: `${left + (handle.offsetX * width)}px`,
                           top: `${top + (handle.offsetY * height)}px`,
                           transform: 'translate(-50%, -50%)',
-                          width: isCorner ? '10px' : '12px',
-                          height: isCorner ? '10px' : '8px',
-                          borderRadius: isCorner ? '50%' : '4px',
-                          background: '#FFFFFF',
-                          border: '1px solid rgba(0, 0, 0, 0.2)',
+                          width: '10px',
+                          height: '10px',
+                          borderRadius: '0px',
+                          background: 'transparent',
+                          border: '1px solid #87CEEB',
                           cursor: handle.cursor,
                           pointerEvents: 'auto',
-                          zIndex: 1003,
-                          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)'
+                          zIndex: 1003
                         }}
                       />
                     );
