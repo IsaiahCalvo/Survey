@@ -647,6 +647,10 @@ const PageAnnotationLayer = memo(({
   const selectionRectObjRef = useRef(null); // Temporary rectangle object for visual feedback
   const isErasingRef = useRef(false);
   const eraserPathRef = useRef(null);
+  // Pan tool drag tracking for Drawboard PDF-style behavior
+  const panDragStartRef = useRef(null);
+  const panDragDistanceRef = useRef(0);
+  const panInteractionTypeRef = useRef(null); // 'transform' | 'move' | 'select' | 'pan' | null
 
   // Keep highlight callback refs in sync
   useEffect(() => {
@@ -941,27 +945,155 @@ const PageAnnotationLayer = memo(({
       return null;
     };
 
-    // Handle mouse down for pan/select tools to prevent deselection when clicking within bounding box
+    // Handle mouse down for pan tool with Drawboard PDF-style behavior
     const handleMouseDownForPan = (opt) => {
       const currentTool = toolRef.current;
 
-      // Handle pan and select tools (both allow object manipulation)
-      if (currentTool !== 'pan' && currentTool !== 'select') {
+      // Only handle pan tool (select tool has its own handler)
+      if (currentTool !== 'pan') {
         return;
       }
 
       const pointer = canvas.getPointer(opt.e);
       const activeObject = canvas.getActiveObject();
+      
+      // Reset drag tracking
+      panDragStartRef.current = { x: pointer.x, y: pointer.y };
+      panDragDistanceRef.current = 0;
+      panInteractionTypeRef.current = null;
 
-      // If there's an active object, check if click is within its bounding box
-      if (activeObject && isPointInBoundingBox(pointer, activeObject)) {
-        // Click is within bounding box - prevent deselection
-        // Fabric.js will handle the drag/transform automatically
+      // PRIORITY 1: Check for transform handle (grabber) of currently selected item
+      if (activeObject && activeObject._findTargetCorner) {
+        if (!activeObject.oCoords) {
+          try {
+            activeObject.setCoords();
+          } catch (err) {
+            // Silently ignore
+          }
+        }
+        if (activeObject.oCoords && activeObject.oCoords.tl) {
+          try {
+            const control = activeObject._findTargetCorner(opt.e.e, true);
+            if (control) {
+              // Click is on a control point - allow resize/rotate
+              // Fabric.js will handle this automatically
+              panInteractionTypeRef.current = 'transform';
+              // Prevent container panning
+              opt.e.preventDefault();
+              opt.e.stopPropagation();
+              return;
+            }
+          } catch (err) {
+            // Silently ignore
+          }
+        }
+      }
+
+      // PRIORITY 2: Check for body of currently selected item
+      if (activeObject) {
+        // Use geometry-based hit testing to check if click is on the actual object
+        const HIT_TOLERANCE = 5;
+        const isOnSelectedBody = isPointOnObject(pointer, activeObject, HIT_TOLERANCE);
+        
+        if (isOnSelectedBody) {
+          // Click is on selected item body - allow move
+          panInteractionTypeRef.current = 'move';
+          // Prevent container panning
+          opt.e.preventDefault();
+          opt.e.stopPropagation();
+          // Fabric.js will handle the drag automatically
+          return;
+        }
+      }
+
+      // PRIORITY 3: Check for body of unselected item
+      const allObjects = canvas.getObjects();
+      let hitUnselectedObject = null;
+      const HIT_TOLERANCE = 5;
+
+      // Find topmost unselected object whose geometry contains the click point
+      for (let i = allObjects.length - 1; i >= 0; i--) {
+        const obj = allObjects[i];
+        if (!obj.selectable || !obj.visible) continue;
+        if (obj === activeObject) continue; // Skip selected object (already checked)
+
+        if (isPointOnObject(pointer, obj, HIT_TOLERANCE)) {
+          hitUnselectedObject = obj;
+          break;
+        }
+      }
+
+      if (hitUnselectedObject) {
+        // Click is on unselected item - track drag distance
+        // If drag > 5px: pan the canvas
+        // If drag < 5px: select the item
+        panInteractionTypeRef.current = 'select-or-pan';
+        // Store reference to the hit object
+        panDragStartRef.current.hitObject = hitUnselectedObject;
+        // Prevent container panning initially (we'll decide on mouse move/up)
+        opt.e.preventDefault();
+        opt.e.stopPropagation();
         return;
       }
 
-      // If clicking outside, allow normal deselection behavior
-      // The findTarget override will handle selecting new objects
+      // PRIORITY 4: Empty space / Canvas
+      // Allow panning the canvas
+      panInteractionTypeRef.current = 'pan';
+      // Don't prevent default - let container handle panning
+      // But deselect if there's an active object
+      if (activeObject) {
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+      }
+    };
+
+    // Handle mouse move for pan tool drag distance tracking
+    const handleMouseMoveForPan = (opt) => {
+      const currentTool = toolRef.current;
+      
+      if (currentTool !== 'pan' || !panDragStartRef.current) {
+        return;
+      }
+
+      const pointer = canvas.getPointer(opt.e);
+      const start = panDragStartRef.current;
+      
+      // Calculate drag distance
+      const dx = pointer.x - start.x;
+      const dy = pointer.y - start.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      panDragDistanceRef.current = distance;
+
+      // If we're in 'select-or-pan' mode and drag distance > 5px, switch to panning
+      if (panInteractionTypeRef.current === 'select-or-pan' && distance > 5) {
+        panInteractionTypeRef.current = 'pan';
+        // Prevent object selection - allow canvas panning
+        opt.e.preventDefault();
+        opt.e.stopPropagation();
+      }
+    };
+
+    // Handle mouse up for pan tool click selection
+    const handleMouseUpForPan = (opt) => {
+      const currentTool = toolRef.current;
+      
+      if (currentTool !== 'pan' || !panDragStartRef.current) {
+        return;
+      }
+
+      // If we were tracking an unselected item and drag was < 5px, select it
+      if (panInteractionTypeRef.current === 'select-or-pan' && panDragDistanceRef.current <= 5) {
+        const hitObject = panDragStartRef.current.hitObject;
+        if (hitObject && canvas.getObjects().includes(hitObject)) {
+          canvas.setActiveObject(hitObject);
+          canvas.requestRenderAll();
+        }
+      }
+
+      // Reset tracking
+      panDragStartRef.current = null;
+      panDragDistanceRef.current = 0;
+      panInteractionTypeRef.current = null;
     };
 
     const handleMouseDown = (opt) => {
@@ -1872,9 +2004,10 @@ const PageAnnotationLayer = memo(({
     canvas.on('mouse:up', handleMouseUp);
     canvas.on('mouse:dblclick', handleDblClick);
 
-    // Register pan tool handler for bounding box selection
+    // Register pan tool handlers for Drawboard PDF-style behavior
     canvas.on('mouse:down', handleMouseDownForPan);
-
+    canvas.on('mouse:move', handleMouseMoveForPan);
+    canvas.on('mouse:up', handleMouseUpForPan);
 
     // Register selection tracking handlers LAST so they run FIRST (Fabric.js calls handlers in reverse order)
     canvas.on('mouse:down', handleMouseDownForSelection);
@@ -2337,7 +2470,7 @@ const PageAnnotationLayer = memo(({
         left: 0,
         width: '100%',
         height: '100%',
-        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight') ? 'auto' : 'none',
+        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'pan' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight') ? 'auto' : 'none',
         zIndex: 10,
       }}
     >

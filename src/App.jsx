@@ -7817,6 +7817,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Spacebar Pan state
   const previousToolRef = useRef(null);
   const isPanningRef = useRef(false);
+  // Track canvas mouse down for pan tool empty space panning
+  const canvasMouseDownRef = useRef(null);
 
   const [tooltip, setTooltip] = useState({ visible: false, text: '', x: 0, y: 0 });
   const [showAnnotationColorPicker, setShowAnnotationColorPicker] = useState(false);
@@ -11603,6 +11605,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // OPTIMIZED: Wheel handler with throttling
   const wheelTimerRef = useRef(null);
   const handleWheel = useCallback((e) => {
+    console.log('Wheel event:', {
+      ctrlKey: e.ctrlKey,
+      metaKey: e.metaKey,
+      deltaY: e.deltaY,
+      deltaMode: e.deltaMode
+    });
+
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
 
@@ -11624,13 +11633,47 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Attach wheel event listener with passive: false to allow preventDefault
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    console.log('Setting up document-level wheel listener');
 
-    container.addEventListener('wheel', handleWheel, { passive: false });
+    const wheelHandler = (e) => {
+      console.log('WHEEL EVENT:', {
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        deltaY: e.deltaY,
+        deltaMode: e.deltaMode,
+        type: e.type,
+        target: e.target.tagName
+      });
+
+      // Only handle if the event target is within our PDF container
+      if (containerRef.current?.contains(e.target)) {
+        console.log('Event is within container, calling handleWheel');
+        handleWheel(e);
+      }
+    };
+
+    // Listen for gesture events (Safari/WebKit trackpad pinch)
+    const gestureHandler = (e) => {
+      console.log('GESTURE EVENT:', {
+        type: e.type,
+        scale: e.scale,
+        target: e.target.tagName
+      });
+      e.preventDefault();
+    };
+
+    // Listen on document with capture phase to catch events early
+    document.addEventListener('wheel', wheelHandler, { passive: false, capture: true });
+    document.addEventListener('gesturestart', gestureHandler, { passive: false, capture: true });
+    document.addEventListener('gesturechange', gestureHandler, { passive: false, capture: true });
+    document.addEventListener('gestureend', gestureHandler, { passive: false, capture: true });
 
     return () => {
-      container.removeEventListener('wheel', handleWheel);
+      console.log('Removing document listeners');
+      document.removeEventListener('wheel', wheelHandler, { capture: true });
+      document.removeEventListener('gesturestart', gestureHandler, { capture: true });
+      document.removeEventListener('gesturechange', gestureHandler, { capture: true });
+      document.removeEventListener('gestureend', gestureHandler, { capture: true });
     };
   }, [handleWheel]);
 
@@ -11642,6 +11685,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // 3. Can pan (content exceeds viewport)
     // 4. Left mouse button
     if (activeTool === 'pan' && !showRegionSelection && canPan && e.button === 0) {
+      // Check if click is on an annotation layer canvas
+      // Annotation layers use canvas elements for Fabric.js
+      const target = e.target;
+      const isOnAnnotationCanvas = target.tagName === 'CANVAS' && 
+        target.closest('.page-container') !== null;
+      
+      if (isOnAnnotationCanvas) {
+        // Track canvas mouse down - we'll start panning in handleMouseMove if mouse moves
+        // (indicating empty space drag, not annotation interaction)
+        canvasMouseDownRef.current = {
+          x: e.clientX + containerRef.current.scrollLeft,
+          y: e.clientY + containerRef.current.scrollTop,
+          clientX: e.clientX,
+          clientY: e.clientY
+        };
+        // Don't prevent default - let annotation layer handle it
+        // If annotation layer prevents default (annotation interaction), it will handle it
+        // If annotation layer doesn't prevent default (empty space), we'll pan on mouse move
+        return;
+      }
+
+      // Click is on empty space or PDF background - allow container panning
       setIsPanning(true);
       setPanStart({
         x: e.clientX + containerRef.current.scrollLeft,
@@ -11658,11 +11723,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         container.scrollLeft = panStart.x - e.clientX;
         container.scrollTop = panStart.y - e.clientY;
       }
+    } else if (activeTool === 'pan' && !showRegionSelection && canPan && canvasMouseDownRef.current) {
+      // Check if mouse has moved enough to start panning (empty space drag on canvas)
+      const start = canvasMouseDownRef.current;
+      const moveDistance = Math.sqrt(
+        Math.pow(e.clientX - start.clientX, 2) + 
+        Math.pow(e.clientY - start.clientY, 2)
+      );
+      
+      // Start panning if mouse moved more than 5px (same threshold as annotation selection)
+      if (moveDistance > 5) {
+        setIsPanning(true);
+        setPanStart({
+          x: start.x,
+          y: start.y
+        });
+        canvasMouseDownRef.current = null; // Clear after starting pan
+      }
     }
-  }, [isPanning, panStart]);
+  }, [isPanning, panStart, activeTool, showRegionSelection, canPan]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
+    canvasMouseDownRef.current = null; // Clear canvas mouse down tracking
   }, []);
 
   // Stop panning if tool changes away from pan or region selection becomes active
