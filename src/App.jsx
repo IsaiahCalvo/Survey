@@ -11605,13 +11605,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // OPTIMIZED: Wheel handler with throttling
   const wheelTimerRef = useRef(null);
   const handleWheel = useCallback((e) => {
-    console.log('Wheel event:', {
-      ctrlKey: e.ctrlKey,
-      metaKey: e.metaKey,
-      deltaY: e.deltaY,
-      deltaMode: e.deltaMode
-    });
-
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
 
@@ -11633,47 +11626,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Attach wheel event listener with passive: false to allow preventDefault
   useEffect(() => {
-    console.log('Setting up document-level wheel listener');
-
     const wheelHandler = (e) => {
-      console.log('WHEEL EVENT:', {
-        ctrlKey: e.ctrlKey,
-        metaKey: e.metaKey,
-        deltaY: e.deltaY,
-        deltaMode: e.deltaMode,
-        type: e.type,
-        target: e.target.tagName
-      });
-
       // Only handle if the event target is within our PDF container
       if (containerRef.current?.contains(e.target)) {
-        console.log('Event is within container, calling handleWheel');
         handleWheel(e);
       }
     };
 
-    // Listen for gesture events (Safari/WebKit trackpad pinch)
-    const gestureHandler = (e) => {
-      console.log('GESTURE EVENT:', {
-        type: e.type,
-        scale: e.scale,
-        target: e.target.tagName
-      });
-      e.preventDefault();
-    };
-
-    // Listen on document with capture phase to catch events early
+    // Listen on document with capture phase to catch events before they bubble
     document.addEventListener('wheel', wheelHandler, { passive: false, capture: true });
-    document.addEventListener('gesturestart', gestureHandler, { passive: false, capture: true });
-    document.addEventListener('gesturechange', gestureHandler, { passive: false, capture: true });
-    document.addEventListener('gestureend', gestureHandler, { passive: false, capture: true });
 
     return () => {
-      console.log('Removing document listeners');
       document.removeEventListener('wheel', wheelHandler, { capture: true });
-      document.removeEventListener('gesturestart', gestureHandler, { capture: true });
-      document.removeEventListener('gesturechange', gestureHandler, { capture: true });
-      document.removeEventListener('gestureend', gestureHandler, { capture: true });
     };
   }, [handleWheel]);
 
@@ -11692,6 +11656,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         target.closest('.page-container') !== null;
       
       if (isOnAnnotationCanvas) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:1194',message:'Canvas click detected in pan tool',data:{clientX:e.clientX,clientY:e.clientY,canPan:canPan,activeTool:activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         // Track canvas mouse down - we'll start panning in handleMouseMove if mouse moves
         // (indicating empty space drag, not annotation interaction)
         canvasMouseDownRef.current = {
@@ -11707,6 +11674,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
 
       // Click is on empty space or PDF background - allow container panning
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11710',message:'Starting panning on non-canvas click',data:{clientX:e.clientX,clientY:e.clientY,targetTag:e.target.tagName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
       setIsPanning(true);
       setPanStart({
         x: e.clientX + containerRef.current.scrollLeft,
@@ -11723,6 +11693,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         container.scrollLeft = panStart.x - e.clientX;
         container.scrollTop = panStart.y - e.clientY;
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11723',message:'Panning active',data:{scrollLeft:container?.scrollLeft,scrollTop:container?.scrollTop,clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
     } else if (activeTool === 'pan' && !showRegionSelection && canPan && canvasMouseDownRef.current) {
       // Check if mouse has moved enough to start panning (empty space drag on canvas)
       const start = canvasMouseDownRef.current;
@@ -11730,6 +11703,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         Math.pow(e.clientX - start.clientX, 2) + 
         Math.pow(e.clientY - start.clientY, 2)
       );
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11729',message:'Canvas drag detected, checking distance',data:{moveDistance:moveDistance.toFixed(2),threshold:5,willStartPanning:moveDistance>5,clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       
       // Start panning if mouse moved more than 5px (same threshold as annotation selection)
       if (moveDistance > 5) {
@@ -11739,6 +11716,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           y: start.y
         });
         canvasMouseDownRef.current = null; // Clear after starting pan
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11736',message:'Starting panning from canvas drag',data:{panStartX:start.x,panStartY:start.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
       }
     }
   }, [isPanning, panStart, activeTool, showRegionSelection, canPan]);

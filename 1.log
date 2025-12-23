@@ -1,36 +1,9 @@
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
 App.jsx:1635 Syncing documents from Supabase: 0 []
-App.jsx:11634 useEffect running, containerRef: undefined
-App.jsx:11637 Container ref not ready
 App.jsx:1635 Syncing documents from Supabase: 1 [{…}]
-App.jsx:10988 Importing PDF annotations...
+App.jsx:10990 Importing PDF annotations...
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
-App.jsx:10992 Imported annotations from 26 pages
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-pdf.worker.min.js:22 Warning: TT: undefined function: 32
-PageAnnotationLayer.jsx:931 Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
-isTransparent @ fabric.js:1572
-isTargetTransparent @ fabric.js:12124
-_checkTarget @ fabric.js:12435
-_searchPossibleTargets @ fabric.js:12462
-findTarget @ fabric.js:12410
-canvas.findTarget @ PageAnnotationLayer.jsx:931
-_cacheTransformEventData @ fabric.js:13692
-__onMouseMove @ fabric.js:13718
-_onMouseMove @ fabric.js:13332
-Show 8 more frames
-PageAnnotationLayer.jsx:931 Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
-isTransparent @ fabric.js:1572
-isTargetTransparent @ fabric.js:12124
-_checkTarget @ fabric.js:12435
-_searchPossibleTargets @ fabric.js:12462
-findTarget @ fabric.js:12410
-canvas.findTarget @ PageAnnotationLayer.jsx:931
-__onMouseMove @ fabric.js:13742
-_onMouseMove @ fabric.js:13332
-Show 7 more frames
+App.jsx:10994 Imported annotations from 26 pages
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
@@ -38,14 +11,43 @@ pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
 pdf.worker.min.js:22 Warning: TT: undefined function: 32
- Syncing documents from Supabase: 1 [{…}]
- useEffect running, containerRef: 
- Attaching wheel listener to container 
-main.jsx:24 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:24
-(anonymous) @ App.jsx?t=1766463196235:sourcemap:12077
-setInterval (async)
-(anonymous) @ App.jsx?t=1766463196235:sourcemap:12075
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+App.jsx:1635 Syncing documents from Supabase: 0 []
+App.jsx:1635 Syncing documents from Supabase: 0 []
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+App.jsx:1635 Syncing documents from Supabase: 0 []
+App.jsx:1635 Syncing documents from Supabase: 0 []
+App.jsx:10990 Importing PDF annotations...
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1263
+await in generateThumbnail (async)
+(anonymous) @ App.jsx:1323
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -53,24 +55,353 @@ commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
 commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
 flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
 flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-flushSync @ chunk-DSUIPI7G.js:25848
-scheduleRefresh @ chunk-DSUIPI7G.js:26893
-(anonymous) @ @react-refresh:228
-performReactRefresh @ @react-refresh:217
-(anonymous) @ @react-refresh:608
-setTimeout (async)
-(anonymous) @ @react-refresh:598
-validateRefreshBoundaryAndEnqueueUpdate @ @react-refresh:648
-(anonymous) @ App.jsx:19607
-(anonymous) @ client:34
-(anonymous) @ client:218
-(anonymous) @ client:193
-queueUpdate @ client:193
-await in queueUpdate (async)
-(anonymous) @ client:642
-handleMessage @ client:640
-(anonymous) @ client:550
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:10994 Imported annotations from 25 pages
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1263
+await in generateThumbnail (async)
+(anonymous) @ App.jsx:1323
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1263
+await in generateThumbnail (async)
+(anonymous) @ App.jsx:1323
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1263
+await in generateThumbnail (async)
+(anonymous) @ App.jsx:1323
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1263
+await in generateThumbnail (async)
+(anonymous) @ App.jsx:1323
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1263
+await in generateThumbnail (async)
+(anonymous) @ App.jsx:1323
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1263
+await in generateThumbnail (async)
+(anonymous) @ App.jsx:1323
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1263
+await in generateThumbnail (async)
+(anonymous) @ App.jsx:1323
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/Users/isaiahcalvo/Desktop/SE-011%20Security%20Shop%20Drawing%20Rev2%20-%2005.06.25.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:1263 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1263
+await in generateThumbnail (async)
+(anonymous) @ App.jsx:1323
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+pdf.worker.min.js:22 Warning: TT: undefined function: 32
+useDatabase.js:220 createDocument success, updating state with: {id: '5635773b-8cba-4d88-9eb5-a2e723d469f5', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf', …}
+App.jsx:1775 Background upload completed for: SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf New Doc: {id: '5635773b-8cba-4d88-9eb5-a2e723d469f5', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf', …}

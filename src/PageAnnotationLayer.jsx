@@ -978,6 +978,9 @@ const PageAnnotationLayer = memo(({
               // Click is on a control point - allow resize/rotate
               // Fabric.js will handle this automatically
               panInteractionTypeRef.current = 'transform';
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:980',message:'Transform handle clicked',data:{control:control,interactionType:'transform'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+              // #endregion
               // Prevent container panning
               opt.e.preventDefault();
               opt.e.stopPropagation();
@@ -1039,12 +1042,52 @@ const PageAnnotationLayer = memo(({
       // PRIORITY 4: Empty space / Canvas
       // Allow panning the canvas
       panInteractionTypeRef.current = 'pan';
-      // Don't prevent default - let container handle panning
-      // But deselect if there's an active object
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1041',message:'Empty space detected in pan tool',data:{panInteractionType:'pan',hasActiveObject:!!activeObject,pointerX:pointer.x,pointerY:pointer.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      // Deselect if there's an active object
       if (activeObject) {
         canvas.discardActiveObject();
         canvas.requestRenderAll();
       }
+      // Trigger container panning by dispatching mousedown event on container
+      // Find the container element using data-testid or by finding scrollable parent
+      const nativeEvent = opt.e.e;
+      const canvasElement = canvasRef.current;
+      if (canvasElement && nativeEvent) {
+        // Try to find container by data-testid first
+        let containerElement = document.querySelector('[data-testid="pdf-container"]');
+        // If not found, traverse up from canvas to find scrollable container
+        if (!containerElement) {
+          let parent = canvasElement.parentElement;
+          while (parent && parent !== document.body) {
+            const computedStyle = window.getComputedStyle(parent);
+            if (computedStyle.overflow === 'auto' || computedStyle.overflowY === 'auto' || computedStyle.overflowX === 'auto') {
+              containerElement = parent;
+              break;
+            }
+            parent = parent.parentElement;
+          }
+        }
+        if (containerElement) {
+          // Dispatch synthetic mousedown event on container to trigger its panning
+          const syntheticEvent = new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+            clientX: nativeEvent.clientX,
+            clientY: nativeEvent.clientY,
+            button: nativeEvent.button,
+            buttons: nativeEvent.buttons,
+            view: nativeEvent.view
+          });
+          containerElement.dispatchEvent(syntheticEvent);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1068',message:'Dispatched synthetic mousedown on container',data:{containerFound:!!containerElement,clientX:nativeEvent.clientX,clientY:nativeEvent.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
+        }
+      }
+      // Note: We don't prevent default here - let the event flow naturally
+      // The container will handle panning via the synthetic event we dispatched
     };
 
     // Handle mouse move for pan tool drag distance tracking
@@ -1064,10 +1107,40 @@ const PageAnnotationLayer = memo(({
       const distance = Math.sqrt(dx * dx + dy * dy);
       panDragDistanceRef.current = distance;
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1065',message:'Pan tool mouse move',data:{interactionType:panInteractionTypeRef.current,distance:distance.toFixed(2),dx:dx.toFixed(2),dy:dy.toFixed(2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+
       // If we're in 'select-or-pan' mode and drag distance > 5px, switch to panning
       if (panInteractionTypeRef.current === 'select-or-pan' && distance > 5) {
         panInteractionTypeRef.current = 'pan';
         // Prevent object selection - allow canvas panning
+        opt.e.preventDefault();
+        opt.e.stopPropagation();
+      }
+
+      // If we're in 'pan' mode (empty space), dispatch mousemove to container for panning
+      // BUT NOT if we're in 'transform' or 'move' mode (those should only affect the annotation)
+      if (panInteractionTypeRef.current === 'pan') {
+        const nativeEvent = opt.e.e;
+        const containerElement = document.querySelector('[data-testid="pdf-container"]');
+        if (containerElement && nativeEvent) {
+          const syntheticEvent = new MouseEvent('mousemove', {
+            bubbles: true,
+            cancelable: true,
+            clientX: nativeEvent.clientX,
+            clientY: nativeEvent.clientY,
+            button: nativeEvent.button,
+            buttons: nativeEvent.buttons,
+            view: nativeEvent.view
+          });
+          containerElement.dispatchEvent(syntheticEvent);
+        }
+      } else if (panInteractionTypeRef.current === 'transform' || panInteractionTypeRef.current === 'move') {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1133',message:'Transform/move mode - NOT dispatching to container',data:{interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+        // #endregion
+        // Prevent container panning during transform/move
         opt.e.preventDefault();
         opt.e.stopPropagation();
       }
@@ -1088,6 +1161,32 @@ const PageAnnotationLayer = memo(({
           canvas.setActiveObject(hitObject);
           canvas.requestRenderAll();
         }
+      }
+
+      // If we were in 'pan' mode (empty space), dispatch mouseup to container
+      // BUT NOT if we're in 'transform' or 'move' mode
+      if (panInteractionTypeRef.current === 'pan') {
+        const nativeEvent = opt.e.e;
+        const containerElement = document.querySelector('[data-testid="pdf-container"]');
+        if (containerElement && nativeEvent) {
+          const syntheticEvent = new MouseEvent('mouseup', {
+            bubbles: true,
+            cancelable: true,
+            clientX: nativeEvent.clientX,
+            clientY: nativeEvent.clientY,
+            button: nativeEvent.button,
+            buttons: nativeEvent.buttons,
+            view: nativeEvent.view
+          });
+          containerElement.dispatchEvent(syntheticEvent);
+        }
+      } else if (panInteractionTypeRef.current === 'transform' || panInteractionTypeRef.current === 'move') {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1160',message:'Transform/move mode mouseup - NOT dispatching to container',data:{interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+        // #endregion
+        // Prevent container panning during transform/move
+        opt.e.preventDefault();
+        opt.e.stopPropagation();
       }
 
       // Reset tracking
