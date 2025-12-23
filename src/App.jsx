@@ -10062,6 +10062,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [autoPushToExcel, selectedTemplate?.linkedExcelPath, highlightAnnotations, handleExportSurveyToExcel]);
 
   const handleExportSpaceToCSV = useCallback((spaceId) => {
+    if (!features?.excelExport) {
+      alert('CSV/Excel Export is a Pro feature. Please upgrade to use this tool.');
+      return;
+    }
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
       alert('Space not found.');
