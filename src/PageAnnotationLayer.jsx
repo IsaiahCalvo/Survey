@@ -1244,6 +1244,9 @@ const PageAnnotationLayer = memo(({
 
       // Only handle pan tool (select tool has its own handler)
       if (currentTool !== 'pan') {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Early return - wrong tool',data:{currentTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         return;
       }
 
@@ -1254,7 +1257,7 @@ const PageAnnotationLayer = memo(({
       const nativeEvent = opt.e;
       
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Handler called',data:{hasActiveObject:!!activeObject,pointer:{x:pointer.x,y:pointer.y}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Handler called',data:{hasActiveObject:!!activeObject,pointer:{x:pointer.x,y:pointer.y},target:opt.target?.type||'canvas'},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
 
       // Reset drag tracking with CLIENT coordinates for stable panning
@@ -1283,6 +1286,9 @@ const PageAnnotationLayer = memo(({
           if (corner) {
             // Hit a handle!
             panInteractionTypeRef.current = 'transform';
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Hit handle - transform',data:{corner},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
             // Fabric.js will handle the actual transform interaction automatically
             return;
           }
@@ -1293,13 +1299,16 @@ const PageAnnotationLayer = memo(({
       if (activeObject && isModifierPressed(nativeEvent)) {
         const isOnSelectedBody = isPointInBoundingBox(pointer, activeObject);
         const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
+        const isOutsideBody = !isOnSelectedBody;
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Modifier rotation check',data:{isOnSelectedBody,isOnHandle,willStartRotation:isOnSelectedBody&&!isOnHandle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 2 - Modifier rotation check',data:{isOnSelectedBody,isOutsideBody,isOnHandle,willStartRotation:isOutsideBody&&!isOnHandle,modifierPressed:isModifierPressed(nativeEvent)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
         // #endregion
         
-        // If modifier is pressed and clicking on the object body (not on a handle), start rotation
-        if (isOnSelectedBody && !isOnHandle) {
+        // If modifier is pressed and clicking OUTSIDE the object body (not on a handle), start rotation
+        // Clicking INSIDE should allow normal move behavior (handled by PRIORITY 4)
+        // Clicking ON handles should allow normal resize behavior (handled by PRIORITY 1)
+        if (isOutsideBody && !isOnHandle) {
           panInteractionTypeRef.current = 'rotate';
           rotationStateRef.current = {
             object: activeObject,
@@ -1308,12 +1317,18 @@ const PageAnnotationLayer = memo(({
             center: activeObject.getCenterPoint()
           };
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Rotation state set (modifier)',data:{startAngle:rotationStateRef.current.startAngle,center:rotationStateRef.current.center},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 2 - Rotation state SET (modifier)',data:{startAngle:rotationStateRef.current.startAngle,center:rotationStateRef.current.center,interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
           // #endregion
           opt.e.preventDefault();
           opt.e.stopPropagation();
           return;
         }
+        // #region agent log
+        else {
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 2 - Modifier held but conditions not met',data:{isOnSelectedBody,isOutsideBody,isOnHandle},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
+        }
+        // #endregion
+        // If modifier is held but clicking inside, let it fall through to normal move behavior
       }
 
       // PRIORITY 3: Check for proximity-based rotation on selected item
@@ -1322,7 +1337,7 @@ const PageAnnotationLayer = memo(({
         const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Proximity rotation check',data:{proximityCorner,isOnHandle,willStartRotation:proximityCorner&&!isOnHandle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 3 - Proximity rotation check',data:{proximityCorner,isOnHandle,willStartRotation:proximityCorner&&!isOnHandle,pointer:{x:pointer.x,y:pointer.y}},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
         
         // If in proximity zone (but not directly on handle), allow rotation
@@ -1335,7 +1350,7 @@ const PageAnnotationLayer = memo(({
             center: activeObject.getCenterPoint()
           };
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'Rotation state set (proximity)',data:{startAngle:rotationStateRef.current.startAngle,center:rotationStateRef.current.center},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 3 - Rotation state SET (proximity)',data:{startAngle:rotationStateRef.current.startAngle,center:rotationStateRef.current.center,interactionType:panInteractionTypeRef.current,proximityCorner},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
           // #endregion
           opt.e.preventDefault();
           opt.e.stopPropagation();
@@ -1392,6 +1407,9 @@ const PageAnnotationLayer = memo(({
       // PRIORITY 6: Empty space / Canvas
       // If there's an active object, check if Fabric is handling a transform
       if (activeObject) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForPan',message:'PRIORITY 6 - Empty space with active object',data:{hasActiveObject:!!activeObject,pointer:{x:pointer.x,y:pointer.y}},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         // Set interaction type to 'wait-for-transform'
         panInteractionTypeRef.current = 'wait-for-transform';
         opt.e.preventDefault();
@@ -1430,12 +1448,18 @@ const PageAnnotationLayer = memo(({
       const start = panDragStartRef.current;
 
       // Handle rotation
+      // #region agent log
+      if (panInteractionTypeRef.current === 'rotate' || rotationStateRef.current) {
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Rotation check',data:{interactionType:panInteractionTypeRef.current,hasRotationState:!!rotationStateRef.current,willProcess:panInteractionTypeRef.current==='rotate'&&!!rotationStateRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+      }
+      // #endregion
+      
       if (panInteractionTypeRef.current === 'rotate' && rotationStateRef.current) {
         const rotationState = rotationStateRef.current;
         const obj = rotationState.object;
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Processing rotation',data:{hasRotationState:!!rotationStateRef.current,interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseMoveForPan',message:'Processing rotation',data:{hasRotationState:!!rotationStateRef.current,interactionType:panInteractionTypeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
         
         // Calculate angle from center to current pointer
@@ -2221,15 +2245,18 @@ const PageAnnotationLayer = memo(({
         const isOnBody = isPointInBoundingBox(pointer, activeObject);
         const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
         const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
+        const isOutsideBody = !isOnBody;
 
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForSelection',message:'Rotation check (select tool)',data:{isModifierHeld,isOnBody,isOnHandle,proximityCorner,willStartRotation:(isModifierHeld&&isOnBody&&!isOnHandle)||(proximityCorner&&!isOnHandle)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:handleMouseDownForSelection',message:'Rotation check (select tool)',data:{isModifierHeld,isOnBody,isOutsideBody,isOnHandle,proximityCorner,willStartRotation:(isModifierHeld&&isOutsideBody&&!isOnHandle)||(proximityCorner&&!isOnHandle)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
 
         // Start rotation if:
-        // 1. Modifier is held and clicking on body (not on handle), OR
+        // 1. Modifier is held and clicking OUTSIDE body (not on handle), OR
         // 2. In proximity zone (but not on handle)
-        if ((isModifierHeld && isOnBody && !isOnHandle) || (proximityCorner && !isOnHandle)) {
+        // Clicking INSIDE with modifier should allow normal move (don't intercept)
+        // Clicking ON handles should allow normal resize (don't intercept)
+        if ((isModifierHeld && isOutsideBody && !isOnHandle) || (proximityCorner && !isOnHandle)) {
           selectRotationStateRef.current = {
             object: activeObject,
             startAngle: activeObject.angle || 0,
@@ -2608,12 +2635,13 @@ const PageAnnotationLayer = memo(({
         const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
         const isModifierHeld = isModifierPressed(nativeEvent);
         const isOnBody = isPointInBoundingBox(pointer, activeObject);
+        const isOutsideBody = !isOnBody;
 
         // Show rotate cursor if:
         // 1. In proximity zone (but not on handle), OR
-        // 2. Modifier is held and on body
-        if ((proximityCorner && !isOnHandle) || (isModifierHeld && isOnBody && !isOnHandle)) {
-          // Use 'grab' cursor for rotation (or 'crosshair' as alternative)
+        // 2. Modifier is held and cursor is OUTSIDE the boundary box (not on handle)
+        if ((proximityCorner && !isOnHandle) || (isModifierHeld && isOutsideBody && !isOnHandle)) {
+          // Use 'grab' cursor for rotation (or use a custom rotation cursor if available)
           canvas.defaultCursor = 'grab';
           canvas.hoverCursor = 'grab';
         } else {
