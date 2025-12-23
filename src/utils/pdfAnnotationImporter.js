@@ -43,44 +43,88 @@ export async function extractAnnotationsFromPage(page) {
 /**
  * Convert PDF color to hex string
  * Handles various color formats from different PDF creators
+ * - Array with 0-1 range values (standard PDF)
+ * - Array with 0-255 range values (some viewers)
+ * - Object with numeric keys like {"0": 219, "1": 52, "2": 37} (Uint8ClampedArray serialized)
  */
-function pdfColorToHex(colorArray, annotation = null) {
+function pdfColorToHex(colorInput, annotation = null) {
   // Try to get color from multiple possible locations
-  let color = colorArray;
+  let color = colorInput;
 
   // If no direct color, try annotation's color property
-  if ((!color || color.length === 0) && annotation) {
+  if (!color && annotation) {
     color = annotation.color;
   }
 
   // Try borderColor as fallback
-  if ((!color || color.length === 0) && annotation?.borderColor) {
+  if (!color && annotation?.borderColor) {
     color = annotation.borderColor;
   }
 
   // Default to black if no color found
-  if (!color || !Array.isArray(color) || color.length === 0) {
+  if (!color) {
     console.log('[pdfAnnotationImporter] No color found, defaulting to black');
     return '#000000';
   }
 
-  // Handle grayscale (single value)
-  if (color.length === 1) {
-    const gray = Math.round(color[0] * 255).toString(16).padStart(2, '0');
-    return `#${gray}${gray}${gray}`;
+  // Handle object format like {"0": 219, "1": 52, "2": 37} (Uint8ClampedArray serialized)
+  // This happens when PDF.js returns a typed array
+  let r, g, b;
+
+  if (typeof color === 'object' && !Array.isArray(color)) {
+    // Object with numeric keys
+    if ('0' in color && '1' in color && '2' in color) {
+      r = color['0'];
+      g = color['1'];
+      b = color['2'];
+    } else if (color.r !== undefined && color.g !== undefined && color.b !== undefined) {
+      // Object with r, g, b keys
+      r = color.r;
+      g = color.g;
+      b = color.b;
+    } else {
+      console.log('[pdfAnnotationImporter] Unknown object color format:', color);
+      return '#000000';
+    }
+  } else if (Array.isArray(color) || (color && typeof color.length === 'number')) {
+    // Array or array-like
+    if (color.length === 0) {
+      console.log('[pdfAnnotationImporter] Empty color array, defaulting to black');
+      return '#000000';
+    }
+
+    // Handle grayscale (single value)
+    if (color.length === 1) {
+      const grayVal = color[0] > 1 ? color[0] : Math.round(color[0] * 255);
+      const gray = grayVal.toString(16).padStart(2, '0');
+      return `#${gray}${gray}${gray}`;
+    }
+
+    r = color[0];
+    g = color[1];
+    b = color[2];
+  } else {
+    console.log('[pdfAnnotationImporter] Unknown color format:', typeof color, color);
+    return '#000000';
   }
 
-  // Handle RGB (3 values, 0-1 range)
-  if (color.length >= 3) {
-    const r = Math.round(color[0] * 255).toString(16).padStart(2, '0');
-    const g = Math.round(color[1] * 255).toString(16).padStart(2, '0');
-    const b = Math.round(color[2] * 255).toString(16).padStart(2, '0');
-    console.log(`[pdfAnnotationImporter] Parsed color: RGB(${color[0]}, ${color[1]}, ${color[2]}) -> #${r}${g}${b}`);
-    return `#${r}${g}${b}`;
+  // Determine if values are in 0-1 range or 0-255 range
+  // If any value is > 1, assume 0-255 range
+  const isNormalized = r <= 1 && g <= 1 && b <= 1;
+
+  if (isNormalized) {
+    r = Math.round(r * 255);
+    g = Math.round(g * 255);
+    b = Math.round(b * 255);
+  } else {
+    r = Math.round(r);
+    g = Math.round(g);
+    b = Math.round(b);
   }
 
-  console.log('[pdfAnnotationImporter] Unknown color format, defaulting to black:', color);
-  return '#000000';
+  const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  console.log(`[pdfAnnotationImporter] Parsed color: RGB(${r}, ${g}, ${b}) -> ${hex}`);
+  return hex;
 }
 
 /**
