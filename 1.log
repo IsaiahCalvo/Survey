@@ -1,40 +1,50 @@
-chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-SilentHandler.ts:259 Unrecognized feature: 'local-network-access'.
-createHiddenIframe @ SilentHandler.ts:259
-Show 1 more frame
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-useDatabase.js:220 createDocument success, updating state with: Object
-App.jsx:1804 Background upload completed for: SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf New Doc: Object
-App.jsx:11923 Auto-saving document...
-App.jsx:11893 Saving document with embedded annotations... (auto-save)
-App.jsx:11894 PDF file path: /Users/isaiahcalvo/Desktop/SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf
-App.jsx:11902 Document saved successfully
-App.jsx:11909 Skipping Supabase sync (Free Plan)
-main.jsx:24 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:24
-App.jsx:10991 Auto-saving document...
-App.jsx:10949 Saving document with embedded annotations... (auto-save)
-App.jsx:10950 PDF file path: /Users/isaiahcalvo/Desktop/SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf
-App.jsx:10964 Document saved successfully
-App.jsx:10973 Skipping Supabase sync (Free Plan)
-App.jsx:1787 Error uploading file in background: InvalidPDFException
-(anonymous) @ App.jsx:1787
-App.jsx:11173 Error loading PDF: InvalidPDFException
-loadPDF @ App.jsx:11173
-App.jsx:11174 Error stack: Error
-    at BaseExceptionClosure (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:7056:44)
-    at Object.defineProperty.value (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:7059:16)
-    at __w_pdfjs_require__ (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24698:42)
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24971:26
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24982:13
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24984:11
-    at webpackUniversalModuleDefinition (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:6630:42)
-    at node_modules/pdfjs-dist/build/pdf.js (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:6639:7)
-    at __require2 (http://localhost:5173/node_modules/.vite/deps/chunk-F2KOVKPX.js?v=20d15701:28:50)
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24989:16
-loadPDF @ App.jsx:11174
+fetch.ts:7     DELETE https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/documents?id=eq.temp-1766595314261 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+App.jsx:2428 Error deleting document: {code: '22P02', details: null, hint: null, message: 'invalid input syntax for type uuid: "temp-1766595314261"'}
+handleBulkDelete @ App.jsx:2428
+await in handleBulkDelete (async)
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+fetch.ts:7     DELETE https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/documents?id=eq.temp-1766595314261 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+App.jsx:2428 Error deleting document: {code: '22P02', details: null, hint: null, message: 'invalid input syntax for type uuid: "temp-1766595314261"'}
+handleBulkDelete @ App.jsx:2428
+await in handleBulkDelete (async)
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames

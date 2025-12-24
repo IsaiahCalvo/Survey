@@ -8539,20 +8539,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Undo function
   const handleUndo = useCallback(() => {
-    if (undoHistory.length === 0) return;
+    if (undoHistory.length < 2) return;
 
     isUndoingRef.current = true;
-    const stateToRestore = undoHistory[undoHistory.length - 1];
+    const stateToRestore = undoHistory[undoHistory.length - 2];
+    const stateToRedo = undoHistory[undoHistory.length - 1];
 
-    // Build current state to save to redo history
-    const currentState = {
-      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
-      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations)),
-      spaces: JSON.parse(JSON.stringify(spaces || []))
-    };
-
-    // Save current state (what we are undoing FROM) to redo history
-    setRedoHistory(prev => [currentState, ...prev]);
+    // Save current state (which is the last item in undoHistory) to redo history
+    setRedoHistory(prev => [stateToRedo, ...prev]);
 
     // Restore previous state
     setAnnotationsByPage(stateToRestore.annotationsByPage);
@@ -8566,7 +8560,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setTimeout(() => {
       isUndoingRef.current = false;
     }, 100);
-  }, [undoHistory, annotationsByPage, highlightAnnotations, spaces]);
+  }, [undoHistory]);
 
   // Redo function
   const handleRedo = useCallback(() => {
@@ -8598,7 +8592,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [redoHistory, annotationsByPage, highlightAnnotations]);
 
   // Check if undo is possible
-  const canUndo = undoHistory.length > 0;
+  const canUndo = undoHistory.length > 1;
 
   // Check if redo is possible
   const canRedo = redoHistory.length > 0;
