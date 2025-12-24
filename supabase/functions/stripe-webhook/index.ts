@@ -30,10 +30,21 @@ serve(async (req) => {
 
         console.log(`Processing webhook event: ${event.type}`);
 
-        // Initialize Supabase client
+        // Initialize Supabase client with service role (bypasses RLS)
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        console.log('Initializing Supabase client...');
+        console.log('Supabase URL:', supabaseUrl);
+        console.log('Service key present:', !!supabaseServiceKey);
+
+        const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false,
+                detectSessionInUrl: false
+            }
+        });
 
         // Handle different event types
         switch (event.type) {
@@ -96,11 +107,17 @@ serve(async (req) => {
 
 // Handle checkout session completion
 async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.Session) {
+    console.log('=== handleCheckoutCompleted START ===');
+    console.log('Session ID:', session.id);
+    console.log('Customer ID:', session.customer);
+    console.log('Subscription ID:', session.subscription);
+    console.log('Metadata:', session.metadata);
+
     const userId = session.metadata?.user_id;
     const tier = session.metadata?.tier || 'pro';
 
     if (!userId) {
-        console.error('No user_id in checkout session metadata');
+        console.error('CRITICAL: No user_id in checkout session metadata');
         return;
     }
 
@@ -108,31 +125,99 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
     const subscriptionId = session.subscription as string;
     const customerId = session.customer as string;
 
+    console.log('Fetching subscription from Stripe...');
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    console.log('Subscription status:', subscription.status);
+    console.log('Trial end:', subscription.trial_end);
 
     // Determine status based on trial
     const status = subscription.status === 'trialing' ? 'trialing' : 'active';
 
-    // Update user subscription in database
-    const { error } = await supabase
+    const updateData = {
+        tier: tier,
+        status: status,
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subscriptionId,
+        stripe_price_id: subscription.items.data[0].price.id,
+        trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+    };
+
+    console.log('Update data prepared:', updateData);
+    console.log('Attempting to update user_subscriptions for user_id:', userId);
+
+    // First, check if a subscription record exists for this user
+    console.log('Checking if subscription record exists...');
+    const { data: existingRecord, error: checkError } = await supabase
         .from('user_subscriptions')
-        .update({
-            tier: tier,
-            status: status,
-            stripe_customer_id: customerId,
-            stripe_subscription_id: subscriptionId,
-            stripe_price_id: subscription.items.data[0].price.id,
-            trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-        })
-        .eq('user_id', userId);
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+    if (checkError) {
+        console.error('ERROR checking for existing record:', checkError);
+        console.error('Check error details:', JSON.stringify(checkError, null, 2));
+
+        // If no record exists, create one
+        if (checkError.code === 'PGRST116') {
+            console.log('No existing record found, creating new subscription record...');
+            const { data: insertData, error: insertError } = await supabase
+                .from('user_subscriptions')
+                .insert({
+                    user_id: userId,
+                    ...updateData
+                })
+                .select();
+
+            if (insertError) {
+                console.error('ERROR inserting new subscription:', insertError);
+                console.error('Insert error details:', JSON.stringify(insertError, null, 2));
+            } else {
+                console.log('SUCCESS: Created new subscription record');
+                console.log('Inserted data:', insertData);
+            }
+            console.log('=== handleCheckoutCompleted END ===');
+            return;
+        }
+    } else {
+        console.log('Found existing subscription record:', existingRecord);
+    }
+
+    // Try to update by user_id first
+    console.log('Updating subscription record...');
+    const { data, error } = await supabase
+        .from('user_subscriptions')
+        .update(updateData)
+        .eq('user_id', userId)
+        .select();
 
     if (error) {
-        console.error('Error updating user subscription:', error);
+        console.error('ERROR updating user subscription:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+
+        // Try fallback: update by customer_id if user_id failed
+        console.log('Trying fallback: update by customer_id');
+        const { data: fallbackData, error: fallbackError } = await supabase
+            .from('user_subscriptions')
+            .update(updateData)
+            .eq('stripe_customer_id', customerId)
+            .select();
+
+        if (fallbackError) {
+            console.error('FALLBACK ALSO FAILED:', fallbackError);
+            console.error('Fallback error details:', JSON.stringify(fallbackError, null, 2));
+        } else {
+            console.log('Fallback success! Updated via customer_id');
+            console.log('Updated rows:', fallbackData);
+        }
     } else {
-        console.log(`Updated subscription for user ${userId} to ${tier} (${status})`);
+        console.log(`SUCCESS: Updated subscription for user ${userId} to ${tier} (${status})`);
+        console.log('Updated rows:', data);
+        console.log('Number of rows updated:', data?.length || 0);
     }
+
+    console.log('=== handleCheckoutCompleted END ===');
 }
 
 // Handle subscription updates
