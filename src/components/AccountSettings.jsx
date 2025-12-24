@@ -706,7 +706,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                               <>
                                 <span className="price-amount">$99</span>
                                 <span className="price-period">/year</span>
-                                <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
+                                <div style={{ fontSize: '12px', color: '#888', marginTop: '4px', whiteSpace: 'nowrap' }}>
                                   <span style={{ textDecoration: 'line-through' }}>$119.88</span> Save $20
                                 </div>
                               </>
@@ -763,7 +763,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           <div className="account-subscription-price">
                             <span className="price-amount">$20</span>
                             <span className="price-period">/user/mo</span>
-                            <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
+                            <div style={{ fontSize: '12px', color: '#888', marginTop: '4px', whiteSpace: 'nowrap' }}>
                               Minimum 3 users
                             </div>
                           </div>

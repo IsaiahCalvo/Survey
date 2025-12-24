@@ -320,13 +320,17 @@
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
   letter-spacing: -0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
 
 .account-btn-secondary:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.1);
@@ -457,6 +461,11 @@
   .account-subscription-grid {
     grid-template-columns: 1fr;
     gap: 16px;
+    max-width: 100%;
+  }
+  
+  .account-subscription-card {
+    max-width: 100%;
   }
 }
 
@@ -586,9 +595,10 @@
 /* Subscription Tab Styles */
 .account-subscription-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   margin-top: 20px;
+  width: 100%;
 }
 
 .account-subscription-card {
@@ -598,6 +608,8 @@
   padding: 16px;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  width: 100%;
 }
 
 .account-subscription-header {
@@ -609,23 +621,27 @@
   align-items: baseline;
   gap: 8px;
   margin-bottom: 8px;
+  flex-wrap: nowrap;
 }
 
 .account-plan-name {
   font-size: 15px;
   font-weight: 500;
   color: #fff;
+  white-space: nowrap;
 }
 
 .account-plan-badge-text {
   font-size: 14px;
   color: #888;
+  white-space: nowrap;
 }
 
 .account-subscription-price {
   display: flex;
   align-items: baseline;
   gap: 2px;
+  flex-wrap: wrap;
 }
 
 .price-amount {
@@ -633,17 +649,20 @@
   font-weight: 600;
   color: #fff;
   letter-spacing: -1px;
+  white-space: nowrap;
 }
 
 .price-period {
   font-size: 14px;
   color: #888;
   font-weight: 400;
+  white-space: nowrap;
 }
 
 .account-subscription-features {
   flex: 1;
   margin-bottom: 16px;
+  min-height: 0;
 }
 
 .account-subscription-features ul {
@@ -660,6 +679,9 @@
   color: #fff;
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .account-subscription-features li::before {
@@ -667,10 +689,16 @@
   color: #fff;
   font-size: 16px;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .account-subscription-actions {
   margin-top: auto;
+}
+
+.account-subscription-actions button {
+  width: 100%;
+  min-width: 0;
 }
 
 .account-btn-outline-green {
@@ -680,10 +708,13 @@
   color: #4CAF50;
   padding: 10px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   cursor: default;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .account-btn-purple {
@@ -693,11 +724,14 @@
   color: #fff;
   padding: 10px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   text-align: center;
   transition: background 0.2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .account-btn-purple:hover {
