@@ -14281,7 +14281,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 size={16}
                 style={{
                   boxSizing: 'content-box',
-                  marginTop: '8px'
+                  transform: 'translateY(-1px)'
                 }}
               />
               {scrollMode === 'continuous' ? 'Continuous' : 'Single Page'}
