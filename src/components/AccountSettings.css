@@ -18,8 +18,8 @@
   background: #1e1e1e;
   border-radius: 12px;
   width: 100%;
-  max-width: 520px;
-  max-height: 80vh;
+  max-width: 1200px;
+  max-height: 85vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -453,6 +453,13 @@
 }
 
 /* Mobile responsiveness */
+@media (max-width: 1024px) {
+  .account-subscription-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
 @media (max-width: 640px) {
   .account-settings-overlay {
     padding: 0;
@@ -462,6 +469,7 @@
     border-radius: 0;
     max-height: 100vh;
     height: 100vh;
+    max-width: 100%;
   }
 
   .account-form-row {
@@ -578,22 +586,22 @@
 /* Subscription Tab Styles */
 .account-subscription-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-top: 24px;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-top: 20px;
 }
 
 .account-subscription-card {
   background: #1E1E1E;
   border: 1px solid #333;
   border-radius: 8px;
-  padding: 24px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
 }
 
 .account-subscription-header {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .account-plan-info-row {
@@ -604,7 +612,7 @@
 }
 
 .account-plan-name {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 500;
   color: #fff;
 }
@@ -621,21 +629,21 @@
 }
 
 .price-amount {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 600;
   color: #fff;
   letter-spacing: -1px;
 }
 
 .price-period {
-  font-size: 16px;
+  font-size: 14px;
   color: #888;
   font-weight: 400;
 }
 
 .account-subscription-features {
   flex: 1;
-  margin-bottom: 32px;
+  margin-bottom: 16px;
 }
 
 .account-subscription-features ul {
@@ -647,10 +655,10 @@
 .account-subscription-features li {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
   color: #fff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
 }
 

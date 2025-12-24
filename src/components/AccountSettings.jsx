@@ -278,7 +278,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   return (
     <div className="account-settings-overlay" onClick={onClose}>
-      <div className="account-settings-modal" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', maxWidth: '800px', width: '90%', height: '80vh', maxHeight: '700px', padding: 0 }}>
+      <div className="account-settings-modal" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', maxWidth: '1200px', width: '95%', height: '85vh', maxHeight: '800px', padding: 0 }}>
 
         {/* Header */}
         <div className="account-settings-header" style={{ padding: '20px 24px', borderBottom: '1px solid #333' }}>
@@ -342,7 +342,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
           </div>
 
           {/* Content */}
-          <div className="account-settings-content" style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+          <div className="account-settings-content" style={{ flex: 1, padding: '20px', overflowY: 'auto' }}>
             {error && <div className="account-error">{error}</div>}
             {message && <div className="account-message">{message}</div>}
 
@@ -559,41 +559,50 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                 <h3>Manage Subscription</h3>
 
                 {loadingSubscription ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+                  <div style={{ textAlign: 'center', padding: '20px', color: '#888', fontSize: '13px' }}>
                     Loading subscription...
                   </div>
                 ) : (
                   <>
-                    {/* Current Plan Status */}
+                    {/* Consolidated Subscription Status Banner */}
                     {subscription && subscription.tier !== 'free' && (
                       <div style={{
-                        background: subscription.tier === 'developer' ? 'rgba(147, 51, 234, 0.1)' : subscription.status === 'trialing' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(34, 197, 94, 0.1)',
-                        border: `1px solid ${subscription.tier === 'developer' ? 'rgba(147, 51, 234, 0.3)' : subscription.status === 'trialing' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
-                        borderRadius: '8px',
-                        padding: '16px',
-                        marginBottom: '24px'
+                        background: subscription.tier === 'developer' ? 'rgba(147, 51, 234, 0.08)' : subscription.status === 'trialing' ? 'rgba(59, 130, 246, 0.08)' : 'rgba(34, 197, 94, 0.08)',
+                        border: `1px solid ${subscription.tier === 'developer' ? 'rgba(147, 51, 234, 0.2)' : subscription.status === 'trialing' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(34, 197, 94, 0.2)'}`,
+                        borderRadius: '6px',
+                        padding: '10px 14px',
+                        marginBottom: '16px',
+                        fontSize: '12px',
+                        lineHeight: '1.5'
                       }}>
-                        <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px', color: subscription.tier === 'developer' ? '#a855f7' : subscription.status === 'trialing' ? '#3b82f6' : '#22c55e' }}>
-                          {subscription.tier === 'developer' ? '🔧 Developer Account' : subscription.status === 'trialing' ? '🎉 Trial Active' : '✅ Active Subscription'}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: subscription.status === 'trialing' && subscription.trial_ends_at ? '4px' : '0' }}>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: subscription.tier === 'developer' ? '#a855f7' : subscription.status === 'trialing' ? '#3b82f6' : '#22c55e' }}>
+                            {subscription.tier === 'developer' ? '🔧 Developer Account' : subscription.status === 'trialing' ? '🎉 Trial Active' : '✅ Active Subscription'}
+                          </span>
+                          <span style={{ color: '#888', fontSize: '12px' }}>
+                            {subscription.tier === 'developer' ? (
+                              'Unlimited access for testing and development'
+                            ) : subscription.status === 'trialing' && subscription.trial_ends_at ? (
+                              `Trial ends ${(() => {
+                                const daysLeft = Math.ceil((new Date(subscription.trial_ends_at) - new Date()) / (1000 * 60 * 60 * 24));
+                                return daysLeft > 0 ? `in ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'}` : 'today';
+                              })()}`
+                            ) : (
+                              `${subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)} Plan${subscription.status === 'past_due' ? ' • Payment Failed' : ''}`
+                            )}
+                          </span>
                         </div>
-                        <div style={{ fontSize: '13px', color: '#aaa' }}>
-                          {subscription.tier === 'developer' ? (
-                            'Unlimited access for testing and development'
-                          ) : subscription.status === 'trialing' && subscription.trial_ends_at ? (
-                            `Your ${subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)} trial ends ${(() => {
-                              const daysLeft = Math.ceil((new Date(subscription.trial_ends_at) - new Date()) / (1000 * 60 * 60 * 24));
-                              return daysLeft > 0 ? `in ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'}` : 'today';
-                            })()} • All features unlocked`
-                          ) : (
-                            `${subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)} Plan • ${subscription.status === 'past_due' ? 'Payment Failed' : 'Active'}`
-                          )}
-                        </div>
+                        {subscription.status === 'trialing' && subscription.trial_ends_at && (
+                          <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
+                            No payment required yet. You'll only be charged if you don't cancel before {new Date(subscription.trial_ends_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.
+                          </div>
+                        )}
                       </div>
                     )}
 
                     {/* Billing Period Toggle (only show for paid users selecting new plan) */}
                     {subscription?.tier === 'free' && (
-                      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '24px', background: '#222', padding: '4px', borderRadius: '8px', width: 'fit-content', margin: '0 auto 24px auto' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px', background: '#222', padding: '4px', borderRadius: '8px', width: 'fit-content', margin: '0 auto 16px auto' }}>
                         <button
                           onClick={() => setBillingPeriod('monthly')}
                           style={{
@@ -790,42 +799,6 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
                       </div>
                     </div>
-
-                    {/* Trial Info */}
-                    {subscription?.status === 'trialing' && subscription?.trial_ends_at && (
-                      <div style={{
-                        marginTop: '24px',
-                        padding: '16px',
-                        background: 'rgba(59, 130, 246, 0.1)',
-                        border: '1px solid rgba(59, 130, 246, 0.3)',
-                        borderRadius: '8px',
-                        fontSize: '13px',
-                        color: '#aaa'
-                      }}>
-                        <div style={{ fontWeight: '600', color: '#3b82f6', marginBottom: '8px' }}>
-                          💳 No Payment Required Yet
-                        </div>
-                        Your trial is completely free. You'll only be charged if you don't cancel before {new Date(subscription.trial_ends_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.
-                      </div>
-                    )}
-
-                    {/* Developer Account Notice */}
-                    {subscription?.tier === 'developer' && (
-                      <div style={{
-                        marginTop: '24px',
-                        padding: '16px',
-                        background: 'rgba(147, 51, 234, 0.1)',
-                        border: '1px solid rgba(147, 51, 234, 0.3)',
-                        borderRadius: '8px',
-                        fontSize: '13px',
-                        color: '#aaa'
-                      }}>
-                        <div style={{ fontWeight: '600', color: '#a855f7', marginBottom: '8px' }}>
-                          🔧 Developer Account
-                        </div>
-                        You have unlimited access to all features for testing and development purposes. This account type is not available to regular users.
-                      </div>
-                    )}
                   </>
                 )}
               </section>
