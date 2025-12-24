@@ -37,7 +37,7 @@ export const MSGraphProvider = ({ children }) => {
     const [needsReconnect, setNeedsReconnect] = useState(false); // True when persisted but silent auth failed
 
     // Persist connection to Supabase
-    const persistConnection = useCallback(async (msalAccount) => {
+    const persistConnection = useCallback(async (msalAccount, tokenExpiresAt = null) => {
         if (!user) {
             console.warn('[Microsoft Persist] No user authenticated, skipping persist');
             return;
@@ -59,6 +59,8 @@ export const MSGraphProvider = ({ children }) => {
                 metadata: {
                     tenantId: msalAccount.tenantId,
                     localAccountId: msalAccount.localAccountId,
+                    ...(tokenExpiresAt && { token_expires_at: tokenExpiresAt }),
+                    last_refresh_attempt: new Date().toISOString(),
                 },
                 connected_at: new Date().toISOString(),
                 last_used_at: new Date().toISOString(),
