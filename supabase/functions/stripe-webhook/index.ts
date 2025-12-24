@@ -1,7 +1,5 @@
-
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Stripe } from "https://esm.sh/stripe@14.21.0?target=deno";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import Stripe from 'https://esm.sh/stripe@17.5.0?target=deno';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10?target=deno';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2025-12-15.clover',
@@ -10,7 +8,7 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
 
 const cryptoProvider = Stripe.createSubtleCryptoProvider();
 
-serve(async (req) => {
+Deno.serve(async (req) => {
     const signature = req.headers.get('Stripe-Signature');
     const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 
