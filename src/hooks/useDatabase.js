@@ -591,6 +591,7 @@ export const useConnectedServices = () => {
 
     try {
       setLoading(true);
+      console.log('[useConnectedServices] Fetching services for user:', user.id);
       const { data, error } = await supabase
         .from('connected_services')
         .select('*')
@@ -598,6 +599,7 @@ export const useConnectedServices = () => {
 
       // Silently handle 406 errors (schema cache not ready)
       if (error) {
+        console.error('[useConnectedServices] Error fetching:', error);
         if (isSchemaError(error)) {
           // Mark table as unavailable to prevent repeated requests
           setConnectedServicesAvailable(false);
@@ -610,14 +612,17 @@ export const useConnectedServices = () => {
       // Table is available
       setConnectedServicesAvailable(true);
 
+      console.log('[useConnectedServices] ✅ Fetched services from Supabase:', data);
+
       // Convert array to object keyed by service_name for easier access
       const servicesMap = {};
       (data || []).forEach(service => {
         servicesMap[service.service_name] = service;
+        console.log(`[useConnectedServices]   - ${service.service_name}: ${service.is_connected ? 'Connected' : 'Disconnected'} (${service.account_email})`);
       });
       setServices(servicesMap);
     } catch (err) {
-      console.error('Error fetching connected services:', err);
+      console.error('[useConnectedServices] Error fetching connected services:', err);
       setError(err.message);
     } finally {
       setLoading(false);

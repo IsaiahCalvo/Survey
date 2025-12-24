@@ -1,0 +1,283 @@
+console-listener.js:87 [Kapture] Console listener attached
+console-listener.js:71 PDFWorkerManager: Creating PDF worker
+console-listener.js:71 PDFWorkerManager: PDF worker created successfully
+console-listener.js:71 Syncing documents from Supabase: 0 []
+console-listener.js:71 [Wed, 24 Dec 2025 14:43:32 GMT] : [] : @azure/msal-browser@4.26.2 : Info - MSAL.js was last initialized by version: 4.26.2
+pdfRender.worker.js:3 PDF Worker initialized
+content.js:1 {results: {…}}
+console-listener.js:71 Syncing documents from Supabase: 1 [{…}]
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Syncing documents from Supabase: 1 [{…}]
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Syncing documents from Supabase: 1 [{…}]
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+MSGraphContext.jsx:412 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13583
+setInterval
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13582
+monitorPopupForHash @ @azure_msal-browser.js?v=20d15701:13580
+executeCodeFlow @ @azure_msal-browser.js?v=20d15701:13425
+await in executeCodeFlow
+acquireTokenPopupAsync @ @azure_msal-browser.js?v=20d15701:13392
+await in acquireTokenPopupAsync
+acquireToken @ @azure_msal-browser.js?v=20d15701:13340
+acquireTokenPopup @ @azure_msal-browser.js?v=20d15701:15068
+loginPopup @ @azure_msal-browser.js?v=20d15701:15748
+loginPopup @ @azure_msal-browser.js?v=20d15701:16877
+login @ MSGraphContext.jsx:412
+onClick @ AccountSettings.jsx:832
+callCallback2 @ chunk-DSUIPI7G.js?v=20d15701:10552
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js?v=20d15701:10577
+invokeGuardedCallback @ chunk-DSUIPI7G.js?v=20d15701:10611
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js?v=20d15701:10614
+executeDispatch @ chunk-DSUIPI7G.js?v=20d15701:13892
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js?v=20d15701:13912
+processDispatchQueue @ chunk-DSUIPI7G.js?v=20d15701:13921
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js?v=20d15701:13929
+(anonymous) @ chunk-DSUIPI7G.js?v=20d15701:14052
+batchedUpdates$1 @ chunk-DSUIPI7G.js?v=20d15701:25791
+batchedUpdates @ chunk-DSUIPI7G.js?v=20d15701:10457
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js?v=20d15701:14051
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js?v=20d15701:12356
+dispatchEvent @ chunk-DSUIPI7G.js?v=20d15701:12350
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js?v=20d15701:12327
+MSGraphContext.jsx:412 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13583
+setInterval
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13582
+monitorPopupForHash @ @azure_msal-browser.js?v=20d15701:13580
+executeCodeFlow @ @azure_msal-browser.js?v=20d15701:13425
+await in executeCodeFlow
+acquireTokenPopupAsync @ @azure_msal-browser.js?v=20d15701:13392
+await in acquireTokenPopupAsync
+acquireToken @ @azure_msal-browser.js?v=20d15701:13340
+acquireTokenPopup @ @azure_msal-browser.js?v=20d15701:15068
+loginPopup @ @azure_msal-browser.js?v=20d15701:15748
+loginPopup @ @azure_msal-browser.js?v=20d15701:16877
+login @ MSGraphContext.jsx:412
+onClick @ AccountSettings.jsx:832
+callCallback2 @ chunk-DSUIPI7G.js?v=20d15701:10552
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js?v=20d15701:10577
+invokeGuardedCallback @ chunk-DSUIPI7G.js?v=20d15701:10611
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js?v=20d15701:10614
+executeDispatch @ chunk-DSUIPI7G.js?v=20d15701:13892
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js?v=20d15701:13912
+processDispatchQueue @ chunk-DSUIPI7G.js?v=20d15701:13921
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js?v=20d15701:13929
+(anonymous) @ chunk-DSUIPI7G.js?v=20d15701:14052
+batchedUpdates$1 @ chunk-DSUIPI7G.js?v=20d15701:25791
+batchedUpdates @ chunk-DSUIPI7G.js?v=20d15701:10457
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js?v=20d15701:14051
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js?v=20d15701:12356
+dispatchEvent @ chunk-DSUIPI7G.js?v=20d15701:12350
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js?v=20d15701:12327
+MSGraphContext.jsx:412 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13583
+setInterval
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13582
+monitorPopupForHash @ @azure_msal-browser.js?v=20d15701:13580
+executeCodeFlow @ @azure_msal-browser.js?v=20d15701:13425
+await in executeCodeFlow
+acquireTokenPopupAsync @ @azure_msal-browser.js?v=20d15701:13392
+await in acquireTokenPopupAsync
+acquireToken @ @azure_msal-browser.js?v=20d15701:13340
+acquireTokenPopup @ @azure_msal-browser.js?v=20d15701:15068
+loginPopup @ @azure_msal-browser.js?v=20d15701:15748
+loginPopup @ @azure_msal-browser.js?v=20d15701:16877
+login @ MSGraphContext.jsx:412
+onClick @ AccountSettings.jsx:832
+callCallback2 @ chunk-DSUIPI7G.js?v=20d15701:10552
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js?v=20d15701:10577
+invokeGuardedCallback @ chunk-DSUIPI7G.js?v=20d15701:10611
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js?v=20d15701:10614
+executeDispatch @ chunk-DSUIPI7G.js?v=20d15701:13892
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js?v=20d15701:13912
+processDispatchQueue @ chunk-DSUIPI7G.js?v=20d15701:13921
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js?v=20d15701:13929
+(anonymous) @ chunk-DSUIPI7G.js?v=20d15701:14052
+batchedUpdates$1 @ chunk-DSUIPI7G.js?v=20d15701:25791
+batchedUpdates @ chunk-DSUIPI7G.js?v=20d15701:10457
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js?v=20d15701:14051
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js?v=20d15701:12356
+dispatchEvent @ chunk-DSUIPI7G.js?v=20d15701:12350
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js?v=20d15701:12327
+MSGraphContext.jsx:412 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13583
+setInterval
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13582
+monitorPopupForHash @ @azure_msal-browser.js?v=20d15701:13580
+executeCodeFlow @ @azure_msal-browser.js?v=20d15701:13425
+await in executeCodeFlow
+acquireTokenPopupAsync @ @azure_msal-browser.js?v=20d15701:13392
+await in acquireTokenPopupAsync
+acquireToken @ @azure_msal-browser.js?v=20d15701:13340
+acquireTokenPopup @ @azure_msal-browser.js?v=20d15701:15068
+loginPopup @ @azure_msal-browser.js?v=20d15701:15748
+loginPopup @ @azure_msal-browser.js?v=20d15701:16877
+login @ MSGraphContext.jsx:412
+onClick @ AccountSettings.jsx:832
+callCallback2 @ chunk-DSUIPI7G.js?v=20d15701:10552
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js?v=20d15701:10577
+invokeGuardedCallback @ chunk-DSUIPI7G.js?v=20d15701:10611
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js?v=20d15701:10614
+executeDispatch @ chunk-DSUIPI7G.js?v=20d15701:13892
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js?v=20d15701:13912
+processDispatchQueue @ chunk-DSUIPI7G.js?v=20d15701:13921
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js?v=20d15701:13929
+(anonymous) @ chunk-DSUIPI7G.js?v=20d15701:14052
+batchedUpdates$1 @ chunk-DSUIPI7G.js?v=20d15701:25791
+batchedUpdates @ chunk-DSUIPI7G.js?v=20d15701:10457
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js?v=20d15701:14051
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js?v=20d15701:12356
+dispatchEvent @ chunk-DSUIPI7G.js?v=20d15701:12350
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js?v=20d15701:12327
+MSGraphContext.jsx:412 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13583
+setInterval
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13582
+monitorPopupForHash @ @azure_msal-browser.js?v=20d15701:13580
+executeCodeFlow @ @azure_msal-browser.js?v=20d15701:13425
+await in executeCodeFlow
+acquireTokenPopupAsync @ @azure_msal-browser.js?v=20d15701:13392
+await in acquireTokenPopupAsync
+acquireToken @ @azure_msal-browser.js?v=20d15701:13340
+acquireTokenPopup @ @azure_msal-browser.js?v=20d15701:15068
+loginPopup @ @azure_msal-browser.js?v=20d15701:15748
+loginPopup @ @azure_msal-browser.js?v=20d15701:16877
+login @ MSGraphContext.jsx:412
+onClick @ AccountSettings.jsx:832
+callCallback2 @ chunk-DSUIPI7G.js?v=20d15701:10552
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js?v=20d15701:10577
+invokeGuardedCallback @ chunk-DSUIPI7G.js?v=20d15701:10611
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js?v=20d15701:10614
+executeDispatch @ chunk-DSUIPI7G.js?v=20d15701:13892
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js?v=20d15701:13912
+processDispatchQueue @ chunk-DSUIPI7G.js?v=20d15701:13921
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js?v=20d15701:13929
+(anonymous) @ chunk-DSUIPI7G.js?v=20d15701:14052
+batchedUpdates$1 @ chunk-DSUIPI7G.js?v=20d15701:25791
+batchedUpdates @ chunk-DSUIPI7G.js?v=20d15701:10457
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js?v=20d15701:14051
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js?v=20d15701:12356
+dispatchEvent @ chunk-DSUIPI7G.js?v=20d15701:12350
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js?v=20d15701:12327
+MSGraphContext.jsx:412 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13583
+setInterval
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13582
+monitorPopupForHash @ @azure_msal-browser.js?v=20d15701:13580
+executeCodeFlow @ @azure_msal-browser.js?v=20d15701:13425
+await in executeCodeFlow
+acquireTokenPopupAsync @ @azure_msal-browser.js?v=20d15701:13392
+await in acquireTokenPopupAsync
+acquireToken @ @azure_msal-browser.js?v=20d15701:13340
+acquireTokenPopup @ @azure_msal-browser.js?v=20d15701:15068
+loginPopup @ @azure_msal-browser.js?v=20d15701:15748
+loginPopup @ @azure_msal-browser.js?v=20d15701:16877
+login @ MSGraphContext.jsx:412
+onClick @ AccountSettings.jsx:832
+callCallback2 @ chunk-DSUIPI7G.js?v=20d15701:10552
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js?v=20d15701:10577
+invokeGuardedCallback @ chunk-DSUIPI7G.js?v=20d15701:10611
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js?v=20d15701:10614
+executeDispatch @ chunk-DSUIPI7G.js?v=20d15701:13892
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js?v=20d15701:13912
+processDispatchQueue @ chunk-DSUIPI7G.js?v=20d15701:13921
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js?v=20d15701:13929
+(anonymous) @ chunk-DSUIPI7G.js?v=20d15701:14052
+batchedUpdates$1 @ chunk-DSUIPI7G.js?v=20d15701:25791
+batchedUpdates @ chunk-DSUIPI7G.js?v=20d15701:10457
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js?v=20d15701:14051
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js?v=20d15701:12356
+dispatchEvent @ chunk-DSUIPI7G.js?v=20d15701:12350
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js?v=20d15701:12327
+MSGraphContext.jsx:412 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13583
+setInterval
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13582
+monitorPopupForHash @ @azure_msal-browser.js?v=20d15701:13580
+executeCodeFlow @ @azure_msal-browser.js?v=20d15701:13425
+await in executeCodeFlow
+acquireTokenPopupAsync @ @azure_msal-browser.js?v=20d15701:13392
+await in acquireTokenPopupAsync
+acquireToken @ @azure_msal-browser.js?v=20d15701:13340
+acquireTokenPopup @ @azure_msal-browser.js?v=20d15701:15068
+loginPopup @ @azure_msal-browser.js?v=20d15701:15748
+loginPopup @ @azure_msal-browser.js?v=20d15701:16877
+login @ MSGraphContext.jsx:412
+onClick @ AccountSettings.jsx:832
+callCallback2 @ chunk-DSUIPI7G.js?v=20d15701:10552
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js?v=20d15701:10577
+invokeGuardedCallback @ chunk-DSUIPI7G.js?v=20d15701:10611
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js?v=20d15701:10614
+executeDispatch @ chunk-DSUIPI7G.js?v=20d15701:13892
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js?v=20d15701:13912
+processDispatchQueue @ chunk-DSUIPI7G.js?v=20d15701:13921
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js?v=20d15701:13929
+(anonymous) @ chunk-DSUIPI7G.js?v=20d15701:14052
+batchedUpdates$1 @ chunk-DSUIPI7G.js?v=20d15701:25791
+batchedUpdates @ chunk-DSUIPI7G.js?v=20d15701:10457
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js?v=20d15701:14051
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js?v=20d15701:12356
+dispatchEvent @ chunk-DSUIPI7G.js?v=20d15701:12350
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js?v=20d15701:12327
+MSGraphContext.jsx:412 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13583
+setInterval
+(anonymous) @ @azure_msal-browser.js?v=20d15701:13582
+monitorPopupForHash @ @azure_msal-browser.js?v=20d15701:13580
+executeCodeFlow @ @azure_msal-browser.js?v=20d15701:13425
+await in executeCodeFlow
+acquireTokenPopupAsync @ @azure_msal-browser.js?v=20d15701:13392
+await in acquireTokenPopupAsync
+acquireToken @ @azure_msal-browser.js?v=20d15701:13340
+acquireTokenPopup @ @azure_msal-browser.js?v=20d15701:15068
+loginPopup @ @azure_msal-browser.js?v=20d15701:15748
+loginPopup @ @azure_msal-browser.js?v=20d15701:16877
+login @ MSGraphContext.jsx:412
+onClick @ AccountSettings.jsx:832
+callCallback2 @ chunk-DSUIPI7G.js?v=20d15701:10552
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js?v=20d15701:10577
+invokeGuardedCallback @ chunk-DSUIPI7G.js?v=20d15701:10611
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js?v=20d15701:10614
+executeDispatch @ chunk-DSUIPI7G.js?v=20d15701:13892
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js?v=20d15701:13912
+processDispatchQueue @ chunk-DSUIPI7G.js?v=20d15701:13921
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js?v=20d15701:13929
+(anonymous) @ chunk-DSUIPI7G.js?v=20d15701:14052
+batchedUpdates$1 @ chunk-DSUIPI7G.js?v=20d15701:25791
+batchedUpdates @ chunk-DSUIPI7G.js?v=20d15701:10457
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js?v=20d15701:14051
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js?v=20d15701:12356
+dispatchEvent @ chunk-DSUIPI7G.js?v=20d15701:12350
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js?v=20d15701:12327
+console-listener.js:71 Window focused, refetching subscription data...
+console-listener.js:71 [Wed, 24 Dec 2025 14:43:54 GMT] : [] : @azure/msal-browser@4.26.2 : Info - BrowserCacheManager: addTokenKey - idToken added to map
+console-listener.js:71 [Wed, 24 Dec 2025 14:43:54 GMT] : [] : @azure/msal-browser@4.26.2 : Info - BrowserCacheManager: addTokenKey - refreshToken added to map
+console-listener.js:71 [Wed, 24 Dec 2025 14:43:54 GMT] : [] : @azure/msal-common@15.13.2 : Info - CacheManager:getIdToken - Returning ID token
+console-listener.js:71 [Microsoft Persist] Attempting to persist connection for: isaiahcalvo123@outlook.com
+console-listener.js:71 Downloading for thumbnail from: 166fbb95-c46b-430a-86a1-fb3e0775df04/general/1766555678733.pdf
+console-listener.js:71 [Microsoft Auth] Proactively refreshing token...
+console-listener.js:71 [Wed, 24 Dec 2025 14:43:54 GMT] : [019b50d1-0722-7c6e-a7e8-f94b0385fdef] : @azure/msal-common@15.13.2 : Info - CacheManager:getAccessToken - No token found
+console-listener.js:71 [Wed, 24 Dec 2025 14:43:54 GMT] : [019b50d1-0722-7c6e-a7e8-f94b0385fdef] : @azure/msal-common@15.13.2 : Info - Token refresh is required due to cache outcome: 2
+console-listener.js:71 [Wed, 24 Dec 2025 14:43:54 GMT] : [] : @azure/msal-common@15.13.2 : Info - CacheManager:getRefreshToken - returning refresh token
+console-listener.js:71 [Microsoft Persist] ✅ Successfully persisted to Supabase
+console-listener.js:71 [Microsoft Persist] Data: null
+console-listener.js:71 [Wed, 24 Dec 2025 14:43:55 GMT] : [] : @azure/msal-browser@4.26.2 : Info - removed 1 accessToken keys from tokenKeys map
+console-listener.js:71 [Microsoft Auth] Token refreshed successfully, expires at: Wed Dec 24 2025 10:43:54 GMT-0500 (Eastern Standard Time)
+ Window focused, refetching subscription data...
