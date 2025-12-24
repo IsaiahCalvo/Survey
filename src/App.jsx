@@ -1,6 +1,7 @@
 // App.jsx - PDF Management Dashboard
 import React, { useRef, useState, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
 import { PDFDocument } from 'pdf-lib';
 import * as XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
@@ -48,7 +49,8 @@ import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPre
 import { supabase } from './supabaseClient';
 
 // Set up the PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Set up the PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 pdfjsLib.verbosity = pdfjsLib.VerbosityLevel.ERRORS;
 
 // Consistent font stack for the entire application
@@ -1761,6 +1763,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             const uploadPromise = uploadToStorage(file, projectId || 'general');
             const pageCountPromise = (async () => {
               const arrayBuffer = await file.arrayBuffer();
+              console.log('Background Upload PDF Check:', {
+                name: file.name,
+                size: arrayBuffer.byteLength
+              });
               const pdfDoc = await pdfjsLib.getDocument({
                 data: arrayBuffer,
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS
@@ -11084,6 +11090,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
 
         // console.log('ArrayBuffer created, size:', arrayBuffer.byteLength);
+        console.log('PDF load check:', {
+          size: arrayBuffer.byteLength,
+          version: pdfjsLib.version,
+          workerSrc: pdfjsLib.GlobalWorkerOptions.workerSrc
+        });
+
+        try {
+          const checkHeader = new Uint8Array(arrayBuffer.slice(0, 5));
+          const headerStr = String.fromCharCode(...checkHeader);
+          console.log('PDF Header Check:', headerStr);
+          if (headerStr.indexOf('%PDF-') !== 0) {
+            console.error('CRITICAL: File does not start with %PDF-');
+          }
+        } catch (e) { console.error('Error checking header', e); }
+
         const loadingTask = pdfjsLib.getDocument({
           data: arrayBuffer,
           verbosity: pdfjsLib.VerbosityLevel.ERRORS
