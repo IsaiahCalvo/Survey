@@ -9,12 +9,23 @@ const MSGraphContext = createContext({});
 
 // Create singleton MSAL instance to prevent multiple initialization warnings
 let msalInstanceSingleton = null;
+let msalInitPromise = null;
+
 const getMsalInstance = async () => {
-    if (!msalInstanceSingleton) {
-        msalInstanceSingleton = new PublicClientApplication(msalConfig);
-        await msalInstanceSingleton.initialize();
+    if (msalInstanceSingleton) {
+        return msalInstanceSingleton;
     }
-    return msalInstanceSingleton;
+
+    if (!msalInitPromise) {
+        msalInitPromise = (async () => {
+            const instance = new PublicClientApplication(msalConfig);
+            await instance.initialize();
+            msalInstanceSingleton = instance;
+            return instance;
+        })();
+    }
+
+    return msalInitPromise;
 };
 
 export const useMSGraph = () => {
@@ -220,8 +231,6 @@ export const MSGraphProvider = ({ children }) => {
                         setConnectedServicesAvailable(true);
 
                         if (persistedConnection && persistedConnection.is_connected) {
-                            console.log('Found persisted Microsoft connection, attempting SSO silent auth...');
-
                             // Try SSO silent first (no popup)
                             try {
                                 const response = await pca.ssoSilent({
@@ -233,10 +242,8 @@ export const MSGraphProvider = ({ children }) => {
                                     setAccount(response.account);
                                     setIsAuthenticated(true);
                                     initializeGraphClient(pca, response.account);
-                                    console.log('Microsoft connection restored via SSO silent');
                                 }
                             } catch (ssoErr) {
-                                console.log('SSO silent failed, will require manual reconnect:', ssoErr.message);
                                 // Don't remove the persisted connection - the user can manually reconnect
                                 // Set flag so UI can show reconnect prompt
                                 if (isMounted) {
@@ -246,7 +253,6 @@ export const MSGraphProvider = ({ children }) => {
                         }
                     } catch (err) {
                         // Silently handle errors - table might not be ready
-                        console.log('Could not check for persisted connection, will retry on next load');
                     }
                 }
 
@@ -302,12 +308,6 @@ export const MSGraphProvider = ({ children }) => {
 
         const refreshToken = async (isRetry = false) => {
             try {
-                if (!isRetry) {
-                    console.log('[Microsoft Auth] Proactively refreshing token...');
-                } else {
-                    console.log(`[Microsoft Auth] Retry attempt ${retryCount}/${MAX_RETRIES}...`);
-                }
-
                 const response = await msalInstance.acquireTokenSilent({
                     ...loginRequest,
                     account: account,
@@ -315,31 +315,24 @@ export const MSGraphProvider = ({ children }) => {
                 });
 
                 if (response) {
-                    console.log('[Microsoft Auth] Token refreshed successfully, expires at:', response.expiresOn);
                     // Clear reconnect flag if it was set
                     setNeedsReconnect(false);
                     // Reset retry count on success
                     retryCount = 0;
                 }
             } catch (error) {
-                console.warn('[Microsoft Auth] Silent token refresh failed:', error.message);
-
                 // Try SSO silent as fallback
                 try {
-                    console.log('[Microsoft Auth] Attempting SSO silent fallback...');
                     const ssoResponse = await msalInstance.ssoSilent({
                         ...loginRequest,
                         loginHint: account.username,
                     });
 
                     if (ssoResponse) {
-                        console.log('[Microsoft Auth] Token refreshed via SSO silent');
                         setNeedsReconnect(false);
                         retryCount = 0;
                     }
                 } catch (ssoError) {
-                    console.error('[Microsoft Auth] SSO silent also failed:', ssoError.message);
-
                     // Check if this might be a temporary network error
                     const isNetworkError = error.message?.includes('network') ||
                                           error.message?.includes('timeout') ||
@@ -350,11 +343,9 @@ export const MSGraphProvider = ({ children }) => {
                         // Retry with exponential backoff: 5s, 10s, 20s
                         const retryDelay = 5000 * Math.pow(2, retryCount);
                         retryCount++;
-                        console.log(`[Microsoft Auth] Network error detected, retrying in ${retryDelay/1000}s...`);
                         retryTimeout = setTimeout(() => refreshToken(true), retryDelay);
                     } else {
                         // Both methods failed and no more retries - user needs to reconnect
-                        console.error('[Microsoft Auth] All refresh attempts exhausted, manual reconnect required');
                         setNeedsReconnect(true);
                         retryCount = 0;
                     }
@@ -393,7 +384,7 @@ export const MSGraphProvider = ({ children }) => {
                 await persistConnection(response.account);
             }
         } catch (err) {
-            console.error("Login failed", err);
+            console.error("Microsoft login failed:", err.message);
             setError(err.message);
         }
     };
@@ -411,7 +402,7 @@ export const MSGraphProvider = ({ children }) => {
             setIsAuthenticated(false);
             setGraphClient(null);
         } catch (err) {
-            console.error("Logout failed", err);
+            console.error("Microsoft logout failed:", err.message);
             setError(err.message);
         }
     };

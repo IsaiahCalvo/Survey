@@ -570,6 +570,49 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       </div>
                     )}
 
+                    {/* Manage Billing Button (for users with active subscriptions) */}
+                    {subscription && subscription.tier !== 'free' && subscription.stripe_customer_id && (
+                      <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const { data, error } = await supabase.functions.invoke('create-portal-session');
+                              if (error) throw error;
+                              if (data?.url) {
+                                if (window.electronAPI?.openExternal) {
+                                  await window.electronAPI.openExternal(data.url);
+                                } else {
+                                  window.open(data.url, '_blank');
+                                }
+                              }
+                            } catch (err) {
+                              console.error('Error opening billing portal:', err);
+                              setError('Failed to open billing portal. Please try again.');
+                            }
+                          }}
+                          style={{
+                            padding: '10px 20px',
+                            background: 'transparent',
+                            border: '1px solid #4A90E2',
+                            borderRadius: '6px',
+                            color: '#4A90E2',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            fontWeight: '500',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background = 'rgba(74, 144, 226, 0.1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background = 'transparent';
+                          }}
+                        >
+                          Manage Billing & Payments
+                        </button>
+                      </div>
+                    )}
+
                     {/* Billing Period Toggle (only show for paid users selecting new plan) */}
                     {subscription?.tier === 'free' && (
                       <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px', background: '#222', padding: '4px', borderRadius: '8px', width: 'fit-content', margin: '0 auto 16px auto' }}>

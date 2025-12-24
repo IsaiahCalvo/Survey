@@ -1,18 +1,14 @@
 import * as pdfjsLib from 'pdfjs-dist';
 
-console.log('PDF Worker initialized');
-
 // Note: We are INSIDE a worker, so we don't need to configure workerSrc
 // PDF.js operations will run directly in this worker context
 const loadedDocs = new Map();
 
 self.onmessage = async (e) => {
     const { type, payload } = e.data;
-    console.log('Worker received message:', type);
 
     try {
         if (type === 'LOAD_DOCUMENT') {
-            console.log('Loading document:', payload.docId);
             const { docId, data } = payload;
             // data is an ArrayBuffer
             const loadingTask = pdfjsLib.getDocument({
@@ -21,7 +17,6 @@ self.onmessage = async (e) => {
             });
             const pdfDoc = await loadingTask.promise;
             loadedDocs.set(docId, pdfDoc);
-            console.log('Document loaded successfully, sending DOC_LOADED message');
             self.postMessage({ type: 'DOC_LOADED', payload: { docId } });
         }
 

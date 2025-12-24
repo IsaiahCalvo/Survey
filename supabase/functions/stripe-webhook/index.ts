@@ -8,6 +8,32 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
 
 const cryptoProvider = Stripe.createSubtleCryptoProvider();
 
+// Helper function to send email notifications
+async function sendEmail(template: string, to: string, subject: string, data: any) {
+    try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+        const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({ to, subject, template, data }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            console.error('Failed to send email:', error);
+        } else {
+            console.log(`Email sent: ${template} to ${to}`);
+        }
+    } catch (error) {
+        console.error('Error sending email:', error);
+    }
+}
+
 Deno.serve(async (req) => {
     const signature = req.headers.get('Stripe-Signature');
     const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
@@ -281,6 +307,13 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
 
 // Handle subscription deletion (cancellation)
 async function handleSubscriptionDeleted(supabase: any, subscription: Stripe.Subscription) {
+    // Get user email before deleting subscription info
+    const { data: userSubscription } = await supabase
+        .from('user_subscriptions')
+        .select('user_id')
+        .eq('stripe_subscription_id', subscription.id)
+        .single();
+
     const { error } = await supabase
         .from('user_subscriptions')
         .update({
@@ -296,6 +329,23 @@ async function handleSubscriptionDeleted(supabase: any, subscription: Stripe.Sub
         console.error('Error handling subscription deletion:', error);
     } else {
         console.log(`Subscription canceled, downgraded to free tier`);
+
+        // Send cancellation confirmation email
+        if (userSubscription) {
+            const { data: user } = await supabase.auth.admin.getUserById(userSubscription.user_id);
+
+            if (user) {
+                await sendEmail(
+                    'subscription-canceled',
+                    user.user.email,
+                    'Subscription Canceled',
+                    {
+                        firstName: user.user.user_metadata?.firstName || user.user.user_metadata?.first_name,
+                        appUrl: 'http://localhost:5173'
+                    }
+                );
+            }
+        }
     }
 }
 
@@ -303,14 +353,38 @@ async function handleSubscriptionDeleted(supabase: any, subscription: Stripe.Sub
 async function handleTrialWillEnd(supabase: any, subscription: Stripe.Subscription) {
     const { data: userSubscription } = await supabase
         .from('user_subscriptions')
-        .select('user_id')
+        .select('user_id, stripe_customer_id')
         .eq('stripe_subscription_id', subscription.id)
         .single();
 
     if (userSubscription) {
         console.log(`Trial ending soon for user ${userSubscription.user_id}`);
-        // TODO: Send email notification to user
-        // You can add email service integration here
+
+        // Get user email
+        const { data: user } = await supabase.auth.admin.getUserById(userSubscription.user_id);
+
+        if (user && subscription.trial_end) {
+            const trialEndDate = new Date(subscription.trial_end * 1000);
+            const daysLeft = Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+            // Create billing portal session
+            const portalSession = await stripe.billingPortal.sessions.create({
+                customer: userSubscription.stripe_customer_id || subscription.customer as string,
+                return_url: 'http://localhost:5173',
+            });
+
+            await sendEmail(
+                'trial-ending',
+                user.user.email,
+                `Your Pro trial ends in ${daysLeft} days`,
+                {
+                    firstName: user.user.user_metadata?.firstName || user.user.user_metadata?.first_name,
+                    daysLeft: daysLeft,
+                    trialEndDate: trialEndDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+                    portalUrl: portalSession.url
+                }
+            );
+        }
     }
 }
 
@@ -327,6 +401,33 @@ async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
 
     if (!error) {
         console.log(`Payment succeeded for subscription ${invoice.subscription}`);
+
+        // Get user for email notification
+        const { data: userSubscription } = await supabase
+            .from('user_subscriptions')
+            .select('user_id')
+            .eq('stripe_subscription_id', invoice.subscription)
+            .single();
+
+        if (userSubscription && invoice.customer_email && invoice.customer) {
+            // Create billing portal session
+            const portalSession = await stripe.billingPortal.sessions.create({
+                customer: invoice.customer as string,
+                return_url: 'http://localhost:5173',
+            });
+
+            await sendEmail(
+                'payment-succeeded',
+                invoice.customer_email,
+                'Payment Received - Thank You!',
+                {
+                    amount: (invoice.amount_paid / 100).toFixed(2),
+                    planName: 'Pro Monthly',
+                    nextBillingDate: invoice.period_end ? new Date(invoice.period_end * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '',
+                    portalUrl: portalSession.url
+                }
+            );
+        }
     }
 }
 
@@ -343,7 +444,24 @@ async function handlePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
 
     if (!error) {
         console.log(`Payment failed for subscription ${invoice.subscription}`);
-        // TODO: Send email notification to user
+
+        // Send email notification
+        if (invoice.customer_email && invoice.customer) {
+            // Create billing portal session
+            const portalSession = await stripe.billingPortal.sessions.create({
+                customer: invoice.customer as string,
+                return_url: 'http://localhost:5173',
+            });
+
+            await sendEmail(
+                'payment-failed',
+                invoice.customer_email,
+                'Payment Failed - Action Required',
+                {
+                    portalUrl: portalSession.url
+                }
+            );
+        }
     }
 }
 

@@ -1258,17 +1258,14 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
       else if (filePath && downloadDocument) {
         // Check if filePath looks like a local filesystem path
         if (filePath.includes('/Users/') || filePath.includes('\\') || filePath.startsWith('/') || filePath.includes(':')) {
-          console.warn('Invalid Supabase storage path (looks like local path):', filePath);
           setIsLoading(false);
           return;
         }
         try {
-          console.log('Downloading for thumbnail from:', filePath);
           const blob = await downloadDocument(filePath);
           arrayBuffer = await blob.arrayBuffer();
         } catch (error) {
           console.error('Error downloading document for thumbnail:', error);
-          console.error('File path was:', filePath);
           setIsLoading(false);
           return;
         }
@@ -1298,7 +1295,10 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
 
       try {
         // Load PDF
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = pdfjsLib.getDocument({
+          data: arrayBuffer,
+          verbosity: pdfjsLib.VerbosityLevel.ERRORS
+        });
         const pdf = await loadingTask.promise;
 
         // Get first page
@@ -1640,7 +1640,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Sync Supabase documents with parent component state
   useEffect(() => {
     if (!Array.isArray(supabaseDocuments)) return;
-    console.log('Syncing documents from Supabase:', supabaseDocuments.length, supabaseDocuments);
     // Convert Supabase documents to the format expected by the UI
     const formattedDocs = supabaseDocuments.map(doc => ({
       id: doc.id,
@@ -1762,7 +1761,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             const uploadPromise = uploadToStorage(file, projectId || 'general');
             const pageCountPromise = (async () => {
               const arrayBuffer = await file.arrayBuffer();
-              const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+              const pdfDoc = await pdfjsLib.getDocument({
+                data: arrayBuffer,
+                verbosity: pdfjsLib.VerbosityLevel.ERRORS
+              }).promise;
               return pdfDoc.numPages;
             })();
 
@@ -1799,9 +1801,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
-    console.log('handleFileUpload called, file:', file);
     if (file && file.type === 'application/pdf') {
-      console.log('File is valid PDF, name:', file.name, 'size:', file.size);
 
       if (!user) {
         alert('Please sign in to upload documents');
@@ -1845,7 +1845,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           const pageCountPromise = (async () => {
             try {
               const arrayBuffer = await file.arrayBuffer();
-              const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+              const pdfDoc = await pdfjsLib.getDocument({
+                data: arrayBuffer,
+                verbosity: pdfjsLib.VerbosityLevel.ERRORS
+              }).promise;
               return pdfDoc.numPages;
             } catch (err) {
               console.error('Error getting page count:', err);
@@ -1872,7 +1875,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             if (pageCount !== null && newDoc) {
               try {
                 await updateSupabaseDocument(newDoc.id, { page_count: pageCount });
-                console.log(`Updated page count for ${file.name}: ${pageCount} pages`);
               } catch (err) {
                 console.error('Error updating page count:', err);
               }
@@ -1883,16 +1885,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
           // Refresh global document list to update counts
           refetchAllDocuments();
-
-          console.log('Background upload completed for:', file.name, 'New Doc:', newDoc);
         } catch (err) {
           console.error('Error uploading file in background:', err);
           alert('Failed to save document to cloud: ' + (err.message || 'Unknown error'));
         }
       })();
 
-    } else {
-      console.log('File is not a valid PDF or no file selected');
     }
     // Reset input
     event.target.value = '';
@@ -1959,7 +1957,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       newProject = await createSupabaseProject({
         name: trimmedName
       });
-      console.log('Project created successfully:', newProject);
     } catch (err) {
       console.error('Error creating project in database:', err);
       const error = new Error(`Failed to create project: ${err.message || 'Unknown error'}`);
@@ -1975,14 +1972,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     // Process files in parallel for better performance
     const filePromises = files.map(async (file) => {
       try {
-        console.log(`Uploading file: ${file.name} (${file.size} bytes)`);
-
         // Start upload and page count in parallel
         const uploadPromise = uploadToStorage(file, newProject.id);
         const pageCountPromise = (async () => {
           try {
             const arrayBuffer = await file.arrayBuffer();
-            const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const pdfDoc = await pdfjsLib.getDocument({
+              data: arrayBuffer,
+              verbosity: pdfjsLib.VerbosityLevel.ERRORS
+            }).promise;
             return pdfDoc.numPages;
           } catch (err) {
             console.error(`Error getting page count for ${file.name}:`, err);
@@ -1992,7 +1990,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
         // Wait for upload to complete first
         const filePath = await uploadPromise;
-        console.log(`File uploaded to storage: ${filePath}`);
 
         // Create document record immediately after upload
         // Use null for page_count initially, will update in background
@@ -2008,7 +2005,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         pageCountPromise.then(async (pageCount) => {
           if (pageCount !== null) {
             try {
-              console.log(`PDF has ${pageCount} pages`);
               await updateSupabaseDocument(doc.id, { page_count: pageCount });
             } catch (err) {
               console.error(`Error updating page count for ${file.name}:`, err);
@@ -2018,7 +2014,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           console.error(`Error getting page count for ${file.name}:`, err);
         });
 
-        console.log('Document record created:', doc);
         return { success: true, file: file.name };
       } catch (err) {
         console.error(`Error uploading file ${file.name}:`, err);
@@ -2068,13 +2063,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       console.warn('Some files failed to upload:', uploadErrors);
     }
 
-    console.log(`Successfully uploaded ${successCount} file(s) to project`);
-
     try {
       // Refetch projects and documents
       await refetchProjects();
       await refetchDocuments();
-      console.log('Projects and documents refetched');
     } catch (err) {
       console.error('Error refetching data:', err);
       // Don't throw here - the project was created successfully, just refresh failed
@@ -2096,8 +2088,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     } catch (err) {
       console.error('Error refetching projects:', err);
     }
-
-    console.log('Checking for name conflict. Current projects:', latestProjects.map(p => ({ id: p.id, name: p.name })));
 
     if (hasNameConflict(latestProjects, trimmedProjectName, { getName: (project) => project?.name })) {
       alert('A project with this name already exists. Please choose a different name.');
@@ -2287,7 +2277,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Persist projects to Supabase
   const persistProjects = async (projectsToSave) => {
     if (!user) {
-      console.warn('User not authenticated, cannot save projects');
       return;
     }
 
@@ -2349,7 +2338,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Persist templates to Supabase
   const persistTemplates = async (templatesToSave) => {
     if (!user) {
-      console.warn('User not authenticated, cannot save templates');
       return;
     }
 
@@ -2914,7 +2902,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
       await deleteSupabaseDocument(docId);
       await refetchDocuments();
-      console.log('Document deleted successfully');
     } catch (error) {
       console.error('Error deleting document:', error);
       alert('Failed to delete document: ' + error.message);
@@ -9060,7 +9047,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, []);
 
   const handleSpaceClearRegions = useCallback((spaceId, pageId) => {
-    console.log('[App] ===== handleSpaceClearRegions CALLED =====', { spaceId, pageId });
 
     setSpaces(prev => {
       const beforeSpace = prev.find(s => s.id === spaceId);
@@ -9105,8 +9091,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
         const afterPage = updatedPages.find(p => p.pageId === pageId);
         console.log('[App] After update - page entry:', afterPage);
-        console.log('[App] ===== handleSpaceClearRegions COMPLETED =====');
-
+    
         return {
           ...space,
           assignedPages: updatedPages
@@ -9809,7 +9794,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           // Map header columns to checklist item IDs
           const colToChecklistId = {};
           const checklistItems = matchedCategory.checklist || [];
-          console.log('Checklist items in category:', checklistItems.length);
 
           headerRow.forEach((colText, index) => {
             // Skip non-checklist columns
@@ -9822,11 +9806,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }
           });
 
-          console.log('Column to checklist ID mapping:', colToChecklistId);
           const itemColumnIndex = headerRow.indexOf('Item');
           const ballInCourtIndex = headerRow.indexOf('Ball in Court');
           const notesIndex = headerRow.indexOf('Notes');
-          console.log('Column indices:', { itemColumnIndex, ballInCourtIndex, notesIndex });
 
           // Iterate data rows
           for (let i = 1; i < jsonData.length; i++) {
@@ -9834,7 +9816,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             const itemName = row[itemColumnIndex];
             if (!itemName) continue;
 
-            console.log(`Processing row ${i}: itemName="${itemName}"`);
 
             // Find matching highlight by name
             let matchedHighlightKey = null;
@@ -9845,7 +9826,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 ann.categoryId === matchedCategory.id &&
                 ann.name === itemName) {
                 matchedHighlightKey = key;
-                console.log('✓ Found highlight by name:', key);
               }
             });
 
@@ -9861,7 +9841,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
                 const value = row[colIndex];
                 const currentVal = ann.checklistResponses[checklistId]?.selection;
-                console.log(`  Col ${colIndex} (${checklistId}): Excel="${value}" Current="${currentVal}"`);
 
                 if (value !== undefined && value !== currentVal) {
                   ann.checklistResponses[checklistId] = {
@@ -9869,7 +9848,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     selection: value
                   };
                   changed = true;
-                  console.log(`    UPDATED to "${value}"`);
                 }
               });
 
@@ -9912,7 +9890,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               }
             } else {
               // Create new highlight for new row
-              console.log(`Creating new highlight for item: "${itemName}"`);
 
               const newHighlightId = `highlight-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
@@ -9972,7 +9949,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
               newHighlightAnnotations[newHighlightId] = newHighlight;
               updatesCount++;
-              console.log(`✓ Created new highlight:`, newHighlightId);
             }
           }
         });
@@ -9997,22 +9973,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     addHistoryCheckpoint();
 
 
-    console.log('=== handleAutoSyncFromExcel called ===');
     if (!selectedTemplate?.linkedExcelPath) {
-      console.log('No linked Excel path');
       return;
     }
 
-    console.log('Linked Excel path:', selectedTemplate.linkedExcelPath);
-
     if (window.electronAPI) {
       try {
-        console.log('Reading Excel file...');
         let fileData;
         if (selectedTemplate?.isOneDrive) {
           // Use OneDrive API to download
           if (!graphClient) {
-            console.log('Not authenticated with Microsoft, skipping auto-sync');
             return;
           }
           fileData = await downloadExcelFileByPath(graphClient, selectedTemplate.linkedExcelPath);
@@ -10023,14 +9993,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
 
-        console.log('Excel loaded, worksheets:', workbook.worksheets.length);
-
         const newHighlightAnnotations = { ...highlightAnnotations };
         let updatesCount = 0;
 
         workbook.worksheets.forEach(worksheet => {
           const sheetName = worksheet.name;
-          console.log('Processing worksheet:', sheetName);
 
           // Convert worksheet to array of arrays
           const jsonData = [];
@@ -10072,7 +10039,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           // Map header columns to checklist item IDs
           const colToChecklistId = {};
           const checklistItems = matchedCategory.checklist || [];
-          console.log('Checklist items in category:', checklistItems.length);
 
           headerRow.forEach((colText, index) => {
             // Skip non-checklist columns
@@ -10085,11 +10051,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }
           });
 
-          console.log('Column to checklist ID mapping:', colToChecklistId);
           const itemColumnIndex = headerRow.indexOf('Item');
           const ballInCourtIndex = headerRow.indexOf('Ball in Court');
           const notesIndex = headerRow.indexOf('Notes');
-          console.log('Column indices:', { itemColumnIndex, ballInCourtIndex, notesIndex });
 
           // Iterate data rows
           for (let i = 1; i < jsonData.length; i++) {
@@ -10097,7 +10061,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             const itemName = row[itemColumnIndex];
             if (!itemName) continue;
 
-            console.log(`Processing row ${i}: itemName="${itemName}"`);
 
             // Find matching highlight by name
             let matchedHighlightKey = null;
@@ -10108,7 +10071,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 ann.categoryId === matchedCategory.id &&
                 ann.name === itemName) {
                 matchedHighlightKey = key;
-                console.log('✓ Found highlight by name:', key);
               }
             });
 
@@ -10124,7 +10086,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
                 const value = row[colIndex];
                 const currentVal = ann.checklistResponses[checklistId]?.selection;
-                console.log(`  Col ${colIndex} (${checklistId}): Excel="${value}" Current="${currentVal}"`);
 
                 if (value !== undefined && value !== currentVal) {
                   ann.checklistResponses[checklistId] = {
@@ -10132,7 +10093,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     selection: value
                   };
                   changed = true;
-                  console.log(`    UPDATED to "${value}"`);
                 }
               });
 
@@ -10175,7 +10135,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               }
             } else {
               // Create new highlight for new row
-              console.log(`Creating new highlight for item: "${itemName}"`);
 
               const newHighlightId = `highlight-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
@@ -10235,7 +10194,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
               newHighlightAnnotations[newHighlightId] = newHighlight;
               updatesCount++;
-              console.log(`✓ Created new highlight:`, newHighlightId);
             }
           }
         });
@@ -10894,7 +10852,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     try {
-      console.log('Saving survey data to Supabase...');
       const data = {
         version: 1,
         updatedAt: new Date().toISOString(),
@@ -10923,7 +10880,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         template_id: currentTemplate?.id || null
       });
 
-      console.log('Survey data saved to Supabase successfully');
     } catch (error) {
       console.error('Error saving survey data to Supabase:', error);
       // Don't alert here to avoid interrupting the user flow, just log
@@ -10935,7 +10891,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (!doc || !doc.projectId) return;
 
     try {
-      console.log('Loading survey data from Supabase for doc:', doc.id);
       const filePath = `${doc.projectId}/${doc.id}_data.json`;
 
       // Check if file exists by trying to get URL (or just try download and catch error)
@@ -10946,7 +10901,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const text = await dataBlob.text();
       const data = JSON.parse(text);
 
-      console.log('Loaded survey data:', data);
 
       // Verify it matches this PDF
       if (data.pdfId && data.pdfId !== getPDFId(pdfFile)) {
@@ -10972,7 +10926,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     } catch (error) {
       // It's normal for new documents to not have data yet
-      console.log('No existing survey data found or error loading:', error.message);
     }
   }, [downloadFromStorage, pdfFile]);
 
@@ -11123,8 +11076,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           arrayBuffer = await pdfFile.arrayBuffer();
         } else if (pdfFile.filePath) {
           // Supabase file - download it
-          console.log('Downloading PDF from Supabase:', pdfFile.filePath);
-          const blob = await downloadFromStorage(pdfFile.filePath);
+              const blob = await downloadFromStorage(pdfFile.filePath);
           if (!blob) throw new Error('Failed to download PDF');
           arrayBuffer = await blob.arrayBuffer();
         } else {
@@ -11132,7 +11084,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
 
         // console.log('ArrayBuffer created, size:', arrayBuffer.byteLength);
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = pdfjsLib.getDocument({
+          data: arrayBuffer,
+          verbosity: pdfjsLib.VerbosityLevel.ERRORS
+        });
         const pdf = await loadingTask.promise;
         // console.log('PDF loaded successfully. Pages:', pdf.numPages);
         setPdfDoc(pdf);
@@ -11167,11 +11122,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
         // Import existing PDF annotations as editable Fabric.js objects
         try {
-          console.log('Importing PDF annotations...');
-          const { annotationsByPage: importedAnnotations, unsupportedTypes } = await importAnnotationsFromPdf(pdf);
+              const { annotationsByPage: importedAnnotations, unsupportedTypes } = await importAnnotationsFromPdf(pdf);
 
           if (Object.keys(importedAnnotations).length > 0) {
-            console.log(`Imported annotations from ${Object.keys(importedAnnotations).length} pages`);
             // Merge imported annotations with any existing annotations
             setAnnotationsByPage(prev => {
               const merged = { ...prev };
@@ -14711,8 +14664,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             }
 
                             // Check if we're copying items (when copiedItemSelection has items)
-                            console.log('Copy to Spaces - Selected highlight IDs:', selectedHighlightIds);
-                            console.log('Copy to Spaces - Highlight annotations:', highlightAnnotations);
 
                             if (selectedHighlightIds.length > 0) {
                               // We're copying items - get the itemIds from the selected highlights
@@ -18777,7 +18728,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     <button
                       type="button"
                       onClick={() => {
-                        console.log('=== NOTE SAVE CLICKED ===');
                         console.log('noteDialogOpen:', noteDialogOpen);
                         console.log('noteDialogContent:', noteDialogContent);
 
@@ -18826,7 +18776,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         console.log('Closing dialog');
                         setNoteDialogOpen(null);
                         setNoteDialogContent({ text: '', photos: [], videos: [] }); // Clear dialog content
-                        console.log('=== NOTE SAVE COMPLETE ===');
                       }}
                       className="btn btn-primary btn-md"
                     >
