@@ -16,7 +16,7 @@ CREATE TABLE usage_metrics (
     measured_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 
     -- For time-series tracking
-    date_bucket DATE GENERATED ALWAYS AS (DATE(measured_at)) STORED
+    date_bucket DATE
 );
 
 -- Create indexes for faster queries
@@ -37,6 +37,20 @@ CREATE POLICY "Users can view own usage metrics"
 CREATE POLICY "System can insert usage metrics"
     ON usage_metrics FOR INSERT
     WITH CHECK (true); -- Allow inserts from triggers/functions
+
+-- Trigger to auto-populate date_bucket
+CREATE OR REPLACE FUNCTION set_usage_metrics_date_bucket()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.date_bucket := DATE(NEW.measured_at);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_set_usage_metrics_date_bucket
+    BEFORE INSERT ON usage_metrics
+    FOR EACH ROW
+    EXECUTE FUNCTION set_usage_metrics_date_bucket();
 
 -- Function to record a usage metric
 CREATE OR REPLACE FUNCTION record_usage_metric(
