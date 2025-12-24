@@ -319,7 +319,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
             {activeTab === 'general' && (
               <>
                 {/* Profile Section */}
-                <section className="account-section">
+                <section className="account-section" style={{ height: '308px' }}>
                   <h3>Profile Information</h3>
 
                   {!isEditing ? (
