@@ -111,8 +111,18 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase is not configured');
     }
 
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    try {
+      // Try to sign out on the server
+      await supabase.auth.signOut();
+    } catch (error) {
+      // If sign out fails (e.g., session already expired), log it but continue
+      // We'll still clear the local session and reload
+      console.warn('Sign out API call failed, clearing local session anyway:', error);
+    }
+
+    // Always clear local state and refresh, even if API call failed
+    setUser(null);
+    setSession(null);
 
     // Refresh the page to clear cached user documents, projects, and templates
     window.location.reload();
