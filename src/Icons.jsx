@@ -129,9 +129,9 @@ const Icon = ({ name, size = 16, color = 'currentColor', style, className }) => 
 
     // Page view icons
     pages: (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <rect x="3" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" fill="none" />
-        <rect x="12" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" fill="none" />
+      <svg width={size} height={size} viewBox="0 0 24 19" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <rect x="3" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" />
+        <rect x="12" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" />
       </svg>
     ),
 
