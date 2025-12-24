@@ -8539,14 +8539,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Undo function
   const handleUndo = useCallback(() => {
-    if (undoHistory.length < 2) return;
+    if (undoHistory.length === 0) return;
 
     isUndoingRef.current = true;
-    const stateToRestore = undoHistory[undoHistory.length - 2];
-    const stateToRedo = undoHistory[undoHistory.length - 1];
+    const stateToRestore = undoHistory[undoHistory.length - 1];
 
-    // Save current state (which is the last item in undoHistory) to redo history
-    setRedoHistory(prev => [stateToRedo, ...prev]);
+    // Build current state to save to redo history
+    const currentState = {
+      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
+      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations)),
+      spaces: JSON.parse(JSON.stringify(spaces || []))
+    };
+
+    // Save current state (what we are undoing FROM) to redo history
+    setRedoHistory(prev => [currentState, ...prev]);
 
     // Restore previous state
     setAnnotationsByPage(stateToRestore.annotationsByPage);
@@ -8560,7 +8566,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setTimeout(() => {
       isUndoingRef.current = false;
     }, 100);
-  }, [undoHistory]);
+  }, [undoHistory, annotationsByPage, highlightAnnotations, spaces]);
 
   // Redo function
   const handleRedo = useCallback(() => {
@@ -8592,7 +8598,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [redoHistory, annotationsByPage, highlightAnnotations]);
 
   // Check if undo is possible
-  const canUndo = undoHistory.length > 1;
+  const canUndo = undoHistory.length > 0;
 
   // Check if redo is possible
   const canRedo = redoHistory.length > 0;
@@ -9091,7 +9097,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
         const afterPage = updatedPages.find(p => p.pageId === pageId);
         console.log('[App] After update - page entry:', afterPage);
-    
+
         return {
           ...space,
           assignedPages: updatedPages
@@ -11076,7 +11082,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           arrayBuffer = await pdfFile.arrayBuffer();
         } else if (pdfFile.filePath) {
           // Supabase file - download it
-              const blob = await downloadFromStorage(pdfFile.filePath);
+          const blob = await downloadFromStorage(pdfFile.filePath);
           if (!blob) throw new Error('Failed to download PDF');
           arrayBuffer = await blob.arrayBuffer();
         } else {
@@ -11122,7 +11128,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
         // Import existing PDF annotations as editable Fabric.js objects
         try {
-              const { annotationsByPage: importedAnnotations, unsupportedTypes } = await importAnnotationsFromPdf(pdf);
+          const { annotationsByPage: importedAnnotations, unsupportedTypes } = await importAnnotationsFromPdf(pdf);
 
           if (Object.keys(importedAnnotations).length > 0) {
             // Merge imported annotations with any existing annotations
