@@ -52,36 +52,50 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   }, [user]);
 
   // Fetch subscription data
-  useEffect(() => {
-    const fetchSubscription = async () => {
-      if (!user) return;
+  const fetchSubscription = async () => {
+    if (!user) return;
 
-      setLoadingSubscription(true);
-      try {
-        const { data, error } = await supabase
-          .from('user_subscriptions')
-          .select('*')
-          .eq('user_id', user.id)
-          .single();
+    setLoadingSubscription(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
 
-        if (error) {
-          console.error('Error fetching subscription:', error);
-          // User might not have a subscription row yet (shouldn't happen after migration)
-          setSubscription({ tier: 'free', status: 'active' });
-        } else {
-          setSubscription(data);
-        }
-      } catch (err) {
-        console.error('Error:', err);
+      if (error) {
+        console.error('Error fetching subscription:', error);
+        // User might not have a subscription row yet (shouldn't happen after migration)
         setSubscription({ tier: 'free', status: 'active' });
-      } finally {
-        setLoadingSubscription(false);
+      } else {
+        setSubscription(data);
       }
-    };
+    } catch (err) {
+      console.error('Error:', err);
+      setSubscription({ tier: 'free', status: 'active' });
+    } finally {
+      setLoadingSubscription(false);
+    }
+  };
 
+  // Fetch subscription when modal opens
+  useEffect(() => {
     if (isOpen && user) {
       fetchSubscription();
     }
+  }, [isOpen, user]);
+
+  // Refetch subscription when window regains focus (user returns from Stripe checkout)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isOpen && user) {
+        console.log('Window focused, refetching subscription data...');
+        fetchSubscription();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [isOpen, user]);
 
   // Sync Microsoft account data if user profile is incomplete
@@ -629,7 +643,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                     <div className="account-subscription-grid">
                       {/* Free Plan */}
-                      <div className="account-subscription-card" style={{ opacity: subscription?.tier === 'free' ? 1 : 0.7 }}>
+                      <div className="account-subscription-card" style={{
+                        border: subscription?.tier === 'free' ? '2px solid #22c55e' : '1px solid #333',
+                        opacity: subscription?.tier === 'free' ? 1 : 0.7
+                      }}>
                         <div className="account-subscription-header">
                           <div className="account-plan-name">Free</div>
                           <div className="account-subscription-price">
@@ -665,8 +682,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                       {/* Pro Plan */}
                       <div className="account-subscription-card" style={{
-                        border: subscription?.tier !== 'pro' ? '2px solid #4A90E2' : '1px solid #333',
-                        opacity: subscription?.tier === 'pro' ? 1 : subscription?.tier === 'enterprise' || subscription?.tier === 'developer' ? 0.7 : 1
+                        border: (subscription?.tier === 'pro' || subscription?.status === 'trialing') ? '2px solid #4A90E2' : '1px solid #333',
+                        opacity: (subscription?.tier === 'free' || subscription?.tier === 'enterprise' || subscription?.tier === 'developer') ? (subscription?.tier === 'free' ? 1 : 0.7) : 1
                       }}>
                         <div className="account-subscription-header">
                           <div className="account-plan-info-row">
