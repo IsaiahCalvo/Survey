@@ -12177,424 +12177,307 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }), [scrollMode]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json) => {
-    const handleSaveAnnotations = useCallback((pageNumber, json) => {
-      // Checkpoint history before saving annotation changes
-      addHistoryCheckpoint();
+    // Checkpoint history before saving annotation changes
+    addHistoryCheckpoint();
 
-      // Only update if changes actually occurred
-      setAnnotationsByPage(prev => {
-        // Deep compare to avoid unnecessary updates/renders
-        if (JSON.stringify(prev[pageNumber]) === JSON.stringify(json)) {
-          return prev;
-        }
+    // Only update if changes actually occurred
+    setAnnotationsByPage(prev => {
+      // Deep compare to avoid unnecessary updates/renders
+      if (JSON.stringify(prev[pageNumber]) === JSON.stringify(json)) {
+        return prev;
+      }
 
-        return {
-          ...prev,
-          [pageNumber]: json
-        };
-      });
-    }, [addHistoryCheckpoint]);
-
-    // Helper function to check if two bounds match (with tolerance for floating point)
-    const boundsMatch = (bounds1, bounds2, tolerance = 5) => {
-      if (!bounds1 || !bounds2) return false;
-      return (
-        Math.abs((bounds1.x || bounds1.left) - (bounds2.x || bounds2.left)) < tolerance &&
-        Math.abs((bounds1.y || bounds1.top) - (bounds2.y || bounds2.top)) < tolerance &&
-        Math.abs((bounds1.width || bounds1.right - bounds1.left) - (bounds2.width || bounds2.right - bounds2.left)) < tolerance &&
-        Math.abs((bounds1.height || bounds1.bottom - bounds1.top) - (bounds2.height || bounds2.bottom - bounds2.top)) < tolerance
-      );
-    };
-
-    // Navigate to survey item when highlight is clicked (reverse navigation)
-    const handleHighlightClicked = useCallback((highlightId) => {
-      if (!highlightId || !selectedTemplate) return;
-
-      const highlight = highlightAnnotations[highlightId];
-      if (!highlight) return;
-
-      const moduleId = highlight.moduleId || highlight.spaceId;
-
-      // 1. Switch to module
-      setSelectedModuleId(moduleId);
-
-      // 2. Expand category
-      setExpandedCategories(prev => ({
+      return {
         ...prev,
-        [highlight.categoryId]: true
-      }));
+        [pageNumber]: json
+      };
+    });
+  }, [addHistoryCheckpoint]);
 
-      // 3. Ensure Survey Panel is open
-      if (!showSurveyPanel || isSurveyPanelCollapsed) {
-        setShowSurveyPanel(true);
-        setIsSurveyPanelCollapsed(false);
+  // Helper function to check if two bounds match (with tolerance for floating point)
+  const boundsMatch = (bounds1, bounds2, tolerance = 5) => {
+    if (!bounds1 || !bounds2) return false;
+    return (
+      Math.abs((bounds1.x || bounds1.left) - (bounds2.x || bounds2.left)) < tolerance &&
+      Math.abs((bounds1.y || bounds1.top) - (bounds2.y || bounds2.top)) < tolerance &&
+      Math.abs((bounds1.width || bounds1.right - bounds1.left) - (bounds2.width || bounds2.right - bounds2.left)) < tolerance &&
+      Math.abs((bounds1.height || bounds1.bottom - bounds1.top) - (bounds2.height || bounds2.bottom - bounds2.top)) < tolerance
+    );
+  };
+
+  // Navigate to survey item when highlight is clicked (reverse navigation)
+  const handleHighlightClicked = useCallback((highlightId) => {
+    if (!highlightId || !selectedTemplate) return;
+
+    const highlight = highlightAnnotations[highlightId];
+    if (!highlight) return;
+
+    const moduleId = highlight.moduleId || highlight.spaceId;
+
+    // 1. Switch to module
+    setSelectedModuleId(moduleId);
+
+    // 2. Expand category
+    setExpandedCategories(prev => ({
+      ...prev,
+      [highlight.categoryId]: true
+    }));
+
+    // 3. Ensure Survey Panel is open
+    if (!showSurveyPanel || isSurveyPanelCollapsed) {
+      setShowSurveyPanel(true);
+      setIsSurveyPanelCollapsed(false);
+    }
+
+    // 4. Scroll to item
+    setTimeout(() => {
+      const element = document.getElementById(`highlight-item-${highlightId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Flash effect
+        element.style.transition = 'box-shadow 0.5s';
+        element.style.boxShadow = '0 0 0 2px #4A90E2';
+        setTimeout(() => {
+          element.style.boxShadow = 'none';
+        }, 2000);
       }
+    }, 300);
+  }, [highlightAnnotations, selectedTemplate, showSurveyPanel, isSurveyPanelCollapsed]);
 
-      // 4. Scroll to item
-      setTimeout(() => {
-        const element = document.getElementById(`highlight-item-${highlightId}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Flash effect
-          element.style.transition = 'box-shadow 0.5s';
-          element.style.boxShadow = '0 0 0 2px #4A90E2';
-          setTimeout(() => {
-            element.style.boxShadow = 'none';
-          }, 2000);
-        }
-      }, 300);
-    }, [highlightAnnotations, selectedTemplate, showSurveyPanel, isSurveyPanelCollapsed]);
+  // Locate item on PDF (Forward Navigation)
+  const handleLocateItemOnPDF = useCallback((highlight) => {
+    if (!highlight) return;
+    const { pageNumber, bounds } = highlight;
 
-    // Locate item on PDF (Forward Navigation)
-    const handleLocateItemOnPDF = useCallback((highlight) => {
-      if (!highlight) return;
-      const { pageNumber, bounds } = highlight;
-
-      // Zoom in a little (e.g., 1.5x or +20% depending on current scale, but user asked for "zooming in on it a little")
-      // Let's set a target scale. If current scale is small, zoom in.
-      // If we have a zoomController, use it.
-      if (zoomControllerRef.current) {
-        // Zoom to 1.5x or current scale if higher
-        const targetScale = Math.max(scale, 1.5);
-        if (targetScale !== scale) {
-          setScale(targetScale);
-        }
+    // Zoom in a little (e.g., 1.5x or +20% depending on current scale, but user asked for "zooming in on it a little")
+    // Let's set a target scale. If current scale is small, zoom in.
+    // If we have a zoomController, use it.
+    if (zoomControllerRef.current) {
+      // Zoom to 1.5x or current scale if higher
+      const targetScale = Math.max(scale, 1.5);
+      if (targetScale !== scale) {
+        setScale(targetScale);
       }
+    }
 
-      if (scrollMode === 'single') {
-        setPageNum(pageNumber);
-      } else {
-        // Continuous mode
-        // We need to wait for zoom to apply if we changed it, but React state updates might be async.
-        // However, scrolling happens on container which might need layout update.
-        // Let's use setTimeout to allow render cycle if scale changed.
+    if (scrollMode === 'single') {
+      setPageNum(pageNumber);
+    } else {
+      // Continuous mode
+      // We need to wait for zoom to apply if we changed it, but React state updates might be async.
+      // However, scrolling happens on container which might need layout update.
+      // Let's use setTimeout to allow render cycle if scale changed.
 
-        // Use double requestAnimationFrame to ensure DOM has updated after scale change
+      // Use double requestAnimationFrame to ensure DOM has updated after scale change
+      requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const targetContainer = pageContainersRef.current[pageNumber];
-            const container = containerRef.current;
+          const targetContainer = pageContainersRef.current[pageNumber];
+          const container = containerRef.current;
 
-            if (targetContainer && container) {
-              // First, ensure the page is in view using scrollIntoView (won't scroll if already visible)
-              targetContainer.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
+          if (targetContainer && container) {
+            // First, ensure the page is in view using scrollIntoView (won't scroll if already visible)
+            targetContainer.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
 
-              // Wait for scrollIntoView to complete, then calculate positions
-              // Use double RAF to ensure layout has settled
+            // Wait for scrollIntoView to complete, then calculate positions
+            // Use double RAF to ensure layout has settled
+            requestAnimationFrame(() => {
               requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                  // Now get accurate measurements after scrollIntoView
-                  const containerRect = container.getBoundingClientRect();
-                  const targetRect = targetContainer.getBoundingClientRect();
-                  const computedStyles = window.getComputedStyle(container);
-                  const paddingTop = parseFloat(computedStyles.paddingTop || '0');
-                  const paddingLeft = parseFloat(computedStyles.paddingLeft || '0');
-                  const containerWidth = container.clientWidth;
-                  const containerHeight = container.clientHeight;
+                // Now get accurate measurements after scrollIntoView
+                const containerRect = container.getBoundingClientRect();
+                const targetRect = targetContainer.getBoundingClientRect();
+                const computedStyles = window.getComputedStyle(container);
+                const paddingTop = parseFloat(computedStyles.paddingTop || '0');
+                const paddingLeft = parseFloat(computedStyles.paddingLeft || '0');
+                const containerWidth = container.clientWidth;
+                const containerHeight = container.clientHeight;
 
-                  // Calculate page container's position in scroll coordinates
-                  // Now that element is in view, getBoundingClientRect() will work correctly
-                  const pageContainerScrollTop = container.scrollTop + (targetRect.top - containerRect.top);
-                  const pageContainerScrollLeft = container.scrollLeft + (targetRect.left - containerRect.left);
+                // Calculate page container's position in scroll coordinates
+                // Now that element is in view, getBoundingClientRect() will work correctly
+                const pageContainerScrollTop = container.scrollTop + (targetRect.top - containerRect.top);
+                const pageContainerScrollLeft = container.scrollLeft + (targetRect.left - containerRect.left);
 
-                  let scrollTop = pageContainerScrollTop - paddingTop;
-                  let scrollLeft = pageContainerScrollLeft - paddingLeft;
+                let scrollTop = pageContainerScrollTop - paddingTop;
+                let scrollLeft = pageContainerScrollLeft - paddingLeft;
 
-                  // Add bounds offset if available
-                  if (bounds) {
-                    const currentScale = zoomControllerRef.current ? zoomControllerRef.current.getScale() : scale;
-                    const boundsY = bounds.y || bounds.top;
-                    const boundsX = bounds.x || bounds.left;
-                    const boundsHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0);
-                    const boundsWidth = bounds.width || (bounds.right ? bounds.right - bounds.left : 0);
-                    const scaledTop = boundsY * currentScale;
-                    const scaledLeft = boundsX * currentScale;
-                    const scaledHeight = boundsHeight * currentScale;
-                    const scaledWidth = boundsWidth * currentScale;
+                // Add bounds offset if available
+                if (bounds) {
+                  const currentScale = zoomControllerRef.current ? zoomControllerRef.current.getScale() : scale;
+                  const boundsY = bounds.y || bounds.top;
+                  const boundsX = bounds.x || bounds.left;
+                  const boundsHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0);
+                  const boundsWidth = bounds.width || (bounds.right ? bounds.right - bounds.left : 0);
+                  const scaledTop = boundsY * currentScale;
+                  const scaledLeft = boundsX * currentScale;
+                  const scaledHeight = boundsHeight * currentScale;
+                  const scaledWidth = boundsWidth * currentScale;
 
-                    // Vertical positioning: add bounds offset and center
-                    scrollTop += scaledTop;
-                    const centerOffsetY = (containerHeight / 2) - (scaledHeight / 2);
-                    scrollTop -= centerOffsetY;
+                  // Vertical positioning: add bounds offset and center
+                  scrollTop += scaledTop;
+                  const centerOffsetY = (containerHeight / 2) - (scaledHeight / 2);
+                  scrollTop -= centerOffsetY;
 
-                    // Horizontal positioning: Calculate using scroll coordinates
-                    // Get page container dimensions
-                    const pageContainerWidth = targetContainer.offsetWidth;
+                  // Horizontal positioning: Calculate using scroll coordinates
+                  // Get page container dimensions
+                  const pageContainerWidth = targetContainer.offsetWidth;
 
-                    // Find the PDF canvas to get its actual width
-                    const pdfCanvas = targetContainer.querySelector('canvas');
-                    let pdfPageWidth = pageContainerWidth;
+                  // Find the PDF canvas to get its actual width
+                  const pdfCanvas = targetContainer.querySelector('canvas');
+                  let pdfPageWidth = pageContainerWidth;
 
-                    if (pdfCanvas) {
-                      const canvasRect = pdfCanvas.getBoundingClientRect();
-                      pdfPageWidth = canvasRect.width;
-                    } else {
-                      // Fallback: estimate PDF page width from pageHeights if available
-                      if (pageHeights[pageNumber]) {
-                        pdfPageWidth = pageHeights[pageNumber] * 0.7 * currentScale;
-                      }
-                    }
-
-                    // Calculate where the PDF page starts within the page container
-                    // Since pages are centered (justifyContent: 'center'), PDF starts at: (containerWidth - pdfPageWidth) / 2 from container left
-                    const pdfPageLeftOffsetInContainer = (pageContainerWidth - pdfPageWidth) / 2;
-
-                    // PDF page's left edge in scroll coordinates
-                    const pdfPageLeftInScroll = pageContainerScrollLeft + pdfPageLeftOffsetInContainer;
-
-                    // Calculate highlight center position
-                    const highlightCenterX = boundsX + (boundsWidth / 2);
-                    const scaledHighlightCenterX = highlightCenterX * currentScale;
-
-                    // Highlight center in scroll coordinates
-                    const highlightCenterInScroll = pdfPageLeftInScroll + scaledHighlightCenterX;
-
-                    // To center the highlight, we want: highlightCenterInScroll = scrollLeft + (containerWidth / 2)
-                    // Therefore: scrollLeft = highlightCenterInScroll - (containerWidth / 2)
-                    scrollLeft = highlightCenterInScroll - (containerWidth / 2);
+                  if (pdfCanvas) {
+                    const canvasRect = pdfCanvas.getBoundingClientRect();
+                    pdfPageWidth = canvasRect.width;
                   } else {
+                    // Fallback: estimate PDF page width from pageHeights if available
+                    if (pageHeights[pageNumber]) {
+                      pdfPageWidth = pageHeights[pageNumber] * 0.7 * currentScale;
+                    }
                   }
 
-                  const finalScrollTop = Math.max(0, Math.min(scrollTop, container.scrollHeight - container.clientHeight));
-                  const finalScrollLeft = Math.max(0, Math.min(scrollLeft, container.scrollWidth - container.clientWidth));
-                  container.scrollTo({
-                    top: finalScrollTop,
-                    left: finalScrollLeft,
-                    behavior: 'smooth'
-                  });
-                });
-              });
-            } else {
-              // If page not mounted, fallback to standard page navigation
-              goToPage(pageNumber);
-            }
-          });
-        });
-      }
-    }, [scale, scrollMode, goToPage]);
+                  // Calculate where the PDF page starts within the page container
+                  // Since pages are centered (justifyContent: 'center'), PDF starts at: (containerWidth - pdfPageWidth) / 2 from container left
+                  const pdfPageLeftOffsetInContainer = (pageContainerWidth - pdfPageWidth) / 2;
 
-    // Handle highlight deletion from PDF (via eraser tool)
-    const handleHighlightDeleted = useCallback((pageNumber, bounds, highlightId = null) => {
-      // Checkpoint history before deletion
-      addHistoryCheckpoint();
+                  // PDF page's left edge in scroll coordinates
+                  const pdfPageLeftInScroll = pageContainerScrollLeft + pdfPageLeftOffsetInContainer;
 
+                  // Calculate highlight center position
+                  const highlightCenterX = boundsX + (boundsWidth / 2);
+                  const scaledHighlightCenterX = highlightCenterX * currentScale;
 
-      console.log('[App] handleHighlightDeleted called', { pageNumber, bounds, highlightId, selectedModuleId, selectedTemplate });
-      if (!selectedModuleId || !selectedTemplate) {
-        console.warn('[App] handleHighlightDeleted aborted: Missing module or template');
-        return;
-      }
+                  // Highlight center in scroll coordinates
+                  const highlightCenterInScroll = pdfPageLeftInScroll + scaledHighlightCenterX;
 
-      // Find matching highlights in highlightAnnotations
-      const matchingHighlightIds = [];
-
-      if (highlightId) {
-        // If highlightId is provided, use it directly (most reliable)
-        if (highlightAnnotations[highlightId]) {
-          const highlight = highlightAnnotations[highlightId];
-          const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
-          if (highlightModuleId === selectedModuleId && highlight.pageNumber === pageNumber) {
-            matchingHighlightIds.push(highlightId);
-          }
-        }
-      } else {
-        // Fall back to bounds matching if no highlightId
-        Object.entries(highlightAnnotations).forEach(([id, highlight]) => {
-          const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
-          if (highlightModuleId === selectedModuleId &&
-            highlight.pageNumber === pageNumber &&
-            boundsMatch(highlight.bounds, bounds)) {
-            matchingHighlightIds.push(id);
-          }
-        });
-      }
-
-      // Delete matching highlights from highlightAnnotations
-      if (matchingHighlightIds.length > 0) {
-        // Get highlight data before deleting (since state updates are async)
-        const highlightsToDelete = matchingHighlightIds
-          .map(id => ({ id, highlight: highlightAnnotations[id] }))
-          .filter(({ highlight }) => highlight != null);
-
-        // Delete from highlightAnnotations
-        setHighlightAnnotations(prev => {
-          const updated = { ...prev };
-          matchingHighlightIds.forEach(id => delete updated[id]);
-          return updated;
-        });
-
-        // Also remove highlights from newHighlightsByPage to prevent re-adding to canvas
-        // Batch all updates into a single state update to avoid race conditions
-        setNewHighlightsByPage(prev => {
-          const updated = { ...prev };
-          let hasChanges = false;
-
-          highlightsToDelete.forEach(({ id, highlight }) => {
-            if (highlight && highlight.pageNumber) {
-              const pageHighlights = updated[highlight.pageNumber] || [];
-              // Remove highlight by highlightId or by bounds match
-              const filtered = pageHighlights.filter(h => {
-                if (h.highlightId === id) return false;
-                if (highlight.bounds && h.x !== undefined && h.y !== undefined) {
-                  return !boundsMatch(
-                    { x: h.x, y: h.y, width: h.width, height: h.height },
-                    highlight.bounds
-                  );
-                }
-                return true;
-              });
-
-              if (filtered.length !== pageHighlights.length) {
-                hasChanges = true;
-                if (filtered.length === 0) {
-                  delete updated[highlight.pageNumber];
+                  // To center the highlight, we want: highlightCenterInScroll = scrollLeft + (containerWidth / 2)
+                  // Therefore: scrollLeft = highlightCenterInScroll - (containerWidth / 2)
+                  scrollLeft = highlightCenterInScroll - (containerWidth / 2);
                 } else {
-                  updated[highlight.pageNumber] = filtered;
                 }
-              }
-            }
-          });
 
-          return hasChanges ? updated : prev;
-        });
-
-        // For each matching highlight, find and delete associated items and annotations
-        highlightsToDelete.forEach(({ id, highlight }) => {
-          if (!highlight) return;
-
-          // Find associated item by matching name and category
-          const categoryName = getCategoryName(selectedTemplate, highlight.spaceId || highlight.moduleId, highlight.categoryId);
-          const matchingItem = Object.values(items).find(item =>
-            item.name === highlight.name &&
-            item.itemType === categoryName
-          );
-
-          if (matchingItem) {
-            // Find and delete annotations for this item in this space
-            setAnnotations(prev => {
-              const updated = { ...prev };
-              Object.values(updated).forEach(ann => {
-                const annSpaceId = ann.spaceId || ann.moduleId; // Support legacy spaceId
-                const highlightSpaceId = highlight.spaceId || highlight.moduleId; // Support legacy spaceId
-                if (ann.itemId === matchingItem.itemId && annSpaceId === highlightSpaceId) {
-                  // Also check if coordinates match
-                  if (ann.pdfCoordinates && boundsMatch(ann.pdfCoordinates, bounds)) {
-                    delete updated[ann.annotationId];
-                  }
-                }
-              });
-              return updated;
-            });
-
-            // Check if item has data in other modules - if not, delete the item
-            const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
-            const moduleName = getModuleName(selectedTemplate, highlightModuleId);
-            const dataKey = getModuleDataKey(moduleName);
-            const item = items[matchingItem.itemId];
-
-            if (item) {
-              // Remove the module-specific data
-              const updatedItem = { ...item };
-              delete updatedItem[dataKey];
-
-              // Check if item has any module data left
-              const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
-              const hasOtherModuleData = allModules.some(module => {
-                const moduleId = module.id;
-                if (moduleId === highlightModuleId) return false;
-                const otherModuleName = getModuleName(selectedTemplate, moduleId);
-                const otherDataKey = getModuleDataKey(otherModuleName);
-                return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
-              });
-
-              if (hasOtherModuleData) {
-                // Item exists in other modules, just remove this module's data
-                setItems(prev => ({
-                  ...prev,
-                  [matchingItem.itemId]: updatedItem
-                }));
-              } else {
-                // Item doesn't exist in other spaces, delete it entirely
-                setItems(prev => {
-                  const updated = { ...prev };
-                  delete updated[matchingItem.itemId];
-                  return updated;
+                const finalScrollTop = Math.max(0, Math.min(scrollTop, container.scrollHeight - container.clientHeight));
+                const finalScrollLeft = Math.max(0, Math.min(scrollLeft, container.scrollWidth - container.clientWidth));
+                container.scrollTo({
+                  top: finalScrollTop,
+                  left: finalScrollLeft,
+                  behavior: 'smooth'
                 });
-              }
-            }
+              });
+            });
+          } else {
+            // If page not mounted, fallback to standard page navigation
+            goToPage(pageNumber);
           }
         });
-      }
-    }, [selectedModuleId, selectedTemplate, highlightAnnotations, items]);
+      });
+    }
+  }, [scale, scrollMode, goToPage]);
 
-    // Handle deletion of a highlight item (from survey panel)
-    const handleDeleteHighlightItem = useCallback((highlightId) => {
-      console.log('[App] handleDeleteHighlightItem called', { highlightId });
-      const highlight = highlightAnnotations[highlightId];
-      if (!highlight) {
-        console.warn('[App] handleDeleteHighlightItem aborted: Highlight not found', highlightId);
-        return;
-      }
+  // Handle highlight deletion from PDF (via eraser tool)
+  const handleHighlightDeleted = useCallback((pageNumber, bounds, highlightId = null) => {
+    // Checkpoint history before deletion
+    addHistoryCheckpoint();
 
-      // 1. Remove from canvas
-      if (highlight.pageNumber && highlight.bounds) {
-        setHighlightsToRemoveByPage(prev => ({
-          ...prev,
-          [highlight.pageNumber]: [...(prev[highlight.pageNumber] || []), highlight.bounds]
-        }));
-      }
 
-      // 2. Delete from highlightAnnotations
+    console.log('[App] handleHighlightDeleted called', { pageNumber, bounds, highlightId, selectedModuleId, selectedTemplate });
+    if (!selectedModuleId || !selectedTemplate) {
+      console.warn('[App] handleHighlightDeleted aborted: Missing module or template');
+      return;
+    }
+
+    // Find matching highlights in highlightAnnotations
+    const matchingHighlightIds = [];
+
+    if (highlightId) {
+      // If highlightId is provided, use it directly (most reliable)
+      if (highlightAnnotations[highlightId]) {
+        const highlight = highlightAnnotations[highlightId];
+        const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
+        if (highlightModuleId === selectedModuleId && highlight.pageNumber === pageNumber) {
+          matchingHighlightIds.push(highlightId);
+        }
+      }
+    } else {
+      // Fall back to bounds matching if no highlightId
+      Object.entries(highlightAnnotations).forEach(([id, highlight]) => {
+        const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
+        if (highlightModuleId === selectedModuleId &&
+          highlight.pageNumber === pageNumber &&
+          boundsMatch(highlight.bounds, bounds)) {
+          matchingHighlightIds.push(id);
+        }
+      });
+    }
+
+    // Delete matching highlights from highlightAnnotations
+    if (matchingHighlightIds.length > 0) {
+      // Get highlight data before deleting (since state updates are async)
+      const highlightsToDelete = matchingHighlightIds
+        .map(id => ({ id, highlight: highlightAnnotations[id] }))
+        .filter(({ highlight }) => highlight != null);
+
+      // Delete from highlightAnnotations
       setHighlightAnnotations(prev => {
         const updated = { ...prev };
-        delete updated[highlightId];
+        matchingHighlightIds.forEach(id => delete updated[id]);
         return updated;
       });
 
-      // 2.5. Remove from newHighlightsByPage to prevent re-adding to canvas
+      // Also remove highlights from newHighlightsByPage to prevent re-adding to canvas
+      // Batch all updates into a single state update to avoid race conditions
       setNewHighlightsByPage(prev => {
-        if (!highlight.pageNumber) return prev;
-
         const updated = { ...prev };
-        const pageHighlights = updated[highlight.pageNumber] || [];
+        let hasChanges = false;
 
-        // Remove highlight by highlightId or by bounds match
-        const filtered = pageHighlights.filter(h => {
-          if (h.highlightId === highlightId) return false;
-          if (highlight.bounds && h.x !== undefined && h.y !== undefined) {
-            return !boundsMatch(
-              { x: h.x, y: h.y, width: h.width, height: h.height },
-              highlight.bounds
-            );
+        highlightsToDelete.forEach(({ id, highlight }) => {
+          if (highlight && highlight.pageNumber) {
+            const pageHighlights = updated[highlight.pageNumber] || [];
+            // Remove highlight by highlightId or by bounds match
+            const filtered = pageHighlights.filter(h => {
+              if (h.highlightId === id) return false;
+              if (highlight.bounds && h.x !== undefined && h.y !== undefined) {
+                return !boundsMatch(
+                  { x: h.x, y: h.y, width: h.width, height: h.height },
+                  highlight.bounds
+                );
+              }
+              return true;
+            });
+
+            if (filtered.length !== pageHighlights.length) {
+              hasChanges = true;
+              if (filtered.length === 0) {
+                delete updated[highlight.pageNumber];
+              } else {
+                updated[highlight.pageNumber] = filtered;
+              }
+            }
           }
-          return true;
         });
 
-        if (filtered.length === 0) {
-          delete updated[highlight.pageNumber];
-        } else {
-          updated[highlight.pageNumber] = filtered;
-        }
-
-        return updated;
+        return hasChanges ? updated : prev;
       });
 
-      // 3. Delete associated items and annotations (reusing logic from handleHighlightDeleted would be ideal, but for now duplicating for safety/clarity)
-      if (selectedTemplate) {
-        const highlightModuleId = highlight.moduleId || highlight.spaceId;
-        const categoryName = getCategoryName(selectedTemplate, highlightModuleId, highlight.categoryId);
+      // For each matching highlight, find and delete associated items and annotations
+      highlightsToDelete.forEach(({ id, highlight }) => {
+        if (!highlight) return;
+
+        // Find associated item by matching name and category
+        const categoryName = getCategoryName(selectedTemplate, highlight.spaceId || highlight.moduleId, highlight.categoryId);
         const matchingItem = Object.values(items).find(item =>
           item.name === highlight.name &&
           item.itemType === categoryName
         );
 
         if (matchingItem) {
-          // Delete annotations
+          // Find and delete annotations for this item in this space
           setAnnotations(prev => {
             const updated = { ...prev };
             Object.values(updated).forEach(ann => {
-              if (ann.itemId === matchingItem.itemId && (ann.spaceId === highlightModuleId || ann.moduleId === highlightModuleId)) {
-                if (ann.pdfCoordinates && highlight.bounds && boundsMatch(ann.pdfCoordinates, highlight.bounds)) {
+              const annSpaceId = ann.spaceId || ann.moduleId; // Support legacy spaceId
+              const highlightSpaceId = highlight.spaceId || highlight.moduleId; // Support legacy spaceId
+              if (ann.itemId === matchingItem.itemId && annSpaceId === highlightSpaceId) {
+                // Also check if coordinates match
+                if (ann.pdfCoordinates && boundsMatch(ann.pdfCoordinates, bounds)) {
                   delete updated[ann.annotationId];
                 }
               }
@@ -12602,15 +12485,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             return updated;
           });
 
-          // Update/Delete Item
+          // Check if item has data in other modules - if not, delete the item
+          const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
           const moduleName = getModuleName(selectedTemplate, highlightModuleId);
           const dataKey = getModuleDataKey(moduleName);
           const item = items[matchingItem.itemId];
 
           if (item) {
+            // Remove the module-specific data
             const updatedItem = { ...item };
             delete updatedItem[dataKey];
 
+            // Check if item has any module data left
             const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
             const hasOtherModuleData = allModules.some(module => {
               const moduleId = module.id;
@@ -12621,11 +12507,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             });
 
             if (hasOtherModuleData) {
+              // Item exists in other modules, just remove this module's data
               setItems(prev => ({
                 ...prev,
                 [matchingItem.itemId]: updatedItem
               }));
             } else {
+              // Item doesn't exist in other spaces, delete it entirely
               setItems(prev => {
                 const updated = { ...prev };
                 delete updated[matchingItem.itemId];
@@ -12634,1979 +12522,2365 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }
           }
         }
-      }
-    }, [highlightAnnotations, selectedTemplate, items]);
+      });
+    }
+  }, [selectedModuleId, selectedTemplate, highlightAnnotations, items]);
 
-    // Handle highlight creation from annotation tool
-    const handleHighlightCreated = useCallback((pageNumber, bounds) => {
-      // Checkpoint history before creation
-      addHistoryCheckpoint();
+  // Handle deletion of a highlight item (from survey panel)
+  const handleDeleteHighlightItem = useCallback((highlightId) => {
+    console.log('[App] handleDeleteHighlightItem called', { highlightId });
+    const highlight = highlightAnnotations[highlightId];
+    if (!highlight) {
+      console.warn('[App] handleDeleteHighlightItem aborted: Highlight not found', highlightId);
+      return;
+    }
 
+    // 1. Remove from canvas
+    if (highlight.pageNumber && highlight.bounds) {
+      setHighlightsToRemoveByPage(prev => ({
+        ...prev,
+        [highlight.pageNumber]: [...(prev[highlight.pageNumber] || []), highlight.bounds]
+      }));
+    }
 
-      // Only handle if survey mode is active
-      if (!selectedTemplate) {
-        return;
-      }
+    // 2. Delete from highlightAnnotations
+    setHighlightAnnotations(prev => {
+      const updated = { ...prev };
+      delete updated[highlightId];
+      return updated;
+    });
 
-      // If no module is selected, try to default to the first one
-      let effectiveModuleId = selectedModuleId;
-      if (!effectiveModuleId) {
-        const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
-        if (modules.length > 0) {
-          effectiveModuleId = modules[0].id;
-          setSelectedModuleId(effectiveModuleId);
-        } else {
-          return;
+    // 2.5. Remove from newHighlightsByPage to prevent re-adding to canvas
+    setNewHighlightsByPage(prev => {
+      if (!highlight.pageNumber) return prev;
+
+      const updated = { ...prev };
+      const pageHighlights = updated[highlight.pageNumber] || [];
+
+      // Remove highlight by highlightId or by bounds match
+      const filtered = pageHighlights.filter(h => {
+        if (h.highlightId === highlightId) return false;
+        if (highlight.bounds && h.x !== undefined && h.y !== undefined) {
+          return !boundsMatch(
+            { x: h.x, y: h.y, width: h.width, height: h.height },
+            highlight.bounds
+          );
         }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        delete updated[highlight.pageNumber];
+      } else {
+        updated[highlight.pageNumber] = filtered;
       }
 
-      // Handle locating a pending item (from "Locate" button on unlocated item)
-      if (pendingLocationItem) {
-        const highlightId = pendingLocationItem.id;
+      return updated;
+    });
 
-        // Update highlight annotations
-        setHighlightAnnotations(prev => {
-          const existing = prev[highlightId] || {};
-          // If it's a new annotation for an existing item, ensure we have all necessary data
-          return {
-            ...prev,
-            [highlightId]: {
-              ...pendingLocationItem, // Base on the item data
-              ...existing, // Override with any existing annotation data
-              pageNumber,
-              bounds,
-              moduleId: effectiveModuleId,
-              spaceId: activeSpaceId ?? selectedSpaceId // Ensure spaceId is set
+    // 3. Delete associated items and annotations (reusing logic from handleHighlightDeleted would be ideal, but for now duplicating for safety/clarity)
+    if (selectedTemplate) {
+      const highlightModuleId = highlight.moduleId || highlight.spaceId;
+      const categoryName = getCategoryName(selectedTemplate, highlightModuleId, highlight.categoryId);
+      const matchingItem = Object.values(items).find(item =>
+        item.name === highlight.name &&
+        item.itemType === categoryName
+      );
+
+      if (matchingItem) {
+        // Delete annotations
+        setAnnotations(prev => {
+          const updated = { ...prev };
+          Object.values(updated).forEach(ann => {
+            if (ann.itemId === matchingItem.itemId && (ann.spaceId === highlightModuleId || ann.moduleId === highlightModuleId)) {
+              if (ann.pdfCoordinates && highlight.bounds && boundsMatch(ann.pdfCoordinates, highlight.bounds)) {
+                delete updated[ann.annotationId];
+              }
             }
-          };
-        });
-
-        // Add to canvas immediately
-        setNewHighlightsByPage(prev => ({
-          ...prev,
-          [pageNumber]: [
-            ...(prev[pageNumber] || []),
-            {
-              ...bounds,
-              highlightId,
-              moduleId: effectiveModuleId,
-              color: pendingLocationItem.ballInCourtColor, // Use BIC color if available
-              needsBIC: !pendingLocationItem.ballInCourtColor // Dashed if no color
-            }
-          ]
-        }));
-
-        // Check if Ball in Court needs to be assigned (only if not already set from Excel)
-        const hasBallInCourt = pendingLocationItem.ballInCourtEntityId || pendingLocationItem.ballInCourtColor;
-        const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
-
-        if (!hasBallInCourt && ballInCourtEntities.length > 0) {
-          // Prompt for Ball in Court since it wasn't set in Excel
-          setPendingBallInCourtSelection({
-            highlight: {
-              id: highlightId,
-              pageNumber,
-              bounds,
-              moduleId: effectiveModuleId
-            },
-            categoryId: pendingLocationItem.categoryId
           });
-        }
-
-        setPendingLocationItem(null);
-        return;
-      }
-
-      // Create a unique ID for this highlight
-      const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
-      const debugSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
-      /* console.log('[Survey Debug] Highlight created', {
-        highlightId,
-        pageNumber,
-        bounds,
-        moduleId: effectiveModuleId,
-        moduleName,
-        activeSpaceId,
-        selectedSpaceId,
-        effectiveSpaceId: debugSpaceId
-      }); */
-
-      // Immediately add highlight to canvas (always show selection feedback)
-      // This ensures the user sees their selection regardless of category selection state
-      setNewHighlightsByPage(prev => {
-        // Filter previous highlights to only keep ones from the current module
-        const filteredPrev = {};
-        Object.entries(prev).forEach(([page, highlights]) => {
-          const filteredHighlights = highlights.filter(h => h.moduleId === effectiveModuleId);
-          if (filteredHighlights.length > 0) {
-            filteredPrev[page] = filteredHighlights;
-          }
+          return updated;
         });
 
+        // Update/Delete Item
+        const moduleName = getModuleName(selectedTemplate, highlightModuleId);
+        const dataKey = getModuleDataKey(moduleName);
+        const item = items[matchingItem.itemId];
+
+        if (item) {
+          const updatedItem = { ...item };
+          delete updatedItem[dataKey];
+
+          const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+          const hasOtherModuleData = allModules.some(module => {
+            const moduleId = module.id;
+            if (moduleId === highlightModuleId) return false;
+            const otherModuleName = getModuleName(selectedTemplate, moduleId);
+            const otherDataKey = getModuleDataKey(otherModuleName);
+            return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
+          });
+
+          if (hasOtherModuleData) {
+            setItems(prev => ({
+              ...prev,
+              [matchingItem.itemId]: updatedItem
+            }));
+          } else {
+            setItems(prev => {
+              const updated = { ...prev };
+              delete updated[matchingItem.itemId];
+              return updated;
+            });
+          }
+        }
+      }
+    }
+  }, [highlightAnnotations, selectedTemplate, items]);
+
+  // Handle highlight creation from annotation tool
+  const handleHighlightCreated = useCallback((pageNumber, bounds) => {
+    // Checkpoint history before creation
+    addHistoryCheckpoint();
+
+
+    // Only handle if survey mode is active
+    if (!selectedTemplate) {
+      return;
+    }
+
+    // If no module is selected, try to default to the first one
+    let effectiveModuleId = selectedModuleId;
+    if (!effectiveModuleId) {
+      const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
+      if (modules.length > 0) {
+        effectiveModuleId = modules[0].id;
+        setSelectedModuleId(effectiveModuleId);
+      } else {
+        return;
+      }
+    }
+
+    // Handle locating a pending item (from "Locate" button on unlocated item)
+    if (pendingLocationItem) {
+      const highlightId = pendingLocationItem.id;
+
+      // Update highlight annotations
+      setHighlightAnnotations(prev => {
+        const existing = prev[highlightId] || {};
+        // If it's a new annotation for an existing item, ensure we have all necessary data
         return {
-          ...filteredPrev,
-          [pageNumber]: [
-            ...(filteredPrev[pageNumber] || []),
-            {
-              ...bounds,
-              highlightId: highlightId,
-              moduleId: effectiveModuleId,
-              needsCategory: !selectedCategoryId, // Flag to indicate it needs category selection
-              needsBIC: true // Use needsBIC rendering style (transparent with dashed outline) initially
-            }
-          ]
+          ...prev,
+          [highlightId]: {
+            ...pendingLocationItem, // Base on the item data
+            ...existing, // Override with any existing annotation data
+            pageNumber,
+            bounds,
+            moduleId: effectiveModuleId,
+            spaceId: activeSpaceId ?? selectedSpaceId // Ensure spaceId is set
+          }
         };
       });
 
-      // If a category is already selected, show Ball in Court dialog first
-      if (selectedCategoryId) {
-        // Check if template has Ball in Court entities
-        const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
-        if (ballInCourtEntities.length > 0) {
-          // Show Ball in Court selection dialog
-          setPendingBallInCourtSelection({
-            highlight: {
-              id: highlightId,
-              pageNumber,
-              bounds,
-              moduleId: effectiveModuleId
-            },
-            categoryId: selectedCategoryId
-          });
-        } else {
-          // No Ball in Court entities, go directly to name prompt
-          setPendingHighlightName({
-            highlight: {
-              id: highlightId,
-              pageNumber,
-              bounds,
-              moduleId: effectiveModuleId
-            },
-            categoryId: selectedCategoryId
-          });
-          setHighlightNameInput(''); // Reset input
-        }
+      // Add to canvas immediately
+      setNewHighlightsByPage(prev => ({
+        ...prev,
+        [pageNumber]: [
+          ...(prev[pageNumber] || []),
+          {
+            ...bounds,
+            highlightId,
+            moduleId: effectiveModuleId,
+            color: pendingLocationItem.ballInCourtColor, // Use BIC color if available
+            needsBIC: !pendingLocationItem.ballInCourtColor // Dashed if no color
+          }
+        ]
+      }));
 
-        // Reset selected category
-        setSelectedCategoryId(null);
-        setShowSurveyPanel(true);
-      } else {
-        // No category selected, show category selection modal (only if survey panel is visible)
-        if (showSurveyPanel) {
-          setPendingHighlight({
+      // Check if Ball in Court needs to be assigned (only if not already set from Excel)
+      const hasBallInCourt = pendingLocationItem.ballInCourtEntityId || pendingLocationItem.ballInCourtColor;
+      const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
+
+      if (!hasBallInCourt && ballInCourtEntities.length > 0) {
+        // Prompt for Ball in Court since it wasn't set in Excel
+        setPendingBallInCourtSelection({
+          highlight: {
             id: highlightId,
             pageNumber,
             bounds,
             moduleId: effectiveModuleId
-          });
-        }
-      }
-    }, [selectedModuleId, selectedTemplate, selectedCategoryId, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId]);
-
-    // Auto-switch to highlight tool when template is selected in survey mode (only on initial entry)
-    useEffect(() => {
-      // Only auto-switch once when first entering survey mode, then allow user to switch tools freely
-      if (showSurveyPanel && selectedTemplate && selectedModuleId && !hasSwitchedToHighlightRef.current) {
-        setActiveTool('highlight');
-        hasSwitchedToHighlightRef.current = true;
-      }
-      // Reset the flag when exiting survey mode
-      if (!showSurveyPanel) {
-        hasSwitchedToHighlightRef.current = false;
-      }
-    }, [showSurveyPanel, selectedTemplate, selectedModuleId]);
-
-    // Measure toolbar heights and middle area bounds for survey panel positioning
-    useEffect(() => {
-      const updateDimensions = () => {
-        if (topToolbarRef.current && bottomToolbarRef.current && statusBarRef.current) {
-          const topHeight = topToolbarRef.current.getBoundingClientRect().height;
-          const bottomToolbarHeight = bottomToolbarRef.current.getBoundingClientRect().height;
-          const statusBarHeight = statusBarRef.current.getBoundingClientRect().height;
-          const combinedBottomHeight = bottomToolbarHeight + statusBarHeight;
-          setToolbarHeights({ top: topHeight, bottom: combinedBottomHeight });
-        }
-
-        if (middleAreaRef.current) {
-          const rect = middleAreaRef.current.getBoundingClientRect();
-          setMiddleAreaBounds({ top: rect.top, height: rect.height });
-        }
-      };
-
-      // Delay measurement slightly to ensure layout is complete
-      const timeoutId = setTimeout(updateDimensions, 0);
-
-      window.addEventListener('resize', updateDimensions);
-      return () => {
-        clearTimeout(timeoutId);
-        window.removeEventListener('resize', updateDimensions);
-      };
-    }, [showSurveyPanel]);
-
-    // Auto-adjust PDF zoom when sidebars expand/collapse or survey panel opens/closes
-    useEffect(() => {
-      requestAnimationFrame(() => {
-        zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-      });
-    }, [showSurveyPanel, isLeftSidebarCollapsed, isSurveyPanelCollapsed]);
-
-    // Ensure survey panel always opens in expanded state
-    useEffect(() => {
-      if (showSurveyPanel) {
-        setIsSurveyPanelCollapsed(false);
-      }
-    }, [showSurveyPanel]);
-
-    // Note: Removed auto-switch to highlight tool when category is selected
-    // Users can now freely switch between annotation tools in survey mode
-
-    // Handle text selection - create highlights
-    const handleTextSelected = useCallback((pageNumber, selectedText, highlights) => {
-      if (!selectedText || !highlights || highlights.length === 0) return;
-
-      // Set new highlights to trigger addition in PageAnnotationLayer
-      setNewHighlightsByPage(prev => ({
-        ...prev,
-        [pageNumber]: highlights
-      }));
-
-      // Clear the highlights after a brief delay to allow re-selection
-      setTimeout(() => {
-        setNewHighlightsByPage(prev => {
-          const updated = { ...prev };
-          delete updated[pageNumber];
-          return updated;
+          },
+          categoryId: pendingLocationItem.categoryId
         });
-      }, 100);
-    }, []);
-
-    // Filter annotations by active module for rendering on PDF
-    const filteredAnnotationsForPages = useMemo(() => {
-      if (!selectedModuleId) return {};
-
-      const filtered = filterAnnotationsByModule(annotations, selectedModuleId);
-      const byPage = {};
-
-      Object.values(filtered).forEach(ann => {
-        // Extract page number from pdfCoordinates if available
-        // For now, assume all annotations are on page 1 if not specified
-        const pageNum = ann.pdfCoordinates?.page || 1;
-        if (!byPage[pageNum]) byPage[pageNum] = [];
-        byPage[pageNum].push(ann.pdfCoordinates);
-      });
-
-      return byPage;
-    }, [annotations, selectedModuleId]);
-
-    // Restore highlights when switching modules
-    // This merges saved highlights from highlightAnnotations with any pending highlights
-    useEffect(() => {
-      if (!selectedModuleId) {
-        // Don't clear highlights when no module is selected - preserve pending highlights
-        return;
       }
 
-      // Rebuild newHighlightsByPage by merging:
-      // 1. Pending highlights (not yet in highlightAnnotations) for current module
-      // 2. Saved highlights from highlightAnnotations for current module
-      setNewHighlightsByPage(prev => {
-        const highlightsByPage = {};
-
-        // First, preserve pending highlights for this module (not yet saved to highlightAnnotations)
-        Object.entries(prev).forEach(([pageNum, highlights]) => {
-          highlights.forEach(highlight => {
-            const highlightModuleId = highlight.moduleId;
-            if (highlightModuleId === selectedModuleId && highlight.highlightId) {
-              // Check if this highlight is already saved in highlightAnnotations
-              const isSaved = highlightAnnotations && highlightAnnotations[highlight.highlightId];
-              if (!isSaved) {
-                // This is a pending highlight, preserve it
-                const pageNumber = parseInt(pageNum);
-                if (!highlightsByPage[pageNumber]) {
-                  highlightsByPage[pageNumber] = [];
-                }
-                // Avoid duplicates
-                const exists = highlightsByPage[pageNumber].some(h => h.highlightId === highlight.highlightId);
-                if (!exists) {
-                  highlightsByPage[pageNumber].push(highlight);
-                }
-              }
-            }
-          });
-        });
-
-        // Now add saved highlights from highlightAnnotations for this module
-        if (highlightAnnotations && Object.keys(highlightAnnotations).length > 0) {
-          Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
-            // Check if this highlight belongs to the current module
-            const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
-            if (highlightModuleId !== selectedModuleId) {
-              return; // Skip highlights from other modules
-            }
-
-            // Skip if highlight doesn't have required properties
-            if (!highlight.pageNumber || !highlight.bounds) {
-              return;
-            }
-
-            const pageNumber = highlight.pageNumber;
-            if (!highlightsByPage[pageNumber]) {
-              highlightsByPage[pageNumber] = [];
-            }
-
-            // Check if this highlight is already in the list (avoid duplicates)
-            const exists = highlightsByPage[pageNumber].some(h => h.highlightId === highlightId);
-            if (exists) {
-              return; // Already added (either as pending or from a previous iteration)
-            }
-
-            // Determine if highlight needs BIC (Ball in Court) assignment
-            const needsBIC = !highlight.ballInCourtColor && !highlight.ballInCourtEntityId;
-
-            // Determine highlight color
-            const highlightColor = highlight.ballInCourtColor
-              ? (normalizeHighlightColor(highlight.ballInCourtColor) || highlight.ballInCourtColor)
-              : null;
-
-            // Add highlight to the page array
-            highlightsByPage[pageNumber].push({
-              x: highlight.bounds.x,
-              y: highlight.bounds.y,
-              width: highlight.bounds.width,
-              height: highlight.bounds.height,
-              highlightId: highlightId,
-              moduleId: highlightModuleId,
-              ...(needsBIC && { needsBIC: true }),
-              ...(highlightColor && { color: highlightColor })
-            });
-          });
-        }
-
-        // Return merged highlights (pending + saved), or empty object if no highlights
-        return Object.keys(highlightsByPage).length > 0 ? highlightsByPage : prev;
-      });
-    }, [selectedModuleId, highlightAnnotations]);
-
-
-
-    // Space filtering logic - determine which pages should be visible
-    const shouldShowPage = useCallback((pageNumber) => {
-      if (!activeSpaceId) {
-        return true;
-      }
-
-      if (!activeSpacePages || activeSpacePages.length === 0) {
-        return false;
-      }
-
-      return activeSpacePages.includes(pageNumber);
-    }, [activeSpaceId, activeSpacePages]);
-
-    useEffect(() => {
-      if (!activeSpaceId) {
-        return;
-      }
-      if (!activeSpacePages || activeSpacePages.length === 0) {
-        return;
-      }
-      if (!activeSpacePages.includes(pageNum)) {
-        goToPage(activeSpacePages[0], { fallback: 'nearest' });
-      }
-    }, [activeSpaceId, activeSpacePages, pageNum, goToPage]);
-
-    // Debug: Log page visibility
-    useEffect(() => {
-      if (numPages > 0) {
-        const visiblePages = Array.from({ length: numPages }, (_, i) => i + 1)
-          .filter(pageNumber => shouldShowPage(pageNumber));
-        /* console.log('Pages visibility check:', {
-          totalPages: numPages,
-          visiblePages: visiblePages.length,
-          activeSpaceId,
-          visiblePageNumbers: visiblePages
-        }); */
-      }
-    }, [numPages, activeSpaceId, shouldShowPage, spaces]);
-
-    // Get regions for a page in the active space
-    const getPageRegions = useCallback((pageNumber) => {
-      if (!activeSpaceId) return null;
-
-      const space = spaces.find(s => s.id === activeSpaceId);
-      if (!space) return null;
-
-      const assignedPage = space.assignedPages?.find(p => p.pageId === pageNumber);
-      if (!assignedPage) return null;
-
-      if (assignedPage.wholePageIncluded !== false) {
-        return null;
-      }
-
-      if (!assignedPage.regions || assignedPage.regions.length === 0) {
-        return null;
-      }
-
-      return assignedPage.regions;
-    }, [activeSpaceId, spaces]);
-
-    // Show loading state when PDF is not loaded yet
-    if (!pdfDoc || isLoadingPDF) {
-      return (
-        <div style={{
-          height: '100vh',
-          display: 'flex',
-          flexDirection: 'row',
-          background: '#2b2b2b',
-          color: '#ddd',
-          fontFamily: FONT_FAMILY
-        }}>
-          {/* Sidebar - keep visible during loading */}
-          <PDFSidebar
-            pdfDoc={null}
-            numPages={0}
-            pageNum={1}
-            onNavigateToPage={() => { }}
-            onDuplicatePage={() => { }}
-            onDeletePage={() => { }}
-            onCutPage={() => { }}
-            onCopyPage={() => { }}
-            onPastePage={() => { }}
-            clipboardPage={null}
-            clipboardType={null}
-            onRotatePage={() => { }}
-            onMirrorPage={() => { }}
-            onResetPage={() => { }}
-            onReorderPages={() => { }}
-            pageTransformations={{}}
-            bookmarks={[]}
-            onBookmarkCreate={() => { }}
-            onBookmarkUpdate={() => { }}
-            onBookmarkDelete={() => { }}
-            spaces={[]}
-            onSpaceCreate={() => { }}
-            onSpaceUpdate={() => { }}
-            onSpaceDelete={() => { }}
-            activeSpaceId={null}
-            onSetActiveSpace={() => { }}
-            onExitSpaceMode={() => { }}
-            scale={1}
-            onToggleCollapse={() => { }}
-          />
-          {/* Loading content */}
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#999',
-            fontSize: '15px',
-            letterSpacing: '-0.2px'
-          }}>
-            {isLoadingPDF ? (
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
-                  <Icon name="document" size={48} />
-                </div>
-                <div style={{ fontSize: '18px', color: '#999' }}>Loading PDF...</div>
-                <div style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
-                  {pdfFile?.name || 'document.pdf'}
-                </div>
-              </div>
-            ) : (
-              'Loading PDF...'
-            )}
-          </div>
-        </div>
-      );
+      setPendingLocationItem(null);
+      return;
     }
 
-    return (
-      <>
-        {/* Unsupported Annotations Notice */}
-        {showUnsupportedNotice && unsupportedAnnotationTypes.length > 0 && (
-          <UnsupportedAnnotationsNotice
-            unsupportedTypes={unsupportedAnnotationTypes}
-            onDismiss={() => setShowUnsupportedNotice(false)}
-          />
-        )}
+    // Create a unique ID for this highlight
+    const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
+    const debugSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
+    /* console.log('[Survey Debug] Highlight created', {
+      highlightId,
+      pageNumber,
+      bounds,
+      moduleId: effectiveModuleId,
+      moduleName,
+      activeSpaceId,
+      selectedSpaceId,
+      effectiveSpaceId: debugSpaceId
+    }); */
 
-        {/* Eraser Cursor Overlay */}
-        {activeTool === 'eraser' && eraserCursorPos.visible && (
-          <div
-            style={{
-              position: 'fixed',
-              left: eraserCursorPos.x - (eraserSize * scale),
-              top: eraserCursorPos.y - (eraserSize * scale),
-              width: eraserSize * 2 * scale,
-              height: eraserSize * 2 * scale,
-              borderRadius: '50%',
-              backgroundColor: 'rgba(128, 128, 128, 0.2)',
-              border: `${Math.max(1, 2 * scale)}px solid rgba(100, 100, 100, 0.6)`,
-              pointerEvents: 'none',
-              zIndex: 99999,
-              transition: 'width 0.1s ease, height 0.1s ease, left 0.1s ease, top 0.1s ease, border-width 0.1s ease'
-            }}
-          />
-        )}
+    // Immediately add highlight to canvas (always show selection feedback)
+    // This ensures the user sees their selection regardless of category selection state
+    setNewHighlightsByPage(prev => {
+      // Filter previous highlights to only keep ones from the current module
+      const filteredPrev = {};
+      Object.entries(prev).forEach(([page, highlights]) => {
+        const filteredHighlights = highlights.filter(h => h.moduleId === effectiveModuleId);
+        if (filteredHighlights.length > 0) {
+          filteredPrev[page] = filteredHighlights;
+        }
+      });
+
+      return {
+        ...filteredPrev,
+        [pageNumber]: [
+          ...(filteredPrev[pageNumber] || []),
+          {
+            ...bounds,
+            highlightId: highlightId,
+            moduleId: effectiveModuleId,
+            needsCategory: !selectedCategoryId, // Flag to indicate it needs category selection
+            needsBIC: true // Use needsBIC rendering style (transparent with dashed outline) initially
+          }
+        ]
+      };
+    });
+
+    // If a category is already selected, show Ball in Court dialog first
+    if (selectedCategoryId) {
+      // Check if template has Ball in Court entities
+      const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
+      if (ballInCourtEntities.length > 0) {
+        // Show Ball in Court selection dialog
+        setPendingBallInCourtSelection({
+          highlight: {
+            id: highlightId,
+            pageNumber,
+            bounds,
+            moduleId: effectiveModuleId
+          },
+          categoryId: selectedCategoryId
+        });
+      } else {
+        // No Ball in Court entities, go directly to name prompt
+        setPendingHighlightName({
+          highlight: {
+            id: highlightId,
+            pageNumber,
+            bounds,
+            moduleId: effectiveModuleId
+          },
+          categoryId: selectedCategoryId
+        });
+        setHighlightNameInput(''); // Reset input
+      }
+
+      // Reset selected category
+      setSelectedCategoryId(null);
+      setShowSurveyPanel(true);
+    } else {
+      // No category selected, show category selection modal (only if survey panel is visible)
+      if (showSurveyPanel) {
+        setPendingHighlight({
+          id: highlightId,
+          pageNumber,
+          bounds,
+          moduleId: effectiveModuleId
+        });
+      }
+    }
+  }, [selectedModuleId, selectedTemplate, selectedCategoryId, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId]);
+
+  // Auto-switch to highlight tool when template is selected in survey mode (only on initial entry)
+  useEffect(() => {
+    // Only auto-switch once when first entering survey mode, then allow user to switch tools freely
+    if (showSurveyPanel && selectedTemplate && selectedModuleId && !hasSwitchedToHighlightRef.current) {
+      setActiveTool('highlight');
+      hasSwitchedToHighlightRef.current = true;
+    }
+    // Reset the flag when exiting survey mode
+    if (!showSurveyPanel) {
+      hasSwitchedToHighlightRef.current = false;
+    }
+  }, [showSurveyPanel, selectedTemplate, selectedModuleId]);
+
+  // Measure toolbar heights and middle area bounds for survey panel positioning
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (topToolbarRef.current && bottomToolbarRef.current && statusBarRef.current) {
+        const topHeight = topToolbarRef.current.getBoundingClientRect().height;
+        const bottomToolbarHeight = bottomToolbarRef.current.getBoundingClientRect().height;
+        const statusBarHeight = statusBarRef.current.getBoundingClientRect().height;
+        const combinedBottomHeight = bottomToolbarHeight + statusBarHeight;
+        setToolbarHeights({ top: topHeight, bottom: combinedBottomHeight });
+      }
+
+      if (middleAreaRef.current) {
+        const rect = middleAreaRef.current.getBoundingClientRect();
+        setMiddleAreaBounds({ top: rect.top, height: rect.height });
+      }
+    };
+
+    // Delay measurement slightly to ensure layout is complete
+    const timeoutId = setTimeout(updateDimensions, 0);
+
+    window.addEventListener('resize', updateDimensions);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', updateDimensions);
+    };
+  }, [showSurveyPanel]);
+
+  // Auto-adjust PDF zoom when sidebars expand/collapse or survey panel opens/closes
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+    });
+  }, [showSurveyPanel, isLeftSidebarCollapsed, isSurveyPanelCollapsed]);
+
+  // Ensure survey panel always opens in expanded state
+  useEffect(() => {
+    if (showSurveyPanel) {
+      setIsSurveyPanelCollapsed(false);
+    }
+  }, [showSurveyPanel]);
+
+  // Note: Removed auto-switch to highlight tool when category is selected
+  // Users can now freely switch between annotation tools in survey mode
+
+  // Handle text selection - create highlights
+  const handleTextSelected = useCallback((pageNumber, selectedText, highlights) => {
+    if (!selectedText || !highlights || highlights.length === 0) return;
+
+    // Set new highlights to trigger addition in PageAnnotationLayer
+    setNewHighlightsByPage(prev => ({
+      ...prev,
+      [pageNumber]: highlights
+    }));
+
+    // Clear the highlights after a brief delay to allow re-selection
+    setTimeout(() => {
+      setNewHighlightsByPage(prev => {
+        const updated = { ...prev };
+        delete updated[pageNumber];
+        return updated;
+      });
+    }, 100);
+  }, []);
+
+  // Filter annotations by active module for rendering on PDF
+  const filteredAnnotationsForPages = useMemo(() => {
+    if (!selectedModuleId) return {};
+
+    const filtered = filterAnnotationsByModule(annotations, selectedModuleId);
+    const byPage = {};
+
+    Object.values(filtered).forEach(ann => {
+      // Extract page number from pdfCoordinates if available
+      // For now, assume all annotations are on page 1 if not specified
+      const pageNum = ann.pdfCoordinates?.page || 1;
+      if (!byPage[pageNum]) byPage[pageNum] = [];
+      byPage[pageNum].push(ann.pdfCoordinates);
+    });
+
+    return byPage;
+  }, [annotations, selectedModuleId]);
+
+  // Restore highlights when switching modules
+  // This merges saved highlights from highlightAnnotations with any pending highlights
+  useEffect(() => {
+    if (!selectedModuleId) {
+      // Don't clear highlights when no module is selected - preserve pending highlights
+      return;
+    }
+
+    // Rebuild newHighlightsByPage by merging:
+    // 1. Pending highlights (not yet in highlightAnnotations) for current module
+    // 2. Saved highlights from highlightAnnotations for current module
+    setNewHighlightsByPage(prev => {
+      const highlightsByPage = {};
+
+      // First, preserve pending highlights for this module (not yet saved to highlightAnnotations)
+      Object.entries(prev).forEach(([pageNum, highlights]) => {
+        highlights.forEach(highlight => {
+          const highlightModuleId = highlight.moduleId;
+          if (highlightModuleId === selectedModuleId && highlight.highlightId) {
+            // Check if this highlight is already saved in highlightAnnotations
+            const isSaved = highlightAnnotations && highlightAnnotations[highlight.highlightId];
+            if (!isSaved) {
+              // This is a pending highlight, preserve it
+              const pageNumber = parseInt(pageNum);
+              if (!highlightsByPage[pageNumber]) {
+                highlightsByPage[pageNumber] = [];
+              }
+              // Avoid duplicates
+              const exists = highlightsByPage[pageNumber].some(h => h.highlightId === highlight.highlightId);
+              if (!exists) {
+                highlightsByPage[pageNumber].push(highlight);
+              }
+            }
+          }
+        });
+      });
+
+      // Now add saved highlights from highlightAnnotations for this module
+      if (highlightAnnotations && Object.keys(highlightAnnotations).length > 0) {
+        Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
+          // Check if this highlight belongs to the current module
+          const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
+          if (highlightModuleId !== selectedModuleId) {
+            return; // Skip highlights from other modules
+          }
+
+          // Skip if highlight doesn't have required properties
+          if (!highlight.pageNumber || !highlight.bounds) {
+            return;
+          }
+
+          const pageNumber = highlight.pageNumber;
+          if (!highlightsByPage[pageNumber]) {
+            highlightsByPage[pageNumber] = [];
+          }
+
+          // Check if this highlight is already in the list (avoid duplicates)
+          const exists = highlightsByPage[pageNumber].some(h => h.highlightId === highlightId);
+          if (exists) {
+            return; // Already added (either as pending or from a previous iteration)
+          }
+
+          // Determine if highlight needs BIC (Ball in Court) assignment
+          const needsBIC = !highlight.ballInCourtColor && !highlight.ballInCourtEntityId;
+
+          // Determine highlight color
+          const highlightColor = highlight.ballInCourtColor
+            ? (normalizeHighlightColor(highlight.ballInCourtColor) || highlight.ballInCourtColor)
+            : null;
+
+          // Add highlight to the page array
+          highlightsByPage[pageNumber].push({
+            x: highlight.bounds.x,
+            y: highlight.bounds.y,
+            width: highlight.bounds.width,
+            height: highlight.bounds.height,
+            highlightId: highlightId,
+            moduleId: highlightModuleId,
+            ...(needsBIC && { needsBIC: true }),
+            ...(highlightColor && { color: highlightColor })
+          });
+        });
+      }
+
+      // Return merged highlights (pending + saved), or empty object if no highlights
+      return Object.keys(highlightsByPage).length > 0 ? highlightsByPage : prev;
+    });
+  }, [selectedModuleId, highlightAnnotations]);
+
+
+
+  // Space filtering logic - determine which pages should be visible
+  const shouldShowPage = useCallback((pageNumber) => {
+    if (!activeSpaceId) {
+      return true;
+    }
+
+    if (!activeSpacePages || activeSpacePages.length === 0) {
+      return false;
+    }
+
+    return activeSpacePages.includes(pageNumber);
+  }, [activeSpaceId, activeSpacePages]);
+
+  useEffect(() => {
+    if (!activeSpaceId) {
+      return;
+    }
+    if (!activeSpacePages || activeSpacePages.length === 0) {
+      return;
+    }
+    if (!activeSpacePages.includes(pageNum)) {
+      goToPage(activeSpacePages[0], { fallback: 'nearest' });
+    }
+  }, [activeSpaceId, activeSpacePages, pageNum, goToPage]);
+
+  // Debug: Log page visibility
+  useEffect(() => {
+    if (numPages > 0) {
+      const visiblePages = Array.from({ length: numPages }, (_, i) => i + 1)
+        .filter(pageNumber => shouldShowPage(pageNumber));
+      /* console.log('Pages visibility check:', {
+        totalPages: numPages,
+        visiblePages: visiblePages.length,
+        activeSpaceId,
+        visiblePageNumbers: visiblePages
+      }); */
+    }
+  }, [numPages, activeSpaceId, shouldShowPage, spaces]);
+
+  // Get regions for a page in the active space
+  const getPageRegions = useCallback((pageNumber) => {
+    if (!activeSpaceId) return null;
+
+    const space = spaces.find(s => s.id === activeSpaceId);
+    if (!space) return null;
+
+    const assignedPage = space.assignedPages?.find(p => p.pageId === pageNumber);
+    if (!assignedPage) return null;
+
+    if (assignedPage.wholePageIncluded !== false) {
+      return null;
+    }
+
+    if (!assignedPage.regions || assignedPage.regions.length === 0) {
+      return null;
+    }
+
+    return assignedPage.regions;
+  }, [activeSpaceId, spaces]);
+
+  // Show loading state when PDF is not loaded yet
+  if (!pdfDoc || isLoadingPDF) {
+    return (
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'row',
+        background: '#2b2b2b',
+        color: '#ddd',
+        fontFamily: FONT_FAMILY
+      }}>
+        {/* Sidebar - keep visible during loading */}
+        <PDFSidebar
+          pdfDoc={null}
+          numPages={0}
+          pageNum={1}
+          onNavigateToPage={() => { }}
+          onDuplicatePage={() => { }}
+          onDeletePage={() => { }}
+          onCutPage={() => { }}
+          onCopyPage={() => { }}
+          onPastePage={() => { }}
+          clipboardPage={null}
+          clipboardType={null}
+          onRotatePage={() => { }}
+          onMirrorPage={() => { }}
+          onResetPage={() => { }}
+          onReorderPages={() => { }}
+          pageTransformations={{}}
+          bookmarks={[]}
+          onBookmarkCreate={() => { }}
+          onBookmarkUpdate={() => { }}
+          onBookmarkDelete={() => { }}
+          spaces={[]}
+          onSpaceCreate={() => { }}
+          onSpaceUpdate={() => { }}
+          onSpaceDelete={() => { }}
+          activeSpaceId={null}
+          onSetActiveSpace={() => { }}
+          onExitSpaceMode={() => { }}
+          scale={1}
+          onToggleCollapse={() => { }}
+        />
+        {/* Loading content */}
         <div style={{
-          height: '100vh',
+          flex: 1,
           display: 'flex',
-          flexDirection: 'column',
-          background: '#2b2b2b',
-          color: '#ddd',
-          fontFamily: FONT_FAMILY
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#999',
+          fontSize: '15px',
+          letterSpacing: '-0.2px'
         }}>
-          {/* Toolbar with improved typography + Annotation tools */}
-          <div
-            ref={topToolbarRef}
+          {isLoadingPDF ? (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
+                <Icon name="document" size={48} />
+              </div>
+              <div style={{ fontSize: '18px', color: '#999' }}>Loading PDF...</div>
+              <div style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
+                {pdfFile?.name || 'document.pdf'}
+              </div>
+            </div>
+          ) : (
+            'Loading PDF...'
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Unsupported Annotations Notice */}
+      {showUnsupportedNotice && unsupportedAnnotationTypes.length > 0 && (
+        <UnsupportedAnnotationsNotice
+          unsupportedTypes={unsupportedAnnotationTypes}
+          onDismiss={() => setShowUnsupportedNotice(false)}
+        />
+      )}
+
+      {/* Eraser Cursor Overlay */}
+      {activeTool === 'eraser' && eraserCursorPos.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            left: eraserCursorPos.x - (eraserSize * scale),
+            top: eraserCursorPos.y - (eraserSize * scale),
+            width: eraserSize * 2 * scale,
+            height: eraserSize * 2 * scale,
+            borderRadius: '50%',
+            backgroundColor: 'rgba(128, 128, 128, 0.2)',
+            border: `${Math.max(1, 2 * scale)}px solid rgba(100, 100, 100, 0.6)`,
+            pointerEvents: 'none',
+            zIndex: 99999,
+            transition: 'width 0.1s ease, height 0.1s ease, left 0.1s ease, top 0.1s ease, border-width 0.1s ease'
+          }}
+        />
+      )}
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#2b2b2b',
+        color: '#ddd',
+        fontFamily: FONT_FAMILY
+      }}>
+        {/* Toolbar with improved typography + Annotation tools */}
+        <div
+          ref={topToolbarRef}
+          style={{
+            padding: '4px 12px',
+            background: '#2d2d2d',
+            borderBottom: '1px solid #3d3d3d',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '13px',
+            fontFamily: FONT_FAMILY,
+            flexShrink: 0
+          }}
+        >
+
+          {/* Undo Button */}
+          <button
+            onClick={handleUndo}
+            disabled={!canUndo}
+            className="btn btn-default btn-sm"
             style={{
-              padding: '4px 12px',
-              background: '#2d2d2d',
-              borderBottom: '1px solid #3d3d3d',
+              padding: '4px 8px',
+              opacity: canUndo ? 1 : 0.4,
+              cursor: canUndo ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            onMouseEnter={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setTooltip({ visible: true, text: 'Undo', x: rect.left + rect.width / 2, y: rect.top - 10 });
+            }}
+            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+          >
+            <Icon name="undo" size={14} />
+          </button>
+
+          {/* Redo Button */}
+          <button
+            onClick={handleRedo}
+            disabled={!canRedo}
+            className="btn btn-default btn-sm"
+            style={{
+              padding: '4px 8px',
+              opacity: canRedo ? 1 : 0.4,
+              cursor: canRedo ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transform: 'matrix(1, 0, 0, 1, 0, -0.591158) rotate(180deg) scaleX(-1)'
+            }}
+            onMouseEnter={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setTooltip({ visible: true, text: 'Redo', x: rect.left + rect.width / 2, y: rect.top - 10 });
+            }}
+            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+          >
+            <Icon name="redo" size={14} />
+          </button>
+
+          {/* Survey Button */}
+          <button
+            onClick={() => {
+              if (!showSurveyPanel) {
+                // Show template selection modal
+                setShowTemplateSelection(true);
+              } else {
+                setShowSurveyPanel(false);
+                setSelectedTemplate(null);
+                setSelectedModuleId(null);
+              }
+            }}
+            className={`btn btn-md ${showSurveyPanel ? 'btn-active' : 'btn-default'}`}
+            style={{
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              fontSize: '13px',
-              fontFamily: FONT_FAMILY,
-              flexShrink: 0
-            }}
-          >
-            <button
-              onClick={onBack}
-              className="btn btn-default btn-sm"
-            >
-              <Icon name="arrowLeft" size={14} style={{ marginRight: '4px' }} /> Back
-            </button>
-
-            <div style={{ width: '1px', height: '16px', background: '#555' }} />
-
-            {/* Undo Button */}
-            <button
-              onClick={handleUndo}
-              disabled={!canUndo}
-              className="btn btn-default btn-sm"
-              style={{
-                padding: '4px 8px',
-                opacity: canUndo ? 1 : 0.4,
-                cursor: canUndo ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setTooltip({ visible: true, text: 'Undo', x: rect.left + rect.width / 2, y: rect.top - 10 });
-              }}
-              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-            >
-              <Icon name="undo" size={14} />
-            </button>
-
-            {/* Redo Button */}
-            <button
-              onClick={handleRedo}
-              disabled={!canRedo}
-              className="btn btn-default btn-sm"
-              style={{
-                padding: '4px 8px',
-                opacity: canRedo ? 1 : 0.4,
-                cursor: canRedo ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                transform: 'matrix(1, 0, 0, 1, 0, -0.591158) rotate(180deg) scaleX(-1)'
-              }}
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setTooltip({ visible: true, text: 'Redo', x: rect.left + rect.width / 2, y: rect.top - 10 });
-              }}
-              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-            >
-              <Icon name="redo" size={14} />
-            </button>
-
-            <div style={{ width: '1px', height: '16px', background: '#555' }} />
-
-            {/* Survey Button */}
-            <button
-              onClick={() => {
-                if (!showSurveyPanel) {
-                  // Show template selection modal
-                  setShowTemplateSelection(true);
-                } else {
-                  setShowSurveyPanel(false);
-                  setSelectedTemplate(null);
-                  setSelectedModuleId(null);
-                }
-              }}
-              className={`btn btn-md ${showSurveyPanel ? 'btn-active' : 'btn-default'}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '14px',
-                fontWeight: '600',
-                padding: '4px 10px',
-                marginLeft: 'auto',
-                transition: 'all 0.2s ease',
-                background: showSurveyPanel ? 'rgba(74, 144, 226, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                border: showSurveyPanel ? '1px solid #4A90E2' : '1px solid #555',
-                color: showSurveyPanel ? '#4A90E2' : '#FFF'
-              }}
-            >
-              <Icon name="survey" size={18} />
-              Survey
-            </button>
-          </div>
-
-          {/* Floating Tooltip */}
-          {tooltip.visible && (
-            <div style={{
-              position: 'fixed',
-              left: tooltip.x,
-              top: tooltip.y,
-              transform: 'translate(-50%, -100%)',
-              background: '#222',
-              color: '#fff',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              fontSize: '12px',
-              fontFamily: FONT_FAMILY,
-              pointerEvents: 'none',
-              zIndex: 10000,
-              whiteSpace: 'nowrap',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-            }}>
-              {tooltip.text}
-            </div>
-          )}
-
-          {/* Region Selection Tool */}
-          {showRegionSelection && (
-            <RegionSelectionTool
-              active={showRegionSelection}
-              onRegionComplete={handleRegionComplete}
-              onCancel={() => {
-                setShowRegionSelection(false);
-                setRegionSelectionPage(null);
-              }}
-              currentSpaceId={activeSpaceId}
-              currentPageId={regionSelectionPage}
-              scale={scale}
-              initialRegions={regionSelectionPage ? (getPageRegions(regionSelectionPage) || []) : []}
-              onSetFullPage={handleRegionSetFullPage}
-              canSetFullPage={canSetRegionToFullPage}
-            />
-          )}
-
-          {/* Middle Area: Sidebar + PDF Container */}
-          <div
-            ref={middleAreaRef}
-            style={{
-              position: 'relative',
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'row',
-              overflow: 'hidden',
-              minWidth: 0,
-              minHeight: 0,
-              marginRight: showSurveyPanel ? (isSurveyPanelCollapsed ? '48px' : '320px') : '0'
-            }}>
-
-            {/* Pending Location Banner */}
-            {pendingLocationItem && (
-              <div style={{
-                position: 'absolute',
-                top: '20px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 2000,
-                background: 'rgba(74, 144, 226, 0.9)',
-                color: 'white',
-                padding: '8px 16px',
-                borderRadius: '20px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                pointerEvents: 'none'
-              }}>
-                <Icon name="search" size={16} />
-                <span style={{ fontWeight: 500 }}>
-                  Draw a box on the PDF to locate "{pendingLocationItem.name || 'Item'}"
-                </span>
-                <button
-                  style={{
-                    pointerEvents: 'auto',
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'white',
-                    cursor: 'pointer',
-                    marginLeft: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  onClick={() => setPendingLocationItem(null)}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-              </div>
-            )}
-
-            {/* Sidebar */}
-            <PDFSidebar
-              features={features}
-              pdfDoc={pdfDoc}
-              numPages={numPages}
-              pageNum={pageNum}
-              onNavigateToPage={goToPage}
-              onNavigateToMatch={navigateToMatch}
-              searchResults={searchResults}
-              currentMatchIndex={currentMatchIndex}
-              onSearchResultsChange={handleSearchResultsChange}
-              onCurrentMatchIndexChange={handleCurrentMatchIndexChange}
-              onDuplicatePage={handleDuplicatePage}
-              onDeletePage={handleDeletePage}
-              onCutPage={handleCutPage}
-              onCopyPage={handleCopyPage}
-              onPastePage={handlePastePage}
-              clipboardPage={clipboardPage}
-              clipboardType={clipboardType}
-              onRotatePage={handleRotatePage}
-              onMirrorPage={handleMirrorPage}
-              onResetPage={handleResetPage}
-              onReorderPages={handleReorderPages}
-              pageTransformations={pageTransformations}
-              bookmarks={bookmarks}
-              onBookmarkCreate={handleBookmarkCreate}
-              onBookmarkUpdate={handleBookmarkUpdate}
-              onBookmarkDelete={handleBookmarkDelete}
-              spaces={spaces}
-              onSpaceCreate={handleSpaceCreate}
-              onSpaceUpdate={handleSpaceUpdate}
-              onSpaceDelete={handleSpaceDelete}
-              activeSpaceId={activeSpaceId}
-              onSetActiveSpace={handleSetActiveSpace}
-              onExitSpaceMode={handleExitSpaceMode}
-              onRequestRegionEdit={handleRequestRegionEdit}
-              onSpaceAssignPages={handleSpaceAssignPages}
-              onSpaceRenamePage={handleSpaceRenamePage}
-              onSpaceRemovePage={handleSpaceRemovePage}
-              onReorderSpaces={handleReorderSpaces}
-              onExportSpaceCSV={handleExportSpaceToCSV}
-              onExportSpacePDF={handleExportSpaceToPDF}
-              isRegionSelectionActive={showRegionSelection}
-              shouldShowPage={shouldShowPage}
-              activeSpacePages={activeSpacePages}
-              scale={scale}
-              tabId={tabId}
-              onPageDrop={onPageDrop}
-              onToggleCollapse={(isCollapsed) => {
-                setIsLeftSidebarCollapsed(isCollapsed);
-                requestAnimationFrame(() => {
-                  zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-                });
-              }}
-            />
-
-            {/* PDF Container - Optimized */}
-            <div
-              ref={containerRef}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              style={containerStyle}
-              data-testid="pdf-container"
-            >
-              <div
-                ref={contentRef}
-                style={contentStyle}>
-                {scrollMode === 'continuous' ? (
-                  numPages > 0 ? Array.from({ length: numPages }, (_, i) => i + 1)
-                    .filter(pageNumber => shouldShowPage(pageNumber))
-                    .map(pageNumber => {
-                      const pageRegions = getPageRegions(pageNumber);
-                      const isMounted = mountedPages.has(pageNumber);
-
-                      return (
-                        <div
-                          key={pageNumber}
-                          ref={el => pageContainersRef.current[pageNumber] = el}
-                          data-page-num={pageNumber}
-                          style={{
-                            minHeight: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * scale}px` : '800px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                            position: 'relative'
-                          }}
-                        >
-                          {isMounted ? (
-                            <div style={{
-                              position: 'relative',
-                              transform: getPageTransform(pageNumber),
-                              transformOrigin: 'center center'
-                            }}>
-                              <PDFPageCanvas
-                                page={pageObjects[pageNumber]}
-                                scale={scale}
-                                onFinishRender={() => {
-                                  setRenderedPages(prev => new Set([...prev, pageNumber]));
-                                }}
-                              />
-                              {pageSizes[pageNumber] && pageObjects[pageNumber] && (
-                                <TextLayer
-                                  pageNumber={pageNumber}
-                                  page={pageObjects[pageNumber]}
-                                  scale={scale}
-                                  width={pageSizes[pageNumber].width}
-                                  height={pageSizes[pageNumber].height}
-                                  onTextSelected={handleTextSelected}
-                                  isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
-                                />
-                              )}
-                              {/* Search Highlight Layer */}
-                              {pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
-                                <SearchHighlightLayer
-                                  pageNumber={pageNumber}
-                                  width={pageSizes[pageNumber].width}
-                                  height={pageSizes[pageNumber].height}
-                                  scale={scale}
-                                  highlights={searchResultsByPage[pageNumber]}
-                                  activeMatchId={currentMatch?.id}
-                                  isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
-                                />
-                              )}
-                              {pageSizes[pageNumber] && (
-                                <PageAnnotationLayer
-                                  pageNumber={pageNumber}
-                                  width={pageSizes[pageNumber].width}
-                                  height={pageSizes[pageNumber].height}
-                                  scale={scale}
-                                  tool={activeTool}
-                                  strokeColor={strokeColor}
-                                  strokeWidth={Number(strokeWidth) || 3}
-                                  annotations={annotationsByPage[pageNumber]}
-                                  onSaveAnnotations={handleSaveAnnotations}
-                                  newHighlights={newHighlightsByPage[pageNumber]}
-                                  highlightsToRemove={highlightsToRemoveByPage[pageNumber]}
-                                  onHighlightCreated={handleHighlightCreated}
-                                  onHighlightDeleted={handleHighlightDeleted}
-                                  onHighlightClicked={handleHighlightClicked}
-                                  selectedSpaceId={annotationSpaceId}
-                                  selectedModuleId={selectedModuleId}
-                                  selectedCategoryId={selectedCategoryId}
-                                  activeRegions={pageRegions}
-                                  eraserMode={eraserMode}
-                                  eraserSize={eraserSize}
-                                  showSurveyPanel={showSurveyPanel}
-                                  layerVisibility={annotationLayerVisibility}
-                                />
-                              )}
-                              {/* Space Region Dimming Overlay */}
-                              {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (
-                                <SpaceRegionOverlay
-                                  pageNumber={pageNumber}
-                                  regions={pageRegions}
-                                  width={pageSizes[pageNumber]?.width || 0}
-                                  height={pageSizes[pageNumber]?.height || 0}
-                                  scale={scale}
-                                />
-                              )}
-                              {/* Region Selection Overlay for this specific page */}
-                              {showRegionSelection && regionSelectionPage === pageNumber && (
-                                <div style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  width: `${(pageSizes[pageNumber]?.width || 0) * scale}px`,
-                                  height: `${(pageSizes[pageNumber]?.height || 0) * scale}px`,
-                                  pointerEvents: 'none',
-                                  zIndex: 1000
-                                }}>
-                                  <div id="region-selection-target" style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: '100%'
-                                  }} />
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            /* Lightweight placeholder for unmounted pages */
-                            <div style={{
-                              width: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * 0.7 * scale}px` : '595px',
-                              height: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * scale}px` : '800px',
-                              background: '#f5f5f5',
-                              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: '#999',
-                              fontSize: '14px'
-                            }}>
-                              Page {pageNumber}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    }) : (
-                    <div style={{
-                      padding: '40px',
-                      textAlign: 'center',
-                      color: '#999',
-                      fontSize: '14px'
-                    }}>
-                      {numPages === 0 ? 'No pages to display' : 'No pages match the current filter'}
-                    </div>
-                  )
-                ) : (
-                  shouldShowPage(pageNum) && (() => {
-                    const pageRegions = getPageRegions(pageNum);
-                    return (
-                      <div
-                        style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <div style={{
-                          position: 'relative',
-                          transform: getPageTransform(pageNum),
-                          transformOrigin: 'center center',
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
-                        }}>
-                          <PDFPageCanvas
-                            page={pageObjects[pageNum]}
-                            scale={scale}
-                            onFinishRender={() => {
-                              setRenderedPages(prev => new Set([...prev, pageNum]));
-                            }}
-                          />
-                          {pageSizes[pageNum] && pageObjects[pageNum] && (
-                            <TextLayer
-                              pageNumber={pageNum}
-                              page={pageObjects[pageNum]}
-                              scale={scale}
-                              width={pageSizes[pageNum].width}
-                              height={pageSizes[pageNum].height}
-                              onTextSelected={handleTextSelected}
-                              isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
-                            />
-                          )}
-                          {/* Search Highlight Layer */}
-                          {pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
-                            <SearchHighlightLayer
-                              pageNumber={pageNum}
-                              width={pageSizes[pageNum].width}
-                              height={pageSizes[pageNum].height}
-                              scale={scale}
-                              highlights={searchResultsByPage[pageNum]}
-                              activeMatchId={currentMatch?.id}
-                              isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNum}
-                            />
-                          )}
-                          {pageSizes[pageNum] && (
-                            <PageAnnotationLayer
-                              pageNumber={pageNum}
-                              width={pageSizes[pageNum].width}
-                              height={pageSizes[pageNum].height}
-                              scale={scale}
-                              tool={activeTool}
-                              strokeColor={strokeColor}
-                              strokeWidth={Number(strokeWidth) || 3}
-                              annotations={annotationsByPage[pageNum]}
-                              onSaveAnnotations={handleSaveAnnotations}
-                              newHighlights={newHighlightsByPage[pageNum]}
-                              highlightsToRemove={highlightsToRemoveByPage[pageNum]}
-                              onHighlightCreated={handleHighlightCreated}
-                              onHighlightDeleted={handleHighlightDeleted}
-                              onHighlightClicked={handleHighlightClicked}
-                              selectedSpaceId={annotationSpaceId}
-                              selectedModuleId={selectedModuleId}
-                              selectedCategoryId={selectedCategoryId}
-                              activeRegions={pageRegions}
-                              eraserMode={eraserMode}
-                              eraserSize={eraserSize}
-                              showSurveyPanel={showSurveyPanel}
-                              layerVisibility={annotationLayerVisibility}
-                            />
-                          )}
-                          {/* Space Region Dimming Overlay */}
-                          {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNum) && (
-                            <SpaceRegionOverlay
-                              pageNumber={pageNum}
-                              regions={pageRegions}
-                              width={pageSizes[pageNum]?.width || 0}
-                              height={pageSizes[pageNum]?.height || 0}
-                              scale={scale}
-                            />
-                          )}
-                          {/* Region Selection Overlay for this specific page */}
-                          {showRegionSelection && regionSelectionPage === pageNum && (
-                            <div style={{
-                              position: 'absolute',
-                              top: 0,
-                              left: 0,
-                              width: `${(pageSizes[pageNum]?.width || 0) * scale}px`,
-                              height: `${(pageSizes[pageNum]?.height || 0) * scale}px`,
-                              pointerEvents: 'none',
-                              zIndex: 1000
-                            }}>
-                              <div id="region-selection-target" style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                width: '100%',
-                                height: '100%'
-                              }} />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Secondary Sub-Toolbar (Drawboard Style) */}
-          {activeCategoryDropdown && (
-            <div
-              style={{
-                width: '100%',
-                height: '52px',
-                background: 'transparent',
-                borderBottom: '1px solid #3a3a3a',
-                borderTop: '1px solid #3a3a3a',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                zIndex: 10,
-                boxSizing: 'border-box'
-              }}
-            >
-              {activeCategoryDropdown === 'draw' && (
-                <>
-                  {[
-                    { id: 'pen', label: 'Pen', iconName: 'pen' },
-                    { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
-                    { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
-                  ].map(t => (
-                    <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <button
-                        data-eraser-button={t.id === 'eraser' ? 'true' : undefined}
-                        onClick={() => {
-                          if (t.id === 'eraser') {
-                            if (activeTool === 'eraser') {
-                              // If eraser is already active, toggle the menu
-                              setShowEraserMenu(!showEraserMenu);
-                            } else {
-                              // If eraser is not active, set it as active and open the menu
-                              setActiveTool(t.id);
-                              setShowEraserMenu(true);
-                            }
-                          } else {
-                            setActiveTool(t.id);
-                            if (t.id !== 'eraser') setShowEraserMenu(false);
-                          }
-                        }}
-                        className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
-                        style={{
-                          position: 'relative',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '6px',
-                          gap: '4px',
-                          minWidth: '40px',
-                          width: '40px'
-                        }}
-                        title={t.label}
-                      >
-                        <Icon name={t.iconName} size={20} />
-                        {t.id === 'eraser' && activeTool === 'eraser' && (
-                          <div
-                            data-eraser-button="true"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowEraserMenu(!showEraserMenu);
-                            }}
-                            style={{
-                              position: 'absolute',
-                              left: '50%',
-                              top: '50%',
-                              transform: 'translate(12px, -50%)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: '2px',
-                              pointerEvents: 'auto'
-                            }}
-                          >
-                            <Icon name="chevronUp" size={12} />
-                          </div>
-                        )}
-                      </button>
-
-                      {/* Eraser Mode Popup specific to the Eraser tool in sub-toolbar */}
-                      {t.id === 'eraser' && activeTool === 'eraser' && showEraserMenu && (
-                        <div
-                          ref={eraserMenuRef}
-                          style={{
-                            position: 'absolute',
-                            bottom: '100%',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            marginBottom: '6px',
-                            background: '#1e1e1e',
-                            border: '1px solid #333',
-                            borderRadius: '6px',
-                            boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-                            zIndex: 1000,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            padding: '4px',
-                            minWidth: '140px'
-                          }}
-                        >
-                          <div style={{
-                            padding: '4px 8px',
-                            fontSize: '10px',
-                            color: '#888',
-                            textTransform: 'uppercase',
-                            fontWeight: 600,
-                            borderBottom: '1px solid #333',
-                            marginBottom: '4px'
-                          }}>
-                            Eraser Type
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEraserMode('partial');
-                              setShowEraserMenu(false);
-                            }}
-                            className={`btn ${eraserMode === 'partial' ? 'btn-active' : 'btn-ghost'}`}
-                            style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
-                          >
-                            Partial Eraser
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEraserMode('entire');
-                              setShowEraserMenu(false);
-                            }}
-                            className={`btn ${eraserMode === 'entire' ? 'btn-active' : 'btn-ghost'}`}
-                            style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
-                          >
-                            Entire Eraser
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </>
-              )}
-
-              {activeCategoryDropdown === 'shape' && (
-                <>
-                  {[
-                    { id: 'rect', label: 'Rectangle', iconName: 'rect' },
-                    { id: 'ellipse', label: 'Ellipse', iconName: 'ellipse' },
-                    { id: 'line', label: 'Line', iconName: 'line' },
-                    { id: 'arrow', label: 'Arrow', iconName: 'arrow' }
-                  ].map(t => (
-                    <button
-                      key={t.id}
-                      onClick={() => setActiveTool(t.id)}
-                      className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '6px',
-                        gap: '4px',
-                        minWidth: '40px'
-                      }}
-                      title={t.label}
-                    >
-                      <Icon name={t.iconName} size={20} />
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {activeCategoryDropdown === 'review' && (
-                <>
-                  {[
-                    { id: 'text', label: 'Text', iconName: 'text' },
-                    { id: 'note', label: 'Note', iconName: 'note' },
-                    { id: 'underline', label: 'Underline', iconName: 'underline' },
-                    { id: 'strikeout', label: 'Strikeout', iconName: 'strikeout' },
-                    { id: 'squiggly', label: 'Squiggly', iconName: 'squiggly' }
-                  ].map(t => (
-                    <button
-                      key={t.id}
-                      onClick={() => setActiveTool(t.id)}
-                      className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '6px',
-                        gap: '4px',
-                        minWidth: '40px'
-                      }}
-                      title={t.label}
-                    >
-                      <Icon name={t.iconName} size={20} />
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {activeCategoryDropdown === 'survey' && (
-                <button
-                  onClick={() => setActiveTool('highlight')}
-                  className={`btn ${activeTool === 'highlight' ? 'btn-active' : 'btn-ghost'}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '6px',
-                    gap: '4px',
-                    minWidth: '40px'
-                  }}
-                  title="Highlight Area"
-                >
-                  <Icon name="highlighter" size={20} />
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Annotation Toolbar Footer */}
-          <div
-            ref={bottomToolbarRef}
-            style={{
-              padding: '11px 20px 12px 20px',
-              background: 'transparent',
-              borderTop: '1px solid #444',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '12px',
               fontSize: '14px',
-              fontFamily: FONT_FAMILY,
-              flexShrink: 0,
-              position: 'relative'
+              fontWeight: '600',
+              padding: '4px 10px',
+              marginLeft: 'auto',
+              transition: 'all 0.2s ease',
+              background: showSurveyPanel ? 'rgba(74, 144, 226, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+              border: showSurveyPanel ? '1px solid #4A90E2' : '1px solid #555',
+              color: showSurveyPanel ? '#4A90E2' : '#FFF'
             }}
           >
-            {/* Left Spacer */}
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center' }} />
+            <Icon name="survey" size={18} />
+            Survey
+          </button>
+        </div>
 
-            {/* Centered Annotation Tools */}
-            <div style={{ display: 'flex', alignItems: 'center', alignContent: 'center', gap: '6px', flexWrap: 'wrap', position: 'relative' }}>
-              {/* Top Level Tools: Pan & Select */}
-              {[
-                { id: 'pan', label: 'Pan', iconName: 'pan' },
-                { id: 'select', label: 'Select', iconName: 'cursor' }
-              ].map(t => (
-                <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <button
-                    onClick={() => {
-                      setActiveTool(t.id);
-                      setActiveCategoryDropdown(null);
-                    }}
-                    onMouseEnter={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
-                    }}
-                    onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                    className={`btn btn-icon ${activeTool === t.id ? 'btn-active' : ''}`}
-                  >
-                    <Icon name={t.iconName} size={16} />
-                  </button>
-                </div>
-              ))}
-
-              <div style={{ width: '1px', height: '24px', background: 'rgb(85, 85, 85)', margin: '0 2px' }} />
-
-              {/* Draw Category */}
-              {/* Draw Category Button */}
-              {/* Draw Category Button */}
-              <button
-                onClick={() => {
-                  const isActive = activeCategoryDropdown === 'draw';
-                  setActiveCategoryDropdown(isActive ? null : 'draw');
-                  if (!isActive) {
-                    if (!['pen', 'highlighter', 'eraser'].includes(activeTool)) {
-                      setActiveTool(lastDrawTool);
-                    }
-                  }
-                }}
-                className={`btn btn-md ${activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'eraser'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
-                title="Draw"
-              >
-                <Icon name="pen" size={22} />
-              </button>
-
-              {/* Shape Category */}
-              {/* Shape Category Button */}
-              {/* Shape Category Button */}
-              <button
-                onClick={() => {
-                  const isActive = activeCategoryDropdown === 'shape';
-                  setActiveCategoryDropdown(isActive ? null : 'shape');
-                  if (!isActive) {
-                    if (!['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
-                      setActiveTool(lastShapeTool);
-                    }
-                  }
-                }}
-                className={`btn btn-md ${activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
-                title="Shape"
-              >
-                <Icon name="rect" size={16} />
-              </button>
-
-              {/* Review Category */}
-              {/* Review Category Button */}
-              {/* Review Category Button */}
-              <button
-                onClick={() => {
-                  const isActive = activeCategoryDropdown === 'review';
-                  setActiveCategoryDropdown(isActive ? null : 'review');
-                  if (!isActive) {
-                    if (!['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
-                      setActiveTool(lastReviewTool);
-                    }
-                  }
-                }}
-                className={`btn btn-md ${activeCategoryDropdown === 'review' || ['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
-                title="Review"
-              >
-                <Icon name="text" size={16} />
-              </button>
-
-              {/* Survey Category Button (Conditional) */}
-              {showSurveyPanel && (
-                <button
-                  onClick={() => {
-                    const isActive = activeCategoryDropdown === 'survey';
-                    setActiveCategoryDropdown(isActive ? null : 'survey');
-                    if (!isActive) {
-                      setActiveTool('highlight');
-                    }
-                  }}
-                  className={`btn btn-md ${activeCategoryDropdown === 'survey' || activeTool === 'highlight' ? 'btn-active' : 'btn-default'}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
-                  title="Survey"
-                >
-                  <Icon name="highlighter" size={16} />
-                </button>
-              )}
-
-
-
-              <div style={{ width: '1px', height: '24px', background: '#555' }} />
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
-                <button
-                  onClick={() => setShowAnnotationColorPicker(!showAnnotationColorPicker)}
-                  className="btn btn-default"
-                  style={{
-                    width: '32px',
-                    height: '28px',
-                    padding: 0,
-                    borderRadius: '4px',
-                    border: '1px solid transparent',
-                    background: strokeColor,
-                    opacity: strokeOpacity / 100,
-                    position: 'relative',
-                    overflow: 'hidden'
-                  }}
-                  title="Color"
-                />
-
-                {showAnnotationColorPicker && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '100%',
-                    left: '50%',
-                    marginBottom: '10px',
-                    transform: 'translate(-50%, 0)',
-                    zIndex: 2000
-                  }}>
-                    <CompactColorPicker
-                      color={strokeColor}
-                      opacity={strokeOpacity / 100}
-                      onChange={(hex, alpha) => {
-                        handleStrokeColorChange(hex);
-                        handleStrokeOpacityChange(Math.round(alpha * 100));
-                      }}
-                      onClose={() => setShowAnnotationColorPicker(false)}
-                    />
-                  </div>
-                )}
-
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  className="no-spin-buttons"
-                  value={activeTool === 'eraser' ? eraserSizeInputValue : strokeWidthInputValue}
-                  onChange={activeTool === 'eraser' ? handleEraserSizeInputChange : handleStrokeWidthInputChange}
-                  onFocus={() => activeTool === 'eraser' ? setIsEraserSizeFocused(true) : setIsStrokeWidthFocused(true)}
-                  onBlur={activeTool === 'eraser' ? handleEraserSizeInputBlur : handleStrokeWidthInputBlur}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.target.blur();
-                    }
-                  }}
-                  style={{
-                    width: "40px",
-                    padding: "6px 4px",
-                    background: "#444",
-                    color: "#ddd",
-                    border: "1px solid transparent",
-                    borderRadius: "5px",
-                    fontSize: "13px",
-                    fontFamily: FONT_FAMILY,
-                    textAlign: "center"
-                  }}
-                  title="Width"
-                />
-              </div>
-            </div>
-
-            {/* Right Section: Zoom Controls */}
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
-              <button
-                onClick={zoomOut}
-                className="btn btn-default btn-icon"
-              >
-                <Icon name="minus" size={18} />
-              </button>
-
-              <div
-                onClick={() => zoomInputRef.current?.focus()}
-                style={{
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '48px',
-                  height: '23px',
-                  background: '#444',
-                  border: '1px solid #555',
-                  borderRadius: '5px',
-                  padding: '0 4px',
-                  boxSizing: 'border-box',
-                  cursor: 'text'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <div style={{ display: 'inline-grid', alignItems: 'center' }}>
-                    <span style={{
-                      gridArea: '1/1',
-                      visibility: 'hidden',
-                      fontSize: '13px',
-                      fontFamily: FONT_FAMILY,
-                      fontWeight: '500',
-                      letterSpacing: '-0.2px',
-                      whiteSpace: 'pre',
-                      padding: '0 1px'
-                    }}>
-                      {zoomInputValue || ' '}
-                    </span>
-                    <input
-                      ref={zoomInputRef}
-                      type="text"
-                      data-page-number-input
-                      value={zoomInputValue}
-                      onChange={handleZoomInputChange}
-                      onKeyDown={handleZoomInputKeyDown}
-                      onBlur={handleZoomInputBlur}
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      aria-label="Zoom percentage"
-                      style={{
-                        gridArea: '1/1',
-                        width: '100%',
-                        background: 'transparent',
-                        color: '#ddd',
-                        border: 'none',
-                        padding: 0,
-                        margin: 0,
-                        fontSize: '13px',
-                        fontFamily: FONT_FAMILY,
-                        fontWeight: '500',
-                        letterSpacing: '-0.2px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        minWidth: '1ch'
-                      }}
-                    />
-                  </div>
-                  <span style={{
-                    color: '#999',
-                    fontSize: '12px',
-                    fontFamily: FONT_FAMILY,
-                    fontWeight: '400',
-                    marginLeft: '1px',
-                    pointerEvents: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    height: '100%'
-                  }}>
-                    %
-                  </span>
-                </div>
-              </div>
-
-              <button
-                onClick={zoomIn}
-                className="btn btn-default btn-icon"
-              >
-                <Icon name="plus" size={18} />
-              </button>
-
-              <button
-                onClick={resetZoom}
-                className="btn btn-default btn-sm"
-                style={{ fontSize: '13px', padding: '6px 10px' }}
-              >
-                Reset
-              </button>
-
-              <div
-                ref={zoomMenuRef}
-                style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
-              >
-                <button
-                  onClick={toggleZoomMenu}
-                  className="btn btn-default btn-sm"
-                  aria-haspopup="listbox"
-                  aria-expanded={isZoomMenuOpen}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    whiteSpace: 'nowrap',
-                    fontSize: '13px',
-                    padding: '6px 10px'
-                  }}
-                >
-                  <span>{zoomDropdownLabel}</span>
-                  <Icon name={isZoomMenuOpen ? 'chevronUp' : 'chevronDown'} size={14} />
-                </button>
-
-                {isZoomMenuOpen && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: '100%',
-                      right: 0,
-                      marginBottom: '6px',
-                      background: '#2b2b2b',
-                      border: '1px solid transparent',
-                      borderRadius: '10px',
-                      boxShadow: '0 18px 36px rgba(0,0,0,0.45)',
-                      minWidth: '220px',
-                      zIndex: 2000,
-                      padding: '6px 0'
-                    }}
-                  >
-                    {ZOOM_MODE_OPTIONS.map((option) => {
-                      const isActive = option.id === zoomMode;
-                      return (
-                        <button
-                          key={option.id}
-                          onClick={() => handleZoomModeSelect(option.id)}
-                          className="btn btn-ghost"
-                          style={{
-                            width: '100%',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'flex-start',
-                            padding: '10px 14px',
-                            background: isActive ? '#3a3a3a' : 'transparent',
-                            border: 'none',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            gap: '2px'
-                          }}
-                        >
-                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#e0e0e0' }}>
-                            {option.label}
-                            {option.id === ZOOM_MODES.MANUAL && (
-                              <span style={{ marginLeft: '6px', fontWeight: 400, color: '#9a9a9a' }}>
-                                {Math.round((manualZoomScale || 1) * 100)}%
-                              </span>
-                            )}
-                          </span>
-                          <span style={{ fontSize: '12px', color: '#9a9a9a' }}>
-                            {option.description}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* View Mode Toggle */}
-              <button
-                onClick={toggleScrollMode}
-                className="btn btn-default btn-sm"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  justifyContent: 'center',
-                  paddingLeft: '10px',
-                  paddingRight: '10px',
-                  position: 'absolute',
-                  left: '8px'
-                }}
-              >
-                <Icon name={scrollMode === 'continuous' ? 'pages' : 'pageSingle'} size={16} />
-                {scrollMode === 'continuous' ? 'Continuous' : 'Single Page'}
-              </button>
-
-              {/* Page Navigation */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                position: 'absolute',
-                left: '114px'
-              }}>
-                <button
-                  onClick={goToPreviousPage}
-                  disabled={pageNum <= 1}
-                  className="btn btn-default btn-icon-sm"
-                >
-                  <Icon name="chevronLeft" size={16} />
-                </button>
-
-                <input
-                  ref={pageInputRef}
-                  type="text"
-                  data-page-number-input
-                  value={pageInputValue}
-                  onChange={handlePageInputChange}
-                  onKeyDown={handlePageInputKeyDown}
-                  onBlur={handlePageInputBlur}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  aria-label="Current page"
-                  style={{
-                    width: '48px',
-                    padding: '3px 8px',
-                    background: '#444',
-                    color: '#ddd',
-                    border: '1px solid #555',
-                    borderRadius: '5px',
-                    fontSize: '13px',
-                    fontFamily: FONT_FAMILY,
-                    fontWeight: '500',
-                    letterSpacing: '-0.2px',
-                    textAlign: 'center'
-                  }}
-                />
-
-                <span style={{
-                  color: '#999',
-                  fontSize: '13px',
-                  fontFamily: FONT_FAMILY,
-                  fontWeight: '400'
-                }}>
-                  / {numPages}
-                </span>
-
-                <button
-                  onClick={goToNextPage}
-                  disabled={pageNum >= numPages}
-                  className="btn btn-default btn-icon-sm"
-                >
-                  <Icon name="chevronRight" size={16} />
-                </button>
-              </div>
-            </div>
+        {/* Floating Tooltip */}
+        {tooltip.visible && (
+          <div style={{
+            position: 'fixed',
+            left: tooltip.x,
+            top: tooltip.y,
+            transform: 'translate(-50%, -100%)',
+            background: '#222',
+            color: '#fff',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontFamily: FONT_FAMILY,
+            pointerEvents: 'none',
+            zIndex: 10000,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+          }}>
+            {tooltip.text}
           </div>
+        )}
 
-          {/* Status Bar with improved typography */}
-          <div
-            ref={statusBarRef}
-            style={{
-              padding: '8px 20px',
-              background: '#333',
-              borderTop: '1px solid #444',
-              fontSize: '12px',
-              color: '#999',
+        {/* Region Selection Tool */}
+        {showRegionSelection && (
+          <RegionSelectionTool
+            active={showRegionSelection}
+            onRegionComplete={handleRegionComplete}
+            onCancel={() => {
+              setShowRegionSelection(false);
+              setRegionSelectionPage(null);
+            }}
+            currentSpaceId={activeSpaceId}
+            currentPageId={regionSelectionPage}
+            scale={scale}
+            initialRegions={regionSelectionPage ? (getPageRegions(regionSelectionPage) || []) : []}
+            onSetFullPage={handleRegionSetFullPage}
+            canSetFullPage={canSetRegionToFullPage}
+          />
+        )}
+
+        {/* Middle Area: Sidebar + PDF Container */}
+        <div
+          ref={middleAreaRef}
+          style={{
+            position: 'relative',
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'row',
+            overflow: 'hidden',
+            minWidth: 0,
+            minHeight: 0,
+            marginRight: showSurveyPanel ? (isSurveyPanelCollapsed ? '48px' : '320px') : '0'
+          }}>
+
+          {/* Pending Location Banner */}
+          {pendingLocationItem && (
+            <div style={{
+              position: 'absolute',
+              top: '20px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 2000,
+              background: 'rgba(74, 144, 226, 0.9)',
+              color: 'white',
+              padding: '8px 16px',
+              borderRadius: '20px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
               display: 'flex',
               alignItems: 'center',
-              gap: '20px',
-              fontFamily: FONT_FAMILY,
-              fontWeight: '400',
-              letterSpacing: '-0.1px'
+              gap: '8px',
+              pointerEvents: 'none'
             }}>
-            <span>
-              {scrollMode === 'continuous'
-                ? 'Scroll to navigate • Ctrl+Scroll to zoom • Drag to pan'
-                : 'Use arrow keys • Ctrl+Scroll to zoom • Drag to pan'}
-            </span>
-            {scrollMode === 'continuous' && (
-              <>
-                <span style={{
-                  marginLeft: 'auto',
-                  color: '#aaa',
-                  fontFamily: FONT_FAMILY,
-                  fontWeight: '500'
-                }}>
-                  {renderedPages.size} of {numPages} pages rendered
-                </span>
-              </>
-            )}
-          </div>
-
-          {/* Space Selection Modal */}
-          {showSpaceSelection && (
-            <>
-              <div
-                onClick={() => setShowSpaceSelection(false)}
+              <Icon name="search" size={16} />
+              <span style={{ fontWeight: 500 }}>
+                Draw a box on the PDF to locate "{pendingLocationItem.name || 'Item'}"
+              </span>
+              <button
                 style={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  background: 'rgba(0, 0, 0, 0.5)',
-                  zIndex: 10000,
-                  animation: 'fadeIn 0.2s ease-out',
+                  pointerEvents: 'auto',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'white',
+                  cursor: 'pointer',
+                  marginLeft: '8px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}
+                onClick={() => setPendingLocationItem(null)}
               >
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    background: '#2b2b2b',
-                    border: '1px solid #444',
-                    borderRadius: '8px',
-                    padding: '24px',
-                    width: '500px',
-                    maxWidth: '90vw',
-                    maxHeight: '80vh',
-                    overflow: 'auto',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-                    animation: 'fadeIn 0.2s ease-out'
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '20px'
-                  }}>
-                    <h2 style={{
-                      margin: 0,
-                      fontSize: '18px',
-                      fontWeight: '600',
-                      color: '#fff',
-                      fontFamily: FONT_FAMILY
-                    }}>
-                      Select Space
-                    </h2>
-                    <button
-                      onClick={() => setShowSpaceSelection(false)}
-                      className="btn btn-icon btn-icon-sm"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#999'
-                      }}
-                    >
-                      <Icon name="close" size={18} />
-                    </button>
-                  </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+          )}
 
-                  {appTemplates.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                      <p>No templates available. Please create a template first.</p>
-                    </div>
-                  ) : (() => {
-                    // Aggregate all spaces from all templates
-                    const allSpaces = [];
-                    appTemplates.forEach(template => {
-                      (template.spaces || []).forEach(space => {
-                        allSpaces.push({ ...space, templateId: template.id, templateName: template.name });
-                      });
-                    });
+          {/* Sidebar */}
+          <PDFSidebar
+            features={features}
+            pdfDoc={pdfDoc}
+            numPages={numPages}
+            pageNum={pageNum}
+            onNavigateToPage={goToPage}
+            onNavigateToMatch={navigateToMatch}
+            searchResults={searchResults}
+            currentMatchIndex={currentMatchIndex}
+            onSearchResultsChange={handleSearchResultsChange}
+            onCurrentMatchIndexChange={handleCurrentMatchIndexChange}
+            onDuplicatePage={handleDuplicatePage}
+            onDeletePage={handleDeletePage}
+            onCutPage={handleCutPage}
+            onCopyPage={handleCopyPage}
+            onPastePage={handlePastePage}
+            clipboardPage={clipboardPage}
+            clipboardType={clipboardType}
+            onRotatePage={handleRotatePage}
+            onMirrorPage={handleMirrorPage}
+            onResetPage={handleResetPage}
+            onReorderPages={handleReorderPages}
+            pageTransformations={pageTransformations}
+            bookmarks={bookmarks}
+            onBookmarkCreate={handleBookmarkCreate}
+            onBookmarkUpdate={handleBookmarkUpdate}
+            onBookmarkDelete={handleBookmarkDelete}
+            spaces={spaces}
+            onSpaceCreate={handleSpaceCreate}
+            onSpaceUpdate={handleSpaceUpdate}
+            onSpaceDelete={handleSpaceDelete}
+            activeSpaceId={activeSpaceId}
+            onSetActiveSpace={handleSetActiveSpace}
+            onExitSpaceMode={handleExitSpaceMode}
+            onRequestRegionEdit={handleRequestRegionEdit}
+            onSpaceAssignPages={handleSpaceAssignPages}
+            onSpaceRenamePage={handleSpaceRenamePage}
+            onSpaceRemovePage={handleSpaceRemovePage}
+            onReorderSpaces={handleReorderSpaces}
+            onExportSpaceCSV={handleExportSpaceToCSV}
+            onExportSpacePDF={handleExportSpaceToPDF}
+            isRegionSelectionActive={showRegionSelection}
+            shouldShowPage={shouldShowPage}
+            activeSpacePages={activeSpacePages}
+            scale={scale}
+            tabId={tabId}
+            onPageDrop={onPageDrop}
+            onToggleCollapse={(isCollapsed) => {
+              setIsLeftSidebarCollapsed(isCollapsed);
+              requestAnimationFrame(() => {
+                zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+              });
+            }}
+          />
 
-                    if (allSpaces.length === 0) {
-                      return (
-                        <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                          <p>No spaces available in any template.</p>
-                        </div>
-                      );
-                    }
-
-                    // Determine source module ID if we're copying items
-                    const selectedHighlightIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
-                    let sourceModuleId = null;
-                    if (selectedHighlightIds.length > 0) {
-                      const firstHighlight = highlightAnnotations[selectedHighlightIds[0]];
-                      const highlightModuleId = firstHighlight?.moduleId || firstHighlight?.spaceId; // Support legacy spaceId
-                      sourceModuleId = highlightModuleId || selectedModuleId;
-                    } else {
-                      sourceModuleId = selectedModuleId;
-                    }
-
-                    // Filter out the source module from available modules (only if we have a source module)
-                    const availableModules = sourceModuleId
-                      ? allSpaces.filter(module => module.id !== sourceModuleId)
-                      : allSpaces;
+          {/* PDF Container - Optimized */}
+          <div
+            ref={containerRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            style={containerStyle}
+            data-testid="pdf-container"
+          >
+            <div
+              ref={contentRef}
+              style={contentStyle}>
+              {scrollMode === 'continuous' ? (
+                numPages > 0 ? Array.from({ length: numPages }, (_, i) => i + 1)
+                  .filter(pageNumber => shouldShowPage(pageNumber))
+                  .map(pageNumber => {
+                    const pageRegions = getPageRegions(pageNumber);
+                    const isMounted = mountedPages.has(pageNumber);
 
                     return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {availableModules.map(module => (
-                          <button
-                            key={`${module.templateId}-${module.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
+                      <div
+                        key={pageNumber}
+                        ref={el => pageContainersRef.current[pageNumber] = el}
+                        data-page-num={pageNumber}
+                        style={{
+                          minHeight: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * scale}px` : '800px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          position: 'relative'
+                        }}
+                      >
+                        {isMounted ? (
+                          <div style={{
+                            position: 'relative',
+                            transform: getPageTransform(pageNumber),
+                            transformOrigin: 'center center'
+                          }}>
+                            <PDFPageCanvas
+                              page={pageObjects[pageNumber]}
+                              scale={scale}
+                              onFinishRender={() => {
+                                setRenderedPages(prev => new Set([...prev, pageNumber]));
+                              }}
+                            />
+                            {pageSizes[pageNumber] && pageObjects[pageNumber] && (
+                              <TextLayer
+                                pageNumber={pageNumber}
+                                page={pageObjects[pageNumber]}
+                                scale={scale}
+                                width={pageSizes[pageNumber].width}
+                                height={pageSizes[pageNumber].height}
+                                onTextSelected={handleTextSelected}
+                                isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
+                              />
+                            )}
+                            {/* Search Highlight Layer */}
+                            {pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                              <SearchHighlightLayer
+                                pageNumber={pageNumber}
+                                width={pageSizes[pageNumber].width}
+                                height={pageSizes[pageNumber].height}
+                                scale={scale}
+                                highlights={searchResultsByPage[pageNumber]}
+                                activeMatchId={currentMatch?.id}
+                                isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
+                              />
+                            )}
+                            {pageSizes[pageNumber] && (
+                              <PageAnnotationLayer
+                                pageNumber={pageNumber}
+                                width={pageSizes[pageNumber].width}
+                                height={pageSizes[pageNumber].height}
+                                scale={scale}
+                                tool={activeTool}
+                                strokeColor={strokeColor}
+                                strokeWidth={Number(strokeWidth) || 3}
+                                annotations={annotationsByPage[pageNumber]}
+                                onSaveAnnotations={handleSaveAnnotations}
+                                newHighlights={newHighlightsByPage[pageNumber]}
+                                highlightsToRemove={highlightsToRemoveByPage[pageNumber]}
+                                onHighlightCreated={handleHighlightCreated}
+                                onHighlightDeleted={handleHighlightDeleted}
+                                onHighlightClicked={handleHighlightClicked}
+                                selectedSpaceId={annotationSpaceId}
+                                selectedModuleId={selectedModuleId}
+                                selectedCategoryId={selectedCategoryId}
+                                activeRegions={pageRegions}
+                                eraserMode={eraserMode}
+                                eraserSize={eraserSize}
+                                showSurveyPanel={showSurveyPanel}
+                                layerVisibility={annotationLayerVisibility}
+                              />
+                            )}
+                            {/* Space Region Dimming Overlay */}
+                            {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (
+                              <SpaceRegionOverlay
+                                pageNumber={pageNumber}
+                                regions={pageRegions}
+                                width={pageSizes[pageNumber]?.width || 0}
+                                height={pageSizes[pageNumber]?.height || 0}
+                                scale={scale}
+                              />
+                            )}
+                            {/* Region Selection Overlay for this specific page */}
+                            {showRegionSelection && regionSelectionPage === pageNumber && (
+                              <div style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: `${(pageSizes[pageNumber]?.width || 0) * scale}px`,
+                                height: `${(pageSizes[pageNumber]?.height || 0) * scale}px`,
+                                pointerEvents: 'none',
+                                zIndex: 1000
+                              }}>
+                                <div id="region-selection-target" style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  width: '100%',
+                                  height: '100%'
+                                }} />
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          /* Lightweight placeholder for unmounted pages */
+                          <div style={{
+                            width: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * 0.7 * scale}px` : '595px',
+                            height: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * scale}px` : '800px',
+                            background: '#f5f5f5',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#999',
+                            fontSize: '14px'
+                          }}>
+                            Page {pageNumber}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }) : (
+                  <div style={{
+                    padding: '40px',
+                    textAlign: 'center',
+                    color: '#999',
+                    fontSize: '14px'
+                  }}>
+                    {numPages === 0 ? 'No pages to display' : 'No pages match the current filter'}
+                  </div>
+                )
+              ) : (
+                shouldShowPage(pageNum) && (() => {
+                  const pageRegions = getPageRegions(pageNum);
+                  return (
+                    <div
+                      style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <div style={{
+                        position: 'relative',
+                        transform: getPageTransform(pageNum),
+                        transformOrigin: 'center center',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+                      }}>
+                        <PDFPageCanvas
+                          page={pageObjects[pageNum]}
+                          scale={scale}
+                          onFinishRender={() => {
+                            setRenderedPages(prev => new Set([...prev, pageNum]));
+                          }}
+                        />
+                        {pageSizes[pageNum] && pageObjects[pageNum] && (
+                          <TextLayer
+                            pageNumber={pageNum}
+                            page={pageObjects[pageNum]}
+                            scale={scale}
+                            width={pageSizes[pageNum].width}
+                            height={pageSizes[pageNum].height}
+                            onTextSelected={handleTextSelected}
+                            isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
+                          />
+                        )}
+                        {/* Search Highlight Layer */}
+                        {pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
+                          <SearchHighlightLayer
+                            pageNumber={pageNum}
+                            width={pageSizes[pageNum].width}
+                            height={pageSizes[pageNum].height}
+                            scale={scale}
+                            highlights={searchResultsByPage[pageNum]}
+                            activeMatchId={currentMatch?.id}
+                            isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNum}
+                          />
+                        )}
+                        {pageSizes[pageNum] && (
+                          <PageAnnotationLayer
+                            pageNumber={pageNum}
+                            width={pageSizes[pageNum].width}
+                            height={pageSizes[pageNum].height}
+                            scale={scale}
+                            tool={activeTool}
+                            strokeColor={strokeColor}
+                            strokeWidth={Number(strokeWidth) || 3}
+                            annotations={annotationsByPage[pageNum]}
+                            onSaveAnnotations={handleSaveAnnotations}
+                            newHighlights={newHighlightsByPage[pageNum]}
+                            highlightsToRemove={highlightsToRemoveByPage[pageNum]}
+                            onHighlightCreated={handleHighlightCreated}
+                            onHighlightDeleted={handleHighlightDeleted}
+                            onHighlightClicked={handleHighlightClicked}
+                            selectedSpaceId={annotationSpaceId}
+                            selectedModuleId={selectedModuleId}
+                            selectedCategoryId={selectedCategoryId}
+                            activeRegions={pageRegions}
+                            eraserMode={eraserMode}
+                            eraserSize={eraserSize}
+                            showSurveyPanel={showSurveyPanel}
+                            layerVisibility={annotationLayerVisibility}
+                          />
+                        )}
+                        {/* Space Region Dimming Overlay */}
+                        {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNum) && (
+                          <SpaceRegionOverlay
+                            pageNumber={pageNum}
+                            regions={pageRegions}
+                            width={pageSizes[pageNum]?.width || 0}
+                            height={pageSizes[pageNum]?.height || 0}
+                            scale={scale}
+                          />
+                        )}
+                        {/* Region Selection Overlay for this specific page */}
+                        {showRegionSelection && regionSelectionPage === pageNum && (
+                          <div style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: `${(pageSizes[pageNum]?.width || 0) * scale}px`,
+                            height: `${(pageSizes[pageNum]?.height || 0) * scale}px`,
+                            pointerEvents: 'none',
+                            zIndex: 1000
+                          }}>
+                            <div id="region-selection-target" style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              height: '100%'
+                            }} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          </div>
+        </div>
 
-                              // Find the template that contains this module
-                              const template = appTemplates.find(t => t.id === module.templateId);
+        {/* Secondary Sub-Toolbar (Drawboard Style) */}
+        {activeCategoryDropdown && (
+          <div
+            style={{
+              width: '100%',
+              height: '52px',
+              background: 'transparent',
+              borderBottom: '1px solid #3a3a3a',
+              borderTop: '1px solid #3a3a3a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              zIndex: 10,
+              boxSizing: 'border-box'
+            }}
+          >
+            {activeCategoryDropdown === 'draw' && (
+              <>
+                {[
+                  { id: 'pen', label: 'Pen', iconName: 'pen' },
+                  { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
+                  { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
+                ].map(t => (
+                  <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <button
+                      data-eraser-button={t.id === 'eraser' ? 'true' : undefined}
+                      onClick={() => {
+                        if (t.id === 'eraser') {
+                          if (activeTool === 'eraser') {
+                            // If eraser is already active, toggle the menu
+                            setShowEraserMenu(!showEraserMenu);
+                          } else {
+                            // If eraser is not active, set it as active and open the menu
+                            setActiveTool(t.id);
+                            setShowEraserMenu(true);
+                          }
+                        } else {
+                          setActiveTool(t.id);
+                          if (t.id !== 'eraser') setShowEraserMenu(false);
+                        }
+                      }}
+                      className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                      style={{
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '6px',
+                        gap: '4px',
+                        minWidth: '40px',
+                        width: '40px'
+                      }}
+                      title={t.label}
+                    >
+                      <Icon name={t.iconName} size={20} />
+                      {t.id === 'eraser' && activeTool === 'eraser' && (
+                        <div
+                          data-eraser-button="true"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowEraserMenu(!showEraserMenu);
+                          }}
+                          style={{
+                            position: 'absolute',
+                            left: '50%',
+                            top: '50%',
+                            transform: 'translate(12px, -50%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '2px',
+                            pointerEvents: 'auto'
+                          }}
+                        >
+                          <Icon name="chevronUp" size={12} />
+                        </div>
+                      )}
+                    </button>
 
-                              if (!template) {
-                                console.error('Template not found for module:', module);
-                                alert('Template not found. Please try again.');
+                    {/* Eraser Mode Popup specific to the Eraser tool in sub-toolbar */}
+                    {t.id === 'eraser' && activeTool === 'eraser' && showEraserMenu && (
+                      <div
+                        ref={eraserMenuRef}
+                        style={{
+                          position: 'absolute',
+                          bottom: '100%',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          marginBottom: '6px',
+                          background: '#1e1e1e',
+                          border: '1px solid #333',
+                          borderRadius: '6px',
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                          zIndex: 1000,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          padding: '4px',
+                          minWidth: '140px'
+                        }}
+                      >
+                        <div style={{
+                          padding: '4px 8px',
+                          fontSize: '10px',
+                          color: '#888',
+                          textTransform: 'uppercase',
+                          fontWeight: 600,
+                          borderBottom: '1px solid #333',
+                          marginBottom: '4px'
+                        }}>
+                          Eraser Type
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEraserMode('partial');
+                            setShowEraserMenu(false);
+                          }}
+                          className={`btn ${eraserMode === 'partial' ? 'btn-active' : 'btn-ghost'}`}
+                          style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
+                        >
+                          Partial Eraser
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEraserMode('entire');
+                            setShowEraserMenu(false);
+                          }}
+                          className={`btn ${eraserMode === 'entire' ? 'btn-active' : 'btn-ghost'}`}
+                          style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
+                        >
+                          Entire Eraser
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
+
+            {activeCategoryDropdown === 'shape' && (
+              <>
+                {[
+                  { id: 'rect', label: 'Rectangle', iconName: 'rect' },
+                  { id: 'ellipse', label: 'Ellipse', iconName: 'ellipse' },
+                  { id: 'line', label: 'Line', iconName: 'line' },
+                  { id: 'arrow', label: 'Arrow', iconName: 'arrow' }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveTool(t.id)}
+                    className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '6px',
+                      gap: '4px',
+                      minWidth: '40px'
+                    }}
+                    title={t.label}
+                  >
+                    <Icon name={t.iconName} size={20} />
+                  </button>
+                ))}
+              </>
+            )}
+
+            {activeCategoryDropdown === 'review' && (
+              <>
+                {[
+                  { id: 'text', label: 'Text', iconName: 'text' },
+                  { id: 'note', label: 'Note', iconName: 'note' },
+                  { id: 'underline', label: 'Underline', iconName: 'underline' },
+                  { id: 'strikeout', label: 'Strikeout', iconName: 'strikeout' },
+                  { id: 'squiggly', label: 'Squiggly', iconName: 'squiggly' }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveTool(t.id)}
+                    className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '6px',
+                      gap: '4px',
+                      minWidth: '40px'
+                    }}
+                    title={t.label}
+                  >
+                    <Icon name={t.iconName} size={20} />
+                  </button>
+                ))}
+              </>
+            )}
+
+            {activeCategoryDropdown === 'survey' && (
+              <button
+                onClick={() => setActiveTool('highlight')}
+                className={`btn ${activeTool === 'highlight' ? 'btn-active' : 'btn-ghost'}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '6px',
+                  gap: '4px',
+                  minWidth: '40px'
+                }}
+                title="Highlight Area"
+              >
+                <Icon name="highlighter" size={20} />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Annotation Toolbar Footer */}
+        <div
+          ref={bottomToolbarRef}
+          style={{
+            padding: '11px 20px 12px 20px',
+            background: 'transparent',
+            borderTop: '1px solid #444',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
+            fontSize: '14px',
+            fontFamily: FONT_FAMILY,
+            flexShrink: 0,
+            position: 'relative'
+          }}
+        >
+          {/* Left Spacer */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }} />
+
+          {/* Centered Annotation Tools */}
+          <div style={{ display: 'flex', alignItems: 'center', alignContent: 'center', gap: '6px', flexWrap: 'wrap', position: 'relative' }}>
+            {/* Top Level Tools: Pan & Select */}
+            {[
+              { id: 'pan', label: 'Pan', iconName: 'pan' },
+              { id: 'select', label: 'Select', iconName: 'cursor' }
+            ].map(t => (
+              <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <button
+                  onClick={() => {
+                    setActiveTool(t.id);
+                    setActiveCategoryDropdown(null);
+                  }}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+                  }}
+                  onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                  className={`btn btn-icon ${activeTool === t.id ? 'btn-active' : ''}`}
+                >
+                  <Icon name={t.iconName} size={16} />
+                </button>
+              </div>
+            ))}
+
+            <div style={{ width: '1px', height: '24px', background: 'rgb(85, 85, 85)', margin: '0 2px' }} />
+
+            {/* Draw Category */}
+            {/* Draw Category Button */}
+            {/* Draw Category Button */}
+            <button
+              onClick={() => {
+                const isActive = activeCategoryDropdown === 'draw';
+                setActiveCategoryDropdown(isActive ? null : 'draw');
+                if (!isActive) {
+                  if (!['pen', 'highlighter', 'eraser'].includes(activeTool)) {
+                    setActiveTool(lastDrawTool);
+                  }
+                }
+              }}
+              className={`btn btn-md ${activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'eraser'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+              title="Draw"
+            >
+              <Icon name="pen" size={22} />
+            </button>
+
+            {/* Shape Category */}
+            {/* Shape Category Button */}
+            {/* Shape Category Button */}
+            <button
+              onClick={() => {
+                const isActive = activeCategoryDropdown === 'shape';
+                setActiveCategoryDropdown(isActive ? null : 'shape');
+                if (!isActive) {
+                  if (!['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
+                    setActiveTool(lastShapeTool);
+                  }
+                }
+              }}
+              className={`btn btn-md ${activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+              title="Shape"
+            >
+              <Icon name="rect" size={16} />
+            </button>
+
+            {/* Review Category */}
+            {/* Review Category Button */}
+            {/* Review Category Button */}
+            <button
+              onClick={() => {
+                const isActive = activeCategoryDropdown === 'review';
+                setActiveCategoryDropdown(isActive ? null : 'review');
+                if (!isActive) {
+                  if (!['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
+                    setActiveTool(lastReviewTool);
+                  }
+                }
+              }}
+              className={`btn btn-md ${activeCategoryDropdown === 'review' || ['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+              title="Review"
+            >
+              <Icon name="text" size={16} />
+            </button>
+
+            {/* Survey Category Button (Conditional) */}
+            {showSurveyPanel && (
+              <button
+                onClick={() => {
+                  const isActive = activeCategoryDropdown === 'survey';
+                  setActiveCategoryDropdown(isActive ? null : 'survey');
+                  if (!isActive) {
+                    setActiveTool('highlight');
+                  }
+                }}
+                className={`btn btn-md ${activeCategoryDropdown === 'survey' || activeTool === 'highlight' ? 'btn-active' : 'btn-default'}`}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+                title="Survey"
+              >
+                <Icon name="highlighter" size={16} />
+              </button>
+            )}
+
+
+
+            <div style={{ width: '1px', height: '24px', background: '#555' }} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+              <button
+                onClick={() => setShowAnnotationColorPicker(!showAnnotationColorPicker)}
+                className="btn btn-default"
+                style={{
+                  width: '32px',
+                  height: '28px',
+                  padding: 0,
+                  borderRadius: '4px',
+                  border: '1px solid transparent',
+                  background: strokeColor,
+                  opacity: strokeOpacity / 100,
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}
+                title="Color"
+              />
+
+              {showAnnotationColorPicker && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: '50%',
+                  marginBottom: '10px',
+                  transform: 'translate(-50%, 0)',
+                  zIndex: 2000
+                }}>
+                  <CompactColorPicker
+                    color={strokeColor}
+                    opacity={strokeOpacity / 100}
+                    onChange={(hex, alpha) => {
+                      handleStrokeColorChange(hex);
+                      handleStrokeOpacityChange(Math.round(alpha * 100));
+                    }}
+                    onClose={() => setShowAnnotationColorPicker(false)}
+                  />
+                </div>
+              )}
+
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                className="no-spin-buttons"
+                value={activeTool === 'eraser' ? eraserSizeInputValue : strokeWidthInputValue}
+                onChange={activeTool === 'eraser' ? handleEraserSizeInputChange : handleStrokeWidthInputChange}
+                onFocus={() => activeTool === 'eraser' ? setIsEraserSizeFocused(true) : setIsStrokeWidthFocused(true)}
+                onBlur={activeTool === 'eraser' ? handleEraserSizeInputBlur : handleStrokeWidthInputBlur}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.target.blur();
+                  }
+                }}
+                style={{
+                  width: "40px",
+                  padding: "6px 4px",
+                  background: "#444",
+                  color: "#ddd",
+                  border: "1px solid transparent",
+                  borderRadius: "5px",
+                  fontSize: "13px",
+                  fontFamily: FONT_FAMILY,
+                  textAlign: "center"
+                }}
+                title="Width"
+              />
+            </div>
+          </div>
+
+          {/* Right Section: Zoom Controls */}
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={zoomOut}
+              className="btn btn-default btn-icon"
+            >
+              <Icon name="minus" size={18} />
+            </button>
+
+            <div
+              onClick={() => zoomInputRef.current?.focus()}
+              style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '48px',
+                height: '23px',
+                background: '#444',
+                border: '1px solid #555',
+                borderRadius: '5px',
+                padding: '0 4px',
+                boxSizing: 'border-box',
+                cursor: 'text'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ display: 'inline-grid', alignItems: 'center' }}>
+                  <span style={{
+                    gridArea: '1/1',
+                    visibility: 'hidden',
+                    fontSize: '13px',
+                    fontFamily: FONT_FAMILY,
+                    fontWeight: '500',
+                    letterSpacing: '-0.2px',
+                    whiteSpace: 'pre',
+                    padding: '0 1px'
+                  }}>
+                    {zoomInputValue || ' '}
+                  </span>
+                  <input
+                    ref={zoomInputRef}
+                    type="text"
+                    data-page-number-input
+                    value={zoomInputValue}
+                    onChange={handleZoomInputChange}
+                    onKeyDown={handleZoomInputKeyDown}
+                    onBlur={handleZoomInputBlur}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    aria-label="Zoom percentage"
+                    style={{
+                      gridArea: '1/1',
+                      width: '100%',
+                      background: 'transparent',
+                      color: '#ddd',
+                      border: 'none',
+                      padding: 0,
+                      margin: 0,
+                      fontSize: '13px',
+                      fontFamily: FONT_FAMILY,
+                      fontWeight: '500',
+                      letterSpacing: '-0.2px',
+                      textAlign: 'center',
+                      outline: 'none',
+                      minWidth: '1ch'
+                    }}
+                  />
+                </div>
+                <span style={{
+                  color: '#999',
+                  fontSize: '12px',
+                  fontFamily: FONT_FAMILY,
+                  fontWeight: '400',
+                  marginLeft: '1px',
+                  pointerEvents: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  height: '100%'
+                }}>
+                  %
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={zoomIn}
+              className="btn btn-default btn-icon"
+            >
+              <Icon name="plus" size={18} />
+            </button>
+
+            <button
+              onClick={resetZoom}
+              className="btn btn-default btn-sm"
+              style={{ fontSize: '13px', padding: '6px 10px' }}
+            >
+              Reset
+            </button>
+
+            <div
+              ref={zoomMenuRef}
+              style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+            >
+              <button
+                onClick={toggleZoomMenu}
+                className="btn btn-default btn-sm"
+                aria-haspopup="listbox"
+                aria-expanded={isZoomMenuOpen}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  whiteSpace: 'nowrap',
+                  fontSize: '13px',
+                  padding: '6px 10px'
+                }}
+              >
+                <span>{zoomDropdownLabel}</span>
+                <Icon name={isZoomMenuOpen ? 'chevronUp' : 'chevronDown'} size={14} />
+              </button>
+
+              {isZoomMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    right: 0,
+                    marginBottom: '6px',
+                    background: '#2b2b2b',
+                    border: '1px solid transparent',
+                    borderRadius: '10px',
+                    boxShadow: '0 18px 36px rgba(0,0,0,0.45)',
+                    minWidth: '220px',
+                    zIndex: 2000,
+                    padding: '6px 0'
+                  }}
+                >
+                  {ZOOM_MODE_OPTIONS.map((option) => {
+                    const isActive = option.id === zoomMode;
+                    return (
+                      <button
+                        key={option.id}
+                        onClick={() => handleZoomModeSelect(option.id)}
+                        className="btn btn-ghost"
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-start',
+                          padding: '10px 14px',
+                          background: isActive ? '#3a3a3a' : 'transparent',
+                          border: 'none',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          gap: '2px'
+                        }}
+                      >
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#e0e0e0' }}>
+                          {option.label}
+                          {option.id === ZOOM_MODES.MANUAL && (
+                            <span style={{ marginLeft: '6px', fontWeight: 400, color: '#9a9a9a' }}>
+                              {Math.round((manualZoomScale || 1) * 100)}%
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#9a9a9a' }}>
+                          {option.description}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* View Mode Toggle */}
+            <button
+              onClick={toggleScrollMode}
+              className="btn btn-default btn-sm"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                justifyContent: 'center',
+                paddingLeft: '10px',
+                paddingRight: '10px',
+                position: 'absolute',
+                left: '8px'
+              }}
+            >
+              <Icon name={scrollMode === 'continuous' ? 'pages' : 'pageSingle'} size={16} />
+              {scrollMode === 'continuous' ? 'Continuous' : 'Single Page'}
+            </button>
+
+            {/* Page Navigation */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              position: 'absolute',
+              left: '114px'
+            }}>
+              <button
+                onClick={goToPreviousPage}
+                disabled={pageNum <= 1}
+                className="btn btn-default btn-icon-sm"
+              >
+                <Icon name="chevronLeft" size={16} />
+              </button>
+
+              <input
+                ref={pageInputRef}
+                type="text"
+                data-page-number-input
+                value={pageInputValue}
+                onChange={handlePageInputChange}
+                onKeyDown={handlePageInputKeyDown}
+                onBlur={handlePageInputBlur}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                aria-label="Current page"
+                style={{
+                  width: '48px',
+                  padding: '3px 8px',
+                  background: '#444',
+                  color: '#ddd',
+                  border: '1px solid #555',
+                  borderRadius: '5px',
+                  fontSize: '13px',
+                  fontFamily: FONT_FAMILY,
+                  fontWeight: '500',
+                  letterSpacing: '-0.2px',
+                  textAlign: 'center'
+                }}
+              />
+
+              <span style={{
+                color: '#999',
+                fontSize: '13px',
+                fontFamily: FONT_FAMILY,
+                fontWeight: '400'
+              }}>
+                / {numPages}
+              </span>
+
+              <button
+                onClick={goToNextPage}
+                disabled={pageNum >= numPages}
+                className="btn btn-default btn-icon-sm"
+              >
+                <Icon name="chevronRight" size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Status Bar with improved typography */}
+        <div
+          ref={statusBarRef}
+          style={{
+            padding: '8px 20px',
+            background: '#333',
+            borderTop: '1px solid #444',
+            fontSize: '12px',
+            color: '#999',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '20px',
+            fontFamily: FONT_FAMILY,
+            fontWeight: '400',
+            letterSpacing: '-0.1px'
+          }}>
+          <span>
+            {scrollMode === 'continuous'
+              ? 'Scroll to navigate • Ctrl+Scroll to zoom • Drag to pan'
+              : 'Use arrow keys • Ctrl+Scroll to zoom • Drag to pan'}
+          </span>
+          {scrollMode === 'continuous' && (
+            <>
+              <span style={{
+                marginLeft: 'auto',
+                color: '#aaa',
+                fontFamily: FONT_FAMILY,
+                fontWeight: '500'
+              }}>
+                {renderedPages.size} of {numPages} pages rendered
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Space Selection Modal */}
+        {showSpaceSelection && (
+          <>
+            <div
+              onClick={() => setShowSpaceSelection(false)}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.5)',
+                zIndex: 10000,
+                animation: 'fadeIn 0.2s ease-out',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  background: '#2b2b2b',
+                  border: '1px solid #444',
+                  borderRadius: '8px',
+                  padding: '24px',
+                  width: '500px',
+                  maxWidth: '90vw',
+                  maxHeight: '80vh',
+                  overflow: 'auto',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                  animation: 'fadeIn 0.2s ease-out'
+                }}
+              >
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '20px'
+                }}>
+                  <h2 style={{
+                    margin: 0,
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    color: '#fff',
+                    fontFamily: FONT_FAMILY
+                  }}>
+                    Select Space
+                  </h2>
+                  <button
+                    onClick={() => setShowSpaceSelection(false)}
+                    className="btn btn-icon btn-icon-sm"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#999'
+                    }}
+                  >
+                    <Icon name="close" size={18} />
+                  </button>
+                </div>
+
+                {appTemplates.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                    <p>No templates available. Please create a template first.</p>
+                  </div>
+                ) : (() => {
+                  // Aggregate all spaces from all templates
+                  const allSpaces = [];
+                  appTemplates.forEach(template => {
+                    (template.spaces || []).forEach(space => {
+                      allSpaces.push({ ...space, templateId: template.id, templateName: template.name });
+                    });
+                  });
+
+                  if (allSpaces.length === 0) {
+                    return (
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                        <p>No spaces available in any template.</p>
+                      </div>
+                    );
+                  }
+
+                  // Determine source module ID if we're copying items
+                  const selectedHighlightIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
+                  let sourceModuleId = null;
+                  if (selectedHighlightIds.length > 0) {
+                    const firstHighlight = highlightAnnotations[selectedHighlightIds[0]];
+                    const highlightModuleId = firstHighlight?.moduleId || firstHighlight?.spaceId; // Support legacy spaceId
+                    sourceModuleId = highlightModuleId || selectedModuleId;
+                  } else {
+                    sourceModuleId = selectedModuleId;
+                  }
+
+                  // Filter out the source module from available modules (only if we have a source module)
+                  const availableModules = sourceModuleId
+                    ? allSpaces.filter(module => module.id !== sourceModuleId)
+                    : allSpaces;
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {availableModules.map(module => (
+                        <button
+                          key={`${module.templateId}-${module.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+
+                            // Find the template that contains this module
+                            const template = appTemplates.find(t => t.id === module.templateId);
+
+                            if (!template) {
+                              console.error('Template not found for module:', module);
+                              alert('Template not found. Please try again.');
+                              return;
+                            }
+
+                            // Check if we're copying categories (when categorySelectModeActive is true)
+                            if (categorySelectModeActive) {
+                              const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
+                              if (selectedCatIds.length === 0) {
+                                alert('Please select at least one category to copy.');
                                 return;
                               }
 
-                              // Check if we're copying categories (when categorySelectModeActive is true)
-                              if (categorySelectModeActive) {
-                                const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
-                                if (selectedCatIds.length === 0) {
-                                  alert('Please select at least one category to copy.');
+                              // Get all highlights in the selected categories
+                              const highlightsToCopy = [];
+                              selectedCatIds.forEach(catId => {
+                                const highlightsInCategory = Object.entries(highlightAnnotations).filter(([_, h]) => {
+                                  const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                  return hModuleId === selectedModuleId && h.categoryId === catId;
+                                }
+                                );
+                                highlightsInCategory.forEach(([highlightId, highlight]) => {
+                                  highlightsToCopy.push(highlightId);
+                                });
+                              });
+
+                              if (highlightsToCopy.length === 0) {
+                                alert('Selected categories have no items to copy.');
+                                return;
+                              }
+
+                              // Use the same logic as item copying, but for all items in selected categories
+                              const itemIdsToCopy = [];
+                              const sourceTemplate = selectedTemplate || appTemplates.find(t => {
+                                const allModules = (t.modules || t.spaces) || [];
+                                return allModules.some(m => m.id === selectedModuleId);
+                              });
+
+                              if (!sourceTemplate) {
+                                alert('Unable to find source template. Please try again.');
+                                return;
+                              }
+
+                              highlightsToCopy.forEach(highlightId => {
+                                const highlight = highlightAnnotations[highlightId];
+                                if (!highlight || !highlight.categoryId) return;
+
+                                const categoryName = getCategoryName(sourceTemplate, highlight.spaceId, highlight.categoryId);
+                                const matchingItem = Object.values(items).find(item =>
+                                  item.name === highlight.name &&
+                                  item.itemType === categoryName
+                                );
+
+                                if (matchingItem && matchingItem.itemId && !itemIdsToCopy.includes(matchingItem.itemId)) {
+                                  itemIdsToCopy.push(matchingItem.itemId);
+                                }
+                              });
+
+                              if (itemIdsToCopy.length > 0) {
+                                // Check if categories need to be created
+                                const itemsToCheck = itemIdsToCopy.map(itemId => items[itemId]).filter(Boolean);
+                                const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
+
+                                const missingCategories = itemTypes.filter(itemType =>
+                                  !categoryExists(template, module.id, itemType)
+                                );
+
+                                if (missingCategories.length > 0) {
+                                  alert(`Some categories don't exist in the destination module. Please create them first: ${missingCategories.join(', ')}`);
                                   return;
                                 }
 
-                                // Get all highlights in the selected categories
-                                const highlightsToCopy = [];
-                                selectedCatIds.forEach(catId => {
-                                  const highlightsInCategory = Object.entries(highlightAnnotations).filter(([_, h]) => {
-                                    const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
-                                    return hModuleId === selectedModuleId && h.categoryId === catId;
-                                  }
-                                  );
-                                  highlightsInCategory.forEach(([highlightId, highlight]) => {
-                                    highlightsToCopy.push(highlightId);
+                                // Copy items to destination module
+                                const result = transferItems(
+                                  itemIdsToCopy,
+                                  selectedModuleId,
+                                  module.id,
+                                  template,
+                                  items,
+                                  annotations
+                                );
+
+                                setItems(result.newItems);
+                                setAnnotations(result.updatedAnnotations);
+
+                                // Create highlight entries for visual display
+                                const newHighlights = {};
+                                itemIdsToCopy.forEach(itemId => {
+                                  const item = result.newItems[itemId];
+                                  if (!item) return;
+
+                                  const destAnnotation = Object.values(result.updatedAnnotations).find(ann => {
+                                    const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
+                                    return ann.itemId === itemId && annModuleId === module.id;
                                   });
-                                });
 
-                                if (highlightsToCopy.length === 0) {
-                                  alert('Selected categories have no items to copy.');
-                                  return;
-                                }
+                                  const sourceHighlightId = highlightsToCopy.find(id => {
+                                    const h = highlightAnnotations[id];
+                                    return h && h.name === item.name;
+                                  });
+                                  const sourceHighlight = sourceHighlightId ? highlightAnnotations[sourceHighlightId] : null;
 
-                                // Use the same logic as item copying, but for all items in selected categories
-                                const itemIdsToCopy = [];
-                                const sourceTemplate = selectedTemplate || appTemplates.find(t => {
-                                  const allModules = (t.modules || t.spaces) || [];
-                                  return allModules.some(m => m.id === selectedModuleId);
-                                });
+                                  const sourceAnnotation = Object.values(annotations).find(a => {
+                                    const aModuleId = a.moduleId || a.spaceId; // Support legacy spaceId
+                                    return a.itemId === itemId && aModuleId === selectedModuleId;
+                                  });
 
-                                if (!sourceTemplate) {
-                                  alert('Unable to find source template. Please try again.');
-                                  return;
-                                }
+                                  const destModule = ((template.modules || template.spaces) || []).find(m => m.id === module.id);
+                                  const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
 
-                                highlightsToCopy.forEach(highlightId => {
-                                  const highlight = highlightAnnotations[highlightId];
-                                  if (!highlight || !highlight.categoryId) return;
+                                  let bounds = null;
+                                  if (destAnnotation?.pdfCoordinates) {
+                                    bounds = destAnnotation.pdfCoordinates;
+                                  } else if (sourceAnnotation?.pdfCoordinates) {
+                                    bounds = sourceAnnotation.pdfCoordinates;
+                                  } else if (sourceHighlight?.bounds) {
+                                    bounds = sourceHighlight.bounds;
+                                  }
 
-                                  const categoryName = getCategoryName(sourceTemplate, highlight.spaceId, highlight.categoryId);
-                                  const matchingItem = Object.values(items).find(item =>
-                                    item.name === highlight.name &&
-                                    item.itemType === categoryName
-                                  );
+                                  if (bounds) {
+                                    const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    const pageNum = sourceHighlight?.pageNumber || destAnnotation?.pageNumber || 1;
 
-                                  if (matchingItem && matchingItem.itemId && !itemIdsToCopy.includes(matchingItem.itemId)) {
-                                    itemIdsToCopy.push(matchingItem.itemId);
+                                    newHighlights[highlightId] = {
+                                      id: highlightId,
+                                      pageNumber: pageNum,
+                                      bounds: bounds,
+                                      moduleId: module.id,
+                                      categoryId: destCategory?.id || null,
+                                      name: item.name || sourceHighlight?.name || 'Untitled Item',
+                                      checklistResponses: {}
+                                    };
+
+                                    setNewHighlightsByPage(prev => ({
+                                      ...prev,
+                                      [pageNum]: [
+                                        ...(prev[pageNum] || []),
+                                        {
+                                          ...bounds,
+                                          needsBIC: true,
+                                          highlightId: highlightId
+                                        }
+                                      ]
+                                    }));
                                   }
                                 });
 
-                                if (itemIdsToCopy.length > 0) {
-                                  // Check if categories need to be created
-                                  const itemsToCheck = itemIdsToCopy.map(itemId => items[itemId]).filter(Boolean);
-                                  const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
+                                if (Object.keys(newHighlights).length > 0) {
+                                  setHighlightAnnotations(prev => ({
+                                    ...prev,
+                                    ...newHighlights
+                                  }));
+                                }
 
-                                  const missingCategories = itemTypes.filter(itemType =>
-                                    !categoryExists(template, module.id, itemType)
+                                // Clear selection and close modals
+                                setSelectedCategories({});
+                                setCategorySelectModeActive(false);
+                                setCategorySelectModeForCategory(null);
+                                setShowSpaceSelection(false);
+
+                                // Switch to the destination module
+                                setSelectedTemplate(template);
+                                setSelectedModuleId(module.id);
+                                setShowSurveyPanel(true);
+
+                                return;
+                              } else {
+                                // Fall back to legacy highlight copying
+                                const legacyHighlights = highlightsToCopy
+                                  .map(id => highlightAnnotations[id])
+                                  .filter(Boolean);
+
+                                if (legacyHighlights.length === 0) {
+                                  alert('No valid items found to copy.');
+                                  return;
+                                }
+
+                                const destModule = ((template.modules || template.spaces) || []).find(m => m.id === module.id);
+                                const missingCategories = [];
+                                legacyHighlights.forEach(h => {
+                                  const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                  const sourceCategoryName = getCategoryName(sourceTemplate, hModuleId, h.categoryId);
+                                  const destCategory = destModule?.categories?.find(c => c.name === sourceCategoryName);
+                                  if (!destCategory && sourceCategoryName && !missingCategories.includes(sourceCategoryName)) {
+                                    missingCategories.push(sourceCategoryName);
+                                  }
+                                });
+
+                                if (missingCategories.length > 0) {
+                                  alert(`Cannot copy categories. The following categories don't exist in the destination module:\n\n${missingCategories.join(', ')}\n\nPlease create these categories in the destination module first.`);
+                                  return;
+                                }
+
+                                const newHighlights = {};
+                                legacyHighlights.forEach(h => {
+                                  const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                  const sourceCategoryName = getCategoryName(sourceTemplate, hModuleId, h.categoryId);
+                                  const destCategory = destModule?.categories?.find(c => c.name === sourceCategoryName);
+
+                                  const newId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                  newHighlights[newId] = {
+                                    ...h,
+                                    id: newId,
+                                    moduleId: module.id,
+                                    categoryId: destCategory?.id || null
+                                  };
+                                });
+
+                                setHighlightAnnotations(prev => ({
+                                  ...prev,
+                                  ...newHighlights
+                                }));
+
+                                setSelectedCategories({});
+                                setCategorySelectModeActive(false);
+                                setCategorySelectModeForCategory(null);
+                                setShowSpaceSelection(false);
+
+                                setSelectedTemplate(template);
+                                setSelectedModuleId(module.id);
+                                setShowSurveyPanel(true);
+
+                                return;
+                              }
+                            }
+
+                            // Check if we're copying items (when copiedItemSelection has items)
+                            console.log('Copy to Spaces - Selected highlight IDs:', selectedHighlightIds);
+                            console.log('Copy to Spaces - Highlight annotations:', highlightAnnotations);
+
+                            if (selectedHighlightIds.length > 0) {
+                              // We're copying items - get the itemIds from the selected highlights
+                              const itemIdsToCopy = [];
+
+                              if (!sourceSpaceId) {
+                                console.error('No source space ID found');
+                                alert('Unable to determine source space. Please try again.');
+                                return;
+                              }
+
+                              // Find the source template (the one containing the source space)
+                              const sourceTemplate = selectedTemplate || appTemplates.find(t =>
+                                t.spaces?.some(s => s.id === sourceSpaceId)
+                              );
+
+                              if (!sourceTemplate) {
+                                console.error('Source template not found for space:', sourceSpaceId);
+                                alert('Unable to find source template. Please try again.');
+                                return;
+                              }
+
+                              console.log('Source space ID:', sourceSpaceId);
+                              console.log('Source template:', sourceTemplate);
+                              console.log('Destination space ID:', space.id);
+                              console.log('Destination template:', template);
+                              console.log('All items:', items);
+                              console.log('All annotations:', annotations);
+
+                              selectedHighlightIds.forEach(highlightId => {
+                                const highlight = highlightAnnotations[highlightId];
+                                console.log(`Processing highlight ${highlightId}:`, highlight);
+
+                                if (!highlight) {
+                                  console.warn(`Highlight ${highlightId} not found`);
+                                  return;
+                                }
+
+                                if (!highlight.categoryId) {
+                                  console.warn(`Highlight ${highlightId} has no categoryId`);
+                                  return;
+                                }
+
+                                // Find corresponding item by matching name and category (same logic as transfer)
+                                const categoryName = getCategoryName(sourceTemplate, highlight.spaceId, highlight.categoryId);
+                                console.log(`Category name for highlight ${highlightId}:`, categoryName);
+                                console.log(`Highlight name:`, highlight.name);
+
+                                // Find items that match name and category
+                                const matchingItem = Object.values(items).find(item =>
+                                  item.name === highlight.name &&
+                                  item.itemType === categoryName
+                                );
+
+                                console.log(`Matching item for highlight ${highlightId}:`, matchingItem);
+
+                                // Verify the item has an annotation in the same space
+                                if (matchingItem) {
+                                  // Try to find annotation - don't require displayType to be 'highlight'
+                                  const matchingAnnotation = Object.values(annotations).find(ann =>
+                                    ann.itemId === matchingItem.itemId &&
+                                    ann.spaceId === highlight.spaceId
                                   );
 
-                                  if (missingCategories.length > 0) {
-                                    alert(`Some categories don't exist in the destination module. Please create them first: ${missingCategories.join(', ')}`);
-                                    return;
-                                  }
+                                  console.log(`Matching annotation for item ${matchingItem.itemId}:`, matchingAnnotation);
 
-                                  // Copy items to destination module
+                                  if (matchingAnnotation && matchingItem.itemId) {
+                                    // Found corresponding item in new system
+                                    // Avoid duplicates
+                                    if (!itemIdsToCopy.includes(matchingItem.itemId)) {
+                                      console.log(`Adding item ${matchingItem.itemId} to copy list`);
+                                      itemIdsToCopy.push(matchingItem.itemId);
+                                    }
+                                  } else {
+                                    // No annotation found, but item exists - still copy it
+                                    // The item might not have an annotation yet, but we can still copy it
+                                    if (!itemIdsToCopy.includes(matchingItem.itemId)) {
+                                      console.log(`Adding item ${matchingItem.itemId} to copy list (no annotation)`);
+                                      itemIdsToCopy.push(matchingItem.itemId);
+                                    }
+                                  }
+                                } else {
+                                  console.warn(`No matching item found for highlight ${highlightId} with name "${highlight.name}" and category "${categoryName}"`);
+                                }
+                              });
+
+                              console.log('Items to copy:', itemIdsToCopy);
+
+                              if (itemIdsToCopy.length > 0) {
+                                // Check if categories need to be created
+                                const itemsToCheck = itemIdsToCopy.map(itemId => items[itemId]).filter(Boolean);
+                                const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
+
+                                console.log('Item types to copy:', itemTypes);
+
+                                const missingCategories = itemTypes.filter(itemType =>
+                                  !categoryExists(template, space.id, itemType)
+                                );
+
+                                if (missingCategories.length > 0) {
+                                  // Need to create categories - show a message for now
+                                  alert(`Some categories don't exist in the destination space. Please create them first: ${missingCategories.join(', ')}`);
+                                  return;
+                                } else {
+                                  // Direct transfer - copy items to the destination space
+                                  console.log('Calling transferItems with:', {
+                                    itemIdsToCopy,
+                                    sourceSpaceId,
+                                    destSpaceId: space.id,
+                                    template
+                                  });
+
                                   const result = transferItems(
                                     itemIdsToCopy,
-                                    selectedModuleId,
-                                    module.id,
+                                    sourceSpaceId,
+                                    space.id,
                                     template,
                                     items,
                                     annotations
                                   );
 
+                                  console.log('Transfer result:', result);
+
+                                  // Update items and annotations
                                   setItems(result.newItems);
                                   setAnnotations(result.updatedAnnotations);
 
                                   // Create highlight entries for visual display
+                                  console.log('Creating highlight entries for', itemIdsToCopy.length, 'items');
                                   const newHighlights = {};
                                   itemIdsToCopy.forEach(itemId => {
                                     const item = result.newItems[itemId];
-                                    if (!item) return;
+                                    console.log('Processing item for highlight creation:', itemId, item);
+                                    if (!item) {
+                                      console.log('Item not found in result.newItems');
+                                      return;
+                                    }
 
-                                    const destAnnotation = Object.values(result.updatedAnnotations).find(ann => {
-                                      const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
-                                      return ann.itemId === itemId && annModuleId === module.id;
-                                    });
+                                    // Find the annotation we just created for this item in destination space
+                                    const destAnnotation = Object.values(result.updatedAnnotations).find(ann =>
+                                      ann.itemId === itemId && ann.spaceId === space.id
+                                    );
 
-                                    const sourceHighlightId = highlightsToCopy.find(id => {
+                                    console.log('Destination annotation:', destAnnotation);
+
+                                    // Find source annotation to get coordinates
+                                    const sourceAnnotation = Object.values(annotations).find(a =>
+                                      a.itemId === itemId && a.spaceId === sourceSpaceId
+                                    );
+                                    console.log('Source annotation:', sourceAnnotation);
+
+                                    // Find source highlight by matching the selected ID
+                                    const sourceHighlightId = selectedHighlightIds.find(id => {
                                       const h = highlightAnnotations[id];
                                       return h && h.name === item.name;
                                     });
                                     const sourceHighlight = sourceHighlightId ? highlightAnnotations[sourceHighlightId] : null;
 
-                                    const sourceAnnotation = Object.values(annotations).find(a => {
-                                      const aModuleId = a.moduleId || a.spaceId; // Support legacy spaceId
-                                      return a.itemId === itemId && aModuleId === selectedModuleId;
-                                    });
+                                    console.log('Source highlight:', sourceHighlight);
 
-                                    const destModule = ((template.modules || template.spaces) || []).find(m => m.id === module.id);
-                                    const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
+                                    // Find destination category ID
+                                    const destSpace = template.spaces.find(s => s.id === space.id);
+                                    const destCategory = destSpace?.categories?.find(c => c.name === item.itemType);
+                                    console.log('Destination category:', destCategory);
 
+                                    // Use destination annotation coordinates, or source annotation coordinates, or source highlight bounds
                                     let bounds = null;
                                     if (destAnnotation?.pdfCoordinates) {
                                       bounds = destAnnotation.pdfCoordinates;
@@ -14616,35 +14890,45 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       bounds = sourceHighlight.bounds;
                                     }
 
+                                    console.log('Bounds for highlight:', bounds);
+
                                     if (bounds) {
                                       const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                                       const pageNum = sourceHighlight?.pageNumber || destAnnotation?.pageNumber || 1;
 
+                                      // Create highlight WITHOUT BIC (starts blank in new space)
                                       newHighlights[highlightId] = {
                                         id: highlightId,
                                         pageNumber: pageNum,
                                         bounds: bounds,
-                                        moduleId: module.id,
+                                        spaceId: space.id,
                                         categoryId: destCategory?.id || null,
                                         name: item.name || sourceHighlight?.name || 'Untitled Item',
+                                        // Do NOT copy BIC properties - item starts blank in new space
                                         checklistResponses: {}
                                       };
+                                      console.log('Created highlight (no BIC):', newHighlights[highlightId]);
 
+                                      // Add to newHighlightsByPage as transparent with dashed outline (needs BIC)
                                       setNewHighlightsByPage(prev => ({
                                         ...prev,
                                         [pageNum]: [
                                           ...(prev[pageNum] || []),
                                           {
                                             ...bounds,
-                                            needsBIC: true,
-                                            highlightId: highlightId
+                                            needsBIC: true, // Flag to indicate it needs BIC assignment
+                                            highlightId: highlightId // Store ID for later reference
                                           }
                                         ]
                                       }));
+                                    } else {
+                                      console.log('No bounds available, skipping highlight creation');
                                     }
                                   });
 
+                                  // Add new highlights to highlightAnnotations
                                   if (Object.keys(newHighlights).length > 0) {
+                                    console.log('Adding', Object.keys(newHighlights).length, 'new highlights to highlightAnnotations');
                                     setHighlightAnnotations(prev => ({
                                       ...prev,
                                       ...newHighlights
@@ -14652,596 +14936,341 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   }
 
                                   // Clear selection and close modals
-                                  setSelectedCategories({});
-                                  setCategorySelectModeActive(false);
-                                  setCategorySelectModeForCategory(null);
-                                  setShowSpaceSelection(false);
-
-                                  // Switch to the destination module
-                                  setSelectedTemplate(template);
-                                  setSelectedModuleId(module.id);
-                                  setShowSurveyPanel(true);
-
-                                  return;
-                                } else {
-                                  // Fall back to legacy highlight copying
-                                  const legacyHighlights = highlightsToCopy
-                                    .map(id => highlightAnnotations[id])
-                                    .filter(Boolean);
-
-                                  if (legacyHighlights.length === 0) {
-                                    alert('No valid items found to copy.');
-                                    return;
-                                  }
-
-                                  const destModule = ((template.modules || template.spaces) || []).find(m => m.id === module.id);
-                                  const missingCategories = [];
-                                  legacyHighlights.forEach(h => {
-                                    const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
-                                    const sourceCategoryName = getCategoryName(sourceTemplate, hModuleId, h.categoryId);
-                                    const destCategory = destModule?.categories?.find(c => c.name === sourceCategoryName);
-                                    if (!destCategory && sourceCategoryName && !missingCategories.includes(sourceCategoryName)) {
-                                      missingCategories.push(sourceCategoryName);
-                                    }
-                                  });
-
-                                  if (missingCategories.length > 0) {
-                                    alert(`Cannot copy categories. The following categories don't exist in the destination module:\n\n${missingCategories.join(', ')}\n\nPlease create these categories in the destination module first.`);
-                                    return;
-                                  }
-
-                                  const newHighlights = {};
-                                  legacyHighlights.forEach(h => {
-                                    const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
-                                    const sourceCategoryName = getCategoryName(sourceTemplate, hModuleId, h.categoryId);
-                                    const destCategory = destModule?.categories?.find(c => c.name === sourceCategoryName);
-
-                                    const newId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                                    newHighlights[newId] = {
-                                      ...h,
-                                      id: newId,
-                                      moduleId: module.id,
-                                      categoryId: destCategory?.id || null
-                                    };
-                                  });
-
-                                  setHighlightAnnotations(prev => ({
-                                    ...prev,
-                                    ...newHighlights
-                                  }));
-
-                                  setSelectedCategories({});
-                                  setCategorySelectModeActive(false);
-                                  setCategorySelectModeForCategory(null);
-                                  setShowSpaceSelection(false);
-
-                                  setSelectedTemplate(template);
-                                  setSelectedModuleId(module.id);
-                                  setShowSurveyPanel(true);
-
-                                  return;
-                                }
-                              }
-
-                              // Check if we're copying items (when copiedItemSelection has items)
-                              console.log('Copy to Spaces - Selected highlight IDs:', selectedHighlightIds);
-                              console.log('Copy to Spaces - Highlight annotations:', highlightAnnotations);
-
-                              if (selectedHighlightIds.length > 0) {
-                                // We're copying items - get the itemIds from the selected highlights
-                                const itemIdsToCopy = [];
-
-                                if (!sourceSpaceId) {
-                                  console.error('No source space ID found');
-                                  alert('Unable to determine source space. Please try again.');
-                                  return;
-                                }
-
-                                // Find the source template (the one containing the source space)
-                                const sourceTemplate = selectedTemplate || appTemplates.find(t =>
-                                  t.spaces?.some(s => s.id === sourceSpaceId)
-                                );
-
-                                if (!sourceTemplate) {
-                                  console.error('Source template not found for space:', sourceSpaceId);
-                                  alert('Unable to find source template. Please try again.');
-                                  return;
-                                }
-
-                                console.log('Source space ID:', sourceSpaceId);
-                                console.log('Source template:', sourceTemplate);
-                                console.log('Destination space ID:', space.id);
-                                console.log('Destination template:', template);
-                                console.log('All items:', items);
-                                console.log('All annotations:', annotations);
-
-                                selectedHighlightIds.forEach(highlightId => {
-                                  const highlight = highlightAnnotations[highlightId];
-                                  console.log(`Processing highlight ${highlightId}:`, highlight);
-
-                                  if (!highlight) {
-                                    console.warn(`Highlight ${highlightId} not found`);
-                                    return;
-                                  }
-
-                                  if (!highlight.categoryId) {
-                                    console.warn(`Highlight ${highlightId} has no categoryId`);
-                                    return;
-                                  }
-
-                                  // Find corresponding item by matching name and category (same logic as transfer)
-                                  const categoryName = getCategoryName(sourceTemplate, highlight.spaceId, highlight.categoryId);
-                                  console.log(`Category name for highlight ${highlightId}:`, categoryName);
-                                  console.log(`Highlight name:`, highlight.name);
-
-                                  // Find items that match name and category
-                                  const matchingItem = Object.values(items).find(item =>
-                                    item.name === highlight.name &&
-                                    item.itemType === categoryName
-                                  );
-
-                                  console.log(`Matching item for highlight ${highlightId}:`, matchingItem);
-
-                                  // Verify the item has an annotation in the same space
-                                  if (matchingItem) {
-                                    // Try to find annotation - don't require displayType to be 'highlight'
-                                    const matchingAnnotation = Object.values(annotations).find(ann =>
-                                      ann.itemId === matchingItem.itemId &&
-                                      ann.spaceId === highlight.spaceId
-                                    );
-
-                                    console.log(`Matching annotation for item ${matchingItem.itemId}:`, matchingAnnotation);
-
-                                    if (matchingAnnotation && matchingItem.itemId) {
-                                      // Found corresponding item in new system
-                                      // Avoid duplicates
-                                      if (!itemIdsToCopy.includes(matchingItem.itemId)) {
-                                        console.log(`Adding item ${matchingItem.itemId} to copy list`);
-                                        itemIdsToCopy.push(matchingItem.itemId);
-                                      }
-                                    } else {
-                                      // No annotation found, but item exists - still copy it
-                                      // The item might not have an annotation yet, but we can still copy it
-                                      if (!itemIdsToCopy.includes(matchingItem.itemId)) {
-                                        console.log(`Adding item ${matchingItem.itemId} to copy list (no annotation)`);
-                                        itemIdsToCopy.push(matchingItem.itemId);
-                                      }
-                                    }
-                                  } else {
-                                    console.warn(`No matching item found for highlight ${highlightId} with name "${highlight.name}" and category "${categoryName}"`);
-                                  }
-                                });
-
-                                console.log('Items to copy:', itemIdsToCopy);
-
-                                if (itemIdsToCopy.length > 0) {
-                                  // Check if categories need to be created
-                                  const itemsToCheck = itemIdsToCopy.map(itemId => items[itemId]).filter(Boolean);
-                                  const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
-
-                                  console.log('Item types to copy:', itemTypes);
-
-                                  const missingCategories = itemTypes.filter(itemType =>
-                                    !categoryExists(template, space.id, itemType)
-                                  );
-
-                                  if (missingCategories.length > 0) {
-                                    // Need to create categories - show a message for now
-                                    alert(`Some categories don't exist in the destination space. Please create them first: ${missingCategories.join(', ')}`);
-                                    return;
-                                  } else {
-                                    // Direct transfer - copy items to the destination space
-                                    console.log('Calling transferItems with:', {
-                                      itemIdsToCopy,
-                                      sourceSpaceId,
-                                      destSpaceId: space.id,
-                                      template
-                                    });
-
-                                    const result = transferItems(
-                                      itemIdsToCopy,
-                                      sourceSpaceId,
-                                      space.id,
-                                      template,
-                                      items,
-                                      annotations
-                                    );
-
-                                    console.log('Transfer result:', result);
-
-                                    // Update items and annotations
-                                    setItems(result.newItems);
-                                    setAnnotations(result.updatedAnnotations);
-
-                                    // Create highlight entries for visual display
-                                    console.log('Creating highlight entries for', itemIdsToCopy.length, 'items');
-                                    const newHighlights = {};
-                                    itemIdsToCopy.forEach(itemId => {
-                                      const item = result.newItems[itemId];
-                                      console.log('Processing item for highlight creation:', itemId, item);
-                                      if (!item) {
-                                        console.log('Item not found in result.newItems');
-                                        return;
-                                      }
-
-                                      // Find the annotation we just created for this item in destination space
-                                      const destAnnotation = Object.values(result.updatedAnnotations).find(ann =>
-                                        ann.itemId === itemId && ann.spaceId === space.id
-                                      );
-
-                                      console.log('Destination annotation:', destAnnotation);
-
-                                      // Find source annotation to get coordinates
-                                      const sourceAnnotation = Object.values(annotations).find(a =>
-                                        a.itemId === itemId && a.spaceId === sourceSpaceId
-                                      );
-                                      console.log('Source annotation:', sourceAnnotation);
-
-                                      // Find source highlight by matching the selected ID
-                                      const sourceHighlightId = selectedHighlightIds.find(id => {
-                                        const h = highlightAnnotations[id];
-                                        return h && h.name === item.name;
-                                      });
-                                      const sourceHighlight = sourceHighlightId ? highlightAnnotations[sourceHighlightId] : null;
-
-                                      console.log('Source highlight:', sourceHighlight);
-
-                                      // Find destination category ID
-                                      const destSpace = template.spaces.find(s => s.id === space.id);
-                                      const destCategory = destSpace?.categories?.find(c => c.name === item.itemType);
-                                      console.log('Destination category:', destCategory);
-
-                                      // Use destination annotation coordinates, or source annotation coordinates, or source highlight bounds
-                                      let bounds = null;
-                                      if (destAnnotation?.pdfCoordinates) {
-                                        bounds = destAnnotation.pdfCoordinates;
-                                      } else if (sourceAnnotation?.pdfCoordinates) {
-                                        bounds = sourceAnnotation.pdfCoordinates;
-                                      } else if (sourceHighlight?.bounds) {
-                                        bounds = sourceHighlight.bounds;
-                                      }
-
-                                      console.log('Bounds for highlight:', bounds);
-
-                                      if (bounds) {
-                                        const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                                        const pageNum = sourceHighlight?.pageNumber || destAnnotation?.pageNumber || 1;
-
-                                        // Create highlight WITHOUT BIC (starts blank in new space)
-                                        newHighlights[highlightId] = {
-                                          id: highlightId,
-                                          pageNumber: pageNum,
-                                          bounds: bounds,
-                                          spaceId: space.id,
-                                          categoryId: destCategory?.id || null,
-                                          name: item.name || sourceHighlight?.name || 'Untitled Item',
-                                          // Do NOT copy BIC properties - item starts blank in new space
-                                          checklistResponses: {}
-                                        };
-                                        console.log('Created highlight (no BIC):', newHighlights[highlightId]);
-
-                                        // Add to newHighlightsByPage as transparent with dashed outline (needs BIC)
-                                        setNewHighlightsByPage(prev => ({
-                                          ...prev,
-                                          [pageNum]: [
-                                            ...(prev[pageNum] || []),
-                                            {
-                                              ...bounds,
-                                              needsBIC: true, // Flag to indicate it needs BIC assignment
-                                              highlightId: highlightId // Store ID for later reference
-                                            }
-                                          ]
-                                        }));
-                                      } else {
-                                        console.log('No bounds available, skipping highlight creation');
-                                      }
-                                    });
-
-                                    // Add new highlights to highlightAnnotations
-                                    if (Object.keys(newHighlights).length > 0) {
-                                      console.log('Adding', Object.keys(newHighlights).length, 'new highlights to highlightAnnotations');
-                                      setHighlightAnnotations(prev => ({
-                                        ...prev,
-                                        ...newHighlights
-                                      }));
-                                    }
-
-                                    // Clear selection and close modals
-                                    setCopiedItemSelection({});
-                                    setCopyModeActive(false);
-                                    setShowSpaceSelection(false);
-
-                                    // Switch to the destination space to show the copied items
-                                    setSelectedTemplate(template);
-                                    setSelectedSpaceId(space.id);
-                                    setShowSurveyPanel(true);
-
-                                    console.log('Copy completed successfully');
-                                    // Explicitly return to prevent any further code execution
-                                    return;
-                                  }
-                                } else {
-                                  // No items found - handle as legacy highlights
-                                  console.log('No items found, treating highlights as legacy highlights');
-                                  const legacyHighlights = selectedHighlightIds
-                                    .map(id => highlightAnnotations[id])
-                                    .filter(Boolean);
-
-                                  if (legacyHighlights.length === 0) {
-                                    console.error('No valid highlights found to process');
-                                    alert('No valid highlights selected. Please select highlights and try again.');
-                                    return;
-                                  }
-
-                                  console.log('Copying legacy highlights:', legacyHighlights);
-
-                                  // Check if all required categories exist in destination space
-                                  const destSpace = template.spaces.find(s => s.id === space.id);
-                                  const missingCategories = [];
-                                  legacyHighlights.forEach(h => {
-                                    const sourceCategoryName = getCategoryName(sourceTemplate, h.spaceId, h.categoryId);
-                                    const destCategory = destSpace?.categories?.find(c => c.name === sourceCategoryName);
-                                    if (!destCategory && sourceCategoryName && !missingCategories.includes(sourceCategoryName)) {
-                                      missingCategories.push(sourceCategoryName);
-                                    }
-                                  });
-
-                                  if (missingCategories.length > 0) {
-                                    alert(`Cannot copy highlights. The following categories don't exist in the destination space:\n\n${missingCategories.join(', ')}\n\nPlease create these categories in the destination space first.`);
-                                    return;
-                                  }
-
-                                  // Create new highlights in destination space
-                                  const newHighlights = {};
-                                  legacyHighlights.forEach(h => {
-                                    // Find matching category in destination space by name
-                                    const sourceCategoryName = getCategoryName(sourceTemplate, h.spaceId, h.categoryId);
-                                    const destCategory = destSpace?.categories?.find(c => c.name === sourceCategoryName);
-
-                                    const newId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                                    newHighlights[newId] = {
-                                      ...h,
-                                      id: newId,
-                                      spaceId: space.id,
-                                      categoryId: destCategory?.id || null
-                                    };
-
-                                    console.log(`Created legacy highlight copy: ${newId}`, newHighlights[newId]);
-                                  });
-
-                                  // Update highlightAnnotations
-                                  setHighlightAnnotations(prev => ({
-                                    ...prev,
-                                    ...newHighlights
-                                  }));
-
-                                  // Clear selection and close modals
                                   setCopiedItemSelection({});
                                   setCopyModeActive(false);
                                   setShowSpaceSelection(false);
 
-                                  // Switch to destination space
+                                  // Switch to the destination space to show the copied items
                                   setSelectedTemplate(template);
                                   setSelectedSpaceId(space.id);
                                   setShowSurveyPanel(true);
 
-                                  console.log('Legacy highlights copied successfully');
+                                  console.log('Copy completed successfully');
+                                  // Explicitly return to prevent any further code execution
                                   return;
                                 }
                               } else {
-                                // No items selected - this shouldn't happen if validation is working correctly
-                                console.warn('No items selected for copy. Closing modal.');
+                                // No items found - handle as legacy highlights
+                                console.log('No items found, treating highlights as legacy highlights');
+                                const legacyHighlights = selectedHighlightIds
+                                  .map(id => highlightAnnotations[id])
+                                  .filter(Boolean);
+
+                                if (legacyHighlights.length === 0) {
+                                  console.error('No valid highlights found to process');
+                                  alert('No valid highlights selected. Please select highlights and try again.');
+                                  return;
+                                }
+
+                                console.log('Copying legacy highlights:', legacyHighlights);
+
+                                // Check if all required categories exist in destination space
+                                const destSpace = template.spaces.find(s => s.id === space.id);
+                                const missingCategories = [];
+                                legacyHighlights.forEach(h => {
+                                  const sourceCategoryName = getCategoryName(sourceTemplate, h.spaceId, h.categoryId);
+                                  const destCategory = destSpace?.categories?.find(c => c.name === sourceCategoryName);
+                                  if (!destCategory && sourceCategoryName && !missingCategories.includes(sourceCategoryName)) {
+                                    missingCategories.push(sourceCategoryName);
+                                  }
+                                });
+
+                                if (missingCategories.length > 0) {
+                                  alert(`Cannot copy highlights. The following categories don't exist in the destination space:\n\n${missingCategories.join(', ')}\n\nPlease create these categories in the destination space first.`);
+                                  return;
+                                }
+
+                                // Create new highlights in destination space
+                                const newHighlights = {};
+                                legacyHighlights.forEach(h => {
+                                  // Find matching category in destination space by name
+                                  const sourceCategoryName = getCategoryName(sourceTemplate, h.spaceId, h.categoryId);
+                                  const destCategory = destSpace?.categories?.find(c => c.name === sourceCategoryName);
+
+                                  const newId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                  newHighlights[newId] = {
+                                    ...h,
+                                    id: newId,
+                                    spaceId: space.id,
+                                    categoryId: destCategory?.id || null
+                                  };
+
+                                  console.log(`Created legacy highlight copy: ${newId}`, newHighlights[newId]);
+                                });
+
+                                // Update highlightAnnotations
+                                setHighlightAnnotations(prev => ({
+                                  ...prev,
+                                  ...newHighlights
+                                }));
+
+                                // Clear selection and close modals
+                                setCopiedItemSelection({});
+                                setCopyModeActive(false);
                                 setShowSpaceSelection(false);
+
+                                // Switch to destination space
+                                setSelectedTemplate(template);
+                                setSelectedSpaceId(space.id);
+                                setShowSurveyPanel(true);
+
+                                console.log('Legacy highlights copied successfully');
+                                return;
                               }
-                            }}
-                            className="btn btn-default btn-md"
-                            style={{
-                              textAlign: 'left',
-                              justifyContent: 'flex-start',
-                              padding: '12px 16px',
-                              background: '#333',
-                              border: '1px solid #444'
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <Icon name="template" size={20} />
-                              <div>
-                                <div style={{ fontWeight: '500', color: '#fff' }}>
-                                  {space.name || 'Untitled Space'}
-                                </div>
-                                <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
-                                  {space.templateName || 'Untitled Template'}
-                                </div>
+                            } else {
+                              // No items selected - this shouldn't happen if validation is working correctly
+                              console.warn('No items selected for copy. Closing modal.');
+                              setShowSpaceSelection(false);
+                            }
+                          }}
+                          className="btn btn-default btn-md"
+                          style={{
+                            textAlign: 'left',
+                            justifyContent: 'flex-start',
+                            padding: '12px 16px',
+                            background: '#333',
+                            border: '1px solid #444'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <Icon name="template" size={20} />
+                            <div>
+                              <div style={{ fontWeight: '500', color: '#fff' }}>
+                                {space.name || 'Untitled Space'}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
+                                {space.templateName || 'Untitled Template'}
                               </div>
                             </div>
-                          </button>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
-            </>
-          )}
+            </div>
+          </>
+        )}
 
-          {/* Template Selection Modal */}
-          {showTemplateSelection && (
-            <>
+        {/* Template Selection Modal */}
+        {showTemplateSelection && (
+          <>
+            <div
+              onClick={() => setShowTemplateSelection(false)}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.5)',
+                zIndex: 10000,
+                animation: 'fadeIn 0.2s ease-out',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
               <div
-                onClick={() => setShowTemplateSelection(false)}
+                onClick={(e) => e.stopPropagation()}
                 style={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  background: 'rgba(0, 0, 0, 0.5)',
-                  zIndex: 10000,
-                  animation: 'fadeIn 0.2s ease-out',
+                  background: '#2b2b2b',
+                  border: '1px solid #444',
+                  borderRadius: '8px',
+                  padding: '24px',
+                  width: '500px',
+                  maxWidth: '90vw',
+                  maxHeight: '80vh',
+                  overflow: 'auto',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                  animation: 'fadeIn 0.2s ease-out'
+                }}
+              >
+                <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    background: '#2b2b2b',
-                    border: '1px solid #444',
-                    borderRadius: '8px',
-                    padding: '24px',
-                    width: '500px',
-                    maxWidth: '90vw',
-                    maxHeight: '80vh',
-                    overflow: 'auto',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-                    animation: 'fadeIn 0.2s ease-out'
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '20px'
+                  justifyContent: 'space-between',
+                  marginBottom: '20px'
+                }}>
+                  <h2 style={{
+                    margin: 0,
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    color: '#fff',
+                    fontFamily: FONT_FAMILY
                   }}>
-                    <h2 style={{
-                      margin: 0,
-                      fontSize: '18px',
-                      fontWeight: '600',
-                      color: '#fff',
-                      fontFamily: FONT_FAMILY
-                    }}>
-                      Select Template
-                    </h2>
+                    Select Template
+                  </h2>
+                  <button
+                    onClick={() => setShowTemplateSelection(false)}
+                    className="btn btn-icon btn-icon-sm"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#999'
+                    }}
+                  >
+                    <Icon name="close" size={18} />
+                  </button>
+                </div>
+
+                {appTemplates.length === 0 ? (
+                  <div
+                    style={{
+                      textAlign: 'center',
+                      padding: '40px',
+                      color: '#999',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '16px'
+                    }}
+                  >
+                    <p style={{ margin: 0 }}>No templates available.</p>
+                    <p style={{ margin: 0 }}>Please create a template first.</p>
                     <button
-                      onClick={() => setShowTemplateSelection(false)}
-                      className="btn btn-icon btn-icon-sm"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#999'
+                      onClick={() => {
+                        setShowTemplateSelection(false);
+                        setShowSurveyPanel(false);
+                        setSelectedTemplate(null);
+                        setSelectedModuleId(null);
+                        onRequestCreateTemplate?.();
                       }}
+                      className="btn btn-primary btn-md"
+                      style={{ minWidth: '160px' }}
                     >
-                      <Icon name="close" size={18} />
+                      Create Template
                     </button>
                   </div>
-
-                  {appTemplates.length === 0 ? (
-                    <div
-                      style={{
-                        textAlign: 'center',
-                        padding: '40px',
-                        color: '#999',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '16px'
-                      }}
-                    >
-                      <p style={{ margin: 0 }}>No templates available.</p>
-                      <p style={{ margin: 0 }}>Please create a template first.</p>
-                      <button
-                        onClick={() => {
-                          setShowTemplateSelection(false);
-                          setShowSurveyPanel(false);
-                          setSelectedTemplate(null);
-                          setSelectedModuleId(null);
-                          onRequestCreateTemplate?.();
-                        }}
-                        className="btn btn-primary btn-md"
-                        style={{ minWidth: '160px' }}
-                      >
-                        Create Template
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {appTemplates.map(template => (
-                          <button
-                            key={template.id}
-                            onClick={() => {
-                              const firstModuleId = (template.modules || template.spaces || [])?.[0]?.id || null;
-                              setSelectedTemplate(template);
-                              setSelectedModuleId(firstModuleId);
-                              setShowTemplateSelection(false);
-                              setShowSurveyPanel(true);
-                            }}
-                            className="btn btn-default btn-md"
-                            style={{
-                              textAlign: 'left',
-                              justifyContent: 'flex-start',
-                              padding: '12px 16px',
-                              background: '#333',
-                              border: '1px solid #444'
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <Icon name="template" size={20} />
-                              <div>
-                                <div style={{ fontWeight: '500', color: '#fff' }}>
-                                  {template.name || 'Untitled Template'}
-                                </div>
-                                <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
-                                  {((template.modules || template.spaces) || []).length} module{((template.modules || template.spaces) || []).length !== 1 ? 's' : ''}
-                                </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {appTemplates.map(template => (
+                        <button
+                          key={template.id}
+                          onClick={() => {
+                            const firstModuleId = (template.modules || template.spaces || [])?.[0]?.id || null;
+                            setSelectedTemplate(template);
+                            setSelectedModuleId(firstModuleId);
+                            setShowTemplateSelection(false);
+                            setShowSurveyPanel(true);
+                          }}
+                          className="btn btn-default btn-md"
+                          style={{
+                            textAlign: 'left',
+                            justifyContent: 'flex-start',
+                            padding: '12px 16px',
+                            background: '#333',
+                            border: '1px solid #444'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <Icon name="template" size={20} />
+                            <div>
+                              <div style={{ fontWeight: '500', color: '#fff' }}>
+                                {template.name || 'Untitled Template'}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
+                                {((template.modules || template.spaces) || []).length} module{((template.modules || template.spaces) || []).length !== 1 ? 's' : ''}
                               </div>
                             </div>
-                          </button>
-                        ))}
-                      </div>
-                      <button
-                        onClick={() => {
-                          setShowTemplateSelection(false);
-                          setShowSurveyPanel(false);
-                          setSelectedTemplate(null);
-                          setSelectedModuleId(null);
-                          onRequestCreateTemplate?.();
-                        }}
-                        className="btn btn-primary btn-md"
-                        style={{ alignSelf: 'center', minWidth: '160px' }}
-                      >
-                        Create Template
-                      </button>
+                          </div>
+                        </button>
+                      ))}
                     </div>
-                  )}
-                </div>
+                    <button
+                      onClick={() => {
+                        setShowTemplateSelection(false);
+                        setShowSurveyPanel(false);
+                        setSelectedTemplate(null);
+                        setSelectedModuleId(null);
+                        onRequestCreateTemplate?.();
+                      }}
+                      className="btn btn-primary btn-md"
+                      style={{ alignSelf: 'center', minWidth: '160px' }}
+                    >
+                      Create Template
+                    </button>
+                  </div>
+                )}
               </div>
-            </>
-          )}
+            </div>
+          </>
+        )}
 
-          {/* Survey Panel */}
-          {showSurveyPanel && selectedTemplate && (
-            <>
-              {/* Panel */}
+        {/* Survey Panel */}
+        {showSurveyPanel && selectedTemplate && (
+          <>
+            {/* Panel */}
+            <div
+              style={{
+                position: 'fixed',
+                top: `${middleAreaBounds.top}px`,
+                right: 0,
+                height: `${middleAreaBounds.height}px`,
+                width: isSurveyPanelCollapsed ? '48px' : '320px',
+                background: '#2b2b2b',
+                borderLeft: '1px solid #444',
+                zIndex: 9999,
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '-4px 0 20px rgba(0, 0, 0, 0.5)',
+                animation: 'slideInRight 0.3s ease-out',
+                transition: 'width 0.2s ease, top 0.2s ease, height 0.2s ease'
+              }}
+            >
+              {/* Collapse/Expand Button */}
               <div
                 style={{
-                  position: 'fixed',
-                  top: `${middleAreaBounds.top}px`,
-                  right: 0,
-                  height: `${middleAreaBounds.height}px`,
-                  width: isSurveyPanelCollapsed ? '48px' : '320px',
-                  background: '#2b2b2b',
-                  borderLeft: '1px solid #444',
-                  zIndex: 9999,
+                  padding: '8px',
+                  borderBottom: '1px solid #3a3a3a',
                   display: 'flex',
-                  flexDirection: 'column',
-                  boxShadow: '-4px 0 20px rgba(0, 0, 0, 0.5)',
-                  animation: 'slideInRight 0.3s ease-out',
-                  transition: 'width 0.2s ease, top 0.2s ease, height 0.2s ease'
+                  justifyContent: 'flex-start',
+                  background: '#252525'
                 }}
               >
-                {/* Collapse/Expand Button */}
-                <div
-                  style={{
-                    padding: '8px',
-                    borderBottom: '1px solid #3a3a3a',
-                    display: 'flex',
-                    justifyContent: 'flex-start',
-                    background: '#252525'
-                  }}
-                >
-                  {isSurveyPanelCollapsed && (
+                {isSurveyPanelCollapsed && (
+                  <button
+                    onClick={() => {
+                      setIsSurveyPanelCollapsed(prev => !prev);
+                      requestAnimationFrame(() => {
+                        zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+                      });
+                    }}
+                    style={{
+                      background: 'rgb(51, 51, 51)',
+                      border: 'none',
+                      color: 'rgb(153, 153, 153)',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'background 0.15s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgb(51, 51, 51)'}
+                  >
+                    <Icon name="chevronLeft" size={16} color="#999" />
+                  </button>
+                )}
+              </div>
+
+              {!isSurveyPanelCollapsed && (
+                <>
+                  {/* Panel Header */}
+                  <div
+                    style={{
+                      padding: categorySelectModeActive ? '10px 8px' : '12px 8px',
+                      borderBottom: '1px solid #444',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: '#333'
+                    }}
+                  >
                     <button
                       onClick={() => {
                         setIsSurveyPanelCollapsed(prev => !prev);
@@ -15261,1215 +15290,1136 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         justifyContent: 'center',
                         transition: 'background 0.15s'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'rgb(51, 51, 51)'}
                     >
-                      <Icon name="chevronLeft" size={16} color="#999" />
+                      <Icon name={isSurveyPanelCollapsed ? 'chevronLeft' : 'chevronRight'} size={16} color="#999" />
                     </button>
-                  )}
-                </div>
-
-                {!isSurveyPanelCollapsed && (
-                  <>
-                    {/* Panel Header */}
                     <div
                       style={{
-                        padding: categorySelectModeActive ? '10px 8px' : '12px 8px',
-                        borderBottom: '1px solid #444',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
-                        background: '#333'
+                        gap: '12px'
                       }}
                     >
-                      <button
-                        onClick={() => {
-                          setIsSurveyPanelCollapsed(prev => !prev);
-                          requestAnimationFrame(() => {
-                            zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-                          });
-                        }}
+                      <h2
                         style={{
-                          background: 'rgb(51, 51, 51)',
-                          border: 'none',
-                          color: 'rgb(153, 153, 153)',
-                          cursor: 'pointer',
-                          padding: '4px',
-                          borderRadius: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'background 0.15s'
+                          margin: 0,
+                          fontSize: categorySelectModeActive ? '20px' : '18px',
+                          fontWeight: '600',
+                          color: '#fff',
+                          fontFamily: FONT_FAMILY,
+                          letterSpacing: '-0.2px',
+                          flex: categorySelectModeActive ? 0 : 1
                         }}
                       >
-                        <Icon name={isSurveyPanelCollapsed ? 'chevronLeft' : 'chevronRight'} size={16} color="#999" />
-                      </button>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px'
-                        }}
-                      >
-                        <h2
+                        {categorySelectModeActive && selectedModuleId
+                          ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
+                          : (selectedTemplate.name || 'Survey')}
+                      </h2>
+                      {!categorySelectModeActive && (
+                        <>
+                          {selectedTemplate.linkedExcelPath && (
+                            <>
+
+                              {lastSyncMessage && (
+                                <div style={{
+                                  fontSize: '11px',
+                                  color: lastSyncMessage.includes('failed') ? '#e74c3c' : '#3498db',
+                                  padding: '4px 8px',
+                                  background: lastSyncMessage.includes('failed') ? 'rgba(231, 76, 60, 0.1)' : 'rgba(52, 152, 219, 0.1)',
+                                  borderRadius: '4px',
+                                  border: lastSyncMessage.includes('failed') ? '1px solid rgba(231, 76, 60, 0.3)' : '1px solid rgba(52, 152, 219, 0.3)'
+                                }}>
+                                  {lastSyncMessage}
+                                </div>
+                              )}
+                              <button
+                                onClick={() => setAutoPushToExcel(!autoPushToExcel)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  fontSize: '11px',
+                                  color: autoPushToExcel ? '#2ecc71' : '#888',
+                                  padding: '4px 8px',
+                                  background: autoPushToExcel ? 'rgba(46, 204, 113, 0.1)' : 'rgba(136, 136, 136, 0.1)',
+                                  borderRadius: '4px',
+                                  border: autoPushToExcel ? '1px solid rgba(46, 204, 113, 0.3)' : '1px solid rgba(136, 136, 136, 0.3)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s'
+                                }}
+                                title={autoPushToExcel ? 'Auto-push to Excel is ON' : 'Auto-push to Excel is OFF'}
+                              >
+                                <span style={{ fontSize: '14px' }}>{autoPushToExcel ? '●' : '○'}</span>
+                                <span>Auto-push</span>
+                              </button>
+                              {lastPushMessage && (
+                                <div style={{
+                                  fontSize: '11px',
+                                  color: lastPushMessage.includes('failed') ? '#e74c3c' : '#9b59b6',
+                                  padding: '4px 8px',
+                                  background: lastPushMessage.includes('failed') ? 'rgba(231, 76, 60, 0.1)' : 'rgba(155, 89, 182, 0.1)',
+                                  borderRadius: '4px',
+                                  border: lastPushMessage.includes('failed') ? '1px solid rgba(231, 76, 60, 0.3)' : '1px solid rgba(155, 89, 182, 0.3)'
+                                }}>
+                                  {lastPushMessage}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (categorySelectModeActive) {
+                          setCategorySelectModeActive(false);
+                          setCategorySelectModeForCategory(null);
+                          setSelectedCategories({});
+                        } else {
+                          setShowSurveyPanel(false);
+                          setSelectedTemplate(null);
+                          setSelectedSpaceId(null);
+                          setSelectedCategoryId(null);
+                        }
+                      }}
+                      className="btn btn-icon btn-icon-sm"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#fff',
+                        padding: '4px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <Icon name="close" size={18} />
+                    </button>
+                  </div>
+
+                  {/* Modules Tabs */}
+                  {((selectedTemplate.modules || selectedTemplate.spaces) || []).length > 0 && (
+                    <div style={{
+                      padding: '8px 12px',
+                      borderBottom: '1px solid #444',
+                      background: '#333',
+                      display: 'flex',
+                      gap: '6px',
+                      overflowX: 'auto'
+                    }}>
+                      {(selectedTemplate.modules || selectedTemplate.spaces || []).map(module => (
+                        <button
+                          key={module.id}
+                          onClick={() => {
+                            setSelectedModuleId(module.id);
+                            setSelectedCategoryId(null); // Reset category when switching modules
+                            // Exit select mode when switching modules
+                            setCopyModeActive(false);
+                            setCopiedItemSelection({});
+                            if (categorySelectModeActive) {
+                              setSelectedCategories({});
+                            }
+                          }}
+                          className="btn btn-sm"
                           style={{
-                            margin: 0,
-                            fontSize: categorySelectModeActive ? '20px' : '18px',
-                            fontWeight: '600',
-                            color: '#fff',
-                            fontFamily: FONT_FAMILY,
-                            letterSpacing: '-0.2px',
-                            flex: categorySelectModeActive ? 0 : 1
+                            background: selectedModuleId === module.id ? '#4A90E2' : '#3A3A3A',
+                            color: selectedModuleId === module.id ? '#fff' : '#DDD',
+                            border: selectedModuleId === module.id ? '1px solid #4A90E2' : '1px solid #444',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            borderRadius: '6px'
                           }}
                         >
-                          {categorySelectModeActive && selectedModuleId
-                            ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
-                            : (selectedTemplate.name || 'Survey')}
-                        </h2>
-                        {!categorySelectModeActive && (
-                          <>
-                            {selectedTemplate.linkedExcelPath && (
-                              <>
-
-                                {lastSyncMessage && (
-                                  <div style={{
-                                    fontSize: '11px',
-                                    color: lastSyncMessage.includes('failed') ? '#e74c3c' : '#3498db',
-                                    padding: '4px 8px',
-                                    background: lastSyncMessage.includes('failed') ? 'rgba(231, 76, 60, 0.1)' : 'rgba(52, 152, 219, 0.1)',
-                                    borderRadius: '4px',
-                                    border: lastSyncMessage.includes('failed') ? '1px solid rgba(231, 76, 60, 0.3)' : '1px solid rgba(52, 152, 219, 0.3)'
-                                  }}>
-                                    {lastSyncMessage}
-                                  </div>
-                                )}
-                                <button
-                                  onClick={() => setAutoPushToExcel(!autoPushToExcel)}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    fontSize: '11px',
-                                    color: autoPushToExcel ? '#2ecc71' : '#888',
-                                    padding: '4px 8px',
-                                    background: autoPushToExcel ? 'rgba(46, 204, 113, 0.1)' : 'rgba(136, 136, 136, 0.1)',
-                                    borderRadius: '4px',
-                                    border: autoPushToExcel ? '1px solid rgba(46, 204, 113, 0.3)' : '1px solid rgba(136, 136, 136, 0.3)',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s'
-                                  }}
-                                  title={autoPushToExcel ? 'Auto-push to Excel is ON' : 'Auto-push to Excel is OFF'}
-                                >
-                                  <span style={{ fontSize: '14px' }}>{autoPushToExcel ? '●' : '○'}</span>
-                                  <span>Auto-push</span>
-                                </button>
-                                {lastPushMessage && (
-                                  <div style={{
-                                    fontSize: '11px',
-                                    color: lastPushMessage.includes('failed') ? '#e74c3c' : '#9b59b6',
-                                    padding: '4px 8px',
-                                    background: lastPushMessage.includes('failed') ? 'rgba(231, 76, 60, 0.1)' : 'rgba(155, 89, 182, 0.1)',
-                                    borderRadius: '4px',
-                                    border: lastPushMessage.includes('failed') ? '1px solid rgba(231, 76, 60, 0.3)' : '1px solid rgba(155, 89, 182, 0.3)'
-                                  }}>
-                                    {lastPushMessage}
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => {
-                          if (categorySelectModeActive) {
-                            setCategorySelectModeActive(false);
-                            setCategorySelectModeForCategory(null);
-                            setSelectedCategories({});
-                          } else {
-                            setShowSurveyPanel(false);
-                            setSelectedTemplate(null);
-                            setSelectedSpaceId(null);
-                            setSelectedCategoryId(null);
-                          }
-                        }}
-                        className="btn btn-icon btn-icon-sm"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#fff',
-                          padding: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}
-                      >
-                        <Icon name="close" size={18} />
-                      </button>
+                          {module.name}
+                        </button>
+                      ))}
                     </div>
+                  )}
 
-                    {/* Modules Tabs */}
-                    {((selectedTemplate.modules || selectedTemplate.spaces) || []).length > 0 && (
-                      <div style={{
-                        padding: '8px 12px',
-                        borderBottom: '1px solid #444',
-                        background: '#333',
-                        display: 'flex',
-                        gap: '6px',
-                        overflowX: 'auto'
-                      }}>
-                        {(selectedTemplate.modules || selectedTemplate.spaces || []).map(module => (
-                          <button
-                            key={module.id}
-                            onClick={() => {
-                              setSelectedModuleId(module.id);
-                              setSelectedCategoryId(null); // Reset category when switching modules
-                              // Exit select mode when switching modules
-                              setCopyModeActive(false);
-                              setCopiedItemSelection({});
-                              if (categorySelectModeActive) {
-                                setSelectedCategories({});
-                              }
-                            }}
-                            className="btn btn-sm"
-                            style={{
-                              background: selectedModuleId === module.id ? '#4A90E2' : '#3A3A3A',
-                              color: selectedModuleId === module.id ? '#fff' : '#DDD',
-                              border: selectedModuleId === module.id ? '1px solid #4A90E2' : '1px solid #444',
-                              whiteSpace: 'nowrap',
-                              flexShrink: 0,
-                              borderRadius: '6px'
-                            }}
-                          >
-                            {module.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                  {/* Panel Content */}
+                  <div style={{
+                    flex: categorySelectModeActive ? '1 1 auto' : 1,
+                    overflowY: 'auto',
+                    padding: '12px 8px',
+                    fontFamily: FONT_FAMILY,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minHeight: 0
+                  }}>
+                    {selectedModuleId ? (() => {
+                      const module = (selectedTemplate.modules || selectedTemplate.spaces || [])?.find(m => m.id === selectedModuleId);
+                      if (!module) return null;
 
-                    {/* Panel Content */}
-                    <div style={{
-                      flex: categorySelectModeActive ? '1 1 auto' : 1,
-                      overflowY: 'auto',
-                      padding: '12px 8px',
-                      fontFamily: FONT_FAMILY,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      minHeight: 0
-                    }}>
-                      {selectedModuleId ? (() => {
-                        const module = (selectedTemplate.modules || selectedTemplate.spaces || [])?.find(m => m.id === selectedModuleId);
-                        if (!module) return null;
-
-                        // Get highlights for this module, grouped by category
-                        const highlightsByCategory = {};
-                        Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
-                          const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
-                          if (highlightModuleId === selectedModuleId && highlight.categoryId) {
-                            if (!highlightsByCategory[highlight.categoryId]) {
-                              highlightsByCategory[highlight.categoryId] = [];
-                            }
-                            // IMPORTANT: Always use the key from highlightAnnotations as the authoritative ID
-                            // This ensures consistency when selecting/looking up highlights
-                            highlightsByCategory[highlight.categoryId].push({
-                              ...highlight,
-                              id: highlightId  // Use the key, not highlight.id
-                            });
+                      // Get highlights for this module, grouped by category
+                      const highlightsByCategory = {};
+                      Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
+                        const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
+                        if (highlightModuleId === selectedModuleId && highlight.categoryId) {
+                          if (!highlightsByCategory[highlight.categoryId]) {
+                            highlightsByCategory[highlight.categoryId] = [];
                           }
-                        });
+                          // IMPORTANT: Always use the key from highlightAnnotations as the authoritative ID
+                          // This ensures consistency when selecting/looking up highlights
+                          highlightsByCategory[highlight.categoryId].push({
+                            ...highlight,
+                            id: highlightId  // Use the key, not highlight.id
+                          });
+                        }
+                      });
 
-                        // Show categories list first (before highlights)
-                        const hasHighlights = Object.keys(highlightsByCategory).length > 0;
+                      // Show categories list first (before highlights)
+                      const hasHighlights = Object.keys(highlightsByCategory).length > 0;
 
-                        return (
-                          <div>
-                            {/* Select toggle button + Create Category */}
-                            {!copyModeActive && !categorySelectModeActive ? (
-                              <div
-                                style={{
-                                  marginBottom: '12px',
-                                  display: 'flex',
-                                  gap: '8px',
-                                  flexWrap: 'wrap',
-                                  alignItems: 'center'
-                                }}
-                              >
-                                <button
-                                  onClick={() => setCategorySelectModeActive(true)}
-                                  className="btn btn-sm"
-                                  style={{
-                                    background: '#3a3a3a',
-                                    color: '#ddd',
-                                    border: '1px solid #444',
-                                    whiteSpace: 'nowrap',
-                                    flexShrink: 0,
-                                    padding: '6px 12px',
-                                    borderRadius: '6px'
-                                  }}
-                                >
-                                  Select Catagory
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (!selectedTemplate?.id || !selectedModuleId) {
-                                      alert('Please select a template and module before creating a category.');
-                                      return;
-                                    }
-                                    onRequestCreateTemplate?.({
-                                      mode: 'edit',
-                                      templateId: selectedTemplate.id,
-                                      moduleId: selectedModuleId,
-                                      startAddingCategory: true
-                                    });
-                                  }}
-                                  className="btn btn-sm"
-                                  style={{
-                                    background: '#4A90E2',
-                                    color: '#fff',
-                                    border: '1px solid #4A90E2',
-                                    whiteSpace: 'nowrap',
-                                    flexShrink: 0,
-                                    padding: '6px 14px',
-                                    borderRadius: '6px'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.background = '#5AA0F2';
-                                    e.currentTarget.style.borderColor = '#5AA0F2';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = '#4A90E2';
-                                    e.currentTarget.style.borderColor = '#4A90E2';
-                                  }}
-                                >
-                                  Create Category
-                                </button>
-                              </div>
-                            ) : copyModeActive ? (
-                              <div style={{
+                      return (
+                        <div>
+                          {/* Select toggle button + Create Category */}
+                          {!copyModeActive && !categorySelectModeActive ? (
+                            <div
+                              style={{
                                 marginBottom: '12px',
                                 display: 'flex',
                                 gap: '8px',
-                                alignItems: 'center',
-                                paddingBottom: '8px',
-                                borderBottom: '1px solid #333'
-                              }}>
-                                {/* Select All checkbox */}
-                                {(() => {
-                                  // IMPORTANT: Use the key from highlightAnnotations as the authoritative ID
-                                  const allHighlightIds = Object.entries(highlightAnnotations)
-                                    .filter(([highlightId, h]) => {
-                                      const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
-                                      return hModuleId === selectedModuleId;
-                                    })
-                                    .map(([highlightId, h]) => highlightId);  // Use the key, not h.id
-                                  const moduleSelectedCount = allHighlightIds.filter(id => copiedItemSelection[id] === true).length;
-                                  const moduleAllSelected = moduleSelectedCount === allHighlightIds.length && allHighlightIds.length > 0;
-
-                                  return (
-                                    <label style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '8px',
-                                      cursor: 'pointer',
-                                      userSelect: 'none'
-                                    }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={moduleAllSelected}
-                                        onChange={(e) => {
-                                          const newSelection = { ...copiedItemSelection };
-                                          allHighlightIds.forEach(id => {
-                                            if (!moduleAllSelected) {
-                                              newSelection[id] = true;
-                                            } else {
-                                              delete newSelection[id];
-                                            }
-                                          });
-                                          setCopiedItemSelection(newSelection);
-                                        }}
-                                        style={{ cursor: 'pointer' }}
-                                      />
-                                      <span style={{ color: '#ddd', fontSize: '13px', fontWeight: '400' }}>
-                                        Select All
-                                      </span>
-                                    </label>
-                                  );
-                                })()}
-
-                                <div style={{ width: '1px', height: '16px', background: '#444' }} />
-
-                                {/* Copy to Spaces button */}
-                                <button
-                                  onClick={() => {
-                                    const selectedIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
-                                    console.log('=== Copy to Spaces Button Clicked ===');
-                                    console.log('copiedItemSelection:', copiedItemSelection);
-                                    console.log('selectedIds:', selectedIds);
-                                    console.log('highlightAnnotations keys:', Object.keys(highlightAnnotations));
-                                    console.log('Checking if selected IDs exist in highlightAnnotations:');
-                                    selectedIds.forEach(id => {
-                                      console.log(`  ${id}: ${highlightAnnotations[id] ? 'EXISTS' : 'NOT FOUND'}`);
-                                    });
-                                    if (selectedIds.length === 0) return;
-                                    setShowSpaceSelection(true);
-                                  }}
-                                  disabled={!Object.values(copiedItemSelection).some(Boolean)}
-                                  style={{
-                                    padding: 0,
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: Object.values(copiedItemSelection).some(Boolean) ? '#999' : '#555',
-                                    fontSize: '13px',
-                                    fontWeight: '400',
-                                    cursor: Object.values(copiedItemSelection).some(Boolean) ? 'pointer' : 'not-allowed'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    if (Object.values(copiedItemSelection).some(Boolean)) {
-                                      e.currentTarget.style.color = '#ddd';
-                                    }
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    if (Object.values(copiedItemSelection).some(Boolean)) {
-                                      e.currentTarget.style.color = '#999';
-                                    }
-                                  }}
-                                >
-                                  Copy to Spaces
-                                </button>
-
-                                {/* Delete button */}
-                                <button
-                                  onClick={() => {
-                                    const selectedIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
-                                    if (selectedIds.length === 0) return;
-
-                                    // Confirm deletion
-                                    if (!confirm(`Are you sure you want to delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`)) {
-                                      return;
-                                    }
-
-                                    // Capture highlights before deletion (state is async)
-                                    const highlightsToDelete = selectedIds.map(id => highlightAnnotations[id]).filter(Boolean);
-
-                                    // Delete highlights from highlightAnnotations
-                                    setHighlightAnnotations(prev => {
-                                      const updated = { ...prev };
-                                      selectedIds.forEach(id => {
-                                        delete updated[id];
-                                      });
-
-                                      // Check if all items in the current space have been deleted
-                                      // If so, exit copy mode automatically
-                                      if (selectedSpaceId) {
-                                        const remainingHighlights = Object.entries(updated)
-                                          .filter(([_, h]) => h.spaceId === selectedSpaceId);
-                                        if (remainingHighlights.length === 0) {
-                                          // Use setTimeout to ensure state updates are processed
-                                          setTimeout(() => {
-                                            setCopyModeActive(false);
-                                            setCopiedItemSelection({});
-                                          }, 0);
-                                        }
-                                      }
-
-                                      return updated;
-                                    });
-
-                                    // Trigger removal from canvas via highlightsToRemoveByPage (same as working ✕ button)
-                                    highlightsToDelete.forEach(highlight => {
-                                      const pageNum = highlight.pageNumber;
-                                      const bounds = highlight.bounds;
-
-                                      if (pageNum && bounds) {
-                                        setHighlightsToRemoveByPage(prev => ({
-                                          ...prev,
-                                          [pageNum]: [...(prev[pageNum] || []), bounds]
-                                        }));
-                                      }
-                                    });
-
-                                    // Clear the removal queue after a short delay to allow processing
-                                    setTimeout(() => {
-                                      highlightsToDelete.forEach(highlight => {
-                                        const pageNum = highlight.pageNumber;
-                                        if (pageNum) {
-                                          setHighlightsToRemoveByPage(prev => {
-                                            const updated = { ...prev };
-                                            delete updated[pageNum];
-                                            return updated;
-                                          });
-                                        }
-                                      });
-                                    }, 100);
-
-                                    // Delete highlight rectangles from PDF canvas (annotationsByPage) - keep for backward compatibility
-                                    highlightsToDelete.forEach(highlight => {
-                                      const pageNum = highlight.pageNumber;
-                                      if (pageNum && annotationsByPage[pageNum]) {
-                                        setAnnotationsByPage(prev => {
-                                          const pageAnnotations = prev[pageNum];
-                                          if (!pageAnnotations || !pageAnnotations.objects) return prev;
-
-                                          // Get the current scale for coordinate conversion
-                                          const currentScale = scale;
-
-                                          // Filter out highlight rectangles that match this highlight's bounds
-                                          const filteredObjects = pageAnnotations.objects.filter(obj => {
-                                            // Check if this is a highlight rectangle (with any opacity)
-                                            if (obj.type !== 'rect') return true;
-                                            if (!obj.fill || typeof obj.fill !== 'string') return true;
-                                            if (!obj.fill.includes('rgba')) return true;
-
-                                            // Canvas coordinates are at canvas scale, need to normalize for comparison
-                                            const objX = (obj.left || 0) / currentScale;
-                                            const objY = (obj.top || 0) / currentScale;
-                                            const objWidth = (obj.width || 0) / currentScale;
-                                            const objHeight = (obj.height || 0) / currentScale;
-
-                                            const bounds = highlight.bounds || {};
-                                            const highlightX = bounds.x || bounds.left || 0;
-                                            const highlightY = bounds.y || bounds.top || 0;
-                                            const highlightWidth = bounds.width || (bounds.right ? bounds.right - bounds.left : 0) || 0;
-                                            const highlightHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0) || 0;
-
-                                            // Check if bounds match (with tolerance in normalized coordinates)
-                                            const tolerance = 5 / currentScale; // Convert tolerance to normalized coordinates
-                                            if (Math.abs(objX - highlightX) < tolerance &&
-                                              Math.abs(objY - highlightY) < tolerance &&
-                                              Math.abs(objWidth - highlightWidth) < tolerance &&
-                                              Math.abs(objHeight - highlightHeight) < tolerance) {
-                                              return false; // Remove this object
-                                            }
-                                            return true; // Keep this object
-                                          });
-
-                                          return {
-                                            ...prev,
-                                            [pageNum]: {
-                                              ...pageAnnotations,
-                                              objects: filteredObjects
-                                            }
-                                          };
-                                        });
-                                      }
-                                    });
-
-                                    // Delete associated items and annotations
-                                    highlightsToDelete.forEach(highlight => {
-
-                                      // Find associated item by matching name and category
-                                      const categoryName = getCategoryName(selectedTemplate, highlight.spaceId, highlight.categoryId);
-                                      const matchingItem = Object.values(items).find(item =>
-                                        item.name === highlight.name &&
-                                        item.itemType === categoryName
-                                      );
-
-                                      if (matchingItem) {
-                                        // Find and delete annotations for this item in this space
-                                        setAnnotations(prev => {
-                                          const updated = { ...prev };
-                                          Object.values(updated).forEach(ann => {
-                                            if (ann.itemId === matchingItem.itemId && ann.spaceId === highlight.spaceId) {
-                                              delete updated[ann.annotationId];
-                                            }
-                                          });
-                                          return updated;
-                                        });
-
-                                        // Check if item has data in other modules - if not, delete the item
-                                        const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
-                                        const moduleName = getModuleName(selectedTemplate, highlightModuleId);
-                                        const dataKey = getModuleDataKey(moduleName);
-                                        const item = items[matchingItem.itemId];
-
-                                        if (item) {
-                                          // Remove the module-specific data
-                                          const updatedItem = { ...item };
-                                          delete updatedItem[dataKey];
-
-                                          // Check if item has any module data left
-                                          const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
-                                          const hasOtherModuleData = allModules.some(module => {
-                                            const moduleId = module.id;
-                                            if (moduleId === highlightModuleId) return false;
-                                            const otherModuleName = getModuleName(selectedTemplate, moduleId);
-                                            const otherDataKey = getModuleDataKey(otherModuleName);
-                                            return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
-                                          });
-
-                                          if (hasOtherModuleData) {
-                                            // Item exists in other modules, just remove this module's data
-                                            setItems(prev => ({
-                                              ...prev,
-                                              [matchingItem.itemId]: updatedItem
-                                            }));
-                                          } else {
-                                            // Item doesn't exist in other spaces, delete it entirely
-                                            setItems(prev => {
-                                              const updated = { ...prev };
-                                              delete updated[matchingItem.itemId];
-                                              return updated;
-                                            });
-                                          }
-                                        }
-                                      }
-                                    });
-
-                                    // Clear selection (copy mode will be automatically exited if all items in space are deleted)
-                                    setCopiedItemSelection({});
-                                  }}
-                                  disabled={!Object.values(copiedItemSelection).some(Boolean)}
-                                  style={{
-                                    padding: 0,
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: Object.values(copiedItemSelection).some(Boolean) ? '#cc4444' : '#555',
-                                    fontSize: '13px',
-                                    fontWeight: '400',
-                                    cursor: Object.values(copiedItemSelection).some(Boolean) ? 'pointer' : 'not-allowed'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    if (Object.values(copiedItemSelection).some(Boolean)) {
-                                      e.currentTarget.style.color = '#ff6666';
-                                    }
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    if (Object.values(copiedItemSelection).some(Boolean)) {
-                                      e.currentTarget.style.color = '#cc4444';
-                                    }
-                                  }}
-                                >
-                                  Delete
-                                </button>
-
-                                <div style={{ marginLeft: 'auto' }} />
-
-                                {/* Cancel button */}
-                                <button
-                                  onClick={() => {
-                                    setCopyModeActive(false);
-                                    setCopiedItemSelection({});
-                                  }}
-                                  style={{
-                                    padding: 0,
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: '#999',
-                                    fontSize: '13px',
-                                    fontWeight: '400',
-                                    cursor: 'pointer'
-                                  }}
-                                  onMouseEnter={(e) => e.currentTarget.style.color = '#ddd'}
-                                  onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : null}
-
-                            {/* Categories List */}
-                            <div style={{ marginBottom: '20px' }}>
-                              <h3 style={{
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                color: '#fff',
-                                marginBottom: '10px',
-                                fontFamily: FONT_FAMILY
-                              }}>
-                                Select Category to Highlight
-                              </h3>
-
-                              {/* Category Select Mode Actions - show when category select mode is active */}
-                              {categorySelectModeActive && module.categories && module.categories.length > 0 && (() => {
-                                const selectedCategoryCount = Object.keys(selectedCategories).filter(id => selectedCategories[id]).length;
-                                const hasSelectedCategories = selectedCategoryCount > 0;
+                                flexWrap: 'wrap',
+                                alignItems: 'center'
+                              }}
+                            >
+                              <button
+                                onClick={() => setCategorySelectModeActive(true)}
+                                className="btn btn-sm"
+                                style={{
+                                  background: '#3a3a3a',
+                                  color: '#ddd',
+                                  border: '1px solid #444',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
+                                  padding: '6px 12px',
+                                  borderRadius: '6px'
+                                }}
+                              >
+                                Select Catagory
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (!selectedTemplate?.id || !selectedModuleId) {
+                                    alert('Please select a template and module before creating a category.');
+                                    return;
+                                  }
+                                  onRequestCreateTemplate?.({
+                                    mode: 'edit',
+                                    templateId: selectedTemplate.id,
+                                    moduleId: selectedModuleId,
+                                    startAddingCategory: true
+                                  });
+                                }}
+                                className="btn btn-sm"
+                                style={{
+                                  background: '#4A90E2',
+                                  color: '#fff',
+                                  border: '1px solid #4A90E2',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
+                                  padding: '6px 14px',
+                                  borderRadius: '6px'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#5AA0F2';
+                                  e.currentTarget.style.borderColor = '#5AA0F2';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#4A90E2';
+                                  e.currentTarget.style.borderColor = '#4A90E2';
+                                }}
+                              >
+                                Create Category
+                              </button>
+                            </div>
+                          ) : copyModeActive ? (
+                            <div style={{
+                              marginBottom: '12px',
+                              display: 'flex',
+                              gap: '8px',
+                              alignItems: 'center',
+                              paddingBottom: '8px',
+                              borderBottom: '1px solid #333'
+                            }}>
+                              {/* Select All checkbox */}
+                              {(() => {
+                                // IMPORTANT: Use the key from highlightAnnotations as the authoritative ID
+                                const allHighlightIds = Object.entries(highlightAnnotations)
+                                  .filter(([highlightId, h]) => {
+                                    const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                    return hModuleId === selectedModuleId;
+                                  })
+                                  .map(([highlightId, h]) => highlightId);  // Use the key, not h.id
+                                const moduleSelectedCount = allHighlightIds.filter(id => copiedItemSelection[id] === true).length;
+                                const moduleAllSelected = moduleSelectedCount === allHighlightIds.length && allHighlightIds.length > 0;
 
                                 return (
-                                  <div style={{
-                                    marginBottom: '10px'
+                                  <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    cursor: 'pointer',
+                                    userSelect: 'none'
                                   }}>
-                                    <div style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      gap: '4px',
-                                      flexWrap: 'nowrap',
-                                      width: '100%'
-                                    }}>
-                                      <button
-                                        onClick={() => {
-                                          // Select all categories in this module
-                                          const allCategoryIds = module.categories.map(c => c.id);
-                                          const newSelection = {};
-                                          allCategoryIds.forEach(catId => {
-                                            newSelection[catId] = true;
-                                          });
-                                          setSelectedCategories(newSelection);
-                                        }}
-                                        style={{
-                                          flex: '1 1 0',
-                                          padding: '4px 5px',
-                                          background: '#3A3A3A',
-                                          color: '#DDD',
-                                          border: '1px solid #4A90E2',
-                                          borderRadius: '4px',
-                                          fontSize: '11px',
-                                          fontWeight: '400',
-                                          cursor: 'pointer',
-                                          whiteSpace: 'nowrap',
-                                          minWidth: 0
-                                        }}
-                                        onMouseEnter={(e) => {
-                                          e.currentTarget.style.background = '#444';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          e.currentTarget.style.background = '#3A3A3A';
-                                        }}
-                                      >
-                                        Select All
-                                      </button>
-
-                                      <button
-                                        onClick={() => {
-                                          const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
-                                          if (selectedCatIds.length === 0) {
-                                            alert('Please select at least one category to copy.');
-                                            return;
+                                    <input
+                                      type="checkbox"
+                                      checked={moduleAllSelected}
+                                      onChange={(e) => {
+                                        const newSelection = { ...copiedItemSelection };
+                                        allHighlightIds.forEach(id => {
+                                          if (!moduleAllSelected) {
+                                            newSelection[id] = true;
+                                          } else {
+                                            delete newSelection[id];
                                           }
-
-                                          // Copy logic would go here - for now just alert
-                                          alert(`Copy functionality for ${selectedCatIds.length} categories to be implemented.`);
-                                        }}
-                                        disabled={!hasSelectedCategories}
-                                        style={{
-                                          flex: '1 1 0',
-                                          padding: '4px 5px',
-                                          background: '#3A3A3A',
-                                          color: hasSelectedCategories ? '#DDD' : '#666',
-                                          border: '1px solid #4A90E2',
-                                          borderRadius: '4px',
-                                          fontSize: '11px',
-                                          fontWeight: '400',
-                                          cursor: hasSelectedCategories ? 'pointer' : 'not-allowed',
-                                          whiteSpace: 'nowrap',
-                                          minWidth: 0
-                                        }}
-                                        onMouseEnter={(e) => {
-                                          if (hasSelectedCategories) {
-                                            e.currentTarget.style.background = '#444';
-                                          }
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          if (hasSelectedCategories) {
-                                            e.currentTarget.style.background = '#3A3A3A';
-                                          }
-                                        }}
-                                      >
-                                        Copy
-                                      </button>
-
-                                      <button
-                                        onClick={() => {
-                                          const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
-                                          if (selectedCatIds.length === 0) {
-                                            alert('Please select at least one category to delete.');
-                                            return;
-                                          }
-                                          if (!confirm(`Are you sure you want to delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'} and all items within?`)) {
-                                            return;
-                                          }
-
-                                          // Delete categories and their items
-                                          selectedCatIds.forEach(catId => {
-                                            // Delete all highlights in this category
-                                            const highlightsInCategory = Object.entries(highlightAnnotations).filter(([_, h]) => {
-                                              const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
-                                              return hModuleId === selectedModuleId && h.categoryId === catId;
-                                            });
-
-                                            highlightsInCategory.forEach(([highlightId, highlight]) => {
-                                              // Remove from canvas
-                                              if (highlight.pageNumber && highlight.bounds) {
-                                                setHighlightsToRemoveByPage(prev => ({
-                                                  ...prev,
-                                                  [highlight.pageNumber]: [...(prev[highlight.pageNumber] || []), highlight.bounds]
-                                                }));
-                                              }
-                                            });
-
-                                            // Delete from highlightAnnotations
-                                            setHighlightAnnotations(prev => {
-                                              const updated = { ...prev };
-                                              highlightsInCategory.forEach(([highlightId]) => {
-                                                delete updated[highlightId];
-                                              });
-                                              return updated;
-                                            });
-
-                                            // Delete category from module
-                                            deleteCategory(selectedModuleId, catId);
-                                          });
-
-                                          // Exit category select mode
-                                          setCategorySelectModeActive(false);
-                                          setCategorySelectModeForCategory(null);
-                                          setSelectedCategories({});
-                                        }}
-                                        disabled={!hasSelectedCategories}
-                                        style={{
-                                          flex: '1 1 0',
-                                          padding: '4px 5px',
-                                          background: '#3A3A3A',
-                                          color: hasSelectedCategories ? '#cc4444' : '#666',
-                                          border: '1px solid #cc4444',
-                                          borderRadius: '4px',
-                                          fontSize: '11px',
-                                          fontWeight: '400',
-                                          cursor: hasSelectedCategories ? 'pointer' : 'not-allowed',
-                                          whiteSpace: 'nowrap',
-                                          minWidth: 0
-                                        }}
-                                        onMouseEnter={(e) => {
-                                          if (hasSelectedCategories) {
-                                            e.currentTarget.style.background = '#444';
-                                            e.currentTarget.style.color = '#ff6666';
-                                          }
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          if (hasSelectedCategories) {
-                                            e.currentTarget.style.background = '#3A3A3A';
-                                            e.currentTarget.style.color = '#cc4444';
-                                          }
-                                        }}
-                                      >
-                                        Delete
-                                      </button>
-
-                                      <button
-                                        onClick={() => {
-                                          setCategorySelectModeActive(false);
-                                          setCategorySelectModeForCategory(null);
-                                          setSelectedCategories({});
-                                        }}
-                                        style={{
-                                          flex: '1 1 0',
-                                          padding: '4px 5px',
-                                          background: '#3A3A3A',
-                                          color: '#DDD',
-                                          border: '1px solid #4A90E2',
-                                          borderRadius: '4px',
-                                          fontSize: '11px',
-                                          fontWeight: '400',
-                                          cursor: 'pointer',
-                                          whiteSpace: 'nowrap',
-                                          minWidth: 0
-                                        }}
-                                        onMouseEnter={(e) => {
-                                          e.currentTarget.style.background = '#444';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          e.currentTarget.style.background = '#3A3A3A';
-                                        }}
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  </div>
+                                        });
+                                        setCopiedItemSelection(newSelection);
+                                      }}
+                                      style={{ cursor: 'pointer' }}
+                                    />
+                                    <span style={{ color: '#ddd', fontSize: '13px', fontWeight: '400' }}>
+                                      Select All
+                                    </span>
+                                  </label>
                                 );
                               })()}
 
-                              {module.categories && module.categories.length > 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: categorySelectModeActive ? '8px' : '4px' }}>
-                                  {module.categories.map(category => {
-                                    const categoryHighlights = highlightsByCategory[category.id] || [];
-                                    const highlightCount = categoryHighlights.length;
-                                    const isExpanded = expandedCategories[category.id];
-                                    const isArrowActive = isExpanded || selectedCategoryId === category.id;
+                              <div style={{ width: '1px', height: '16px', background: '#444' }} />
 
-                                    // Calculate category checkbox state for copy mode
-                                    const categorySelectedCount = categoryHighlights.filter(h => copiedItemSelection[h.id] === true).length;
-                                    const categoryAllSelected = categorySelectedCount === categoryHighlights.length && categoryHighlights.length > 0;
+                              {/* Copy to Spaces button */}
+                              <button
+                                onClick={() => {
+                                  const selectedIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
+                                  console.log('=== Copy to Spaces Button Clicked ===');
+                                  console.log('copiedItemSelection:', copiedItemSelection);
+                                  console.log('selectedIds:', selectedIds);
+                                  console.log('highlightAnnotations keys:', Object.keys(highlightAnnotations));
+                                  console.log('Checking if selected IDs exist in highlightAnnotations:');
+                                  selectedIds.forEach(id => {
+                                    console.log(`  ${id}: ${highlightAnnotations[id] ? 'EXISTS' : 'NOT FOUND'}`);
+                                  });
+                                  if (selectedIds.length === 0) return;
+                                  setShowSpaceSelection(true);
+                                }}
+                                disabled={!Object.values(copiedItemSelection).some(Boolean)}
+                                style={{
+                                  padding: 0,
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: Object.values(copiedItemSelection).some(Boolean) ? '#999' : '#555',
+                                  fontSize: '13px',
+                                  fontWeight: '400',
+                                  cursor: Object.values(copiedItemSelection).some(Boolean) ? 'pointer' : 'not-allowed'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (Object.values(copiedItemSelection).some(Boolean)) {
+                                    e.currentTarget.style.color = '#ddd';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (Object.values(copiedItemSelection).some(Boolean)) {
+                                    e.currentTarget.style.color = '#999';
+                                  }
+                                }}
+                              >
+                                Copy to Spaces
+                              </button>
 
-                                    // Category-level selection state
-                                    const isCategorySelected = selectedCategories[category.id] === true;
-                                    const isCategorySelectModeActive = categorySelectModeActive;
-                                    const isCategoryActive = (isCategorySelectModeActive && isCategorySelected) || selectedCategoryId === category.id;
-                                    const buttonBackground = 'transparent';
-                                    const borderColor = isCategoryActive ? '#4A90E2' : 'transparent';
-                                    const baseBorder = `1px solid ${borderColor}`;
-                                    const buttonTextColor = isCategoryActive ? '#4A90E2' : '#ddd';
-                                    const buttonSubTextColor = isCategoryActive ? '#4A90E2' : '#999';
-                                    const buttonLeftBorder = (copyModeActive || isCategorySelectModeActive) ? 'none' : baseBorder;
-                                    const buttonRightBorder = highlightCount > 0 ? 'none' : baseBorder;
+                              {/* Delete button */}
+                              <button
+                                onClick={() => {
+                                  const selectedIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
+                                  if (selectedIds.length === 0) return;
 
-                                    // Item-level selection state
-                                    const isItemSelectModeActiveForCategory = itemSelectModeActive[category.id] === true;
-                                    const selectedItemsForCategory = selectedItemsInCategory[category.id] || {};
-                                    const itemSelectedCount = Object.values(selectedItemsForCategory).filter(Boolean).length;
-                                    const allItemsSelected = itemSelectedCount === highlightCount && highlightCount > 0;
+                                  // Confirm deletion
+                                  if (!confirm(`Are you sure you want to delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`)) {
+                                    return;
+                                  }
 
-                                    return (
-                                      <div key={category.id} style={{
-                                        marginBottom: categorySelectModeActive ? '0' : '4px',
-                                        border: '1px solid #444',
+                                  // Capture highlights before deletion (state is async)
+                                  const highlightsToDelete = selectedIds.map(id => highlightAnnotations[id]).filter(Boolean);
+
+                                  // Delete highlights from highlightAnnotations
+                                  setHighlightAnnotations(prev => {
+                                    const updated = { ...prev };
+                                    selectedIds.forEach(id => {
+                                      delete updated[id];
+                                    });
+
+                                    // Check if all items in the current space have been deleted
+                                    // If so, exit copy mode automatically
+                                    if (selectedSpaceId) {
+                                      const remainingHighlights = Object.entries(updated)
+                                        .filter(([_, h]) => h.spaceId === selectedSpaceId);
+                                      if (remainingHighlights.length === 0) {
+                                        // Use setTimeout to ensure state updates are processed
+                                        setTimeout(() => {
+                                          setCopyModeActive(false);
+                                          setCopiedItemSelection({});
+                                        }, 0);
+                                      }
+                                    }
+
+                                    return updated;
+                                  });
+
+                                  // Trigger removal from canvas via highlightsToRemoveByPage (same as working ✕ button)
+                                  highlightsToDelete.forEach(highlight => {
+                                    const pageNum = highlight.pageNumber;
+                                    const bounds = highlight.bounds;
+
+                                    if (pageNum && bounds) {
+                                      setHighlightsToRemoveByPage(prev => ({
+                                        ...prev,
+                                        [pageNum]: [...(prev[pageNum] || []), bounds]
+                                      }));
+                                    }
+                                  });
+
+                                  // Clear the removal queue after a short delay to allow processing
+                                  setTimeout(() => {
+                                    highlightsToDelete.forEach(highlight => {
+                                      const pageNum = highlight.pageNumber;
+                                      if (pageNum) {
+                                        setHighlightsToRemoveByPage(prev => {
+                                          const updated = { ...prev };
+                                          delete updated[pageNum];
+                                          return updated;
+                                        });
+                                      }
+                                    });
+                                  }, 100);
+
+                                  // Delete highlight rectangles from PDF canvas (annotationsByPage) - keep for backward compatibility
+                                  highlightsToDelete.forEach(highlight => {
+                                    const pageNum = highlight.pageNumber;
+                                    if (pageNum && annotationsByPage[pageNum]) {
+                                      setAnnotationsByPage(prev => {
+                                        const pageAnnotations = prev[pageNum];
+                                        if (!pageAnnotations || !pageAnnotations.objects) return prev;
+
+                                        // Get the current scale for coordinate conversion
+                                        const currentScale = scale;
+
+                                        // Filter out highlight rectangles that match this highlight's bounds
+                                        const filteredObjects = pageAnnotations.objects.filter(obj => {
+                                          // Check if this is a highlight rectangle (with any opacity)
+                                          if (obj.type !== 'rect') return true;
+                                          if (!obj.fill || typeof obj.fill !== 'string') return true;
+                                          if (!obj.fill.includes('rgba')) return true;
+
+                                          // Canvas coordinates are at canvas scale, need to normalize for comparison
+                                          const objX = (obj.left || 0) / currentScale;
+                                          const objY = (obj.top || 0) / currentScale;
+                                          const objWidth = (obj.width || 0) / currentScale;
+                                          const objHeight = (obj.height || 0) / currentScale;
+
+                                          const bounds = highlight.bounds || {};
+                                          const highlightX = bounds.x || bounds.left || 0;
+                                          const highlightY = bounds.y || bounds.top || 0;
+                                          const highlightWidth = bounds.width || (bounds.right ? bounds.right - bounds.left : 0) || 0;
+                                          const highlightHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0) || 0;
+
+                                          // Check if bounds match (with tolerance in normalized coordinates)
+                                          const tolerance = 5 / currentScale; // Convert tolerance to normalized coordinates
+                                          if (Math.abs(objX - highlightX) < tolerance &&
+                                            Math.abs(objY - highlightY) < tolerance &&
+                                            Math.abs(objWidth - highlightWidth) < tolerance &&
+                                            Math.abs(objHeight - highlightHeight) < tolerance) {
+                                            return false; // Remove this object
+                                          }
+                                          return true; // Keep this object
+                                        });
+
+                                        return {
+                                          ...prev,
+                                          [pageNum]: {
+                                            ...pageAnnotations,
+                                            objects: filteredObjects
+                                          }
+                                        };
+                                      });
+                                    }
+                                  });
+
+                                  // Delete associated items and annotations
+                                  highlightsToDelete.forEach(highlight => {
+
+                                    // Find associated item by matching name and category
+                                    const categoryName = getCategoryName(selectedTemplate, highlight.spaceId, highlight.categoryId);
+                                    const matchingItem = Object.values(items).find(item =>
+                                      item.name === highlight.name &&
+                                      item.itemType === categoryName
+                                    );
+
+                                    if (matchingItem) {
+                                      // Find and delete annotations for this item in this space
+                                      setAnnotations(prev => {
+                                        const updated = { ...prev };
+                                        Object.values(updated).forEach(ann => {
+                                          if (ann.itemId === matchingItem.itemId && ann.spaceId === highlight.spaceId) {
+                                            delete updated[ann.annotationId];
+                                          }
+                                        });
+                                        return updated;
+                                      });
+
+                                      // Check if item has data in other modules - if not, delete the item
+                                      const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
+                                      const moduleName = getModuleName(selectedTemplate, highlightModuleId);
+                                      const dataKey = getModuleDataKey(moduleName);
+                                      const item = items[matchingItem.itemId];
+
+                                      if (item) {
+                                        // Remove the module-specific data
+                                        const updatedItem = { ...item };
+                                        delete updatedItem[dataKey];
+
+                                        // Check if item has any module data left
+                                        const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+                                        const hasOtherModuleData = allModules.some(module => {
+                                          const moduleId = module.id;
+                                          if (moduleId === highlightModuleId) return false;
+                                          const otherModuleName = getModuleName(selectedTemplate, moduleId);
+                                          const otherDataKey = getModuleDataKey(otherModuleName);
+                                          return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
+                                        });
+
+                                        if (hasOtherModuleData) {
+                                          // Item exists in other modules, just remove this module's data
+                                          setItems(prev => ({
+                                            ...prev,
+                                            [matchingItem.itemId]: updatedItem
+                                          }));
+                                        } else {
+                                          // Item doesn't exist in other spaces, delete it entirely
+                                          setItems(prev => {
+                                            const updated = { ...prev };
+                                            delete updated[matchingItem.itemId];
+                                            return updated;
+                                          });
+                                        }
+                                      }
+                                    }
+                                  });
+
+                                  // Clear selection (copy mode will be automatically exited if all items in space are deleted)
+                                  setCopiedItemSelection({});
+                                }}
+                                disabled={!Object.values(copiedItemSelection).some(Boolean)}
+                                style={{
+                                  padding: 0,
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: Object.values(copiedItemSelection).some(Boolean) ? '#cc4444' : '#555',
+                                  fontSize: '13px',
+                                  fontWeight: '400',
+                                  cursor: Object.values(copiedItemSelection).some(Boolean) ? 'pointer' : 'not-allowed'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (Object.values(copiedItemSelection).some(Boolean)) {
+                                    e.currentTarget.style.color = '#ff6666';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (Object.values(copiedItemSelection).some(Boolean)) {
+                                    e.currentTarget.style.color = '#cc4444';
+                                  }
+                                }}
+                              >
+                                Delete
+                              </button>
+
+                              <div style={{ marginLeft: 'auto' }} />
+
+                              {/* Cancel button */}
+                              <button
+                                onClick={() => {
+                                  setCopyModeActive(false);
+                                  setCopiedItemSelection({});
+                                }}
+                                style={{
+                                  padding: 0,
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#999',
+                                  fontSize: '13px',
+                                  fontWeight: '400',
+                                  cursor: 'pointer'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.color = '#ddd'}
+                                onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : null}
+
+                          {/* Categories List */}
+                          <div style={{ marginBottom: '20px' }}>
+                            <h3 style={{
+                              fontSize: '14px',
+                              fontWeight: '600',
+                              color: '#fff',
+                              marginBottom: '10px',
+                              fontFamily: FONT_FAMILY
+                            }}>
+                              Select Category to Highlight
+                            </h3>
+
+                            {/* Category Select Mode Actions - show when category select mode is active */}
+                            {categorySelectModeActive && module.categories && module.categories.length > 0 && (() => {
+                              const selectedCategoryCount = Object.keys(selectedCategories).filter(id => selectedCategories[id]).length;
+                              const hasSelectedCategories = selectedCategoryCount > 0;
+
+                              return (
+                                <div style={{
+                                  marginBottom: '10px'
+                                }}>
+                                  <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    flexWrap: 'nowrap',
+                                    width: '100%'
+                                  }}>
+                                    <button
+                                      onClick={() => {
+                                        // Select all categories in this module
+                                        const allCategoryIds = module.categories.map(c => c.id);
+                                        const newSelection = {};
+                                        allCategoryIds.forEach(catId => {
+                                          newSelection[catId] = true;
+                                        });
+                                        setSelectedCategories(newSelection);
+                                      }}
+                                      style={{
+                                        flex: '1 1 0',
+                                        padding: '4px 5px',
+                                        background: '#3A3A3A',
+                                        color: '#DDD',
+                                        border: '1px solid #4A90E2',
                                         borderRadius: '4px',
-                                        padding: '2px'
-                                      }}>
-                                        <div style={{ display: 'flex', gap: isCategorySelectModeActive ? '12px' : '8px', alignItems: 'center' }}>
-                                          {/* Checkbox for category selection - only show in copy mode */}
-                                          {copyModeActive && (
-                                            <label style={{
+                                        fontSize: '11px',
+                                        fontWeight: '400',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                        minWidth: 0
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = '#444';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = '#3A3A3A';
+                                      }}
+                                    >
+                                      Select All
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
+                                        if (selectedCatIds.length === 0) {
+                                          alert('Please select at least one category to copy.');
+                                          return;
+                                        }
+
+                                        // Copy logic would go here - for now just alert
+                                        alert(`Copy functionality for ${selectedCatIds.length} categories to be implemented.`);
+                                      }}
+                                      disabled={!hasSelectedCategories}
+                                      style={{
+                                        flex: '1 1 0',
+                                        padding: '4px 5px',
+                                        background: '#3A3A3A',
+                                        color: hasSelectedCategories ? '#DDD' : '#666',
+                                        border: '1px solid #4A90E2',
+                                        borderRadius: '4px',
+                                        fontSize: '11px',
+                                        fontWeight: '400',
+                                        cursor: hasSelectedCategories ? 'pointer' : 'not-allowed',
+                                        whiteSpace: 'nowrap',
+                                        minWidth: 0
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        if (hasSelectedCategories) {
+                                          e.currentTarget.style.background = '#444';
+                                        }
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        if (hasSelectedCategories) {
+                                          e.currentTarget.style.background = '#3A3A3A';
+                                        }
+                                      }}
+                                    >
+                                      Copy
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
+                                        if (selectedCatIds.length === 0) {
+                                          alert('Please select at least one category to delete.');
+                                          return;
+                                        }
+                                        if (!confirm(`Are you sure you want to delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'} and all items within?`)) {
+                                          return;
+                                        }
+
+                                        // Delete categories and their items
+                                        selectedCatIds.forEach(catId => {
+                                          // Delete all highlights in this category
+                                          const highlightsInCategory = Object.entries(highlightAnnotations).filter(([_, h]) => {
+                                            const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                            return hModuleId === selectedModuleId && h.categoryId === catId;
+                                          });
+
+                                          highlightsInCategory.forEach(([highlightId, highlight]) => {
+                                            // Remove from canvas
+                                            if (highlight.pageNumber && highlight.bounds) {
+                                              setHighlightsToRemoveByPage(prev => ({
+                                                ...prev,
+                                                [highlight.pageNumber]: [...(prev[highlight.pageNumber] || []), highlight.bounds]
+                                              }));
+                                            }
+                                          });
+
+                                          // Delete from highlightAnnotations
+                                          setHighlightAnnotations(prev => {
+                                            const updated = { ...prev };
+                                            highlightsInCategory.forEach(([highlightId]) => {
+                                              delete updated[highlightId];
+                                            });
+                                            return updated;
+                                          });
+
+                                          // Delete category from module
+                                          deleteCategory(selectedModuleId, catId);
+                                        });
+
+                                        // Exit category select mode
+                                        setCategorySelectModeActive(false);
+                                        setCategorySelectModeForCategory(null);
+                                        setSelectedCategories({});
+                                      }}
+                                      disabled={!hasSelectedCategories}
+                                      style={{
+                                        flex: '1 1 0',
+                                        padding: '4px 5px',
+                                        background: '#3A3A3A',
+                                        color: hasSelectedCategories ? '#cc4444' : '#666',
+                                        border: '1px solid #cc4444',
+                                        borderRadius: '4px',
+                                        fontSize: '11px',
+                                        fontWeight: '400',
+                                        cursor: hasSelectedCategories ? 'pointer' : 'not-allowed',
+                                        whiteSpace: 'nowrap',
+                                        minWidth: 0
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        if (hasSelectedCategories) {
+                                          e.currentTarget.style.background = '#444';
+                                          e.currentTarget.style.color = '#ff6666';
+                                        }
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        if (hasSelectedCategories) {
+                                          e.currentTarget.style.background = '#3A3A3A';
+                                          e.currentTarget.style.color = '#cc4444';
+                                        }
+                                      }}
+                                    >
+                                      Delete
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        setCategorySelectModeActive(false);
+                                        setCategorySelectModeForCategory(null);
+                                        setSelectedCategories({});
+                                      }}
+                                      style={{
+                                        flex: '1 1 0',
+                                        padding: '4px 5px',
+                                        background: '#3A3A3A',
+                                        color: '#DDD',
+                                        border: '1px solid #4A90E2',
+                                        borderRadius: '4px',
+                                        fontSize: '11px',
+                                        fontWeight: '400',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                        minWidth: 0
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = '#444';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = '#3A3A3A';
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {module.categories && module.categories.length > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: categorySelectModeActive ? '8px' : '4px' }}>
+                                {module.categories.map(category => {
+                                  const categoryHighlights = highlightsByCategory[category.id] || [];
+                                  const highlightCount = categoryHighlights.length;
+                                  const isExpanded = expandedCategories[category.id];
+                                  const isArrowActive = isExpanded || selectedCategoryId === category.id;
+
+                                  // Calculate category checkbox state for copy mode
+                                  const categorySelectedCount = categoryHighlights.filter(h => copiedItemSelection[h.id] === true).length;
+                                  const categoryAllSelected = categorySelectedCount === categoryHighlights.length && categoryHighlights.length > 0;
+
+                                  // Category-level selection state
+                                  const isCategorySelected = selectedCategories[category.id] === true;
+                                  const isCategorySelectModeActive = categorySelectModeActive;
+                                  const isCategoryActive = (isCategorySelectModeActive && isCategorySelected) || selectedCategoryId === category.id;
+                                  const buttonBackground = 'transparent';
+                                  const borderColor = isCategoryActive ? '#4A90E2' : 'transparent';
+                                  const baseBorder = `1px solid ${borderColor}`;
+                                  const buttonTextColor = isCategoryActive ? '#4A90E2' : '#ddd';
+                                  const buttonSubTextColor = isCategoryActive ? '#4A90E2' : '#999';
+                                  const buttonLeftBorder = (copyModeActive || isCategorySelectModeActive) ? 'none' : baseBorder;
+                                  const buttonRightBorder = highlightCount > 0 ? 'none' : baseBorder;
+
+                                  // Item-level selection state
+                                  const isItemSelectModeActiveForCategory = itemSelectModeActive[category.id] === true;
+                                  const selectedItemsForCategory = selectedItemsInCategory[category.id] || {};
+                                  const itemSelectedCount = Object.values(selectedItemsForCategory).filter(Boolean).length;
+                                  const allItemsSelected = itemSelectedCount === highlightCount && highlightCount > 0;
+
+                                  return (
+                                    <div key={category.id} style={{
+                                      marginBottom: categorySelectModeActive ? '0' : '4px',
+                                      border: '1px solid #444',
+                                      borderRadius: '4px',
+                                      padding: '2px'
+                                    }}>
+                                      <div style={{ display: 'flex', gap: isCategorySelectModeActive ? '12px' : '8px', alignItems: 'center' }}>
+                                        {/* Checkbox for category selection - only show in copy mode */}
+                                        {copyModeActive && (
+                                          <label style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            padding: '0 6px',
+                                            cursor: 'pointer',
+                                            border: '1px solid transparent',
+                                            borderRadius: '4px 0 0 4px',
+                                            background: '#333',
+                                            userSelect: 'none'
+                                          }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={categoryAllSelected}
+                                              onChange={(e) => {
+                                                const newSelection = { ...copiedItemSelection };
+                                                categoryHighlights.forEach(h => {
+                                                  if (!categoryAllSelected) {
+                                                    newSelection[h.id] = true;
+                                                  } else {
+                                                    delete newSelection[h.id];
+                                                  }
+                                                });
+                                                setCopiedItemSelection(newSelection);
+                                              }}
+                                              onClick={(e) => e.stopPropagation()}
+                                              style={{ cursor: 'pointer', flexShrink: 0 }}
+                                            />
+                                          </label>
+                                        )}
+
+                                        {isCategorySelectModeActive ? (
+                                          <div
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedCategories(prev => ({
+                                                ...prev,
+                                                [category.id]: !prev[category.id]
+                                              }));
+                                            }}
+                                            style={{
                                               display: 'flex',
                                               alignItems: 'center',
-                                              padding: '0 6px',
+                                              gap: '12px',
+                                              padding: '12px 16px',
+                                              background: 'transparent',
+                                              borderRadius: '6px',
                                               cursor: 'pointer',
-                                              border: '1px solid transparent',
-                                              borderRadius: '4px 0 0 4px',
-                                              background: '#333',
-                                              userSelect: 'none'
-                                            }}>
-                                              <input
-                                                type="checkbox"
-                                                checked={categoryAllSelected}
-                                                onChange={(e) => {
-                                                  const newSelection = { ...copiedItemSelection };
-                                                  categoryHighlights.forEach(h => {
-                                                    if (!categoryAllSelected) {
-                                                      newSelection[h.id] = true;
-                                                    } else {
-                                                      delete newSelection[h.id];
-                                                    }
-                                                  });
-                                                  setCopiedItemSelection(newSelection);
-                                                }}
-                                                onClick={(e) => e.stopPropagation()}
-                                                style={{ cursor: 'pointer', flexShrink: 0 }}
-                                              />
-                                            </label>
-                                          )}
-
-                                          {isCategorySelectModeActive ? (
-                                            <div
-                                              onClick={(e) => {
+                                              flex: 1,
+                                              marginBottom: '8px',
+                                              color: isCategorySelected ? '#4A90E2' : '#DDD',
+                                              border: `1px solid ${isCategorySelected ? '#4A90E2' : 'transparent'}`
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              if (!isCategorySelected) {
+                                                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                              }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              if (!isCategorySelected) {
+                                                e.currentTarget.style.background = 'transparent';
+                                              }
+                                            }}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={isCategorySelected}
+                                              onChange={(e) => {
                                                 e.stopPropagation();
                                                 setSelectedCategories(prev => ({
                                                   ...prev,
-                                                  [category.id]: !prev[category.id]
+                                                  [category.id]: e.target.checked
                                                 }));
                                               }}
+                                              onClick={(e) => e.stopPropagation()}
                                               style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '12px',
-                                                padding: '12px 16px',
-                                                background: 'transparent',
-                                                borderRadius: '6px',
                                                 cursor: 'pointer',
+                                                flexShrink: 0,
+                                                width: '18px',
+                                                height: '18px',
+                                                accentColor: '#4A90E2',
+                                                margin: 0
+                                              }}
+                                            />
+                                            <div style={{
+                                              fontWeight: '500',
+                                              fontSize: '14px',
+                                              color: isCategorySelected ? '#fff' : '#DDD',
+                                              flex: 1
+                                            }}>
+                                              {category.name || 'Untitled Category'}
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div style={{ display: 'flex', flex: 1, alignItems: 'stretch' }}>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (copyModeActive) {
+                                                  // In copy mode, don't change category selection or hide panel
+                                                  return;
+                                                }
+
+                                                // Set selected category
+                                                setSelectedCategoryId(category.id);
+                                                // Hide survey panel
+                                                setShowSurveyPanel(false);
+                                                // Switch to highlight tool
+                                                setActiveTool('highlight');
+                                              }}
+                                              className="btn btn-default btn-md"
+                                              style={{
+                                                textAlign: 'left',
+                                                justifyContent: 'flex-start',
+                                                padding: '6px 12px',
+                                                background: buttonBackground,
+                                                borderTop: baseBorder,
+                                                borderBottom: baseBorder,
+                                                borderLeft: buttonLeftBorder,
+                                                borderRight: highlightCount > 0 ? 'none' : baseBorder,
+                                                color: buttonTextColor,
                                                 flex: 1,
-                                                marginBottom: '8px',
-                                                color: isCategorySelected ? '#4A90E2' : '#DDD',
-                                                border: `1px solid ${isCategorySelected ? '#4A90E2' : 'transparent'}`
-                                              }}
-                                              onMouseEnter={(e) => {
-                                                if (!isCategorySelected) {
-                                                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                                                }
-                                              }}
-                                              onMouseLeave={(e) => {
-                                                if (!isCategorySelected) {
-                                                  e.currentTarget.style.background = 'transparent';
-                                                }
+                                                borderRadius: highlightCount > 0 ? '4px 0 0 4px' : '4px',
                                               }}
                                             >
-                                              <input
-                                                type="checkbox"
-                                                checked={isCategorySelected}
-                                                onChange={(e) => {
-                                                  e.stopPropagation();
-                                                  setSelectedCategories(prev => ({
-                                                    ...prev,
-                                                    [category.id]: e.target.checked
-                                                  }));
-                                                }}
-                                                onClick={(e) => e.stopPropagation()}
-                                                style={{
-                                                  cursor: 'pointer',
-                                                  flexShrink: 0,
-                                                  width: '18px',
-                                                  height: '18px',
-                                                  accentColor: '#4A90E2',
-                                                  margin: 0
-                                                }}
-                                              />
-                                              <div style={{
-                                                fontWeight: '500',
-                                                fontSize: '14px',
-                                                color: isCategorySelected ? '#fff' : '#DDD',
-                                                flex: 1
-                                              }}>
+                                              <div style={{ fontWeight: '500' }}>
                                                 {category.name || 'Untitled Category'}
                                               </div>
-                                            </div>
-                                          ) : (
-                                            <div style={{ display: 'flex', flex: 1, alignItems: 'stretch' }}>
+                                              <div style={{ fontSize: '11px', color: buttonSubTextColor, marginTop: '2px' }}>
+                                                {highlightCount}
+                                              </div>
+                                            </button>
+                                            {highlightCount > 0 && (
                                               <button
+                                                className="dropdown-arrow"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
-                                                  if (copyModeActive) {
-                                                    // In copy mode, don't change category selection or hide panel
+                                                  setExpandedCategories(prev => ({
+                                                    ...prev,
+                                                    [category.id]: !prev[category.id]
+                                                  }));
+                                                }}
+                                                style={{
+                                                  padding: '2px 8px',
+                                                  background: 'transparent',
+                                                  borderTop: baseBorder,
+                                                  borderRight: baseBorder,
+                                                  borderBottom: baseBorder,
+                                                  borderLeft: 'none',
+                                                  borderRadius: '0 4px 4px 0',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center',
+                                                  transition: 'background 0.2s ease, border-color 0.2s ease'
+                                                }}
+                                              >
+                                                <svg
+                                                  width="16"
+                                                  height="16"
+                                                  viewBox="0 0 24 24"
+                                                  fill="none"
+                                                  xmlns="http://www.w3.org/2000/svg"
+                                                  style={{
+                                                    width: '14px',
+                                                    height: '14px',
+                                                    transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                                    transition: 'transform 0.2s ease'
+                                                  }}
+                                                >
+                                                  <path
+                                                    d="M6 9L12 15L18 9"
+                                                    stroke={isArrowActive ? "#4A90E2" : "#fff"}
+                                                    strokeWidth="2.5"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                  />
+                                                </svg>
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Expanded highlights list */}
+                                      {isExpanded && highlightCount > 0 && (
+                                        <div style={{
+                                          marginTop: '4px',
+                                          padding: '4px',
+                                          background: 'transparent',
+                                          border: '1px solid transparent',
+                                          borderRadius: '4px'
+                                        }}>
+                                          {/* Select button for item-level selection - only show when NOT in item select mode */}
+                                          {!isItemSelectModeActiveForCategory && !categorySelectModeActive && !copyModeActive && (
+                                            <button
+                                              onClick={() => {
+                                                setItemSelectModeActive(prev => ({
+                                                  ...prev,
+                                                  [category.id]: true
+                                                }));
+                                                setSelectedItemsInCategory(prev => ({
+                                                  ...prev,
+                                                  [category.id]: {}
+                                                }));
+                                              }}
+                                              className="btn btn-sm"
+                                              style={{
+                                                marginBottom: '8px',
+                                                background: '#3a3a3a',
+                                                color: '#ddd',
+                                                border: '1px solid transparent',
+                                                whiteSpace: 'nowrap'
+                                              }}
+                                            >
+                                              Select Item
+                                            </button>
+                                          )}
+
+                                          {/* Item Select Mode Actions */}
+                                          {isItemSelectModeActiveForCategory && (
+                                            <div style={{
+                                              marginBottom: '8px',
+                                              display: 'flex',
+                                              gap: '4px',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              flexWrap: 'nowrap',
+                                              width: '100%'
+                                            }}>
+                                              <button
+                                                onClick={() => {
+                                                  const newSelection = {};
+                                                  categoryHighlights.forEach(h => {
+                                                    newSelection[h.id] = true;
+                                                  });
+                                                  setSelectedItemsInCategory(prev => ({
+                                                    ...prev,
+                                                    [category.id]: newSelection
+                                                  }));
+                                                }}
+                                                style={{
+                                                  flex: '1 1 0',
+                                                  padding: '4px 5px',
+                                                  background: 'rgb(68, 68, 68)',
+                                                  color: 'rgb(221, 221, 221)',
+                                                  border: '1px solid rgb(74, 144, 226)',
+                                                  borderRadius: '4px',
+                                                  fontSize: '11px',
+                                                  fontWeight: '400',
+                                                  cursor: 'pointer',
+                                                  whiteSpace: 'nowrap',
+                                                  minWidth: 0
+                                                }}
+                                              >
+                                                Select All
+                                              </button>
+
+                                              <button
+                                                onClick={() => {
+                                                  const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
+                                                  if (selectedItemIds.length === 0) {
+                                                    alert('Please select at least one item to copy.');
+                                                    return;
+                                                  }
+                                                  // Store selected items for copy operation
+                                                  setCopiedItemSelection(prev => {
+                                                    const newSelection = { ...prev };
+                                                    selectedItemIds.forEach(id => {
+                                                      newSelection[id] = true;
+                                                    });
+                                                    return newSelection;
+                                                  });
+                                                  setShowSpaceSelection(true);
+                                                }}
+                                                disabled={itemSelectedCount === 0}
+                                                style={{
+                                                  flex: '1 1 0',
+                                                  padding: '4px 5px',
+                                                  background: 'rgb(68, 68, 68)',
+                                                  color: 'rgb(221, 221, 221)',
+                                                  border: '1px solid rgb(74, 144, 226)',
+                                                  borderRadius: '4px',
+                                                  fontSize: '11px',
+                                                  fontWeight: '400',
+                                                  cursor: itemSelectedCount > 0 ? 'pointer' : 'not-allowed',
+                                                  opacity: itemSelectedCount > 0 ? 1 : 0.5,
+                                                  whiteSpace: 'nowrap',
+                                                  minWidth: 0
+                                                }}
+                                              >
+                                                Copy
+                                              </button>
+
+                                              <button
+                                                onClick={() => {
+                                                  const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
+                                                  if (selectedItemIds.length === 0) {
+                                                    alert('Please select at least one item to delete.');
+                                                    return;
+                                                  }
+                                                  if (!confirm(`Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`)) {
                                                     return;
                                                   }
 
-                                                  // Set selected category
-                                                  setSelectedCategoryId(category.id);
-                                                  // Hide survey panel
-                                                  setShowSurveyPanel(false);
-                                                  // Switch to highlight tool
-                                                  setActiveTool('highlight');
-                                                }}
-                                                className="btn btn-default btn-md"
-                                                style={{
-                                                  textAlign: 'left',
-                                                  justifyContent: 'flex-start',
-                                                  padding: '6px 12px',
-                                                  background: buttonBackground,
-                                                  borderTop: baseBorder,
-                                                  borderBottom: baseBorder,
-                                                  borderLeft: buttonLeftBorder,
-                                                  borderRight: highlightCount > 0 ? 'none' : baseBorder,
-                                                  color: buttonTextColor,
-                                                  flex: 1,
-                                                  borderRadius: highlightCount > 0 ? '4px 0 0 4px' : '4px',
-                                                }}
-                                              >
-                                                <div style={{ fontWeight: '500' }}>
-                                                  {category.name || 'Untitled Category'}
-                                                </div>
-                                                <div style={{ fontSize: '11px', color: buttonSubTextColor, marginTop: '2px' }}>
-                                                  {highlightCount}
-                                                </div>
-                                              </button>
-                                              {highlightCount > 0 && (
-                                                <button
-                                                  className="dropdown-arrow"
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setExpandedCategories(prev => ({
-                                                      ...prev,
-                                                      [category.id]: !prev[category.id]
-                                                    }));
-                                                  }}
-                                                  style={{
-                                                    padding: '2px 8px',
-                                                    background: 'transparent',
-                                                    borderTop: baseBorder,
-                                                    borderRight: baseBorder,
-                                                    borderBottom: baseBorder,
-                                                    borderLeft: 'none',
-                                                    borderRadius: '0 4px 4px 0',
-                                                    cursor: 'pointer',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    transition: 'background 0.2s ease, border-color 0.2s ease'
-                                                  }}
-                                                >
-                                                  <svg
-                                                    width="16"
-                                                    height="16"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    style={{
-                                                      width: '14px',
-                                                      height: '14px',
-                                                      transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                                      transition: 'transform 0.2s ease'
-                                                    }}
-                                                  >
-                                                    <path
-                                                      d="M6 9L12 15L18 9"
-                                                      stroke={isArrowActive ? "#4A90E2" : "#fff"}
-                                                      strokeWidth="2.5"
-                                                      strokeLinecap="round"
-                                                      strokeLinejoin="round"
-                                                    />
-                                                  </svg>
-                                                </button>
-                                              )}
-                                            </div>
-                                          )}
-                                        </div>
+                                                  // Delete selected items
+                                                  selectedItemIds.forEach(highlightId => {
+                                                    handleDeleteHighlightItem(highlightId);
+                                                  });
 
-                                        {/* Expanded highlights list */}
-                                        {isExpanded && highlightCount > 0 && (
-                                          <div style={{
-                                            marginTop: '4px',
-                                            padding: '4px',
-                                            background: 'transparent',
-                                            border: '1px solid transparent',
-                                            borderRadius: '4px'
-                                          }}>
-                                            {/* Select button for item-level selection - only show when NOT in item select mode */}
-                                            {!isItemSelectModeActiveForCategory && !categorySelectModeActive && !copyModeActive && (
-                                              <button
-                                                onClick={() => {
-                                                  setItemSelectModeActive(prev => ({
-                                                    ...prev,
-                                                    [category.id]: true
-                                                  }));
-                                                  setSelectedItemsInCategory(prev => ({
-                                                    ...prev,
-                                                    [category.id]: {}
-                                                  }));
-                                                }}
-                                                className="btn btn-sm"
-                                                style={{
-                                                  marginBottom: '8px',
-                                                  background: '#3a3a3a',
-                                                  color: '#ddd',
-                                                  border: '1px solid transparent',
-                                                  whiteSpace: 'nowrap'
-                                                }}
-                                              >
-                                                Select Item
-                                              </button>
-                                            )}
-
-                                            {/* Item Select Mode Actions */}
-                                            {isItemSelectModeActiveForCategory && (
-                                              <div style={{
-                                                marginBottom: '8px',
-                                                display: 'flex',
-                                                gap: '4px',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                flexWrap: 'nowrap',
-                                                width: '100%'
-                                              }}>
-                                                <button
-                                                  onClick={() => {
-                                                    const newSelection = {};
-                                                    categoryHighlights.forEach(h => {
-                                                      newSelection[h.id] = true;
-                                                    });
-                                                    setSelectedItemsInCategory(prev => ({
-                                                      ...prev,
-                                                      [category.id]: newSelection
-                                                    }));
-                                                  }}
-                                                  style={{
-                                                    flex: '1 1 0',
-                                                    padding: '4px 5px',
-                                                    background: 'rgb(68, 68, 68)',
-                                                    color: 'rgb(221, 221, 221)',
-                                                    border: '1px solid rgb(74, 144, 226)',
-                                                    borderRadius: '4px',
-                                                    fontSize: '11px',
-                                                    fontWeight: '400',
-                                                    cursor: 'pointer',
-                                                    whiteSpace: 'nowrap',
-                                                    minWidth: 0
-                                                  }}
-                                                >
-                                                  Select All
-                                                </button>
-
-                                                <button
-                                                  onClick={() => {
-                                                    const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
-                                                    if (selectedItemIds.length === 0) {
-                                                      alert('Please select at least one item to copy.');
-                                                      return;
-                                                    }
-                                                    // Store selected items for copy operation
-                                                    setCopiedItemSelection(prev => {
-                                                      const newSelection = { ...prev };
-                                                      selectedItemIds.forEach(id => {
-                                                        newSelection[id] = true;
-                                                      });
-                                                      return newSelection;
-                                                    });
-                                                    setShowSpaceSelection(true);
-                                                  }}
-                                                  disabled={itemSelectedCount === 0}
-                                                  style={{
-                                                    flex: '1 1 0',
-                                                    padding: '4px 5px',
-                                                    background: 'rgb(68, 68, 68)',
-                                                    color: 'rgb(221, 221, 221)',
-                                                    border: '1px solid rgb(74, 144, 226)',
-                                                    borderRadius: '4px',
-                                                    fontSize: '11px',
-                                                    fontWeight: '400',
-                                                    cursor: itemSelectedCount > 0 ? 'pointer' : 'not-allowed',
-                                                    opacity: itemSelectedCount > 0 ? 1 : 0.5,
-                                                    whiteSpace: 'nowrap',
-                                                    minWidth: 0
-                                                  }}
-                                                >
-                                                  Copy
-                                                </button>
-
-                                                <button
-                                                  onClick={() => {
-                                                    const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
-                                                    if (selectedItemIds.length === 0) {
-                                                      alert('Please select at least one item to delete.');
-                                                      return;
-                                                    }
-                                                    if (!confirm(`Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`)) {
-                                                      return;
-                                                    }
-
-                                                    // Delete selected items
-                                                    selectedItemIds.forEach(highlightId => {
-                                                      handleDeleteHighlightItem(highlightId);
-                                                    });
-
-                                                    // Clear selection and exit item select mode if no items left
-                                                    const remainingItems = categoryHighlights.filter(h => !selectedItemIds.includes(h.id));
-                                                    if (remainingItems.length === 0) {
-                                                      setItemSelectModeActive(prev => {
-                                                        const updated = { ...prev };
-                                                        delete updated[category.id];
-                                                        return updated;
-                                                      });
-                                                      setSelectedItemsInCategory(prev => {
-                                                        const updated = { ...prev };
-                                                        delete updated[category.id];
-                                                        return updated;
-                                                      });
-                                                    } else {
-                                                      setSelectedItemsInCategory(prev => {
-                                                        const updated = { ...prev };
-                                                        updated[category.id] = {};
-                                                        return updated;
-                                                      });
-                                                    }
-                                                  }}
-                                                  disabled={itemSelectedCount === 0}
-                                                  style={{
-                                                    flex: '1 1 0',
-                                                    padding: '4px 5px',
-                                                    background: 'rgb(68, 68, 68)',
-                                                    color: 'rgb(255, 102, 102)',
-                                                    border: '1px solid rgb(204, 68, 68)',
-                                                    borderRadius: '4px',
-                                                    fontSize: '11px',
-                                                    fontWeight: '400',
-                                                    cursor: itemSelectedCount > 0 ? 'pointer' : 'not-allowed',
-                                                    opacity: itemSelectedCount > 0 ? 1 : 0.5,
-                                                    whiteSpace: 'nowrap',
-                                                    minWidth: 0
-                                                  }}
-                                                >
-                                                  Delete
-                                                </button>
-
-                                                <button
-                                                  onClick={() => {
+                                                  // Clear selection and exit item select mode if no items left
+                                                  const remainingItems = categoryHighlights.filter(h => !selectedItemIds.includes(h.id));
+                                                  if (remainingItems.length === 0) {
                                                     setItemSelectModeActive(prev => {
                                                       const updated = { ...prev };
                                                       delete updated[category.id];
@@ -16480,300 +16430,300 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                       delete updated[category.id];
                                                       return updated;
                                                     });
-                                                  }}
-                                                  style={{
-                                                    flex: '1 1 0',
-                                                    padding: '4px 5px',
-                                                    background: 'rgb(68, 68, 68)',
-                                                    color: 'rgb(221, 221, 221)',
-                                                    border: '1px solid rgb(74, 144, 226)',
-                                                    borderRadius: '4px',
-                                                    fontSize: '11px',
-                                                    fontWeight: '400',
-                                                    cursor: 'pointer',
-                                                    whiteSpace: 'nowrap',
-                                                    minWidth: 0
-                                                  }}
-                                                >
-                                                  Cancel
-                                                </button>
-                                              </div>
-                                            )}
-
-                                            {categoryHighlights.map((highlight, highlightIndex) => {
-                                              const highlightId = highlight.id;
-                                              const isHighlightExpanded = expandedHighlights[highlightId];
-                                              const baseCategoryName = category?.name?.trim() || 'Untitled Category';
-                                              const fallbackName = `${baseCategoryName} ${highlightIndex + 1}`;
-                                              const highlightName = highlightAnnotations[highlightId]?.name || highlight.name || fallbackName;
-
-                                              return (
-                                                <div key={highlight.id} id={`highlight-item-${highlight.id}`} style={{
-                                                  marginBottom: '4px',
-                                                  background: 'transparent',
-                                                  border: '1px solid #444',
+                                                  } else {
+                                                    setSelectedItemsInCategory(prev => {
+                                                      const updated = { ...prev };
+                                                      updated[category.id] = {};
+                                                      return updated;
+                                                    });
+                                                  }
+                                                }}
+                                                disabled={itemSelectedCount === 0}
+                                                style={{
+                                                  flex: '1 1 0',
+                                                  padding: '4px 5px',
+                                                  background: 'rgb(68, 68, 68)',
+                                                  color: 'rgb(255, 102, 102)',
+                                                  border: '1px solid rgb(204, 68, 68)',
                                                   borderRadius: '4px',
-                                                  overflow: 'hidden'
-                                                }}>
-                                                  {/* Highlight header - clickable to expand */}
-                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                                    {/* Checkbox for selection - show in copy mode or item select mode */}
-                                                    {(copyModeActive || isItemSelectModeActiveForCategory) && (
-                                                      <input
-                                                        type="checkbox"
-                                                        checked={
-                                                          isItemSelectModeActiveForCategory
-                                                            ? selectedItemsForCategory[highlightId] === true
-                                                            : copiedItemSelection[highlightId] === true
-                                                        }
-                                                        onChange={(e) => {
-                                                          if (isItemSelectModeActiveForCategory) {
-                                                            setSelectedItemsInCategory(prev => ({
-                                                              ...prev,
-                                                              [category.id]: {
-                                                                ...(prev[category.id] || {}),
-                                                                [highlightId]: e.target.checked
-                                                              }
-                                                            }));
-                                                          } else {
-                                                            console.log('Checkbox changed:', {
-                                                              highlightId,
-                                                              checked: e.target.checked,
-                                                              highlight,
-                                                              'highlight.id': highlight.id
-                                                            });
-                                                            setCopiedItemSelection(prev => {
-                                                              const newSelection = { ...prev };
-                                                              if (e.target.checked) {
-                                                                newSelection[highlightId] = true;
-                                                              } else {
-                                                                delete newSelection[highlightId];
-                                                              }
-                                                              console.log('Updated selection:', newSelection);
-                                                              return newSelection;
-                                                            });
-                                                          }
-                                                        }}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        style={{ cursor: 'pointer', flexShrink: 0 }}
-                                                      />
-                                                    )}
+                                                  fontSize: '11px',
+                                                  fontWeight: '400',
+                                                  cursor: itemSelectedCount > 0 ? 'pointer' : 'not-allowed',
+                                                  opacity: itemSelectedCount > 0 ? 1 : 0.5,
+                                                  whiteSpace: 'nowrap',
+                                                  minWidth: 0
+                                                }}
+                                              >
+                                                Delete
+                                              </button>
 
-                                                    {/* Expandable button */}
-                                                    <button
-                                                      onClick={() => {
-                                                        setExpandedHighlights(prev => ({
-                                                          ...prev,
-                                                          [highlightId]: !prev[highlightId]
-                                                        }));
-                                                      }}
-                                                      style={{
-                                                        flex: 1,
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'space-between',
-                                                        padding: '6px 8px',
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        cursor: 'pointer',
-                                                        textAlign: 'left',
-                                                        minWidth: 0
-                                                      }}
-                                                    >
-                                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                                              <button
+                                                onClick={() => {
+                                                  setItemSelectModeActive(prev => {
+                                                    const updated = { ...prev };
+                                                    delete updated[category.id];
+                                                    return updated;
+                                                  });
+                                                  setSelectedItemsInCategory(prev => {
+                                                    const updated = { ...prev };
+                                                    delete updated[category.id];
+                                                    return updated;
+                                                  });
+                                                }}
+                                                style={{
+                                                  flex: '1 1 0',
+                                                  padding: '4px 5px',
+                                                  background: 'rgb(68, 68, 68)',
+                                                  color: 'rgb(221, 221, 221)',
+                                                  border: '1px solid rgb(74, 144, 226)',
+                                                  borderRadius: '4px',
+                                                  fontSize: '11px',
+                                                  fontWeight: '400',
+                                                  cursor: 'pointer',
+                                                  whiteSpace: 'nowrap',
+                                                  minWidth: 0
+                                                }}
+                                              >
+                                                Cancel
+                                              </button>
+                                            </div>
+                                          )}
 
-                                                        {(() => {
-                                                          // Get ball-in-court entity for indicator - data-driven from category item's ballInCourt field
-                                                          let indicatorColor = null;
-                                                          let indicatorTooltip = null;
-                                                          if (selectedTemplate && selectedModuleId) {
-                                                            const highlightData = highlightAnnotations[highlightId];
-                                                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
-                                                            const highlightName = highlightData?.name || highlight.name || '';
-                                                            const matchingItem = Object.values(items).find(item =>
-                                                              item.name === highlightName &&
-                                                              item.itemType === categoryName
-                                                            );
+                                          {categoryHighlights.map((highlight, highlightIndex) => {
+                                            const highlightId = highlight.id;
+                                            const isHighlightExpanded = expandedHighlights[highlightId];
+                                            const baseCategoryName = category?.name?.trim() || 'Untitled Category';
+                                            const fallbackName = `${baseCategoryName} ${highlightIndex + 1}`;
+                                            const highlightName = highlightAnnotations[highlightId]?.name || highlight.name || fallbackName;
 
-                                                            // Try to get ballInCourtEntityId from item's module data first, then from highlightData
-                                                            let ballInCourtEntityId = null;
-                                                            if (matchingItem) {
-                                                              const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                                                              const dataKey = getModuleDataKey(moduleName);
-                                                              const moduleData = matchingItem[dataKey] || {};
-                                                              ballInCourtEntityId = moduleData.ballInCourtEntityId;
-                                                            }
-                                                            // Fallback to highlightData if not found in item
-                                                            if (!ballInCourtEntityId && highlightData?.ballInCourtEntityId) {
-                                                              ballInCourtEntityId = highlightData.ballInCourtEntityId;
-                                                            }
-
-                                                            if (ballInCourtEntityId) {
-                                                              const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
-                                                              const entity = ballInCourtEntities.find(e => e.id === ballInCourtEntityId);
-                                                              if (entity) {
-                                                                // Use the exact color from ballInCourt.color without transformation
-                                                                indicatorColor = entity.color;
-                                                                indicatorTooltip = entity.name;
-                                                              }
-                                                            }
-                                                          }
-
-                                                          return (
-                                                            <BallInCourtIndicator
-                                                              color={indicatorColor}
-                                                              size={16}
-                                                              tooltipText={indicatorTooltip}
-                                                            />
-                                                          );
-                                                        })()}
-                                                        {highlightAnnotations[highlightId]?.editingName ? (
-                                                          <input
-                                                            type="text"
-                                                            value={highlightAnnotations[highlightId]?.name || ''}
-                                                            onChange={(e) => {
-                                                              setHighlightAnnotations(prev => ({
-                                                                ...prev,
-                                                                [highlight.id]: {
-                                                                  ...prev[highlight.id],
-                                                                  name: e.target.value
-                                                                }
-                                                              }));
-                                                            }}
-                                                            onBlur={() => {
-                                                              setHighlightAnnotations(prev => ({
-                                                                ...prev,
-                                                                [highlight.id]: {
-                                                                  ...prev[highlight.id],
-                                                                  editingName: false
-                                                                }
-                                                              }));
-                                                            }}
-                                                            onKeyDown={(e) => {
-                                                              if (e.key === 'Enter') {
-                                                                e.target.blur();
-                                                              } else if (e.key === 'Escape') {
-                                                                setHighlightAnnotations(prev => ({
-                                                                  ...prev,
-                                                                  [highlight.id]: {
-                                                                    ...prev[highlight.id],
-                                                                    editingName: false,
-                                                                    name: prev[highlight.id]?.name || fallbackName
-                                                                  }
-                                                                }));
-                                                                e.target.blur();
-                                                              }
-                                                            }}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            autoFocus
-                                                            style={{
-                                                              flex: 1,
-                                                              minWidth: 0,
-                                                              padding: '3px 6px',
-                                                              background: '#333',
-                                                              color: '#fff',
-                                                              border: '1px solid #4A90E2',
-                                                              borderRadius: '4px',
-                                                              fontSize: '12px',
-                                                              fontFamily: FONT_FAMILY,
-                                                              outline: 'none'
-                                                            }}
-                                                          />
-                                                        ) : (
-                                                          <span style={{
-                                                            fontSize: '12px',
-                                                            color: '#999',
-                                                            fontWeight: highlightAnnotations[highlightId]?.name ? '500' : '400'
-                                                          }}>
-                                                            {highlightName}
-                                                          </span>
-                                                        )}
-                                                      </div>
-                                                      <span
-                                                        style={{
-                                                          marginLeft: '4px',
-                                                          display: 'flex',
-                                                          alignItems: 'center',
-                                                          transition: 'transform 0.2s ease',
-                                                          transform: isHighlightExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                                          flexShrink: 0
-                                                        }}
-                                                      >
-                                                        <svg
-                                                          width="14"
-                                                          height="14"
-                                                          viewBox="0 0 24 24"
-                                                          fill="none"
-                                                          xmlns="http://www.w3.org/2000/svg"
-                                                          style={{ width: '14px', height: '14px' }}
-                                                        >
-                                                          <path
-                                                            d="M6 9L12 15L18 9"
-                                                            stroke="#fff"
-                                                            strokeWidth="2.5"
-                                                            strokeLinecap="round"
-                                                            strokeLinejoin="round"
-                                                          />
-                                                        </svg>
-                                                      </span>
-                                                    </button>
-
-                                                    {/* Rename button - now a sibling, not nested */}
-                                                    {!highlightAnnotations[highlightId]?.editingName && (
-                                                      <button
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          setHighlightAnnotations(prev => ({
+                                            return (
+                                              <div key={highlight.id} id={`highlight-item-${highlight.id}`} style={{
+                                                marginBottom: '4px',
+                                                background: 'transparent',
+                                                border: '1px solid #444',
+                                                borderRadius: '4px',
+                                                overflow: 'hidden'
+                                              }}>
+                                                {/* Highlight header - clickable to expand */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                  {/* Checkbox for selection - show in copy mode or item select mode */}
+                                                  {(copyModeActive || isItemSelectModeActiveForCategory) && (
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={
+                                                        isItemSelectModeActiveForCategory
+                                                          ? selectedItemsForCategory[highlightId] === true
+                                                          : copiedItemSelection[highlightId] === true
+                                                      }
+                                                      onChange={(e) => {
+                                                        if (isItemSelectModeActiveForCategory) {
+                                                          setSelectedItemsInCategory(prev => ({
                                                             ...prev,
-                                                            [highlight.id]: {
-                                                              ...prev[highlight.id],
-                                                              editingName: true
+                                                            [category.id]: {
+                                                              ...(prev[category.id] || {}),
+                                                              [highlightId]: e.target.checked
                                                             }
                                                           }));
-                                                        }}
-                                                        style={{
-                                                          background: 'transparent',
-                                                          border: 'none',
-                                                          color: '#999',
-                                                          cursor: 'pointer',
-                                                          padding: '4px',
-                                                          fontSize: '12px',
-                                                          opacity: 0.7,
-                                                          flexShrink: 0
-                                                        }}
-                                                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                                                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                                                        title="Rename highlight"
-                                                      >
-                                                        ✎
-                                                      </button>
-                                                    )}
+                                                        } else {
+                                                          console.log('Checkbox changed:', {
+                                                            highlightId,
+                                                            checked: e.target.checked,
+                                                            highlight,
+                                                            'highlight.id': highlight.id
+                                                          });
+                                                          setCopiedItemSelection(prev => {
+                                                            const newSelection = { ...prev };
+                                                            if (e.target.checked) {
+                                                              newSelection[highlightId] = true;
+                                                            } else {
+                                                              delete newSelection[highlightId];
+                                                            }
+                                                            console.log('Updated selection:', newSelection);
+                                                            return newSelection;
+                                                          });
+                                                        }
+                                                      }}
+                                                      onClick={(e) => e.stopPropagation()}
+                                                      style={{ cursor: 'pointer', flexShrink: 0 }}
+                                                    />
+                                                  )}
 
-                                                    {/* Item-level Notes button */}
+                                                  {/* Expandable button */}
+                                                  <button
+                                                    onClick={() => {
+                                                      setExpandedHighlights(prev => ({
+                                                        ...prev,
+                                                        [highlightId]: !prev[highlightId]
+                                                      }));
+                                                    }}
+                                                    style={{
+                                                      flex: 1,
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      justifyContent: 'space-between',
+                                                      padding: '6px 8px',
+                                                      background: 'transparent',
+                                                      border: 'none',
+                                                      cursor: 'pointer',
+                                                      textAlign: 'left',
+                                                      minWidth: 0
+                                                    }}
+                                                  >
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+
+                                                      {(() => {
+                                                        // Get ball-in-court entity for indicator - data-driven from category item's ballInCourt field
+                                                        let indicatorColor = null;
+                                                        let indicatorTooltip = null;
+                                                        if (selectedTemplate && selectedModuleId) {
+                                                          const highlightData = highlightAnnotations[highlightId];
+                                                          const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
+                                                          const highlightName = highlightData?.name || highlight.name || '';
+                                                          const matchingItem = Object.values(items).find(item =>
+                                                            item.name === highlightName &&
+                                                            item.itemType === categoryName
+                                                          );
+
+                                                          // Try to get ballInCourtEntityId from item's module data first, then from highlightData
+                                                          let ballInCourtEntityId = null;
+                                                          if (matchingItem) {
+                                                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                                                            const dataKey = getModuleDataKey(moduleName);
+                                                            const moduleData = matchingItem[dataKey] || {};
+                                                            ballInCourtEntityId = moduleData.ballInCourtEntityId;
+                                                          }
+                                                          // Fallback to highlightData if not found in item
+                                                          if (!ballInCourtEntityId && highlightData?.ballInCourtEntityId) {
+                                                            ballInCourtEntityId = highlightData.ballInCourtEntityId;
+                                                          }
+
+                                                          if (ballInCourtEntityId) {
+                                                            const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
+                                                            const entity = ballInCourtEntities.find(e => e.id === ballInCourtEntityId);
+                                                            if (entity) {
+                                                              // Use the exact color from ballInCourt.color without transformation
+                                                              indicatorColor = entity.color;
+                                                              indicatorTooltip = entity.name;
+                                                            }
+                                                          }
+                                                        }
+
+                                                        return (
+                                                          <BallInCourtIndicator
+                                                            color={indicatorColor}
+                                                            size={16}
+                                                            tooltipText={indicatorTooltip}
+                                                          />
+                                                        );
+                                                      })()}
+                                                      {highlightAnnotations[highlightId]?.editingName ? (
+                                                        <input
+                                                          type="text"
+                                                          value={highlightAnnotations[highlightId]?.name || ''}
+                                                          onChange={(e) => {
+                                                            setHighlightAnnotations(prev => ({
+                                                              ...prev,
+                                                              [highlight.id]: {
+                                                                ...prev[highlight.id],
+                                                                name: e.target.value
+                                                              }
+                                                            }));
+                                                          }}
+                                                          onBlur={() => {
+                                                            setHighlightAnnotations(prev => ({
+                                                              ...prev,
+                                                              [highlight.id]: {
+                                                                ...prev[highlight.id],
+                                                                editingName: false
+                                                              }
+                                                            }));
+                                                          }}
+                                                          onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                              e.target.blur();
+                                                            } else if (e.key === 'Escape') {
+                                                              setHighlightAnnotations(prev => ({
+                                                                ...prev,
+                                                                [highlight.id]: {
+                                                                  ...prev[highlight.id],
+                                                                  editingName: false,
+                                                                  name: prev[highlight.id]?.name || fallbackName
+                                                                }
+                                                              }));
+                                                              e.target.blur();
+                                                            }
+                                                          }}
+                                                          onClick={(e) => e.stopPropagation()}
+                                                          autoFocus
+                                                          style={{
+                                                            flex: 1,
+                                                            minWidth: 0,
+                                                            padding: '3px 6px',
+                                                            background: '#333',
+                                                            color: '#fff',
+                                                            border: '1px solid #4A90E2',
+                                                            borderRadius: '4px',
+                                                            fontSize: '12px',
+                                                            fontFamily: FONT_FAMILY,
+                                                            outline: 'none'
+                                                          }}
+                                                        />
+                                                      ) : (
+                                                        <span style={{
+                                                          fontSize: '12px',
+                                                          color: '#999',
+                                                          fontWeight: highlightAnnotations[highlightId]?.name ? '500' : '400'
+                                                        }}>
+                                                          {highlightName}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    <span
+                                                      style={{
+                                                        marginLeft: '4px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        transition: 'transform 0.2s ease',
+                                                        transform: isHighlightExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                                        flexShrink: 0
+                                                      }}
+                                                    >
+                                                      <svg
+                                                        width="14"
+                                                        height="14"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        style={{ width: '14px', height: '14px' }}
+                                                      >
+                                                        <path
+                                                          d="M6 9L12 15L18 9"
+                                                          stroke="#fff"
+                                                          strokeWidth="2.5"
+                                                          strokeLinecap="round"
+                                                          strokeLinejoin="round"
+                                                        />
+                                                      </svg>
+                                                    </span>
+                                                  </button>
+
+                                                  {/* Rename button - now a sibling, not nested */}
+                                                  {!highlightAnnotations[highlightId]?.editingName && (
                                                     <button
                                                       onClick={(e) => {
                                                         e.stopPropagation();
-                                                        const highlightData = highlightAnnotations[highlightId];
-                                                        const existingNote = highlightData?.note;
-                                                        console.log('Opening item-level note dialog:', { highlightId, existingNote });
-
-                                                        if (existingNote) {
-                                                          setNoteDialogContent({
-                                                            text: existingNote.text || '',
-                                                            photos: existingNote.photos || [],
-                                                            videos: existingNote.videos || []
-                                                          });
-                                                        } else {
-                                                          setNoteDialogContent({ text: '', photos: [], videos: [] });
-                                                        }
-
-                                                        // For item-level notes, we only need the highlightId
-                                                        setNoteDialogOpen(highlightId);
+                                                        setHighlightAnnotations(prev => ({
+                                                          ...prev,
+                                                          [highlight.id]: {
+                                                            ...prev[highlight.id],
+                                                            editingName: true
+                                                          }
+                                                        }));
                                                       }}
                                                       style={{
                                                         background: 'transparent',
                                                         border: 'none',
-                                                        color: highlightAnnotations[highlightId]?.note?.text ? '#4A90E2' : '#999',
+                                                        color: '#999',
                                                         cursor: 'pointer',
                                                         padding: '4px',
                                                         fontSize: '12px',
@@ -16782,416 +16732,382 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                       }}
                                                       onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                                                       onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                                                      title={highlightAnnotations[highlightId]?.note?.text ? "Edit item notes" : "Add item notes"}
+                                                      title="Rename highlight"
                                                     >
-                                                      Notes {highlightAnnotations[highlightId]?.note?.text ? '✓' : ''}
+                                                      ✎
                                                     </button>
+                                                  )}
 
-                                                    {/* Locate Button (Magnifying Glass) */}
-                                                    <div
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        // Check if item has location (bounds and pageNumber)
-                                                        const hasLocation = highlight.bounds && highlight.pageNumber;
+                                                  {/* Item-level Notes button */}
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      const highlightData = highlightAnnotations[highlightId];
+                                                      const existingNote = highlightData?.note;
+                                                      console.log('Opening item-level note dialog:', { highlightId, existingNote });
 
-                                                        if (hasLocation) {
-                                                          handleLocateItemOnPDF(highlight);
-                                                        } else {
-                                                          // Prompt to highlight
-                                                          setPendingLocationItem(highlight);
-                                                        }
-                                                      }}
-                                                      style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        padding: '4px',
-                                                        borderRadius: '4px',
-                                                        cursor: 'pointer',
-                                                        color: (highlight.bounds && highlight.pageNumber) ? '#4A90E2' : '#F5A623', // Blue if located, Orange if not
-                                                        transition: 'background 0.2s, color 0.2s',
-                                                        marginLeft: '0'
-                                                      }}
-                                                      onMouseEnter={(e) => {
-                                                        e.currentTarget.style.background = '#444';
-                                                      }}
-                                                      onMouseLeave={(e) => {
-                                                        e.currentTarget.style.background = 'transparent';
-                                                      }}
-                                                      title={highlight.bounds && highlight.pageNumber ? "Locate on PDF" : "Click to set location on PDF"}
-                                                    >
-                                                      <Icon name="search" size={14} />
-                                                    </div>
+                                                      if (existingNote) {
+                                                        setNoteDialogContent({
+                                                          text: existingNote.text || '',
+                                                          photos: existingNote.photos || [],
+                                                          videos: existingNote.videos || []
+                                                        });
+                                                      } else {
+                                                        setNoteDialogContent({ text: '', photos: [], videos: [] });
+                                                      }
 
-                                                    {/* Delete Button */}
-                                                    <div
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (confirm('Are you sure you want to delete this item?')) {
-                                                          handleDeleteHighlightItem(highlightId);
-                                                        }
-                                                      }}
-                                                      style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        padding: '4px',
-                                                        borderRadius: '4px',
-                                                        cursor: 'pointer',
-                                                        color: '#FF6666',
-                                                        transition: 'background 0.2s, color 0.2s',
-                                                        marginLeft: '0'
-                                                      }}
-                                                      onMouseEnter={(e) => {
-                                                        e.currentTarget.style.background = '#444';
-                                                      }}
-                                                      onMouseLeave={(e) => {
-                                                        e.currentTarget.style.background = 'transparent';
-                                                      }}
-                                                      title="Delete item"
-                                                    >
-                                                      <svg
-                                                        width="14"
-                                                        height="14"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        strokeWidth="2"
-                                                        strokeLinecap="round"
-                                                        strokeLinejoin="round"
-                                                      >
-                                                        <polyline points="3 6 5 6 21 6"></polyline>
-                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                                      </svg>
-                                                    </div>
+                                                      // For item-level notes, we only need the highlightId
+                                                      setNoteDialogOpen(highlightId);
+                                                    }}
+                                                    style={{
+                                                      background: 'transparent',
+                                                      border: 'none',
+                                                      color: highlightAnnotations[highlightId]?.note?.text ? '#4A90E2' : '#999',
+                                                      cursor: 'pointer',
+                                                      padding: '4px',
+                                                      fontSize: '12px',
+                                                      opacity: 0.7,
+                                                      flexShrink: 0
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                                                    title={highlightAnnotations[highlightId]?.note?.text ? "Edit item notes" : "Add item notes"}
+                                                  >
+                                                    Notes {highlightAnnotations[highlightId]?.note?.text ? '✓' : ''}
+                                                  </button>
+
+                                                  {/* Locate Button (Magnifying Glass) */}
+                                                  <div
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      // Check if item has location (bounds and pageNumber)
+                                                      const hasLocation = highlight.bounds && highlight.pageNumber;
+
+                                                      if (hasLocation) {
+                                                        handleLocateItemOnPDF(highlight);
+                                                      } else {
+                                                        // Prompt to highlight
+                                                        setPendingLocationItem(highlight);
+                                                      }
+                                                    }}
+                                                    style={{
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      justifyContent: 'center',
+                                                      padding: '4px',
+                                                      borderRadius: '4px',
+                                                      cursor: 'pointer',
+                                                      color: (highlight.bounds && highlight.pageNumber) ? '#4A90E2' : '#F5A623', // Blue if located, Orange if not
+                                                      transition: 'background 0.2s, color 0.2s',
+                                                      marginLeft: '0'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                      e.currentTarget.style.background = '#444';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      e.currentTarget.style.background = 'transparent';
+                                                    }}
+                                                    title={highlight.bounds && highlight.pageNumber ? "Locate on PDF" : "Click to set location on PDF"}
+                                                  >
+                                                    <Icon name="search" size={14} />
                                                   </div>
 
-                                                  {/* Ball in Court selector */}
-                                                  {
-                                                    isHighlightExpanded && selectedTemplate && selectedModuleId && (() => {
-                                                      // Find the item associated with this highlight
-                                                      const highlightData = highlightAnnotations[highlightId];
-                                                      const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
-                                                      const highlightName = highlightData?.name || highlight.name || '';
-                                                      const matchingItem = Object.values(items).find(item =>
-                                                        item.name === highlightName &&
-                                                        item.itemType === categoryName
-                                                      );
+                                                  {/* Delete Button */}
+                                                  <div
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      if (confirm('Are you sure you want to delete this item?')) {
+                                                        handleDeleteHighlightItem(highlightId);
+                                                      }
+                                                    }}
+                                                    style={{
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      justifyContent: 'center',
+                                                      padding: '4px',
+                                                      borderRadius: '4px',
+                                                      cursor: 'pointer',
+                                                      color: '#FF6666',
+                                                      transition: 'background 0.2s, color 0.2s',
+                                                      marginLeft: '0'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                      e.currentTarget.style.background = '#444';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      e.currentTarget.style.background = 'transparent';
+                                                    }}
+                                                    title="Delete item"
+                                                  >
+                                                    <svg
+                                                      width="14"
+                                                      height="14"
+                                                      viewBox="0 0 24 24"
+                                                      fill="none"
+                                                      stroke="currentColor"
+                                                      strokeWidth="2"
+                                                      strokeLinecap="round"
+                                                      strokeLinejoin="round"
+                                                    >
+                                                      <polyline points="3 6 5 6 21 6"></polyline>
+                                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                    </svg>
+                                                  </div>
+                                                </div>
 
-                                                      // Get module-specific data
-                                                      const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                                                      const dataKey = getModuleDataKey(moduleName);
-                                                      const moduleData = matchingItem?.[dataKey] || {};
+                                                {/* Ball in Court selector */}
+                                                {
+                                                  isHighlightExpanded && selectedTemplate && selectedModuleId && (() => {
+                                                    // Find the item associated with this highlight
+                                                    const highlightData = highlightAnnotations[highlightId];
+                                                    const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
+                                                    const highlightName = highlightData?.name || highlight.name || '';
+                                                    const matchingItem = Object.values(items).find(item =>
+                                                      item.name === highlightName &&
+                                                      item.itemType === categoryName
+                                                    );
 
-                                                      // Get current BIC status from item's module-specific data (preferred) or from highlight annotation (legacy)
-                                                      const currentBICEntityId = moduleData.ballInCourtEntityId || highlightData?.ballInCourtEntityId;
-                                                      const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
+                                                    // Get module-specific data
+                                                    const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                                                    const dataKey = getModuleDataKey(moduleName);
+                                                    const moduleData = matchingItem?.[dataKey] || {};
 
-                                                      return (
+                                                    // Get current BIC status from item's module-specific data (preferred) or from highlight annotation (legacy)
+                                                    const currentBICEntityId = moduleData.ballInCourtEntityId || highlightData?.ballInCourtEntityId;
+                                                    const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
+
+                                                    return (
+                                                      <div style={{
+                                                        padding: '6px 8px',
+                                                        background: '#333',
+                                                        borderTop: '1px solid #444',
+                                                        marginTop: '0'
+                                                      }}>
                                                         <div style={{
-                                                          padding: '6px 8px',
-                                                          background: '#333',
-                                                          borderTop: '1px solid #444',
-                                                          marginTop: '0'
+                                                          display: 'flex',
+                                                          alignItems: 'center',
+                                                          gap: '8px',
+                                                          marginBottom: '4px',
+                                                          flexWrap: 'wrap'
                                                         }}>
-                                                          <div style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '8px',
-                                                            marginBottom: '4px',
-                                                            flexWrap: 'wrap'
+                                                          <span style={{
+                                                            color: '#DDD',
+                                                            fontSize: '12px',
+                                                            flex: '1',
+                                                            minWidth: '150px'
                                                           }}>
-                                                            <span style={{
-                                                              color: '#DDD',
-                                                              fontSize: '12px',
-                                                              flex: '1',
-                                                              minWidth: '150px'
-                                                            }}>
-                                                              Ball in Court:
-                                                            </span>
-                                                            <select
-                                                              value={currentBICEntityId || ''}
-                                                              onChange={(e) => {
-                                                                e.stopPropagation();
-                                                                const entityId = e.target.value;
-                                                                const entity = entityId ? ballInCourtEntities.find(e => e.id === entityId) : null;
+                                                            Ball in Court:
+                                                          </span>
+                                                          <select
+                                                            value={currentBICEntityId || ''}
+                                                            onChange={(e) => {
+                                                              e.stopPropagation();
+                                                              const entityId = e.target.value;
+                                                              const entity = entityId ? ballInCourtEntities.find(e => e.id === entityId) : null;
 
-                                                                console.log('Ball in Court dropdown changed:', { entityId, entity, matchingItem, highlightId, highlightData });
+                                                              console.log('Ball in Court dropdown changed:', { entityId, entity, matchingItem, highlightId, highlightData });
 
-                                                                // Update highlight annotation - the useEffect will automatically rebuild newHighlightsByPage
-                                                                setHighlightAnnotations(prev => {
-                                                                  const updated = {
-                                                                    ...prev,
-                                                                    [highlightId]: {
-                                                                      ...prev[highlightId],
-                                                                      ballInCourtEntityId: entity?.id,
-                                                                      ballInCourtEntityName: entity?.name,
-                                                                      ballInCourtColor: entity?.color
+                                                              // Update highlight annotation - the useEffect will automatically rebuild newHighlightsByPage
+                                                              setHighlightAnnotations(prev => {
+                                                                const updated = {
+                                                                  ...prev,
+                                                                  [highlightId]: {
+                                                                    ...prev[highlightId],
+                                                                    ballInCourtEntityId: entity?.id,
+                                                                    ballInCourtEntityName: entity?.name,
+                                                                    ballInCourtColor: entity?.color
+                                                                  }
+                                                                };
+                                                                console.log('Updated highlight annotation:', updated[highlightId]);
+                                                                return updated;
+                                                              });
+
+                                                              // Update item's module-specific data if matchingItem exists
+                                                              if (matchingItem) {
+                                                                if (entity) {
+                                                                  // Update item with BIC status
+                                                                  const updatedItem = {
+                                                                    ...matchingItem,
+                                                                    [dataKey]: {
+                                                                      ...moduleData,
+                                                                      ballInCourtEntityId: entity.id,
+                                                                      ballInCourtEntityName: entity.name,
+                                                                      ballInCourtColor: entity.color
                                                                     }
                                                                   };
-                                                                  console.log('Updated highlight annotation:', updated[highlightId]);
-                                                                  return updated;
-                                                                });
 
-                                                                // Update item's module-specific data if matchingItem exists
-                                                                if (matchingItem) {
-                                                                  if (entity) {
-                                                                    // Update item with BIC status
-                                                                    const updatedItem = {
-                                                                      ...matchingItem,
-                                                                      [dataKey]: {
-                                                                        ...moduleData,
-                                                                        ballInCourtEntityId: entity.id,
-                                                                        ballInCourtEntityName: entity.name,
-                                                                        ballInCourtColor: entity.color
+                                                                  setItems(prev => ({
+                                                                    ...prev,
+                                                                    [matchingItem.itemId]: updatedItem
+                                                                  }));
+
+                                                                  // Update all annotations for this item in this space with the new color
+                                                                  setAnnotations(prev => {
+                                                                    const updated = { ...prev };
+                                                                    Object.values(updated).forEach(ann => {
+                                                                      if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
+                                                                        updated[ann.annotationId] = {
+                                                                          ...ann,
+                                                                          ballInCourtEntityId: entity.id,
+                                                                          ballInCourtEntityName: entity.name,
+                                                                          ballInCourtColor: entity.color
+                                                                        };
                                                                       }
-                                                                    };
-
-                                                                    setItems(prev => ({
-                                                                      ...prev,
-                                                                      [matchingItem.itemId]: updatedItem
-                                                                    }));
-
-                                                                    // Update all annotations for this item in this space with the new color
-                                                                    setAnnotations(prev => {
-                                                                      const updated = { ...prev };
-                                                                      Object.values(updated).forEach(ann => {
-                                                                        if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
-                                                                          updated[ann.annotationId] = {
-                                                                            ...ann,
-                                                                            ballInCourtEntityId: entity.id,
-                                                                            ballInCourtEntityName: entity.name,
-                                                                            ballInCourtColor: entity.color
-                                                                          };
-                                                                        }
-                                                                      });
-                                                                      return updated;
                                                                     });
-                                                                  } else {
-                                                                    // Remove BIC status from item
-                                                                    const updatedItem = {
-                                                                      ...matchingItem,
-                                                                      [dataKey]: {
-                                                                        ...moduleData,
-                                                                        ballInCourtEntityId: undefined,
-                                                                        ballInCourtEntityName: undefined,
-                                                                        ballInCourtColor: undefined
+                                                                    return updated;
+                                                                  });
+                                                                } else {
+                                                                  // Remove BIC status from item
+                                                                  const updatedItem = {
+                                                                    ...matchingItem,
+                                                                    [dataKey]: {
+                                                                      ...moduleData,
+                                                                      ballInCourtEntityId: undefined,
+                                                                      ballInCourtEntityName: undefined,
+                                                                      ballInCourtColor: undefined
+                                                                    }
+                                                                  };
+
+                                                                  setItems(prev => ({
+                                                                    ...prev,
+                                                                    [matchingItem.itemId]: updatedItem
+                                                                  }));
+
+                                                                  // Update all annotations for this item in this space
+                                                                  setAnnotations(prev => {
+                                                                    const updated = { ...prev };
+                                                                    Object.values(updated).forEach(ann => {
+                                                                      if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
+                                                                        updated[ann.annotationId] = {
+                                                                          ...ann,
+                                                                          ballInCourtEntityId: undefined,
+                                                                          ballInCourtEntityName: undefined,
+                                                                          ballInCourtColor: undefined
+                                                                        };
                                                                       }
-                                                                    };
-
-                                                                    setItems(prev => ({
-                                                                      ...prev,
-                                                                      [matchingItem.itemId]: updatedItem
-                                                                    }));
-
-                                                                    // Update all annotations for this item in this space
-                                                                    setAnnotations(prev => {
-                                                                      const updated = { ...prev };
-                                                                      Object.values(updated).forEach(ann => {
-                                                                        if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
-                                                                          updated[ann.annotationId] = {
-                                                                            ...ann,
-                                                                            ballInCourtEntityId: undefined,
-                                                                            ballInCourtEntityName: undefined,
-                                                                            ballInCourtColor: undefined
-                                                                          };
-                                                                        }
-                                                                      });
-                                                                      return updated;
                                                                     });
-                                                                  }
+                                                                    return updated;
+                                                                  });
                                                                 }
-                                                              }}
-                                                              onClick={(e) => e.stopPropagation()}
-                                                              style={{
-                                                                padding: '4px 8px',
-                                                                fontSize: '11px',
-                                                                background: '#141414',
-                                                                color: '#ddd',
-                                                                border: '1px solid #2f2f2f',
-                                                                borderRadius: '4px',
-                                                                outline: 'none',
-                                                                cursor: 'pointer',
-                                                                minWidth: '120px'
-                                                              }}
-                                                            >
-                                                              <option value="">None</option>
-                                                              {ballInCourtEntities.map(entity => (
-                                                                <option key={entity.id} value={entity.id}>
-                                                                  {entity.name}
-                                                                </option>
-                                                              ))}
-                                                            </select>
-                                                          </div>
+                                                              }
+                                                            }}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            style={{
+                                                              padding: '4px 8px',
+                                                              fontSize: '11px',
+                                                              background: '#141414',
+                                                              color: '#ddd',
+                                                              border: '1px solid #2f2f2f',
+                                                              borderRadius: '4px',
+                                                              outline: 'none',
+                                                              cursor: 'pointer',
+                                                              minWidth: '120px'
+                                                            }}
+                                                          >
+                                                            <option value="">None</option>
+                                                            {ballInCourtEntities.map(entity => (
+                                                              <option key={entity.id} value={entity.id}>
+                                                                {entity.name}
+                                                              </option>
+                                                            ))}
+                                                          </select>
                                                         </div>
-                                                      );
-                                                    })()
-                                                  }
+                                                      </div>
+                                                    );
+                                                  })()
+                                                }
 
-                                                  {/* Expanded checklist items */}
-                                                  {
-                                                    isHighlightExpanded && category.checklist && category.checklist.map(item => {
-                                                      const response = highlightAnnotations[highlightId]?.checklistResponses?.[item.id] || {};
-                                                      const isSelected = response.selection;
-                                                      return (
-                                                        <div key={item.id} style={{
-                                                          padding: '6px 8px',
-                                                          background: '#333',
-                                                          borderTop: '1px solid #444',
-                                                          marginTop: '0'
+                                                {/* Expanded checklist items */}
+                                                {
+                                                  isHighlightExpanded && category.checklist && category.checklist.map(item => {
+                                                    const response = highlightAnnotations[highlightId]?.checklistResponses?.[item.id] || {};
+                                                    const isSelected = response.selection;
+                                                    return (
+                                                      <div key={item.id} style={{
+                                                        padding: '6px 8px',
+                                                        background: '#333',
+                                                        borderTop: '1px solid #444',
+                                                        marginTop: '0'
+                                                      }}>
+                                                        <div style={{
+                                                          display: 'flex',
+                                                          alignItems: 'center',
+                                                          gap: '8px',
+                                                          marginBottom: '4px',
+                                                          flexWrap: 'wrap'
                                                         }}>
-                                                          <div style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '8px',
-                                                            marginBottom: '4px',
-                                                            flexWrap: 'wrap'
+                                                          <span style={{
+                                                            color: '#DDD',
+                                                            fontSize: '12px',
+                                                            flex: '1',
+                                                            minWidth: '150px'
                                                           }}>
-                                                            <span style={{
-                                                              color: '#DDD',
-                                                              fontSize: '12px',
-                                                              flex: '1',
-                                                              minWidth: '150px'
-                                                            }}>
-                                                              {item.text}
-                                                            </span>
-                                                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                                                              {['Y', 'N', 'N/A'].map(option => (
-                                                                <button
-                                                                  key={option}
-                                                                  type="button"
-                                                                  onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setHighlightAnnotations(prev => {
-                                                                      const updated = {
-                                                                        ...prev,
-                                                                        [highlightId]: {
-                                                                          ...prev[highlightId],
-                                                                          checklistResponses: {
-                                                                            ...prev[highlightId]?.checklistResponses,
-                                                                            [item.id]: {
-                                                                              ...prev[highlightId]?.checklistResponses?.[item.id],
-                                                                              selection: option
-                                                                            }
+                                                            {item.text}
+                                                          </span>
+                                                          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                                                            {['Y', 'N', 'N/A'].map(option => (
+                                                              <button
+                                                                key={option}
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  setHighlightAnnotations(prev => {
+                                                                    const updated = {
+                                                                      ...prev,
+                                                                      [highlightId]: {
+                                                                        ...prev[highlightId],
+                                                                        checklistResponses: {
+                                                                          ...prev[highlightId]?.checklistResponses,
+                                                                          [item.id]: {
+                                                                            ...prev[highlightId]?.checklistResponses?.[item.id],
+                                                                            selection: option
                                                                           }
                                                                         }
-                                                                      };
+                                                                      }
+                                                                    };
 
-                                                                      // Check if all checklist items are Y or N/A
-                                                                      const updatedHighlight = updated[highlightId];
-                                                                      if (updatedHighlight && category.checklist && category.checklist.length > 0 && selectedTemplate && selectedSpaceId) {
-                                                                        const allItemsComplete = category.checklist.every(checklistItem => {
-                                                                          const response = updatedHighlight.checklistResponses?.[checklistItem.id];
-                                                                          const selection = response?.selection;
-                                                                          return selection === 'Y' || selection === 'N/A';
-                                                                        });
+                                                                    // Check if all checklist items are Y or N/A
+                                                                    const updatedHighlight = updated[highlightId];
+                                                                    if (updatedHighlight && category.checklist && category.checklist.length > 0 && selectedTemplate && selectedSpaceId) {
+                                                                      const allItemsComplete = category.checklist.every(checklistItem => {
+                                                                        const response = updatedHighlight.checklistResponses?.[checklistItem.id];
+                                                                        const selection = response?.selection;
+                                                                        return selection === 'Y' || selection === 'N/A';
+                                                                      });
 
-                                                                        // Find the item associated with this highlight
-                                                                        const highlightData = updated[highlightId];
-                                                                        const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
-                                                                        const highlightName = highlightData?.name || highlight.name || '';
-                                                                        const matchingItem = Object.values(items).find(item =>
-                                                                          item.name === highlightName &&
-                                                                          item.itemType === categoryName
+                                                                      // Find the item associated with this highlight
+                                                                      const highlightData = updated[highlightId];
+                                                                      const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
+                                                                      const highlightName = highlightData?.name || highlight.name || '';
+                                                                      const matchingItem = Object.values(items).find(item =>
+                                                                        item.name === highlightName &&
+                                                                        item.itemType === categoryName
+                                                                      );
+
+                                                                      // Get module-specific data
+                                                                      const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                                                                      const dataKey = getModuleDataKey(moduleName);
+                                                                      const moduleData = matchingItem?.[dataKey] || {};
+
+                                                                      // If all items are Y or N/A, automatically set ball in court to "Complete"
+                                                                      if (allItemsComplete) {
+                                                                        // Find the "Complete" entity
+                                                                        const ballInCourtEntities = selectedTemplate.ballInCourtEntities || [];
+                                                                        const completeEntity = ballInCourtEntities.find(e =>
+                                                                          e.name.toLowerCase().includes('complete')
                                                                         );
 
-                                                                        // Get module-specific data
-                                                                        const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                                                                        const dataKey = getModuleDataKey(moduleName);
-                                                                        const moduleData = matchingItem?.[dataKey] || {};
-
-                                                                        // If all items are Y or N/A, automatically set ball in court to "Complete"
-                                                                        if (allItemsComplete) {
-                                                                          // Find the "Complete" entity
-                                                                          const ballInCourtEntities = selectedTemplate.ballInCourtEntities || [];
-                                                                          const completeEntity = ballInCourtEntities.find(e =>
-                                                                            e.name.toLowerCase().includes('complete')
-                                                                          );
-
-                                                                          if (completeEntity) {
-                                                                            const entityColor = normalizeHighlightColor(completeEntity.color) || completeEntity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_HIGHLIGHT_OPACITY);
-                                                                            // Update item's module-specific data with Complete BIC status
-                                                                            if (matchingItem) {
-                                                                              const updatedItem = {
-                                                                                ...matchingItem,
-                                                                                [dataKey]: {
-                                                                                  ...moduleData,
-                                                                                  ballInCourtEntityId: completeEntity.id,
-                                                                                  ballInCourtEntityName: completeEntity.name,
-                                                                                  ballInCourtColor: entityColor
-                                                                                }
-                                                                              };
-
-                                                                              setItems(prev => ({
-                                                                                ...prev,
-                                                                                [matchingItem.itemId]: updatedItem
-                                                                              }));
-
-                                                                              // Update all annotations for this item in this module with the new color
-                                                                              setAnnotations(prev => {
-                                                                                const updatedAnns = { ...prev };
-                                                                                Object.values(updatedAnns).forEach(ann => {
-                                                                                  const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
-                                                                                  if (ann.itemId === matchingItem.itemId && annModuleId === selectedModuleId) {
-                                                                                    updatedAnns[ann.annotationId] = {
-                                                                                      ...ann,
-                                                                                      ballInCourtEntityId: completeEntity.id,
-                                                                                      ballInCourtEntityName: completeEntity.name,
-                                                                                      ballInCourtColor: entityColor
-                                                                                    };
-                                                                                  }
-                                                                                });
-                                                                                return updatedAnns;
-                                                                              });
-
-                                                                              // Update highlight color on PDF
-                                                                              if (highlightData?.pageNumber && highlightData?.bounds) {
-                                                                                setNewHighlightsByPage(prev => {
-                                                                                  const pageHighlights = prev[highlightData.pageNumber] || [];
-                                                                                  // Remove any existing highlight with this highlightId or same bounds (regardless of needsBIC or color)
-                                                                                  const filtered = pageHighlights.filter(h => {
-                                                                                    // Keep highlights that don't match by ID or bounds
-                                                                                    const hasMatchingId = h.highlightId === highlightId;
-                                                                                    const hasMatchingBounds = h.x === highlightData.bounds.x &&
-                                                                                      h.y === highlightData.bounds.y &&
-                                                                                      h.width === highlightData.bounds.width &&
-                                                                                      h.height === highlightData.bounds.height;
-                                                                                    // Remove if it matches by ID or bounds
-                                                                                    return !hasMatchingId && !hasMatchingBounds;
-                                                                                  });
-                                                                                  return {
-                                                                                    ...prev,
-                                                                                    [highlightData.pageNumber]: [
-                                                                                      ...filtered,
-                                                                                      {
-                                                                                        ...highlightData.bounds,
-                                                                                        color: entityColor,
-                                                                                        highlightId: highlightId
-                                                                                      }
-                                                                                    ]
-                                                                                  };
-                                                                                });
-                                                                              }
-                                                                            }
-
-                                                                            // Update highlight annotation with Complete BIC status
-                                                                            updated[highlightId] = {
-                                                                              ...updated[highlightId],
-                                                                              ballInCourtEntityId: completeEntity.id,
-                                                                              ballInCourtEntityName: completeEntity.name,
-                                                                              ballInCourtColor: entityColor
-                                                                            };
-                                                                          }
-                                                                        } else {
-                                                                          // Not all items are Y or N/A - remove ball in court status (set to None)
+                                                                        if (completeEntity) {
+                                                                          const entityColor = normalizeHighlightColor(completeEntity.color) || completeEntity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_HIGHLIGHT_OPACITY);
+                                                                          // Update item's module-specific data with Complete BIC status
                                                                           if (matchingItem) {
                                                                             const updatedItem = {
                                                                               ...matchingItem,
                                                                               [dataKey]: {
                                                                                 ...moduleData,
-                                                                                ballInCourtEntityId: undefined,
-                                                                                ballInCourtEntityName: undefined,
-                                                                                ballInCourtColor: undefined
+                                                                                ballInCourtEntityId: completeEntity.id,
+                                                                                ballInCourtEntityName: completeEntity.name,
+                                                                                ballInCourtColor: entityColor
                                                                               }
                                                                             };
 
@@ -17200,23 +17116,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                                               [matchingItem.itemId]: updatedItem
                                                                             }));
 
-                                                                            // Update all annotations for this item in this space
+                                                                            // Update all annotations for this item in this module with the new color
                                                                             setAnnotations(prev => {
                                                                               const updatedAnns = { ...prev };
                                                                               Object.values(updatedAnns).forEach(ann => {
-                                                                                if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
+                                                                                const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
+                                                                                if (ann.itemId === matchingItem.itemId && annModuleId === selectedModuleId) {
                                                                                   updatedAnns[ann.annotationId] = {
                                                                                     ...ann,
-                                                                                    ballInCourtEntityId: undefined,
-                                                                                    ballInCourtEntityName: undefined,
-                                                                                    ballInCourtColor: undefined
+                                                                                    ballInCourtEntityId: completeEntity.id,
+                                                                                    ballInCourtEntityName: completeEntity.name,
+                                                                                    ballInCourtColor: entityColor
                                                                                   };
                                                                                 }
                                                                               });
                                                                               return updatedAnns;
                                                                             });
 
-                                                                            // Update highlight on PDF - revert to "needs BIC" state (transparent with dashed outline)
+                                                                            // Update highlight color on PDF
                                                                             if (highlightData?.pageNumber && highlightData?.bounds) {
                                                                               setNewHighlightsByPage(prev => {
                                                                                 const pageHighlights = prev[highlightData.pageNumber] || [];
@@ -17231,14 +17148,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                                                   // Remove if it matches by ID or bounds
                                                                                   return !hasMatchingId && !hasMatchingBounds;
                                                                                 });
-                                                                                // Add "needs BIC" highlight (transparent with dashed outline)
                                                                                 return {
                                                                                   ...prev,
                                                                                   [highlightData.pageNumber]: [
                                                                                     ...filtered,
                                                                                     {
                                                                                       ...highlightData.bounds,
-                                                                                      needsBIC: true,
+                                                                                      color: entityColor,
                                                                                       highlightId: highlightId
                                                                                     }
                                                                                   ]
@@ -17247,141 +17163,244 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                                             }
                                                                           }
 
-                                                                          // Update highlight annotation to remove BIC status
+                                                                          // Update highlight annotation with Complete BIC status
                                                                           updated[highlightId] = {
                                                                             ...updated[highlightId],
-                                                                            ballInCourtEntityId: undefined,
-                                                                            ballInCourtEntityName: undefined,
-                                                                            ballInCourtColor: undefined
+                                                                            ballInCourtEntityId: completeEntity.id,
+                                                                            ballInCourtEntityName: completeEntity.name,
+                                                                            ballInCourtColor: entityColor
                                                                           };
                                                                         }
-                                                                      }
+                                                                      } else {
+                                                                        // Not all items are Y or N/A - remove ball in court status (set to None)
+                                                                        if (matchingItem) {
+                                                                          const updatedItem = {
+                                                                            ...matchingItem,
+                                                                            [dataKey]: {
+                                                                              ...moduleData,
+                                                                              ballInCourtEntityId: undefined,
+                                                                              ballInCourtEntityName: undefined,
+                                                                              ballInCourtColor: undefined
+                                                                            }
+                                                                          };
 
-                                                                      return updated;
-                                                                    });
-                                                                  }}
-                                                                  style={{
-                                                                    minWidth: '28px',
-                                                                    padding: '4px 6px',
-                                                                    fontSize: '11px',
-                                                                    fontWeight: '400',
-                                                                    border: 'none',
-                                                                    borderRadius: '3px',
-                                                                    cursor: 'pointer',
-                                                                    background: isSelected === option
-                                                                      ? option === 'Y'
-                                                                        ? '#B8E6D4'
-                                                                        : option === 'N'
-                                                                          ? '#FFB3BA'
-                                                                          : '#777'
-                                                                      : '#D3D3D3',
-                                                                    color: isSelected === option ? '#FFFFFF' : '#333333',
-                                                                    transition: 'all 0.2s ease'
-                                                                  }}
-                                                                >
-                                                                  {option}
-                                                                </button>
-                                                              ))}
-                                                            </div>
+                                                                          setItems(prev => ({
+                                                                            ...prev,
+                                                                            [matchingItem.itemId]: updatedItem
+                                                                          }));
+
+                                                                          // Update all annotations for this item in this space
+                                                                          setAnnotations(prev => {
+                                                                            const updatedAnns = { ...prev };
+                                                                            Object.values(updatedAnns).forEach(ann => {
+                                                                              if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
+                                                                                updatedAnns[ann.annotationId] = {
+                                                                                  ...ann,
+                                                                                  ballInCourtEntityId: undefined,
+                                                                                  ballInCourtEntityName: undefined,
+                                                                                  ballInCourtColor: undefined
+                                                                                };
+                                                                              }
+                                                                            });
+                                                                            return updatedAnns;
+                                                                          });
+
+                                                                          // Update highlight on PDF - revert to "needs BIC" state (transparent with dashed outline)
+                                                                          if (highlightData?.pageNumber && highlightData?.bounds) {
+                                                                            setNewHighlightsByPage(prev => {
+                                                                              const pageHighlights = prev[highlightData.pageNumber] || [];
+                                                                              // Remove any existing highlight with this highlightId or same bounds (regardless of needsBIC or color)
+                                                                              const filtered = pageHighlights.filter(h => {
+                                                                                // Keep highlights that don't match by ID or bounds
+                                                                                const hasMatchingId = h.highlightId === highlightId;
+                                                                                const hasMatchingBounds = h.x === highlightData.bounds.x &&
+                                                                                  h.y === highlightData.bounds.y &&
+                                                                                  h.width === highlightData.bounds.width &&
+                                                                                  h.height === highlightData.bounds.height;
+                                                                                // Remove if it matches by ID or bounds
+                                                                                return !hasMatchingId && !hasMatchingBounds;
+                                                                              });
+                                                                              // Add "needs BIC" highlight (transparent with dashed outline)
+                                                                              return {
+                                                                                ...prev,
+                                                                                [highlightData.pageNumber]: [
+                                                                                  ...filtered,
+                                                                                  {
+                                                                                    ...highlightData.bounds,
+                                                                                    needsBIC: true,
+                                                                                    highlightId: highlightId
+                                                                                  }
+                                                                                ]
+                                                                              };
+                                                                            });
+                                                                          }
+                                                                        }
+
+                                                                        // Update highlight annotation to remove BIC status
+                                                                        updated[highlightId] = {
+                                                                          ...updated[highlightId],
+                                                                          ballInCourtEntityId: undefined,
+                                                                          ballInCourtEntityName: undefined,
+                                                                          ballInCourtColor: undefined
+                                                                        };
+                                                                      }
+                                                                    }
+
+                                                                    return updated;
+                                                                  });
+                                                                }}
+                                                                style={{
+                                                                  minWidth: '28px',
+                                                                  padding: '4px 6px',
+                                                                  fontSize: '11px',
+                                                                  fontWeight: '400',
+                                                                  border: 'none',
+                                                                  borderRadius: '3px',
+                                                                  cursor: 'pointer',
+                                                                  background: isSelected === option
+                                                                    ? option === 'Y'
+                                                                      ? '#B8E6D4'
+                                                                      : option === 'N'
+                                                                        ? '#FFB3BA'
+                                                                        : '#777'
+                                                                    : '#D3D3D3',
+                                                                  color: isSelected === option ? '#FFFFFF' : '#333333',
+                                                                  transition: 'all 0.2s ease'
+                                                                }}
+                                                              >
+                                                                {option}
+                                                              </button>
+                                                            ))}
                                                           </div>
                                                         </div>
-                                                      );
-                                                    })
-                                                  }
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        )
-                                        }
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <div style={{ color: '#999', fontSize: '14px', padding: '20px', textAlign: 'center' }}>
-                                  <div>No categories available for this space.</div>
-                                  {selectedTemplate && selectedModuleId && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (!selectedTemplate?.id || !selectedModuleId) {
-                                          alert('Please select a template and module before creating a category.');
-                                          return;
-                                        }
-                                        onRequestCreateTemplate?.({
-                                          mode: 'edit',
-                                          templateId: selectedTemplate.id,
-                                          moduleId: selectedModuleId,
-                                          startAddingCategory: true
-                                        });
-                                      }}
-                                      style={{
-                                        marginTop: '12px',
-                                        padding: '10px 18px',
-                                        borderRadius: '20px',
-                                        border: '1px solid #4A90E2',
-                                        background: '#2a2a2a',
-                                        color: '#FFFFFF',
-                                        fontSize: '13px',
-                                        fontWeight: 500,
-                                        cursor: 'pointer',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: '6px',
-                                        transition: 'background 0.2s ease, border-color 0.2s ease'
-                                      }}
-                                      onMouseEnter={(event) => {
-                                        event.currentTarget.style.background = '#3a3a3a';
-                                        event.currentTarget.style.borderColor = '#5AA0F2';
-                                      }}
-                                      onMouseLeave={(event) => {
-                                        event.currentTarget.style.background = '#2a2a2a';
-                                        event.currentTarget.style.borderColor = '#4A90E2';
-                                      }}
-                                    >
-                                      Create Category
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
+                                                      </div>
+                                                    );
+                                                  })
+                                                }
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )
+                                      }
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ color: '#999', fontSize: '14px', padding: '20px', textAlign: 'center' }}>
+                                <div>No categories available for this space.</div>
+                                {selectedTemplate && selectedModuleId && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!selectedTemplate?.id || !selectedModuleId) {
+                                        alert('Please select a template and module before creating a category.');
+                                        return;
+                                      }
+                                      onRequestCreateTemplate?.({
+                                        mode: 'edit',
+                                        templateId: selectedTemplate.id,
+                                        moduleId: selectedModuleId,
+                                        startAddingCategory: true
+                                      });
+                                    }}
+                                    style={{
+                                      marginTop: '12px',
+                                      padding: '10px 18px',
+                                      borderRadius: '20px',
+                                      border: '1px solid #4A90E2',
+                                      background: '#2a2a2a',
+                                      color: '#FFFFFF',
+                                      fontSize: '13px',
+                                      fontWeight: 500,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '6px',
+                                      transition: 'background 0.2s ease, border-color 0.2s ease'
+                                    }}
+                                    onMouseEnter={(event) => {
+                                      event.currentTarget.style.background = '#3a3a3a';
+                                      event.currentTarget.style.borderColor = '#5AA0F2';
+                                    }}
+                                    onMouseLeave={(event) => {
+                                      event.currentTarget.style.background = '#2a2a2a';
+                                      event.currentTarget.style.borderColor = '#4A90E2';
+                                    }}
+                                  >
+                                    Create Category
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        );
-                      })() : (
-                        <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                          <p>Select a space to view categories</p>
                         </div>
-                      )}
-                    </div>
+                      );
+                    })() : (
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                        <p>Select a space to view categories</p>
+                      </div>
+                    )}
+                  </div>
 
 
-                  </>
-                )}
+                </>
+              )}
 
-                {/* Export / Sync Button at Bottom */}
-                {!isSurveyPanelCollapsed && selectedTemplate && (
-                  <div style={{
-                    padding: '12px',
-                    borderTop: '1px solid #3a3a3a',
-                    background: '#252525',
-                    position: 'relative' // For dropdown positioning
-                  }}>
-                    {!selectedTemplate.linkedExcelPath ? (
+              {/* Export / Sync Button at Bottom */}
+              {!isSurveyPanelCollapsed && selectedTemplate && (
+                <div style={{
+                  padding: '12px',
+                  borderTop: '1px solid #3a3a3a',
+                  background: '#252525',
+                  position: 'relative' // For dropdown positioning
+                }}>
+                  {!selectedTemplate.linkedExcelPath ? (
+                    <button
+                      type="button"
+                      onClick={handleExportSurveyToExcel}
+                      style={{
+                        width: '100%',
+                        background: '#4A90E2',
+                        border: '1px solid #3277c7',
+                        color: '#fff',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        padding: '10px 16px',
+                        borderRadius: '6px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#357abd';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#4A90E2';
+                      }}
+                    >
+                      EXPORT
+                    </button>
+                  ) : (
+                    <div ref={exportMenuRef} style={{ display: 'flex', width: '100%' }}>
                       <button
                         type="button"
-                        onClick={handleExportSurveyToExcel}
+                        onClick={() => handleExportSurveyToExcel()} // Default action: Export new
                         style={{
-                          width: '100%',
+                          flex: 1,
                           background: '#4A90E2',
                           border: '1px solid #3277c7',
+                          borderRight: 'none',
+                          borderTopLeftRadius: '6px',
+                          borderBottomLeftRadius: '6px',
                           color: '#fff',
                           fontSize: '14px',
                           fontWeight: 600,
                           padding: '10px 16px',
-                          borderRadius: '6px',
                           textTransform: 'uppercase',
                           letterSpacing: '0.08em',
                           cursor: 'pointer',
@@ -17396,1468 +17415,325 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       >
                         EXPORT
                       </button>
-                    ) : (
-                      <div ref={exportMenuRef} style={{ display: 'flex', width: '100%' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleExportSurveyToExcel()} // Default action: Export new
-                          style={{
-                            flex: 1,
-                            background: '#4A90E2',
-                            border: '1px solid #3277c7',
-                            borderRight: 'none',
-                            borderTopLeftRadius: '6px',
-                            borderBottomLeftRadius: '6px',
-                            color: '#fff',
-                            fontSize: '14px',
-                            fontWeight: 600,
-                            padding: '10px 16px',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.08em',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#357abd';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#4A90E2';
-                          }}
-                        >
-                          EXPORT
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowExportMenu(!showExportMenu)}
-                          style={{
-                            width: '40px',
-                            background: '#4A90E2',
-                            border: '1px solid #3277c7',
-                            borderLeft: '1px solid rgba(0,0,0,0.1)',
-                            borderTopRightRadius: '6px',
-                            borderBottomRightRadius: '6px',
-                            color: '#fff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#357abd';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#4A90E2';
-                          }}
-                        >
-                          <Icon name={showExportMenu ? "chevronUp" : "chevronDown"} size={16} />
-                        </button>
-
-                        {showExportMenu && (
-                          <div style={{
-                            position: 'absolute',
-                            bottom: '100%',
-                            left: '12px',
-                            right: '12px',
-                            marginBottom: '8px',
-                            background: '#333',
-                            border: '1px solid #444',
-                            borderRadius: '6px',
-                            boxShadow: '0 -4px 12px rgba(0,0,0,0.3)',
-                            zIndex: 100,
-                            overflow: 'hidden'
-                          }}>
-                            <div
-                              onClick={async () => {
-                                const excelPath = selectedTemplate.linkedExcelPath;
-                                const isOneDrive = selectedTemplate.isOneDrive;
-
-                                console.log('Attempting to open Excel file:', { excelPath, isOneDrive });
-
-                                if (!excelPath) {
-                                  alert('No Excel file is linked to this survey.');
-                                  setShowExportMenu(false);
-                                  return;
-                                }
-
-                                // Handle OneDrive files - open in browser
-                                if (isOneDrive) {
-                                  try {
-                                    // Get the file's web URL from OneDrive
-                                    if (graphClient) {
-                                      const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
-                                      if (driveItem && driveItem.webUrl) {
-                                        window.open(driveItem.webUrl, '_blank');
-                                      } else {
-                                        alert('Could not get the OneDrive file URL. Please open the file manually from OneDrive.');
-                                      }
-                                    } else {
-                                      alert('Please sign in to Microsoft to open OneDrive files.');
-                                    }
-                                  } catch (err) {
-                                    console.error('Error opening OneDrive file:', err);
-                                    alert(`Error opening OneDrive file:\n${err.message}`);
-                                  }
-                                  setShowExportMenu(false);
-                                  return;
-                                }
-
-                                // Handle local files
-                                if (window.electronAPI) {
-                                  try {
-                                    // Check if file exists first
-                                    const exists = await window.electronAPI.fileExists(excelPath);
-                                    console.log('File exists:', exists);
-
-                                    if (!exists) {
-                                      alert(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`);
-                                      setShowExportMenu(false);
-                                      return;
-                                    }
-
-                                    const result = await window.electronAPI.openPath(excelPath);
-                                    if (result) {
-                                      // shell.openPath returns an error string if it fails, empty string on success
-                                      console.error('Failed to open Excel file:', result);
-                                      alert(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`);
-                                    }
-                                  } catch (err) {
-                                    console.error('Error opening Excel file:', err);
-                                    alert(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`);
-                                  }
-                                } else {
-                                  alert('This feature is only available in the desktop app.');
-                                }
-                                setShowExportMenu(false);
-                              }}
-                              style={{
-                                padding: '12px 16px',
-                                color: '#fff',
-                                fontSize: '14px',
-                                cursor: 'pointer',
-                                borderBottom: '1px solid #444',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            >
-                              <Icon name="document" size={16} />
-                              Open Excel
-                            </div>
-                            <div
-                              onClick={() => {
-                                handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
-                                setShowExportMenu(false);
-                              }}
-                              style={{
-                                padding: '12px 16px',
-                                color: '#fff',
-                                fontSize: '14px',
-                                cursor: 'pointer',
-                                borderBottom: '1px solid #444',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            >
-                              <Icon name="upload" size={16} />
-                              Push to Excel
-                            </div>
-                            <div
-                              onClick={() => {
-                                handleSyncFromExcel();
-                                setShowExportMenu(false);
-                              }}
-                              style={{
-                                padding: '12px 16px',
-                                color: '#fff',
-                                fontSize: '14px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            >
-                              <Icon name="download" size={16} />
-                              Pull from Excel
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </>
-          )
-          }
-
-          {/* Category Selection Modal (after highlighting) */}
-          {
-            pendingHighlight && selectedTemplate && selectedModuleId && (
-              <>
-                <div
-                  onClick={() => setPendingHighlight(null)}
-                  style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'rgba(0, 0, 0, 0.5)',
-                    zIndex: 10001,
-                    animation: 'fadeIn 0.2s ease-out',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      background: '#2b2b2b',
-                      border: '1px solid #444',
-                      borderRadius: '8px',
-                      padding: '24px',
-                      width: '500px',
-                      maxWidth: '90vw',
-                      maxHeight: '80vh',
-                      overflow: 'auto',
-                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-                      animation: 'fadeIn 0.2s ease-out'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '20px'
-                    }}>
-                      <h3 style={{
-                        margin: 0,
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: '#fff',
-                        fontFamily: FONT_FAMILY
-                      }}>
-                        Categorize Highlight
-                      </h3>
                       <button
-                        onClick={() => setPendingHighlight(null)}
-                        className="btn btn-icon btn-icon-sm"
+                        type="button"
+                        onClick={() => setShowExportMenu(!showExportMenu)}
                         style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#999'
+                          width: '40px',
+                          background: '#4A90E2',
+                          border: '1px solid #3277c7',
+                          borderLeft: '1px solid rgba(0,0,0,0.1)',
+                          borderTopRightRadius: '6px',
+                          borderBottomRightRadius: '6px',
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#357abd';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = '#4A90E2';
                         }}
                       >
-                        <Icon name="close" size={18} />
+                        <Icon name={showExportMenu ? "chevronUp" : "chevronDown"} size={16} />
                       </button>
-                    </div>
 
-                    <p style={{ color: '#999', fontSize: '14px', marginBottom: '20px' }}>
-                      Select a category for this highlighted item:
-                    </p>
-
-                    {(() => {
-                      const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
-                      if (!module || !module.categories || module.categories.length === 0) {
-                        return (
-                          <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                            <p>No categories available for this module.</p>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {module.categories.map(category => (
-                            <button
-                              key={category.id}
-                              onClick={() => {
-                                // Check if template has Ball in Court entities
-                                const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
-                                if (ballInCourtEntities.length > 0) {
-                                  // Show Ball in Court selection dialog first
-                                  setPendingBallInCourtSelection({
-                                    highlight: pendingHighlight,
-                                    categoryId: category.id
-                                  });
-                                } else {
-                                  // No Ball in Court entities, go directly to name prompt
-                                  setPendingHighlightName({
-                                    highlight: pendingHighlight,
-                                    categoryId: category.id
-                                  });
-                                  setHighlightNameInput(''); // Reset input
-                                }
-                                // Clear pending highlight modal
-                                setPendingHighlight(null);
-                              }}
-                              className="btn btn-default btn-md"
-                              style={{
-                                textAlign: 'left',
-                                justifyContent: 'flex-start',
-                                padding: '12px 16px',
-                                background: 'transparent',
-                                border: '1px solid transparent'
-                              }}
-                            >
-                              <div style={{ fontWeight: '500', color: '#fff' }}>
-                                {category.name || 'Untitled Category'}
-                              </div>
-                              {category.checklist && category.checklist.length > 0 && (
-                                <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
-                                  {category.checklist.length} checklist item{category.checklist.length !== 1 ? 's' : ''}
-                                </div>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </>
-            )
-          }
-
-          {/* Ball in Court Selection Dialog */}
-          {
-            pendingBallInCourtSelection && selectedTemplate && selectedModuleId && (() => {
-              const ballInCourtEntities = selectedTemplate.ballInCourtEntities || [];
-
-              return (
-                <>
-                  <div
-                    onClick={() => {
-                      // Cancel - proceed without entity selection
-                      setPendingHighlightName({
-                        highlight: pendingBallInCourtSelection.highlight,
-                        categoryId: pendingBallInCourtSelection.categoryId
-                      });
-                      setPendingBallInCourtSelection(null);
-                      setHighlightNameInput('');
-                    }}
-                    style={{
-                      position: 'fixed',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      background: 'rgba(0, 0, 0, 0.5)',
-                      zIndex: 10003,
-                      animation: 'fadeIn 0.2s ease-out',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        background: '#2b2b2b',
-                        border: '1px solid #444',
-                        borderRadius: '8px',
-                        padding: '24px',
-                        width: '500px',
-                        maxWidth: '90vw',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-                        animation: 'fadeIn 0.2s ease-out'
-                      }}
-                    >
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: '20px'
-                      }}>
-                        <h3 style={{
-                          margin: 0,
-                          fontSize: '18px',
-                          fontWeight: '600',
-                          color: '#fff',
-                          fontFamily: FONT_FAMILY
+                      {showExportMenu && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '100%',
+                          left: '12px',
+                          right: '12px',
+                          marginBottom: '8px',
+                          background: '#333',
+                          border: '1px solid #444',
+                          borderRadius: '6px',
+                          boxShadow: '0 -4px 12px rgba(0,0,0,0.3)',
+                          zIndex: 100,
+                          overflow: 'hidden'
                         }}>
-                          Ball in Court
-                        </h3>
-                        <button
-                          onClick={() => {
-                            // Cancel - proceed without entity selection
-                            setPendingHighlightName({
-                              highlight: pendingBallInCourtSelection.highlight,
-                              categoryId: pendingBallInCourtSelection.categoryId
-                            });
-                            setPendingBallInCourtSelection(null);
-                            setHighlightNameInput('');
-                          }}
-                          className="btn btn-icon btn-icon-sm"
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#999'
-                          }}
-                        >
-                          <Icon name="close" size={18} />
-                        </button>
-                      </div>
+                          <div
+                            onClick={async () => {
+                              const excelPath = selectedTemplate.linkedExcelPath;
+                              const isOneDrive = selectedTemplate.isOneDrive;
 
-                      <div style={{
-                        fontSize: '14px',
-                        color: '#999',
-                        marginBottom: '16px'
-                      }}>
-                        Select the entity responsible for this highlight:
-                      </div>
+                              console.log('Attempting to open Excel file:', { excelPath, isOneDrive });
 
-                      <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                        maxHeight: '400px',
-                        overflowY: 'auto'
-                      }}>
-                        {ballInCourtEntities.map(entity => (
-                          <button
-                            key={entity.id}
-                            onClick={() => {
-                              // Apply entity color and proceed to name prompt
-                              // Use the entity's saved opacity for highlights
-                              const entityColor = normalizeHighlightColor(entity.color) || entity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_HIGHLIGHT_OPACITY);
+                              if (!excelPath) {
+                                alert('No Excel file is linked to this survey.');
+                                setShowExportMenu(false);
+                                return;
+                              }
 
-                              // Store highlight with entity info
-                              setHighlightAnnotations(prev => ({
-                                ...prev,
-                                [pendingBallInCourtSelection.highlight.id]: {
-                                  ...pendingBallInCourtSelection.highlight,
-                                  categoryId: pendingBallInCourtSelection.categoryId,
-                                  ballInCourtEntityId: entity.id,
-                                  ballInCourtEntityName: entity.name,
-                                  ballInCourtColor: entityColor,
-                                  checklistResponses: {}
-                                }
-                              }));
-
-                              // Update existing highlight on page with entity color (rgba with 100% opacity)
-                              // Replace the existing highlight (with needsBIC) with the new one that has the color
-                              setNewHighlightsByPage(prev => {
-                                const pageHighlights = prev[pendingBallInCourtSelection.highlight.pageNumber] || [];
-                                // Remove existing highlight with this highlightId (if it exists)
-                                const filtered = pageHighlights.filter(h => h.highlightId !== pendingBallInCourtSelection.highlight.id);
-                                // Add the new highlight with color
-                                return {
-                                  ...prev,
-                                  [pendingBallInCourtSelection.highlight.pageNumber]: [
-                                    ...filtered,
-                                    {
-                                      ...pendingBallInCourtSelection.highlight.bounds,
-                                      color: entityColor,
-                                      highlightId: pendingBallInCourtSelection.highlight.id,
-                                      moduleId: pendingBallInCourtSelection.highlight.moduleId || selectedModuleId
+                              // Handle OneDrive files - open in browser
+                              if (isOneDrive) {
+                                try {
+                                  // Get the file's web URL from OneDrive
+                                  if (graphClient) {
+                                    const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
+                                    if (driveItem && driveItem.webUrl) {
+                                      window.open(driveItem.webUrl, '_blank');
+                                    } else {
+                                      alert('Could not get the OneDrive file URL. Please open the file manually from OneDrive.');
                                     }
-                                  ]
-                                };
-                              });
+                                  } else {
+                                    alert('Please sign in to Microsoft to open OneDrive files.');
+                                  }
+                                } catch (err) {
+                                  console.error('Error opening OneDrive file:', err);
+                                  alert(`Error opening OneDrive file:\n${err.message}`);
+                                }
+                                setShowExportMenu(false);
+                                return;
+                              }
 
-                              // Proceed to name prompt
-                              setPendingHighlightName({
-                                highlight: {
-                                  ...pendingBallInCourtSelection.highlight,
-                                  ballInCourtEntityId: entity.id,
-                                  ballInCourtEntityName: entity.name,
-                                  ballInCourtColor: entityColor
-                                },
-                                categoryId: pendingBallInCourtSelection.categoryId
-                              });
-                              setPendingBallInCourtSelection(null);
-                              setHighlightNameInput('');
+                              // Handle local files
+                              if (window.electronAPI) {
+                                try {
+                                  // Check if file exists first
+                                  const exists = await window.electronAPI.fileExists(excelPath);
+                                  console.log('File exists:', exists);
+
+                                  if (!exists) {
+                                    alert(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`);
+                                    setShowExportMenu(false);
+                                    return;
+                                  }
+
+                                  const result = await window.electronAPI.openPath(excelPath);
+                                  if (result) {
+                                    // shell.openPath returns an error string if it fails, empty string on success
+                                    console.error('Failed to open Excel file:', result);
+                                    alert(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`);
+                                  }
+                                } catch (err) {
+                                  console.error('Error opening Excel file:', err);
+                                  alert(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`);
+                                }
+                              } else {
+                                alert('This feature is only available in the desktop app.');
+                              }
+                              setShowExportMenu(false);
                             }}
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '12px',
                               padding: '12px 16px',
-                              background: '#333',
-                              border: '1px solid #444',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              transition: 'all 0.2s',
-                              textAlign: 'left'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = '#3a3a3a';
-                              e.currentTarget.style.borderColor = '#555';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = '#333';
-                              e.currentTarget.style.borderColor = '#444';
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: '24px',
-                                height: '24px',
-                                borderRadius: '4px',
-                                background: entity.color,
-                                border: '1px solid rgba(255, 255, 255, 0.2)',
-                                flexShrink: 0
-                              }}
-                            />
-                            <span style={{
                               color: '#fff',
                               fontSize: '14px',
-                              fontWeight: '500',
-                              fontFamily: FONT_FAMILY
-                            }}>
-                              {entity.name}
-                            </span>
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #444',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <Icon name="document" size={16} />
+                            Open Excel
+                          </div>
+                          <div
+                            onClick={() => {
+                              handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
+                              setShowExportMenu(false);
+                            }}
+                            style={{
+                              padding: '12px 16px',
+                              color: '#fff',
+                              fontSize: '14px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #444',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <Icon name="upload" size={16} />
+                            Push to Excel
+                          </div>
+                          <div
+                            onClick={() => {
+                              handleSyncFromExcel();
+                              setShowExportMenu(false);
+                            }}
+                            style={{
+                              padding: '12px 16px',
+                              color: '#fff',
+                              fontSize: '14px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <Icon name="download" size={16} />
+                            Pull from Excel
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )
+        }
+
+        {/* Category Selection Modal (after highlighting) */}
+        {
+          pendingHighlight && selectedTemplate && selectedModuleId && (
+            <>
+              <div
+                onClick={() => setPendingHighlight(null)}
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  zIndex: 10001,
+                  animation: 'fadeIn 0.2s ease-out',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    background: '#2b2b2b',
+                    border: '1px solid #444',
+                    borderRadius: '8px',
+                    padding: '24px',
+                    width: '500px',
+                    maxWidth: '90vw',
+                    maxHeight: '80vh',
+                    overflow: 'auto',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                    animation: 'fadeIn 0.2s ease-out'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '20px'
+                  }}>
+                    <h3 style={{
+                      margin: 0,
+                      fontSize: '18px',
+                      fontWeight: '600',
+                      color: '#fff',
+                      fontFamily: FONT_FAMILY
+                    }}>
+                      Categorize Highlight
+                    </h3>
+                    <button
+                      onClick={() => setPendingHighlight(null)}
+                      className="btn btn-icon btn-icon-sm"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#999'
+                      }}
+                    >
+                      <Icon name="close" size={18} />
+                    </button>
+                  </div>
+
+                  <p style={{ color: '#999', fontSize: '14px', marginBottom: '20px' }}>
+                    Select a category for this highlighted item:
+                  </p>
+
+                  {(() => {
+                    const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
+                    if (!module || !module.categories || module.categories.length === 0) {
+                      return (
+                        <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                          <p>No categories available for this module.</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {module.categories.map(category => (
+                          <button
+                            key={category.id}
+                            onClick={() => {
+                              // Check if template has Ball in Court entities
+                              const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
+                              if (ballInCourtEntities.length > 0) {
+                                // Show Ball in Court selection dialog first
+                                setPendingBallInCourtSelection({
+                                  highlight: pendingHighlight,
+                                  categoryId: category.id
+                                });
+                              } else {
+                                // No Ball in Court entities, go directly to name prompt
+                                setPendingHighlightName({
+                                  highlight: pendingHighlight,
+                                  categoryId: category.id
+                                });
+                                setHighlightNameInput(''); // Reset input
+                              }
+                              // Clear pending highlight modal
+                              setPendingHighlight(null);
+                            }}
+                            className="btn btn-default btn-md"
+                            style={{
+                              textAlign: 'left',
+                              justifyContent: 'flex-start',
+                              padding: '12px 16px',
+                              background: 'transparent',
+                              border: '1px solid transparent'
+                            }}
+                          >
+                            <div style={{ fontWeight: '500', color: '#fff' }}>
+                              {category.name || 'Untitled Category'}
+                            </div>
+                            {category.checklist && category.checklist.length > 0 && (
+                              <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
+                                {category.checklist.length} checklist item{category.checklist.length !== 1 ? 's' : ''}
+                              </div>
+                            )}
                           </button>
                         ))}
                       </div>
-                    </div>
-                  </div>
-                </>
-              );
-            })()
-          }
-
-          {/* Name Prompt Modal (after categorizing highlight) */}
-          {
-            pendingHighlightName && selectedTemplate && selectedModuleId && (() => {
-              const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
-              const category = module?.categories?.find(c => c.id === pendingHighlightName.categoryId);
-              const categoryName = category?.name?.trim() || 'Untitled Category';
-              const existingHighlights = Object.values(highlightAnnotations).filter(h => h.categoryId === pendingHighlightName.categoryId);
-              const defaultName = generateDefaultHighlightName(categoryName, existingHighlights);
-
-              return (
-                <>
-                  <div
-                    onClick={() => {
-                      // Cancel - save with default name
-                      const highlightData = {
-                        ...pendingHighlightName.highlight,
-                        categoryId: pendingHighlightName.categoryId,
-                        name: defaultName,
-                        checklistResponses: {}
-                      };
-                      setHighlightAnnotations(prev => ({
-                        ...prev,
-                        [pendingHighlightName.highlight.id]: highlightData
-                      }));
-
-                      // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                      // Replace the existing highlight (with needsBIC) with the new one that has the color
-                      const highlightColor = highlightData.ballInCourtColor
-                        ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                        : 'rgba(255, 193, 7, 1.0)';
-                      setNewHighlightsByPage(prev => {
-                        const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
-                        // Remove existing highlight with this highlightId (if it exists)
-                        const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
-                        // Add the new highlight with color
-                        return {
-                          ...prev,
-                          [pendingHighlightName.highlight.pageNumber]: [
-                            ...filtered,
-                            {
-                              ...pendingHighlightName.highlight.bounds,
-                              color: highlightColor,
-                              highlightId: pendingHighlightName.highlight.id,
-                              moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                            }
-                          ]
-                        };
-                      });
-
-                      setPendingHighlightName(null);
-                      setHighlightNameInput('');
-                      setShowSurveyPanel(true);
-                    }}
-                    style={{
-                      position: 'fixed',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      background: 'rgba(0, 0, 0, 0.5)',
-                      zIndex: 10002,
-                      animation: 'fadeIn 0.2s ease-out',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        background: '#2b2b2b',
-                        border: '1px solid #444',
-                        borderRadius: '8px',
-                        padding: '24px',
-                        width: '500px',
-                        maxWidth: '90vw',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-                        animation: 'fadeIn 0.2s ease-out'
-                      }}
-                    >
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: '20px'
-                      }}>
-                        <h3 style={{
-                          margin: 0,
-                          fontSize: '18px',
-                          fontWeight: '600',
-                          color: '#fff',
-                          fontFamily: FONT_FAMILY
-                        }}>
-                          Name Highlight
-                        </h3>
-                        <button
-                          onClick={() => {
-                            // Cancel - save with default name
-                            const highlightData = {
-                              ...pendingHighlightName.highlight,
-                              categoryId: pendingHighlightName.categoryId,
-                              name: defaultName,
-                              checklistResponses: {}
-                            };
-                            setHighlightAnnotations(prev => ({
-                              ...prev,
-                              [pendingHighlightName.highlight.id]: highlightData
-                            }));
-
-                            // If BIC was selected, also store it in the item's module-specific data
-                            if (highlightData.ballInCourtEntityId && selectedTemplate && selectedModuleId) {
-                              // Find or create item for this highlight
-                              const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
-                              const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                              const dataKey = getModuleDataKey(moduleName);
-
-                              // Find existing item by name and category
-                              const existingItem = Object.values(items).find(item =>
-                                item.name === defaultName &&
-                                item.itemType === categoryName
-                              );
-
-                              if (existingItem) {
-                                // Update existing item's module-specific data with BIC
-                                const moduleData = existingItem[dataKey] || {};
-                                const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
-
-                                if (ballInCourtEntity) {
-                                  setItems(prev => ({
-                                    ...prev,
-                                    [existingItem.itemId]: {
-                                      ...existingItem,
-                                      [dataKey]: {
-                                        ...moduleData,
-                                        ballInCourtEntityId: ballInCourtEntity.id,
-                                        ballInCourtEntityName: ballInCourtEntity.name,
-                                        ballInCourtColor: ballInCourtEntity.color
-                                      }
-                                    }
-                                  }));
-                                }
-                              } else {
-                                // Create new item with BIC in module-specific data
-                                const newItem = createItem(
-                                  selectedTemplate,
-                                  selectedModuleId,
-                                  pendingHighlightName.categoryId,
-                                  defaultName,
-                                  1
-                                );
-
-                                const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
-                                if (ballInCourtEntity) {
-                                  newItem[dataKey] = {
-                                    ballInCourtEntityId: ballInCourtEntity.id,
-                                    ballInCourtEntityName: ballInCourtEntity.name,
-                                    ballInCourtColor: ballInCourtEntity.color
-                                  };
-                                }
-
-                                setItems(prev => ({
-                                  ...prev,
-                                  [newItem.itemId]: newItem
-                                }));
-
-                                // Also create annotation for this item
-                                const annotation = createAnnotation(
-                                  pendingHighlightName.highlight.bounds,
-                                  'highlight',
-                                  selectedTemplate,
-                                  selectedSpaceId,
-                                  newItem.itemId,
-                                  categoryName
-                                );
-
-                                // Set BIC on annotation
-                                if (ballInCourtEntity) {
-                                  annotation.ballInCourtEntityId = ballInCourtEntity.id;
-                                  annotation.ballInCourtEntityName = ballInCourtEntity.name;
-                                  annotation.ballInCourtColor = ballInCourtEntity.color;
-                                }
-
-                                setAnnotations(prev => ({
-                                  ...prev,
-                                  [annotation.annotationId]: annotation
-                                }));
-                              }
-                            }
-
-                            // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                            // Replace the existing highlight (with needsBIC) with the new one that has the color
-                            const highlightColor = highlightData.ballInCourtColor
-                              ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                              : 'rgba(255, 193, 7, 1.0)';
-                            setNewHighlightsByPage(prev => {
-                              const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
-                              // Remove existing highlight with this highlightId (if it exists)
-                              const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
-                              // Add the new highlight with color
-                              return {
-                                ...prev,
-                                [pendingHighlightName.highlight.pageNumber]: [
-                                  ...filtered,
-                                  {
-                                    ...pendingHighlightName.highlight.bounds,
-                                    color: highlightColor,
-                                    highlightId: pendingHighlightName.highlight.id,
-                                    moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                                  }
-                                ]
-                              };
-                            });
-
-                            setPendingHighlightName(null);
-                            setHighlightNameInput('');
-                            setShowSurveyPanel(true);
-                          }}
-                          className="btn btn-icon btn-icon-sm"
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#999'
-                          }}
-                        >
-                          <Icon name="close" size={18} />
-                        </button>
-                      </div>
-
-                      <p style={{ color: '#999', fontSize: '14px', marginBottom: '16px' }}>
-                        Category: <strong style={{ color: '#fff' }}>{category?.name || 'Untitled Category'}</strong>
-                      </p>
-
-                      <input
-                        type="text"
-                        autoFocus
-                        value={highlightNameInput || defaultName}
-                        onChange={(e) => setHighlightNameInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            const name = (highlightNameInput || defaultName).trim() || defaultName;
-                            const highlightData = {
-                              ...pendingHighlightName.highlight,
-                              categoryId: pendingHighlightName.categoryId,
-                              name: name,
-                              checklistResponses: {}
-                            };
-                            setHighlightAnnotations(prev => ({
-                              ...prev,
-                              [pendingHighlightName.highlight.id]: highlightData
-                            }));
-
-                            // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                            // Replace the existing highlight (with needsBIC) with the new one that has the color
-                            const highlightColor = highlightData.ballInCourtColor
-                              ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                              : 'rgba(255, 193, 7, 1.0)';
-                            setNewHighlightsByPage(prev => {
-                              const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
-                              // Remove existing highlight with this highlightId (if it exists)
-                              const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
-                              // Add the new highlight with color
-                              return {
-                                ...prev,
-                                [pendingHighlightName.highlight.pageNumber]: [
-                                  ...filtered,
-                                  {
-                                    ...pendingHighlightName.highlight.bounds,
-                                    color: highlightColor,
-                                    highlightId: pendingHighlightName.highlight.id,
-                                    moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                                  }
-                                ]
-                              };
-                            });
-
-                            setPendingHighlightName(null);
-                            setHighlightNameInput('');
-                            setShowSurveyPanel(true);
-                          } else if (e.key === 'Escape') {
-                            // Cancel - save with default name
-                            const highlightData = {
-                              ...pendingHighlightName.highlight,
-                              categoryId: pendingHighlightName.categoryId,
-                              name: defaultName,
-                              checklistResponses: {}
-                            };
-                            setHighlightAnnotations(prev => ({
-                              ...prev,
-                              [pendingHighlightName.highlight.id]: highlightData
-                            }));
-
-                            // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                            // Replace the existing highlight (with needsBIC) with the new one that has the color
-                            const highlightColor = highlightData.ballInCourtColor
-                              ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                              : 'rgba(255, 193, 7, 1.0)';
-                            setNewHighlightsByPage(prev => {
-                              const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
-                              // Remove existing highlight with this highlightId (if it exists)
-                              const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
-                              // Add the new highlight with color
-                              return {
-                                ...prev,
-                                [pendingHighlightName.highlight.pageNumber]: [
-                                  ...filtered,
-                                  {
-                                    ...pendingHighlightName.highlight.bounds,
-                                    color: highlightColor,
-                                    highlightId: pendingHighlightName.highlight.id,
-                                    moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                                  }
-                                ]
-                              };
-                            });
-
-                            setPendingHighlightName(null);
-                            setHighlightNameInput('');
-                            setShowSurveyPanel(true);
-                          }
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '12px 16px',
-                          background: '#1b1b1b',
-                          border: '1px solid #444',
-                          borderRadius: '6px',
-                          color: '#fff',
-                          fontSize: '14px',
-                          fontFamily: FONT_FAMILY,
-                          outline: 'none',
-                          marginBottom: '16px'
-                        }}
-                        placeholder="Enter highlight name"
-                      />
-
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                        <button
-                          onClick={() => {
-                            // Cancel - save with default name
-                            const highlightData = {
-                              ...pendingHighlightName.highlight,
-                              categoryId: pendingHighlightName.categoryId,
-                              name: defaultName,
-                              checklistResponses: {}
-                            };
-                            setHighlightAnnotations(prev => ({
-                              ...prev,
-                              [pendingHighlightName.highlight.id]: highlightData
-                            }));
-
-                            // If BIC was selected, also store it in the item's module-specific data
-                            if (highlightData.ballInCourtEntityId && selectedTemplate && selectedModuleId) {
-                              // Find or create item for this highlight
-                              const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
-                              const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                              const dataKey = getModuleDataKey(moduleName);
-
-                              // Find existing item by name and category
-                              const existingItem = Object.values(items).find(item =>
-                                item.name === defaultName &&
-                                item.itemType === categoryName
-                              );
-
-                              if (existingItem) {
-                                // Update existing item's module-specific data with BIC
-                                const moduleData = existingItem[dataKey] || {};
-                                const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
-
-                                if (ballInCourtEntity) {
-                                  setItems(prev => ({
-                                    ...prev,
-                                    [existingItem.itemId]: {
-                                      ...existingItem,
-                                      [dataKey]: {
-                                        ...moduleData,
-                                        ballInCourtEntityId: ballInCourtEntity.id,
-                                        ballInCourtEntityName: ballInCourtEntity.name,
-                                        ballInCourtColor: ballInCourtEntity.color
-                                      }
-                                    }
-                                  }));
-                                }
-                              } else {
-                                // Create new item with BIC in module-specific data
-                                const newItem = createItem(
-                                  selectedTemplate,
-                                  selectedModuleId,
-                                  pendingHighlightName.categoryId,
-                                  defaultName,
-                                  1
-                                );
-
-                                const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
-                                if (ballInCourtEntity) {
-                                  newItem[dataKey] = {
-                                    ballInCourtEntityId: ballInCourtEntity.id,
-                                    ballInCourtEntityName: ballInCourtEntity.name,
-                                    ballInCourtColor: ballInCourtEntity.color
-                                  };
-                                }
-
-                                setItems(prev => ({
-                                  ...prev,
-                                  [newItem.itemId]: newItem
-                                }));
-
-                                // Also create annotation for this item
-                                const annotation = createAnnotation(
-                                  pendingHighlightName.highlight.bounds,
-                                  'highlight',
-                                  selectedTemplate,
-                                  selectedSpaceId,
-                                  newItem.itemId,
-                                  categoryName
-                                );
-
-                                // Set BIC on annotation
-                                if (ballInCourtEntity) {
-                                  annotation.ballInCourtEntityId = ballInCourtEntity.id;
-                                  annotation.ballInCourtEntityName = ballInCourtEntity.name;
-                                  annotation.ballInCourtColor = ballInCourtEntity.color;
-                                }
-
-                                setAnnotations(prev => ({
-                                  ...prev,
-                                  [annotation.annotationId]: annotation
-                                }));
-                              }
-                            }
-
-                            // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                            // Replace the existing highlight (with needsBIC) with the new one that has the color
-                            const highlightColor = highlightData.ballInCourtColor
-                              ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                              : 'rgba(255, 193, 7, 1.0)';
-                            setNewHighlightsByPage(prev => {
-                              const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
-                              // Remove existing highlight with this highlightId (if it exists)
-                              const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
-                              // Add the new highlight with color
-                              return {
-                                ...prev,
-                                [pendingHighlightName.highlight.pageNumber]: [
-                                  ...filtered,
-                                  {
-                                    ...pendingHighlightName.highlight.bounds,
-                                    color: highlightColor,
-                                    highlightId: pendingHighlightName.highlight.id,
-                                    moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                                  }
-                                ]
-                              };
-                            });
-
-                            setPendingHighlightName(null);
-                            setHighlightNameInput('');
-                            setShowSurveyPanel(true);
-                          }}
-                          className="btn btn-default btn-md"
-                          style={{
-                            padding: '10px 20px'
-                          }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => {
-                            const name = (highlightNameInput || defaultName).trim() || defaultName;
-                            const highlightData = {
-                              ...pendingHighlightName.highlight,
-                              categoryId: pendingHighlightName.categoryId,
-                              name: name,
-                              checklistResponses: {}
-                            };
-                            setHighlightAnnotations(prev => ({
-                              ...prev,
-                              [pendingHighlightName.highlight.id]: highlightData
-                            }));
-
-                            // If BIC was selected, also store it in the item's module-specific data
-                            if (highlightData.ballInCourtEntityId && selectedTemplate && selectedModuleId) {
-                              // Find or create item for this highlight
-                              const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
-                              const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                              const dataKey = getModuleDataKey(moduleName);
-
-                              // Find existing item by name and category
-                              const existingItem = Object.values(items).find(item =>
-                                item.name === name &&
-                                item.itemType === categoryName
-                              );
-
-                              if (existingItem) {
-                                // Update existing item's module-specific data with BIC
-                                const moduleData = existingItem[dataKey] || {};
-                                const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
-
-                                if (ballInCourtEntity) {
-                                  setItems(prev => ({
-                                    ...prev,
-                                    [existingItem.itemId]: {
-                                      ...existingItem,
-                                      [dataKey]: {
-                                        ...moduleData,
-                                        ballInCourtEntityId: ballInCourtEntity.id,
-                                        ballInCourtEntityName: ballInCourtEntity.name,
-                                        ballInCourtColor: ballInCourtEntity.color
-                                      }
-                                    }
-                                  }));
-                                }
-                              } else {
-                                // Create new item with BIC in space-specific data
-                                const newItem = createItem(
-                                  selectedTemplate,
-                                  selectedSpaceId,
-                                  pendingHighlightName.categoryId,
-                                  name,
-                                  1
-                                );
-
-                                const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
-                                if (ballInCourtEntity) {
-                                  newItem[dataKey] = {
-                                    ballInCourtEntityId: ballInCourtEntity.id,
-                                    ballInCourtEntityName: ballInCourtEntity.name,
-                                    ballInCourtColor: ballInCourtEntity.color
-                                  };
-                                }
-
-                                setItems(prev => ({
-                                  ...prev,
-                                  [newItem.itemId]: newItem
-                                }));
-
-                                // Also create annotation for this item
-                                const annotation = createAnnotation(
-                                  pendingHighlightName.highlight.bounds,
-                                  'highlight',
-                                  selectedTemplate,
-                                  selectedSpaceId,
-                                  newItem.itemId,
-                                  categoryName
-                                );
-
-                                // Set BIC on annotation
-                                if (ballInCourtEntity) {
-                                  annotation.ballInCourtEntityId = ballInCourtEntity.id;
-                                  annotation.ballInCourtEntityName = ballInCourtEntity.name;
-                                  annotation.ballInCourtColor = ballInCourtEntity.color;
-                                }
-
-                                setAnnotations(prev => ({
-                                  ...prev,
-                                  [annotation.annotationId]: annotation
-                                }));
-                              }
-                            }
-
-                            // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                            // Replace the existing highlight (with needsBIC) with the new one that has the color
-                            const highlightColor = highlightData.ballInCourtColor
-                              ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                              : 'rgba(255, 193, 7, 1.0)';
-                            setNewHighlightsByPage(prev => {
-                              const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
-                              // Remove existing highlight with this highlightId (if it exists)
-                              const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
-                              // Add the new highlight with color
-                              return {
-                                ...prev,
-                                [pendingHighlightName.highlight.pageNumber]: [
-                                  ...filtered,
-                                  {
-                                    ...pendingHighlightName.highlight.bounds,
-                                    color: highlightColor,
-                                    highlightId: pendingHighlightName.highlight.id,
-                                    moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                                  }
-                                ]
-                              };
-                            });
-
-                            setPendingHighlightName(null);
-                            setHighlightNameInput('');
-                            setShowSurveyPanel(true);
-                          }}
-                          className="btn btn-primary btn-md"
-                          style={{
-                            padding: '10px 20px'
-                          }}
-                        >
-                          Save
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              );
-            })()
-          }
-
-          {/* Note Dialog */}
-          {
-            noteDialogOpen && (
-              <>
-                <div
-                  onClick={() => setNoteDialogOpen(null)}
-                  style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'rgba(0, 0, 0, 0.5)',
-                    zIndex: 10001,
-                    animation: 'fadeIn 0.2s ease-out',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      background: '#2b2b2b',
-                      border: '1px solid #444',
-                      borderRadius: '8px',
-                      padding: '24px',
-                      width: '600px',
-                      maxWidth: '90vw',
-                      maxHeight: '80vh',
-                      overflow: 'auto',
-                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-                      animation: 'fadeIn 0.2s ease-out'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '20px'
-                    }}>
-                      <h3 style={{
-                        margin: 0,
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: '#fff',
-                        fontFamily: FONT_FAMILY
-                      }}>
-                        Note
-                      </h3>
-                      <button
-                        onClick={() => setNoteDialogOpen(null)}
-                        className="btn btn-icon btn-icon-sm"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#999'
-                        }}
-                      >
-                        <Icon name="close" size={18} />
-                      </button>
-                    </div>
-
-                    <div style={{ marginBottom: '16px' }}>
-                      <label style={{
-                        display: 'block',
-                        marginBottom: '8px',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                        color: '#ddd'
-                      }}>
-                        Notes
-                      </label>
-                      <textarea
-                        value={noteDialogContent.text}
-                        onChange={(e) => setNoteDialogContent(prev => ({ ...prev, text: e.target.value }))}
-                        rows={6}
-                        style={{
-                          width: '100%',
-                          padding: '10px',
-                          background: '#333',
-                          color: '#ddd',
-                          border: '1px solid #555',
-                          borderRadius: '5px',
-                          fontSize: '14px',
-                          fontFamily: FONT_FAMILY,
-                          resize: 'vertical'
-                        }}
-                        placeholder="Enter your notes..."
-                      />
-                    </div>
-
-                    <div style={{ marginBottom: '16px' }}>
-                      <label style={{
-                        display: 'block',
-                        marginBottom: '8px',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                        color: '#ddd'
-                      }}>
-                        Photos
-                      </label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={(e) => {
-                          const files = Array.from(e.target.files || []);
-                          const photoPromises = files.map(file => {
-                            return new Promise((resolve) => {
-                              const reader = new FileReader();
-                              reader.onload = (event) => {
-                                resolve({ name: file.name, dataUrl: event.target.result });
-                              };
-                              reader.readAsDataURL(file);
-                            });
-                          });
-                          Promise.all(photoPromises).then(photos => {
-                            setNoteDialogContent(prev => ({
-                              ...prev,
-                              photos: [...prev.photos, ...photos]
-                            }));
-                          });
-                        }}
-                        style={{ display: 'none' }}
-                        id={`photo-upload-${noteDialogOpen}`}
-                      />
-                      <label
-                        htmlFor={`photo-upload-${noteDialogOpen}`}
-                        className="btn btn-secondary btn-md"
-                        style={{ cursor: 'pointer', display: 'inline-block' }}
-                      >
-                        Upload Photos
-                      </label>
-                      {noteDialogContent.photos.length > 0 && (
-                        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {noteDialogContent.photos.map((photo, idx) => (
-                            <div key={idx} style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              padding: '8px',
-                              background: '#333',
-                              borderRadius: '4px'
-                            }}>
-                              <img src={photo.dataUrl} alt={photo.name} style={{
-                                width: '60px',
-                                height: '60px',
-                                objectFit: 'cover',
-                                borderRadius: '4px'
-                              }} />
-                              <span style={{ flex: 1, color: '#ddd', fontSize: '13px' }}>{photo.name}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setNoteDialogContent(prev => ({
-                                    ...prev,
-                                    photos: prev.photos.filter((_, i) => i !== idx)
-                                  }));
-                                }}
-                                className="btn btn-icon btn-icon-sm"
-                                style={{ background: '#444' }}
-                              >
-                                <Icon name="close" size={14} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ marginBottom: '20px' }}>
-                      <label style={{
-                        display: 'block',
-                        marginBottom: '8px',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                        color: '#ddd'
-                      }}>
-                        Videos
-                      </label>
-                      <input
-                        type="file"
-                        accept="video/*"
-                        multiple
-                        onChange={(e) => {
-                          const files = Array.from(e.target.files || []);
-                          const videoPromises = files.map(file => {
-                            return new Promise((resolve) => {
-                              const reader = new FileReader();
-                              reader.onload = (event) => {
-                                resolve({ name: file.name, dataUrl: event.target.result });
-                              };
-                              reader.readAsDataURL(file);
-                            });
-                          });
-                          Promise.all(videoPromises).then(videos => {
-                            setNoteDialogContent(prev => ({
-                              ...prev,
-                              videos: [...prev.videos, ...videos]
-                            }));
-                          });
-                        }}
-                        style={{ display: 'none' }}
-                        id={`video-upload-${noteDialogOpen}`}
-                      />
-                      <label
-                        htmlFor={`video-upload-${noteDialogOpen}`}
-                        className="btn btn-secondary btn-md"
-                        style={{ cursor: 'pointer', display: 'inline-block' }}
-                      >
-                        Upload Videos
-                      </label>
-                      {noteDialogContent.videos.length > 0 && (
-                        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {noteDialogContent.videos.map((video, idx) => (
-                            <div key={idx} style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              padding: '8px',
-                              background: '#333',
-                              borderRadius: '4px'
-                            }}>
-                              <video src={video.dataUrl} style={{
-                                width: '60px',
-                                height: '60px',
-                                objectFit: 'cover',
-                                borderRadius: '4px'
-                              }} />
-                              <span style={{ flex: 1, color: '#ddd', fontSize: '13px' }}>{video.name}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setNoteDialogContent(prev => ({
-                                    ...prev,
-                                    videos: prev.videos.filter((_, i) => i !== idx)
-                                  }));
-                                }}
-                                className="btn btn-icon btn-icon-sm"
-                                style={{ background: '#444' }}
-                              >
-                                <Icon name="close" size={14} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                      <button
-                        type="button"
-                        onClick={() => setNoteDialogOpen(null)}
-                        className="btn btn-default btn-md"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          console.log('=== NOTE SAVE CLICKED ===');
-                          console.log('noteDialogOpen:', noteDialogOpen);
-                          console.log('noteDialogContent:', noteDialogContent);
-
-                          // For item-level notes, noteDialogOpen is just the highlightId
-                          const highlightId = noteDialogOpen;
-
-                          console.log('Saving item-level note for highlightId:', highlightId);
-                          console.log('Note text:', noteDialogContent.text);
-                          console.log('Photos:', noteDialogContent.photos.length);
-                          console.log('Videos:', noteDialogContent.videos.length);
-
-                          // Update highlight annotation with item-level note
-                          setHighlightAnnotations(prev => {
-                            console.log('Current highlight data:', prev[highlightId]);
-
-                            const existingHighlight = prev[highlightId] || {};
-
-                            const newNote = {
-                              text: noteDialogContent.text,
-                              photos: noteDialogContent.photos,
-                              videos: noteDialogContent.videos
-                            };
-                            console.log('Saving note:', newNote);
-
-                            const updated = {
-                              ...prev,
-                              [highlightId]: {
-                                ...existingHighlight, // Preserve all existing data
-                                note: newNote  // Save note at highlight level
-                              }
-                            };
-
-                            console.log('Updated highlight with note:', JSON.stringify(updated[highlightId], null, 2));
-
-                            // Save to localStorage immediately
-                            if (pdfId) {
-                              saveHighlightAnnotations(pdfId, updated);
-                              console.log('Saved to localStorage, pdfId:', pdfId);
-                            } else {
-                              console.warn('Cannot save to localStorage: pdfId is null');
-                            }
-
-                            return updated;
-                          });
-
-                          console.log('Closing dialog');
-                          setNoteDialogOpen(null);
-                          setNoteDialogContent({ text: '', photos: [], videos: [] }); // Clear dialog content
-                          console.log('=== NOTE SAVE COMPLETE ===');
-                        }}
-                        className="btn btn-primary btn-md"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
-              </>
-            )
-          }
+              </div>
+            </>
+          )
+        }
 
-          {/* Item Transfer - Destination Selection Modal */}
-          {
-            transferState && transferState.mode === 'select' && selectedTemplate && (
+        {/* Ball in Court Selection Dialog */}
+        {
+          pendingBallInCourtSelection && selectedTemplate && selectedModuleId && (() => {
+            const ballInCourtEntities = selectedTemplate.ballInCourtEntities || [];
+
+            return (
               <>
                 <div
-                  onClick={() => setTransferState(null)}
+                  onClick={() => {
+                    // Cancel - proceed without entity selection
+                    setPendingHighlightName({
+                      highlight: pendingBallInCourtSelection.highlight,
+                      categoryId: pendingBallInCourtSelection.categoryId
+                    });
+                    setPendingBallInCourtSelection(null);
+                    setHighlightNameInput('');
+                  }}
                   style={{
                     position: 'fixed',
                     top: 0,
@@ -18898,10 +17774,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         color: '#fff',
                         fontFamily: FONT_FAMILY
                       }}>
-                        Copy Items to Which Space?
+                        Ball in Court
                       </h3>
                       <button
-                        onClick={() => setTransferState(null)}
+                        onClick={() => {
+                          // Cancel - proceed without entity selection
+                          setPendingHighlightName({
+                            highlight: pendingBallInCourtSelection.highlight,
+                            categoryId: pendingBallInCourtSelection.categoryId
+                          });
+                          setPendingBallInCourtSelection(null);
+                          setHighlightNameInput('');
+                        }}
                         className="btn btn-icon btn-icon-sm"
                         style={{
                           background: 'transparent',
@@ -18913,296 +17797,178 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       </button>
                     </div>
 
-                    <p style={{ color: '#999', fontSize: '14px', marginBottom: '20px' }}>
-                      Copy {transferState.items.length} item{transferState.items.length !== 1 ? 's' : ''} to:
-                    </p>
+                    <div style={{
+                      fontSize: '14px',
+                      color: '#999',
+                      marginBottom: '16px'
+                    }}>
+                      Select the entity responsible for this highlight:
+                    </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {((selectedTemplate.modules || selectedTemplate.spaces) || [])
-                        .filter(module => module.id !== transferState.sourceModuleId)
-                        .map(module => (
-                          <button
-                            key={module.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      maxHeight: '400px',
+                      overflowY: 'auto'
+                    }}>
+                      {ballInCourtEntities.map(entity => (
+                        <button
+                          key={entity.id}
+                          onClick={() => {
+                            // Apply entity color and proceed to name prompt
+                            // Use the entity's saved opacity for highlights
+                            const entityColor = normalizeHighlightColor(entity.color) || entity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_HIGHLIGHT_OPACITY);
 
-                              // Find corresponding items for each selected highlight
-                              // First check if highlights exist and find their corresponding items via annotations
-                              const itemIdsToCopy = [];
-                              const legacyHighlightsToCopy = [];
-
-                              console.log('Copying items:', transferState.items);
-                              console.log('Source module:', transferState.sourceModuleId);
-                              console.log('Destination module:', module.id);
-
-                              transferState.items.forEach(highlightId => {
-                                const highlight = highlightAnnotations[highlightId];
-                                console.log('Processing highlight:', highlightId, highlight);
-
-                                if (!highlight) {
-                                  // Not a highlight, might be an itemId directly
-                                  if (items[highlightId]) {
-                                    console.log('Found direct itemId:', highlightId);
-                                    itemIdsToCopy.push(highlightId);
-                                  }
-                                  return;
-                                }
-
-                                // Try to find corresponding item by matching name and category (same logic as migration)
-                                const categoryName = getCategoryName(selectedTemplate, highlight.spaceId, highlight.categoryId);
-                                console.log('Category name:', categoryName, 'Highlight name:', highlight.name);
-
-                                // Find items that match name and category
-                                const matchingItem = Object.values(items).find(item =>
-                                  item.name === highlight.name &&
-                                  item.itemType === categoryName
-                                );
-
-                                console.log('Matching item:', matchingItem);
-
-                                // Verify the item has an annotation in the same space
-                                if (matchingItem) {
-                                  // Try to find annotation - don't require displayType to be 'highlight'
-                                  const matchingAnnotation = Object.values(annotations).find(ann =>
-                                    ann.itemId === matchingItem.itemId &&
-                                    ann.spaceId === highlight.spaceId
-                                  );
-
-                                  console.log('Matching annotation:', matchingAnnotation);
-                                  console.log('All annotations for item:', Object.values(annotations).filter(a => a.itemId === matchingItem.itemId));
-
-                                  if (matchingAnnotation && matchingItem.itemId) {
-                                    // Found corresponding item in new system
-                                    // Avoid duplicates
-                                    if (!itemIdsToCopy.includes(matchingItem.itemId)) {
-                                      console.log('Adding itemId to copy:', matchingItem.itemId);
-                                      itemIdsToCopy.push(matchingItem.itemId);
-                                    }
-                                  } else {
-                                    // No annotation found, but item exists - still copy it
-                                    // The item might not have an annotation yet, but we can still copy it
-                                    console.log('No matching annotation, but item exists - copying anyway');
-                                    if (!itemIdsToCopy.includes(matchingItem.itemId)) {
-                                      itemIdsToCopy.push(matchingItem.itemId);
-                                    }
-                                  }
-                                } else {
-                                  // Legacy highlight, no corresponding item found
-                                  console.log('No matching item, treating as legacy highlight');
-                                  legacyHighlightsToCopy.push(highlight);
-                                }
-                              });
-
-                              console.log('Items to copy:', itemIdsToCopy);
-                              console.log('Legacy highlights to copy:', legacyHighlightsToCopy);
-
-                              // Handle new system items
-                              if (itemIdsToCopy.length > 0) {
-                                const itemsToCheck = itemIdsToCopy.map(itemId => items[itemId]).filter(Boolean);
-                                const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
-
-                                const missingCategories = itemTypes.filter(itemType =>
-                                  !categoryExists(selectedTemplate, module.id, itemType)
-                                );
-
-                                if (missingCategories.length > 0) {
-                                  // Need to create categories - go to checklist prompt
-                                  setTransferState({
-                                    ...transferState,
-                                    mode: 'checklist',
-                                    destModuleId: module.id,
-                                    items: itemIdsToCopy
-                                  });
-                                } else {
-                                  // Direct transfer
-                                  const result = transferItems(
-                                    itemIdsToCopy,
-                                    transferState.sourceModuleId,
-                                    module.id,
-                                    selectedTemplate,
-                                    items,
-                                    annotations
-                                  );
-
-                                  setItems(result.newItems);
-                                  setAnnotations(result.updatedAnnotations);
-
-                                  // Create highlight entries for UI display
-                                  console.log('Creating highlight entries for', itemIdsToCopy.length, 'items');
-                                  const newHighlights = {};
-                                  itemIdsToCopy.forEach(itemId => {
-                                    const item = result.newItems[itemId];
-                                    console.log('Processing item for highlight creation:', itemId, item);
-                                    if (!item) {
-                                      console.log('Item not found in result.newItems');
-                                      return;
-                                    }
-
-                                    // Find the annotation we just created for this item in destination module
-                                    const destAnnotation = Object.values(result.updatedAnnotations).find(ann => {
-                                      const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
-                                      return ann.itemId === itemId && annModuleId === module.id;
-                                    });
-
-                                    console.log('Destination annotation:', destAnnotation);
-
-                                    // Find source annotation to get coordinates
-                                    const sourceAnnotation = Object.values(annotations).find(a => {
-                                      const aModuleId = a.moduleId || a.spaceId; // Support legacy spaceId
-                                      return a.itemId === itemId && aModuleId === transferState.sourceModuleId;
-                                    });
-                                    console.log('Source annotation:', sourceAnnotation);
-
-                                    // Find source highlight by matching coordinates or by finding the highlight we selected
-                                    let sourceHighlight = null;
-                                    if (sourceAnnotation && sourceAnnotation.pdfCoordinates) {
-                                      sourceHighlight = Object.values(highlightAnnotations).find(h => {
-                                        const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
-                                        return hModuleId === transferState.sourceModuleId &&
-                                          h.bounds &&
-                                          Math.abs((h.bounds.x || 0) - (sourceAnnotation.pdfCoordinates.x || 0)) < 1 &&
-                                          Math.abs((h.bounds.y || 0) - (sourceAnnotation.pdfCoordinates.y || 0)) < 1;
-                                      });
-                                    }
-
-                                    // Also try to find by matching the highlight ID from transferState.items
-                                    if (!sourceHighlight && transferState.items.length > 0) {
-                                      const highlightId = transferState.items.find(id => {
-                                        const h = highlightAnnotations[id];
-                                        const hModuleId = h?.moduleId || h?.spaceId; // Support legacy spaceId
-                                        return h && hModuleId === transferState.sourceModuleId;
-                                      });
-                                      if (highlightId) {
-                                        sourceHighlight = highlightAnnotations[highlightId];
-                                      }
-                                    }
-
-                                    console.log('Source highlight:', sourceHighlight);
-
-                                    // Find destination category ID
-                                    const destModule = ((selectedTemplate.modules || selectedTemplate.spaces) || []).find(m => m.id === module.id);
-                                    const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
-                                    console.log('Destination category:', destCategory);
-
-                                    // Use destination annotation coordinates, or source annotation coordinates, or source highlight bounds
-                                    // Convert pdfCoordinates format to bounds format (they should be the same structure)
-                                    let bounds = null;
-                                    if (destAnnotation?.pdfCoordinates) {
-                                      bounds = destAnnotation.pdfCoordinates;
-                                    } else if (sourceAnnotation?.pdfCoordinates) {
-                                      bounds = sourceAnnotation.pdfCoordinates;
-                                    } else if (sourceHighlight?.bounds) {
-                                      bounds = sourceHighlight.bounds;
-                                    }
-
-                                    console.log('Bounds for highlight:', bounds);
-
-                                    if (bounds) {
-                                      const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                                      newHighlights[highlightId] = {
-                                        id: highlightId,
-                                        pageNumber: sourceHighlight?.pageNumber || 1,
-                                        bounds: bounds,
-                                        spaceId: space.id,
-                                        categoryId: destCategory?.id || null,
-                                        name: item.name || sourceHighlight?.name || 'Untitled Item',
-                                        checklistResponses: {}
-                                      };
-                                      console.log('Created highlight:', newHighlights[highlightId]);
-                                    } else {
-                                      console.log('No bounds available, skipping highlight creation');
-                                    }
-                                  });
-
-                                  // Add new highlights to highlightAnnotations
-                                  if (Object.keys(newHighlights).length > 0) {
-                                    setHighlightAnnotations(prev => ({
-                                      ...prev,
-                                      ...newHighlights
-                                    }));
-                                  }
-
-                                  setTransferState(null);
-                                }
+                            // Store highlight with entity info
+                            setHighlightAnnotations(prev => ({
+                              ...prev,
+                              [pendingBallInCourtSelection.highlight.id]: {
+                                ...pendingBallInCourtSelection.highlight,
+                                categoryId: pendingBallInCourtSelection.categoryId,
+                                ballInCourtEntityId: entity.id,
+                                ballInCourtEntityName: entity.name,
+                                ballInCourtColor: entityColor,
+                                checklistResponses: {}
                               }
+                            }));
 
-                              // Handle legacy highlights (if any)
-                              if (legacyHighlightsToCopy.length > 0) {
-                                console.log('Copying legacy highlights:', legacyHighlightsToCopy);
-                                console.log('To module:', module.id, module.name);
+                            // Update existing highlight on page with entity color (rgba with 100% opacity)
+                            // Replace the existing highlight (with needsBIC) with the new one that has the color
+                            setNewHighlightsByPage(prev => {
+                              const pageHighlights = prev[pendingBallInCourtSelection.highlight.pageNumber] || [];
+                              // Remove existing highlight with this highlightId (if it exists)
+                              const filtered = pageHighlights.filter(h => h.highlightId !== pendingBallInCourtSelection.highlight.id);
+                              // Add the new highlight with color
+                              return {
+                                ...prev,
+                                [pendingBallInCourtSelection.highlight.pageNumber]: [
+                                  ...filtered,
+                                  {
+                                    ...pendingBallInCourtSelection.highlight.bounds,
+                                    color: entityColor,
+                                    highlightId: pendingBallInCourtSelection.highlight.id,
+                                    moduleId: pendingBallInCourtSelection.highlight.moduleId || selectedModuleId
+                                  }
+                                ]
+                              };
+                            });
 
-                                // Find matching category in destination module
-                                const allModules = (selectedTemplate.modules || selectedTemplate.spaces) || [];
-                                const sourceModule = allModules.find(m => m.id === transferState.sourceModuleId);
-                                const sourceCategory = sourceModule?.categories?.find(c => c.id === transferState.categoryId);
-
-                                const destCategory = module.categories?.find(
-                                  c => c.name === sourceCategory?.name
-                                );
-
-                                console.log('Source category:', sourceCategory);
-                                console.log('Dest category:', destCategory);
-
-                                // Create new highlights in destination module with same data
-                                const newHighlights = {};
-                                legacyHighlightsToCopy.forEach(h => {
-                                  const newId = generateUUID();
-                                  newHighlights[newId] = {
-                                    ...h,
-                                    id: newId,
-                                    moduleId: module.id,
-                                    categoryId: destCategory?.id || null
-                                  };
-                                });
-
-                                console.log('New highlights to add:', newHighlights);
-
-                                // Update highlightAnnotations state
-                                setHighlightAnnotations(prev => ({
-                                  ...prev,
-                                  ...newHighlights
-                                }));
-
-                                // Only close modal if we're done with all items
-                                if (itemIdsToCopy.length === 0) {
-                                  setTransferState(null);
-                                }
-                              }
-
-                              // If no items found at all, log warning
-                              if (itemIdsToCopy.length === 0 && legacyHighlightsToCopy.length === 0) {
-                                console.warn('No items found to copy. Selected IDs:', transferState.items);
-                                setTransferState(null);
-                              }
-                            }}
-                            className="btn btn-default btn-md"
+                            // Proceed to name prompt
+                            setPendingHighlightName({
+                              highlight: {
+                                ...pendingBallInCourtSelection.highlight,
+                                ballInCourtEntityId: entity.id,
+                                ballInCourtEntityName: entity.name,
+                                ballInCourtColor: entityColor
+                              },
+                              categoryId: pendingBallInCourtSelection.categoryId
+                            });
+                            setPendingBallInCourtSelection(null);
+                            setHighlightNameInput('');
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '12px 16px',
+                            background: '#333',
+                            border: '1px solid #444',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            textAlign: 'left'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#3a3a3a';
+                            e.currentTarget.style.borderColor = '#555';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#333';
+                            e.currentTarget.style.borderColor = '#444';
+                          }}
+                        >
+                          <div
                             style={{
-                              textAlign: 'left',
-                              justifyContent: 'flex-start',
-                              padding: '12px 16px',
-                              background: '#333',
-                              border: '1px solid #444'
+                              width: '24px',
+                              height: '24px',
+                              borderRadius: '4px',
+                              background: entity.color,
+                              border: '1px solid rgba(255, 255, 255, 0.2)',
+                              flexShrink: 0
                             }}
-                          >
-                            <div style={{ fontWeight: '500', color: '#fff' }}>
-                              {module.name || 'Untitled Module'}
-                            </div>
-                          </button>
-                        ))}
+                          />
+                          <span style={{
+                            color: '#fff',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            fontFamily: FONT_FAMILY
+                          }}>
+                            {entity.name}
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
               </>
-            )
-          }
+            );
+          })()
+        }
 
-          {/* Item Transfer - Checklist Prompt Modal */}
-          {
-            transferState && transferState.mode === 'checklist' && selectedTemplate && (
+        {/* Name Prompt Modal (after categorizing highlight) */}
+        {
+          pendingHighlightName && selectedTemplate && selectedModuleId && (() => {
+            const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
+            const category = module?.categories?.find(c => c.id === pendingHighlightName.categoryId);
+            const categoryName = category?.name?.trim() || 'Untitled Category';
+            const existingHighlights = Object.values(highlightAnnotations).filter(h => h.categoryId === pendingHighlightName.categoryId);
+            const defaultName = generateDefaultHighlightName(categoryName, existingHighlights);
+
+            return (
               <>
                 <div
-                  onClick={() => setTransferState(null)}
+                  onClick={() => {
+                    // Cancel - save with default name
+                    const highlightData = {
+                      ...pendingHighlightName.highlight,
+                      categoryId: pendingHighlightName.categoryId,
+                      name: defaultName,
+                      checklistResponses: {}
+                    };
+                    setHighlightAnnotations(prev => ({
+                      ...prev,
+                      [pendingHighlightName.highlight.id]: highlightData
+                    }));
+
+                    // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
+                    // Replace the existing highlight (with needsBIC) with the new one that has the color
+                    const highlightColor = highlightData.ballInCourtColor
+                      ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
+                      : 'rgba(255, 193, 7, 1.0)';
+                    setNewHighlightsByPage(prev => {
+                      const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                      // Remove existing highlight with this highlightId (if it exists)
+                      const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                      // Add the new highlight with color
+                      return {
+                        ...prev,
+                        [pendingHighlightName.highlight.pageNumber]: [
+                          ...filtered,
+                          {
+                            ...pendingHighlightName.highlight.bounds,
+                            color: highlightColor,
+                            highlightId: pendingHighlightName.highlight.id,
+                            moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
+                          }
+                        ]
+                      };
+                    });
+
+                    setPendingHighlightName(null);
+                    setHighlightNameInput('');
+                    setShowSurveyPanel(true);
+                  }}
                   style={{
                     position: 'fixed',
                     top: 0,
@@ -19210,7 +17976,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     right: 0,
                     bottom: 0,
                     background: 'rgba(0, 0, 0, 0.5)',
-                    zIndex: 10004,
+                    zIndex: 10002,
                     animation: 'fadeIn 0.2s ease-out',
                     display: 'flex',
                     alignItems: 'center',
@@ -19243,10 +18009,130 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         color: '#fff',
                         fontFamily: FONT_FAMILY
                       }}>
-                        Missing Categories Detected
+                        Name Highlight
                       </h3>
                       <button
-                        onClick={() => setTransferState(null)}
+                        onClick={() => {
+                          // Cancel - save with default name
+                          const highlightData = {
+                            ...pendingHighlightName.highlight,
+                            categoryId: pendingHighlightName.categoryId,
+                            name: defaultName,
+                            checklistResponses: {}
+                          };
+                          setHighlightAnnotations(prev => ({
+                            ...prev,
+                            [pendingHighlightName.highlight.id]: highlightData
+                          }));
+
+                          // If BIC was selected, also store it in the item's module-specific data
+                          if (highlightData.ballInCourtEntityId && selectedTemplate && selectedModuleId) {
+                            // Find or create item for this highlight
+                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
+                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                            const dataKey = getModuleDataKey(moduleName);
+
+                            // Find existing item by name and category
+                            const existingItem = Object.values(items).find(item =>
+                              item.name === defaultName &&
+                              item.itemType === categoryName
+                            );
+
+                            if (existingItem) {
+                              // Update existing item's module-specific data with BIC
+                              const moduleData = existingItem[dataKey] || {};
+                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
+
+                              if (ballInCourtEntity) {
+                                setItems(prev => ({
+                                  ...prev,
+                                  [existingItem.itemId]: {
+                                    ...existingItem,
+                                    [dataKey]: {
+                                      ...moduleData,
+                                      ballInCourtEntityId: ballInCourtEntity.id,
+                                      ballInCourtEntityName: ballInCourtEntity.name,
+                                      ballInCourtColor: ballInCourtEntity.color
+                                    }
+                                  }
+                                }));
+                              }
+                            } else {
+                              // Create new item with BIC in module-specific data
+                              const newItem = createItem(
+                                selectedTemplate,
+                                selectedModuleId,
+                                pendingHighlightName.categoryId,
+                                defaultName,
+                                1
+                              );
+
+                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
+                              if (ballInCourtEntity) {
+                                newItem[dataKey] = {
+                                  ballInCourtEntityId: ballInCourtEntity.id,
+                                  ballInCourtEntityName: ballInCourtEntity.name,
+                                  ballInCourtColor: ballInCourtEntity.color
+                                };
+                              }
+
+                              setItems(prev => ({
+                                ...prev,
+                                [newItem.itemId]: newItem
+                              }));
+
+                              // Also create annotation for this item
+                              const annotation = createAnnotation(
+                                pendingHighlightName.highlight.bounds,
+                                'highlight',
+                                selectedTemplate,
+                                selectedSpaceId,
+                                newItem.itemId,
+                                categoryName
+                              );
+
+                              // Set BIC on annotation
+                              if (ballInCourtEntity) {
+                                annotation.ballInCourtEntityId = ballInCourtEntity.id;
+                                annotation.ballInCourtEntityName = ballInCourtEntity.name;
+                                annotation.ballInCourtColor = ballInCourtEntity.color;
+                              }
+
+                              setAnnotations(prev => ({
+                                ...prev,
+                                [annotation.annotationId]: annotation
+                              }));
+                            }
+                          }
+
+                          // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
+                          // Replace the existing highlight (with needsBIC) with the new one that has the color
+                          const highlightColor = highlightData.ballInCourtColor
+                            ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
+                            : 'rgba(255, 193, 7, 1.0)';
+                          setNewHighlightsByPage(prev => {
+                            const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                            // Remove existing highlight with this highlightId (if it exists)
+                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                            // Add the new highlight with color
+                            return {
+                              ...prev,
+                              [pendingHighlightName.highlight.pageNumber]: [
+                                ...filtered,
+                                {
+                                  ...pendingHighlightName.highlight.bounds,
+                                  color: highlightColor,
+                                  highlightId: pendingHighlightName.highlight.id,
+                                  moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
+                                }
+                              ]
+                            };
+                          });
+
+                          setPendingHighlightName(null);
+                          setHighlightNameInput('');
+                          setShowSurveyPanel(true);
+                        }}
                         className="btn btn-icon btn-icon-sm"
                         style={{
                           background: 'transparent',
@@ -19258,472 +18144,1693 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       </button>
                     </div>
 
-                    <p style={{ color: '#999', fontSize: '14px', marginBottom: '20px' }}>
-                      The following categories need to be created in the destination space:
+                    <p style={{ color: '#999', fontSize: '14px', marginBottom: '16px' }}>
+                      Category: <strong style={{ color: '#fff' }}>{category?.name || 'Untitled Category'}</strong>
                     </p>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-                      {(() => {
-                        const itemsToCheck = transferState.items.map(itemId => items[itemId]);
-                        const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
-                        const missingCategories = itemTypes.filter(itemType =>
-                          !categoryExists(selectedTemplate, transferState.destSpaceId, itemType)
-                        );
+                    <input
+                      type="text"
+                      autoFocus
+                      value={highlightNameInput || defaultName}
+                      onChange={(e) => setHighlightNameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const name = (highlightNameInput || defaultName).trim() || defaultName;
+                          const highlightData = {
+                            ...pendingHighlightName.highlight,
+                            categoryId: pendingHighlightName.categoryId,
+                            name: name,
+                            checklistResponses: {}
+                          };
+                          setHighlightAnnotations(prev => ({
+                            ...prev,
+                            [pendingHighlightName.highlight.id]: highlightData
+                          }));
 
-                        return missingCategories.map(itemType => (
-                          <div key={itemType} style={{
-                            padding: '12px',
-                            background: '#333',
-                            border: '1px solid #444',
-                            borderRadius: '4px',
-                            color: '#fff',
-                            fontWeight: '500'
-                          }}>
-                            {itemType}
-                          </div>
-                        ));
-                      })()}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={() => {
-                          // Transfer as-is - clone checklists
-                          const result = transferItems(
-                            transferState.items,
-                            transferState.sourceSpaceId,
-                            transferState.destSpaceId,
-                            selectedTemplate,
-                            items,
-                            annotations
-                          );
-
-                          // TODO: Actually create categories in template with cloned checklists
-                          // For now, just complete the transfer
-                          setItems(result.newItems);
-                          setAnnotations(result.updatedAnnotations);
-
-                          // Create highlight entries for UI display (same logic as direct transfer)
-                          const newHighlights = {};
-                          transferState.items.forEach(itemId => {
-                            const item = result.newItems[itemId];
-                            if (!item) return;
-
-                            const destAnnotation = Object.values(result.updatedAnnotations).find(ann =>
-                              ann.itemId === itemId && ann.spaceId === transferState.destSpaceId
-                            );
-
-                            if (destAnnotation && destAnnotation.pdfCoordinates) {
-                              const sourceAnnotation = Object.values(annotations).find(a =>
-                                a.itemId === itemId && a.spaceId === transferState.sourceSpaceId
-                              );
-
-                              const sourceHighlight = sourceAnnotation ? Object.values(highlightAnnotations).find(h =>
-                                h.spaceId === transferState.sourceSpaceId &&
-                                h.bounds &&
-                                sourceAnnotation.pdfCoordinates &&
-                                Math.abs((h.bounds.x || 0) - (sourceAnnotation.pdfCoordinates.x || 0)) < 1 &&
-                                Math.abs((h.bounds.y || 0) - (sourceAnnotation.pdfCoordinates.y || 0)) < 1
-                              ) : null;
-
-                              const destModule = ((selectedTemplate.modules || selectedTemplate.spaces) || []).find(m => m.id === transferState.destModuleId);
-                              const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
-
-                              const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                              newHighlights[highlightId] = {
-                                id: highlightId,
-                                pageNumber: sourceHighlight?.pageNumber || 1,
-                                bounds: destAnnotation.pdfCoordinates,
-                                moduleId: transferState.destModuleId,
-                                categoryId: destCategory?.id || null,
-                                name: item.name || sourceHighlight?.name || 'Untitled Item',
-                                checklistResponses: {}
-                              };
-                            }
+                          // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
+                          // Replace the existing highlight (with needsBIC) with the new one that has the color
+                          const highlightColor = highlightData.ballInCourtColor
+                            ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
+                            : 'rgba(255, 193, 7, 1.0)';
+                          setNewHighlightsByPage(prev => {
+                            const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                            // Remove existing highlight with this highlightId (if it exists)
+                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                            // Add the new highlight with color
+                            return {
+                              ...prev,
+                              [pendingHighlightName.highlight.pageNumber]: [
+                                ...filtered,
+                                {
+                                  ...pendingHighlightName.highlight.bounds,
+                                  color: highlightColor,
+                                  highlightId: pendingHighlightName.highlight.id,
+                                  moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
+                                }
+                              ]
+                            };
                           });
 
-                          if (Object.keys(newHighlights).length > 0) {
-                            setHighlightAnnotations(prev => ({
+                          setPendingHighlightName(null);
+                          setHighlightNameInput('');
+                          setShowSurveyPanel(true);
+                        } else if (e.key === 'Escape') {
+                          // Cancel - save with default name
+                          const highlightData = {
+                            ...pendingHighlightName.highlight,
+                            categoryId: pendingHighlightName.categoryId,
+                            name: defaultName,
+                            checklistResponses: {}
+                          };
+                          setHighlightAnnotations(prev => ({
+                            ...prev,
+                            [pendingHighlightName.highlight.id]: highlightData
+                          }));
+
+                          // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
+                          // Replace the existing highlight (with needsBIC) with the new one that has the color
+                          const highlightColor = highlightData.ballInCourtColor
+                            ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
+                            : 'rgba(255, 193, 7, 1.0)';
+                          setNewHighlightsByPage(prev => {
+                            const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                            // Remove existing highlight with this highlightId (if it exists)
+                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                            // Add the new highlight with color
+                            return {
                               ...prev,
-                              ...newHighlights
-                            }));
+                              [pendingHighlightName.highlight.pageNumber]: [
+                                ...filtered,
+                                {
+                                  ...pendingHighlightName.highlight.bounds,
+                                  color: highlightColor,
+                                  highlightId: pendingHighlightName.highlight.id,
+                                  moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
+                                }
+                              ]
+                            };
+                          });
+
+                          setPendingHighlightName(null);
+                          setHighlightNameInput('');
+                          setShowSurveyPanel(true);
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        background: '#1b1b1b',
+                        border: '1px solid #444',
+                        borderRadius: '6px',
+                        color: '#fff',
+                        fontSize: '14px',
+                        fontFamily: FONT_FAMILY,
+                        outline: 'none',
+                        marginBottom: '16px'
+                      }}
+                      placeholder="Enter highlight name"
+                    />
+
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={() => {
+                          // Cancel - save with default name
+                          const highlightData = {
+                            ...pendingHighlightName.highlight,
+                            categoryId: pendingHighlightName.categoryId,
+                            name: defaultName,
+                            checklistResponses: {}
+                          };
+                          setHighlightAnnotations(prev => ({
+                            ...prev,
+                            [pendingHighlightName.highlight.id]: highlightData
+                          }));
+
+                          // If BIC was selected, also store it in the item's module-specific data
+                          if (highlightData.ballInCourtEntityId && selectedTemplate && selectedModuleId) {
+                            // Find or create item for this highlight
+                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
+                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                            const dataKey = getModuleDataKey(moduleName);
+
+                            // Find existing item by name and category
+                            const existingItem = Object.values(items).find(item =>
+                              item.name === defaultName &&
+                              item.itemType === categoryName
+                            );
+
+                            if (existingItem) {
+                              // Update existing item's module-specific data with BIC
+                              const moduleData = existingItem[dataKey] || {};
+                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
+
+                              if (ballInCourtEntity) {
+                                setItems(prev => ({
+                                  ...prev,
+                                  [existingItem.itemId]: {
+                                    ...existingItem,
+                                    [dataKey]: {
+                                      ...moduleData,
+                                      ballInCourtEntityId: ballInCourtEntity.id,
+                                      ballInCourtEntityName: ballInCourtEntity.name,
+                                      ballInCourtColor: ballInCourtEntity.color
+                                    }
+                                  }
+                                }));
+                              }
+                            } else {
+                              // Create new item with BIC in module-specific data
+                              const newItem = createItem(
+                                selectedTemplate,
+                                selectedModuleId,
+                                pendingHighlightName.categoryId,
+                                defaultName,
+                                1
+                              );
+
+                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
+                              if (ballInCourtEntity) {
+                                newItem[dataKey] = {
+                                  ballInCourtEntityId: ballInCourtEntity.id,
+                                  ballInCourtEntityName: ballInCourtEntity.name,
+                                  ballInCourtColor: ballInCourtEntity.color
+                                };
+                              }
+
+                              setItems(prev => ({
+                                ...prev,
+                                [newItem.itemId]: newItem
+                              }));
+
+                              // Also create annotation for this item
+                              const annotation = createAnnotation(
+                                pendingHighlightName.highlight.bounds,
+                                'highlight',
+                                selectedTemplate,
+                                selectedSpaceId,
+                                newItem.itemId,
+                                categoryName
+                              );
+
+                              // Set BIC on annotation
+                              if (ballInCourtEntity) {
+                                annotation.ballInCourtEntityId = ballInCourtEntity.id;
+                                annotation.ballInCourtEntityName = ballInCourtEntity.name;
+                                annotation.ballInCourtColor = ballInCourtEntity.color;
+                              }
+
+                              setAnnotations(prev => ({
+                                ...prev,
+                                [annotation.annotationId]: annotation
+                              }));
+                            }
                           }
 
-                          setTransferState(null);
+                          // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
+                          // Replace the existing highlight (with needsBIC) with the new one that has the color
+                          const highlightColor = highlightData.ballInCourtColor
+                            ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
+                            : 'rgba(255, 193, 7, 1.0)';
+                          setNewHighlightsByPage(prev => {
+                            const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                            // Remove existing highlight with this highlightId (if it exists)
+                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                            // Add the new highlight with color
+                            return {
+                              ...prev,
+                              [pendingHighlightName.highlight.pageNumber]: [
+                                ...filtered,
+                                {
+                                  ...pendingHighlightName.highlight.bounds,
+                                  color: highlightColor,
+                                  highlightId: pendingHighlightName.highlight.id,
+                                  moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
+                                }
+                              ]
+                            };
+                          });
+
+                          setPendingHighlightName(null);
+                          setHighlightNameInput('');
+                          setShowSurveyPanel(true);
                         }}
-                        className="btn btn-primary btn-md"
-                        style={{ flex: 1 }}
-                      >
-                        Copy As-Is
-                      </button>
-                      <button
-                        onClick={() => setTransferState(null)}
                         className="btn btn-default btn-md"
-                        style={{ flex: 1 }}
+                        style={{
+                          padding: '10px 20px'
+                        }}
                       >
                         Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          const name = (highlightNameInput || defaultName).trim() || defaultName;
+                          const highlightData = {
+                            ...pendingHighlightName.highlight,
+                            categoryId: pendingHighlightName.categoryId,
+                            name: name,
+                            checklistResponses: {}
+                          };
+                          setHighlightAnnotations(prev => ({
+                            ...prev,
+                            [pendingHighlightName.highlight.id]: highlightData
+                          }));
+
+                          // If BIC was selected, also store it in the item's module-specific data
+                          if (highlightData.ballInCourtEntityId && selectedTemplate && selectedModuleId) {
+                            // Find or create item for this highlight
+                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
+                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                            const dataKey = getModuleDataKey(moduleName);
+
+                            // Find existing item by name and category
+                            const existingItem = Object.values(items).find(item =>
+                              item.name === name &&
+                              item.itemType === categoryName
+                            );
+
+                            if (existingItem) {
+                              // Update existing item's module-specific data with BIC
+                              const moduleData = existingItem[dataKey] || {};
+                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
+
+                              if (ballInCourtEntity) {
+                                setItems(prev => ({
+                                  ...prev,
+                                  [existingItem.itemId]: {
+                                    ...existingItem,
+                                    [dataKey]: {
+                                      ...moduleData,
+                                      ballInCourtEntityId: ballInCourtEntity.id,
+                                      ballInCourtEntityName: ballInCourtEntity.name,
+                                      ballInCourtColor: ballInCourtEntity.color
+                                    }
+                                  }
+                                }));
+                              }
+                            } else {
+                              // Create new item with BIC in space-specific data
+                              const newItem = createItem(
+                                selectedTemplate,
+                                selectedSpaceId,
+                                pendingHighlightName.categoryId,
+                                name,
+                                1
+                              );
+
+                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
+                              if (ballInCourtEntity) {
+                                newItem[dataKey] = {
+                                  ballInCourtEntityId: ballInCourtEntity.id,
+                                  ballInCourtEntityName: ballInCourtEntity.name,
+                                  ballInCourtColor: ballInCourtEntity.color
+                                };
+                              }
+
+                              setItems(prev => ({
+                                ...prev,
+                                [newItem.itemId]: newItem
+                              }));
+
+                              // Also create annotation for this item
+                              const annotation = createAnnotation(
+                                pendingHighlightName.highlight.bounds,
+                                'highlight',
+                                selectedTemplate,
+                                selectedSpaceId,
+                                newItem.itemId,
+                                categoryName
+                              );
+
+                              // Set BIC on annotation
+                              if (ballInCourtEntity) {
+                                annotation.ballInCourtEntityId = ballInCourtEntity.id;
+                                annotation.ballInCourtEntityName = ballInCourtEntity.name;
+                                annotation.ballInCourtColor = ballInCourtEntity.color;
+                              }
+
+                              setAnnotations(prev => ({
+                                ...prev,
+                                [annotation.annotationId]: annotation
+                              }));
+                            }
+                          }
+
+                          // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
+                          // Replace the existing highlight (with needsBIC) with the new one that has the color
+                          const highlightColor = highlightData.ballInCourtColor
+                            ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
+                            : 'rgba(255, 193, 7, 1.0)';
+                          setNewHighlightsByPage(prev => {
+                            const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                            // Remove existing highlight with this highlightId (if it exists)
+                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                            // Add the new highlight with color
+                            return {
+                              ...prev,
+                              [pendingHighlightName.highlight.pageNumber]: [
+                                ...filtered,
+                                {
+                                  ...pendingHighlightName.highlight.bounds,
+                                  color: highlightColor,
+                                  highlightId: pendingHighlightName.highlight.id,
+                                  moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
+                                }
+                              ]
+                            };
+                          });
+
+                          setPendingHighlightName(null);
+                          setHighlightNameInput('');
+                          setShowSurveyPanel(true);
+                        }}
+                        className="btn btn-primary btn-md"
+                        style={{
+                          padding: '10px 20px'
+                        }}
+                      >
+                        Save
                       </button>
                     </div>
                   </div>
                 </div>
               </>
-            )
-          }
+            );
+          })()
+        }
 
-          {/* Locate Modal */}
-          {showLocateModal && (
-            <div
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(0, 0, 0, 0.7)',
-                zIndex: 10000,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backdropFilter: 'blur(4px)'
-              }}
-              onClick={() => setShowLocateModal(false)}
-            >
+        {/* Note Dialog */}
+        {
+          noteDialogOpen && (
+            <>
               <div
-                onClick={(e) => e.stopPropagation()}
+                onClick={() => setNoteDialogOpen(null)}
                 style={{
-                  background: '#2b2b2b',
-                  border: '1px solid #444',
-                  borderRadius: '8px',
-                  padding: '24px',
-                  width: '600px',
-                  maxWidth: '90vw',
-                  maxHeight: '80vh',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-                  animation: 'fadeIn 0.2s ease-out'
-                }}
-              >
-                <div style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  zIndex: 10001,
+                  animation: 'fadeIn 0.2s ease-out',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '20px'
-                }}>
-                  <h2 style={{
-                    margin: 0,
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: '#fff',
-                    fontFamily: FONT_FAMILY
+                  justifyContent: 'center'
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    background: '#2b2b2b',
+                    border: '1px solid #444',
+                    borderRadius: '8px',
+                    padding: '24px',
+                    width: '600px',
+                    maxWidth: '90vw',
+                    maxHeight: '80vh',
+                    overflow: 'auto',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                    animation: 'fadeIn 0.2s ease-out'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '20px'
                   }}>
-                    Locate Item
-                  </h2>
-                  <button
-                    onClick={() => setShowLocateModal(false)}
-                    className="btn btn-icon btn-icon-sm"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#999'
-                    }}
-                  >
-                    <Icon name="close" size={18} />
-                  </button>
-                </div>
-
-                <div style={{ marginBottom: '20px' }}>
-                  <input
-                    type="text"
-                    value={locateSearchQuery}
-                    onChange={(e) => setLocateSearchQuery(e.target.value)}
-                    placeholder="Search items by name, category, or notes..."
-                    autoFocus
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      background: '#1b1b1b',
-                      border: '1px solid #444',
-                      borderRadius: '6px',
+                    <h3 style={{
+                      margin: 0,
+                      fontSize: '18px',
+                      fontWeight: '600',
                       color: '#fff',
+                      fontFamily: FONT_FAMILY
+                    }}>
+                      Note
+                    </h3>
+                    <button
+                      onClick={() => setNoteDialogOpen(null)}
+                      className="btn btn-icon btn-icon-sm"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#999'
+                      }}
+                    >
+                      <Icon name="close" size={18} />
+                    </button>
+                  </div>
+
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '8px',
                       fontSize: '14px',
-                      fontFamily: FONT_FAMILY,
-                      outline: 'none'
-                    }}
-                  />
-                </div>
+                      fontWeight: '500',
+                      color: '#ddd'
+                    }}>
+                      Notes
+                    </label>
+                    <textarea
+                      value={noteDialogContent.text}
+                      onChange={(e) => setNoteDialogContent(prev => ({ ...prev, text: e.target.value }))}
+                      rows={6}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        background: '#333',
+                        color: '#ddd',
+                        border: '1px solid #555',
+                        borderRadius: '5px',
+                        fontSize: '14px',
+                        fontFamily: FONT_FAMILY,
+                        resize: 'vertical'
+                      }}
+                      placeholder="Enter your notes..."
+                    />
+                  </div>
 
-                <div style={{
-                  flex: 1,
-                  overflowY: 'auto',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                  minHeight: '200px'
-                }}>
-                  {(() => {
-                    const query = locateSearchQuery.toLowerCase().trim();
-                    if (!query) {
-                      return (
-                        <div style={{
-                          textAlign: 'center',
-                          color: '#666',
-                          marginTop: '40px'
-                        }}>
-                          Start typing to search...
-                        </div>
-                      );
-                    }
-
-                    const matches = [];
-                    Object.values(highlightAnnotations).forEach(highlight => {
-                      const name = highlight.name || '';
-                      const note = highlight.note?.text || '';
-
-                      // Resolve category and module names
-                      let categoryName = '';
-                      let moduleName = '';
-
-                      if (selectedTemplate) {
-                        const moduleId = highlight.moduleId || highlight.spaceId;
-                        const module = (selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === moduleId);
-                        if (module) {
-                          moduleName = module.name;
-                          const category = module.categories?.find(c => c.id === highlight.categoryId);
-                          if (category) {
-                            categoryName = category.name;
-                          }
-                        }
-                      }
-
-                      if (
-                        name.toLowerCase().includes(query) ||
-                        note.toLowerCase().includes(query) ||
-                        categoryName.toLowerCase().includes(query)
-                      ) {
-                        matches.push({
-                          ...highlight,
-                          categoryName,
-                          moduleName
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '8px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#ddd'
+                    }}>
+                      Photos
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        const photoPromises = files.map(file => {
+                          return new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              resolve({ name: file.name, dataUrl: event.target.result });
+                            };
+                            reader.readAsDataURL(file);
+                          });
                         });
-                      }
-                    });
-
-                    if (matches.length === 0) {
-                      return (
-                        <div style={{
-                          textAlign: 'center',
-                          color: '#666',
-                          marginTop: '40px'
-                        }}>
-                          No items found.
-                        </div>
-                      );
-                    }
-
-                    return matches.map(highlight => (
-                      <button
-                        key={highlight.id}
-                        onClick={() => {
-                          // Navigation Logic
-                          const moduleId = highlight.moduleId || highlight.spaceId;
-
-                          // 1. Switch to module
-                          setSelectedModuleId(moduleId);
-
-                          // 2. Expand category
-                          setExpandedCategories(prev => ({
+                        Promise.all(photoPromises).then(photos => {
+                          setNoteDialogContent(prev => ({
                             ...prev,
-                            [highlight.categoryId]: true
+                            photos: [...prev.photos, ...photos]
                           }));
+                        });
+                      }}
+                      style={{ display: 'none' }}
+                      id={`photo-upload-${noteDialogOpen}`}
+                    />
+                    <label
+                      htmlFor={`photo-upload-${noteDialogOpen}`}
+                      className="btn btn-secondary btn-md"
+                      style={{ cursor: 'pointer', display: 'inline-block' }}
+                    >
+                      Upload Photos
+                    </label>
+                    {noteDialogContent.photos.length > 0 && (
+                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {noteDialogContent.photos.map((photo, idx) => (
+                          <div key={idx} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '8px',
+                            background: '#333',
+                            borderRadius: '4px'
+                          }}>
+                            <img src={photo.dataUrl} alt={photo.name} style={{
+                              width: '60px',
+                              height: '60px',
+                              objectFit: 'cover',
+                              borderRadius: '4px'
+                            }} />
+                            <span style={{ flex: 1, color: '#ddd', fontSize: '13px' }}>{photo.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNoteDialogContent(prev => ({
+                                  ...prev,
+                                  photos: prev.photos.filter((_, i) => i !== idx)
+                                }));
+                              }}
+                              className="btn btn-icon btn-icon-sm"
+                              style={{ background: '#444' }}
+                            >
+                              <Icon name="close" size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                          // 3. Ensure Survey Panel is open
-                          setShowSurveyPanel(true);
-                          setIsSurveyPanelCollapsed(false);
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '8px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#ddd'
+                    }}>
+                      Videos
+                    </label>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        const videoPromises = files.map(file => {
+                          return new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              resolve({ name: file.name, dataUrl: event.target.result });
+                            };
+                            reader.readAsDataURL(file);
+                          });
+                        });
+                        Promise.all(videoPromises).then(videos => {
+                          setNoteDialogContent(prev => ({
+                            ...prev,
+                            videos: [...prev.videos, ...videos]
+                          }));
+                        });
+                      }}
+                      style={{ display: 'none' }}
+                      id={`video-upload-${noteDialogOpen}`}
+                    />
+                    <label
+                      htmlFor={`video-upload-${noteDialogOpen}`}
+                      className="btn btn-secondary btn-md"
+                      style={{ cursor: 'pointer', display: 'inline-block' }}
+                    >
+                      Upload Videos
+                    </label>
+                    {noteDialogContent.videos.length > 0 && (
+                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {noteDialogContent.videos.map((video, idx) => (
+                          <div key={idx} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '8px',
+                            background: '#333',
+                            borderRadius: '4px'
+                          }}>
+                            <video src={video.dataUrl} style={{
+                              width: '60px',
+                              height: '60px',
+                              objectFit: 'cover',
+                              borderRadius: '4px'
+                            }} />
+                            <span style={{ flex: 1, color: '#ddd', fontSize: '13px' }}>{video.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNoteDialogContent(prev => ({
+                                  ...prev,
+                                  videos: prev.videos.filter((_, i) => i !== idx)
+                                }));
+                              }}
+                              className="btn btn-icon btn-icon-sm"
+                              style={{ background: '#444' }}
+                            >
+                              <Icon name="close" size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                          // 4. Close modal
-                          setShowLocateModal(false);
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => setNoteDialogOpen(null)}
+                      className="btn btn-default btn-md"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        console.log('=== NOTE SAVE CLICKED ===');
+                        console.log('noteDialogOpen:', noteDialogOpen);
+                        console.log('noteDialogContent:', noteDialogContent);
 
-                          // 5. Scroll to item
-                          setTimeout(() => {
-                            const element = document.getElementById(`highlight-item-${highlight.id}`);
-                            if (element) {
-                              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              // Flash effect
-                              element.style.transition = 'box-shadow 0.5s';
-                              element.style.boxShadow = '0 0 0 2px #4A90E2';
-                              setTimeout(() => {
-                                element.style.boxShadow = 'none';
-                              }, 2000);
+                        // For item-level notes, noteDialogOpen is just the highlightId
+                        const highlightId = noteDialogOpen;
+
+                        console.log('Saving item-level note for highlightId:', highlightId);
+                        console.log('Note text:', noteDialogContent.text);
+                        console.log('Photos:', noteDialogContent.photos.length);
+                        console.log('Videos:', noteDialogContent.videos.length);
+
+                        // Update highlight annotation with item-level note
+                        setHighlightAnnotations(prev => {
+                          console.log('Current highlight data:', prev[highlightId]);
+
+                          const existingHighlight = prev[highlightId] || {};
+
+                          const newNote = {
+                            text: noteDialogContent.text,
+                            photos: noteDialogContent.photos,
+                            videos: noteDialogContent.videos
+                          };
+                          console.log('Saving note:', newNote);
+
+                          const updated = {
+                            ...prev,
+                            [highlightId]: {
+                              ...existingHighlight, // Preserve all existing data
+                              note: newNote  // Save note at highlight level
                             }
-                          }, 300);
-                        }}
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'flex-start',
+                          };
+
+                          console.log('Updated highlight with note:', JSON.stringify(updated[highlightId], null, 2));
+
+                          // Save to localStorage immediately
+                          if (pdfId) {
+                            saveHighlightAnnotations(pdfId, updated);
+                            console.log('Saved to localStorage, pdfId:', pdfId);
+                          } else {
+                            console.warn('Cannot save to localStorage: pdfId is null');
+                          }
+
+                          return updated;
+                        });
+
+                        console.log('Closing dialog');
+                        setNoteDialogOpen(null);
+                        setNoteDialogContent({ text: '', photos: [], videos: [] }); // Clear dialog content
+                        console.log('=== NOTE SAVE COMPLETE ===');
+                      }}
+                      className="btn btn-primary btn-md"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )
+        }
+
+        {/* Item Transfer - Destination Selection Modal */}
+        {
+          transferState && transferState.mode === 'select' && selectedTemplate && (
+            <>
+              <div
+                onClick={() => setTransferState(null)}
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  zIndex: 10003,
+                  animation: 'fadeIn 0.2s ease-out',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    background: '#2b2b2b',
+                    border: '1px solid #444',
+                    borderRadius: '8px',
+                    padding: '24px',
+                    width: '500px',
+                    maxWidth: '90vw',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                    animation: 'fadeIn 0.2s ease-out'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '20px'
+                  }}>
+                    <h3 style={{
+                      margin: 0,
+                      fontSize: '18px',
+                      fontWeight: '600',
+                      color: '#fff',
+                      fontFamily: FONT_FAMILY
+                    }}>
+                      Copy Items to Which Space?
+                    </h3>
+                    <button
+                      onClick={() => setTransferState(null)}
+                      className="btn btn-icon btn-icon-sm"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#999'
+                      }}
+                    >
+                      <Icon name="close" size={18} />
+                    </button>
+                  </div>
+
+                  <p style={{ color: '#999', fontSize: '14px', marginBottom: '20px' }}>
+                    Copy {transferState.items.length} item{transferState.items.length !== 1 ? 's' : ''} to:
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {((selectedTemplate.modules || selectedTemplate.spaces) || [])
+                      .filter(module => module.id !== transferState.sourceModuleId)
+                      .map(module => (
+                        <button
+                          key={module.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+
+                            // Find corresponding items for each selected highlight
+                            // First check if highlights exist and find their corresponding items via annotations
+                            const itemIdsToCopy = [];
+                            const legacyHighlightsToCopy = [];
+
+                            console.log('Copying items:', transferState.items);
+                            console.log('Source module:', transferState.sourceModuleId);
+                            console.log('Destination module:', module.id);
+
+                            transferState.items.forEach(highlightId => {
+                              const highlight = highlightAnnotations[highlightId];
+                              console.log('Processing highlight:', highlightId, highlight);
+
+                              if (!highlight) {
+                                // Not a highlight, might be an itemId directly
+                                if (items[highlightId]) {
+                                  console.log('Found direct itemId:', highlightId);
+                                  itemIdsToCopy.push(highlightId);
+                                }
+                                return;
+                              }
+
+                              // Try to find corresponding item by matching name and category (same logic as migration)
+                              const categoryName = getCategoryName(selectedTemplate, highlight.spaceId, highlight.categoryId);
+                              console.log('Category name:', categoryName, 'Highlight name:', highlight.name);
+
+                              // Find items that match name and category
+                              const matchingItem = Object.values(items).find(item =>
+                                item.name === highlight.name &&
+                                item.itemType === categoryName
+                              );
+
+                              console.log('Matching item:', matchingItem);
+
+                              // Verify the item has an annotation in the same space
+                              if (matchingItem) {
+                                // Try to find annotation - don't require displayType to be 'highlight'
+                                const matchingAnnotation = Object.values(annotations).find(ann =>
+                                  ann.itemId === matchingItem.itemId &&
+                                  ann.spaceId === highlight.spaceId
+                                );
+
+                                console.log('Matching annotation:', matchingAnnotation);
+                                console.log('All annotations for item:', Object.values(annotations).filter(a => a.itemId === matchingItem.itemId));
+
+                                if (matchingAnnotation && matchingItem.itemId) {
+                                  // Found corresponding item in new system
+                                  // Avoid duplicates
+                                  if (!itemIdsToCopy.includes(matchingItem.itemId)) {
+                                    console.log('Adding itemId to copy:', matchingItem.itemId);
+                                    itemIdsToCopy.push(matchingItem.itemId);
+                                  }
+                                } else {
+                                  // No annotation found, but item exists - still copy it
+                                  // The item might not have an annotation yet, but we can still copy it
+                                  console.log('No matching annotation, but item exists - copying anyway');
+                                  if (!itemIdsToCopy.includes(matchingItem.itemId)) {
+                                    itemIdsToCopy.push(matchingItem.itemId);
+                                  }
+                                }
+                              } else {
+                                // Legacy highlight, no corresponding item found
+                                console.log('No matching item, treating as legacy highlight');
+                                legacyHighlightsToCopy.push(highlight);
+                              }
+                            });
+
+                            console.log('Items to copy:', itemIdsToCopy);
+                            console.log('Legacy highlights to copy:', legacyHighlightsToCopy);
+
+                            // Handle new system items
+                            if (itemIdsToCopy.length > 0) {
+                              const itemsToCheck = itemIdsToCopy.map(itemId => items[itemId]).filter(Boolean);
+                              const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
+
+                              const missingCategories = itemTypes.filter(itemType =>
+                                !categoryExists(selectedTemplate, module.id, itemType)
+                              );
+
+                              if (missingCategories.length > 0) {
+                                // Need to create categories - go to checklist prompt
+                                setTransferState({
+                                  ...transferState,
+                                  mode: 'checklist',
+                                  destModuleId: module.id,
+                                  items: itemIdsToCopy
+                                });
+                              } else {
+                                // Direct transfer
+                                const result = transferItems(
+                                  itemIdsToCopy,
+                                  transferState.sourceModuleId,
+                                  module.id,
+                                  selectedTemplate,
+                                  items,
+                                  annotations
+                                );
+
+                                setItems(result.newItems);
+                                setAnnotations(result.updatedAnnotations);
+
+                                // Create highlight entries for UI display
+                                console.log('Creating highlight entries for', itemIdsToCopy.length, 'items');
+                                const newHighlights = {};
+                                itemIdsToCopy.forEach(itemId => {
+                                  const item = result.newItems[itemId];
+                                  console.log('Processing item for highlight creation:', itemId, item);
+                                  if (!item) {
+                                    console.log('Item not found in result.newItems');
+                                    return;
+                                  }
+
+                                  // Find the annotation we just created for this item in destination module
+                                  const destAnnotation = Object.values(result.updatedAnnotations).find(ann => {
+                                    const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
+                                    return ann.itemId === itemId && annModuleId === module.id;
+                                  });
+
+                                  console.log('Destination annotation:', destAnnotation);
+
+                                  // Find source annotation to get coordinates
+                                  const sourceAnnotation = Object.values(annotations).find(a => {
+                                    const aModuleId = a.moduleId || a.spaceId; // Support legacy spaceId
+                                    return a.itemId === itemId && aModuleId === transferState.sourceModuleId;
+                                  });
+                                  console.log('Source annotation:', sourceAnnotation);
+
+                                  // Find source highlight by matching coordinates or by finding the highlight we selected
+                                  let sourceHighlight = null;
+                                  if (sourceAnnotation && sourceAnnotation.pdfCoordinates) {
+                                    sourceHighlight = Object.values(highlightAnnotations).find(h => {
+                                      const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                      return hModuleId === transferState.sourceModuleId &&
+                                        h.bounds &&
+                                        Math.abs((h.bounds.x || 0) - (sourceAnnotation.pdfCoordinates.x || 0)) < 1 &&
+                                        Math.abs((h.bounds.y || 0) - (sourceAnnotation.pdfCoordinates.y || 0)) < 1;
+                                    });
+                                  }
+
+                                  // Also try to find by matching the highlight ID from transferState.items
+                                  if (!sourceHighlight && transferState.items.length > 0) {
+                                    const highlightId = transferState.items.find(id => {
+                                      const h = highlightAnnotations[id];
+                                      const hModuleId = h?.moduleId || h?.spaceId; // Support legacy spaceId
+                                      return h && hModuleId === transferState.sourceModuleId;
+                                    });
+                                    if (highlightId) {
+                                      sourceHighlight = highlightAnnotations[highlightId];
+                                    }
+                                  }
+
+                                  console.log('Source highlight:', sourceHighlight);
+
+                                  // Find destination category ID
+                                  const destModule = ((selectedTemplate.modules || selectedTemplate.spaces) || []).find(m => m.id === module.id);
+                                  const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
+                                  console.log('Destination category:', destCategory);
+
+                                  // Use destination annotation coordinates, or source annotation coordinates, or source highlight bounds
+                                  // Convert pdfCoordinates format to bounds format (they should be the same structure)
+                                  let bounds = null;
+                                  if (destAnnotation?.pdfCoordinates) {
+                                    bounds = destAnnotation.pdfCoordinates;
+                                  } else if (sourceAnnotation?.pdfCoordinates) {
+                                    bounds = sourceAnnotation.pdfCoordinates;
+                                  } else if (sourceHighlight?.bounds) {
+                                    bounds = sourceHighlight.bounds;
+                                  }
+
+                                  console.log('Bounds for highlight:', bounds);
+
+                                  if (bounds) {
+                                    const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    newHighlights[highlightId] = {
+                                      id: highlightId,
+                                      pageNumber: sourceHighlight?.pageNumber || 1,
+                                      bounds: bounds,
+                                      spaceId: space.id,
+                                      categoryId: destCategory?.id || null,
+                                      name: item.name || sourceHighlight?.name || 'Untitled Item',
+                                      checklistResponses: {}
+                                    };
+                                    console.log('Created highlight:', newHighlights[highlightId]);
+                                  } else {
+                                    console.log('No bounds available, skipping highlight creation');
+                                  }
+                                });
+
+                                // Add new highlights to highlightAnnotations
+                                if (Object.keys(newHighlights).length > 0) {
+                                  setHighlightAnnotations(prev => ({
+                                    ...prev,
+                                    ...newHighlights
+                                  }));
+                                }
+
+                                setTransferState(null);
+                              }
+                            }
+
+                            // Handle legacy highlights (if any)
+                            if (legacyHighlightsToCopy.length > 0) {
+                              console.log('Copying legacy highlights:', legacyHighlightsToCopy);
+                              console.log('To module:', module.id, module.name);
+
+                              // Find matching category in destination module
+                              const allModules = (selectedTemplate.modules || selectedTemplate.spaces) || [];
+                              const sourceModule = allModules.find(m => m.id === transferState.sourceModuleId);
+                              const sourceCategory = sourceModule?.categories?.find(c => c.id === transferState.categoryId);
+
+                              const destCategory = module.categories?.find(
+                                c => c.name === sourceCategory?.name
+                              );
+
+                              console.log('Source category:', sourceCategory);
+                              console.log('Dest category:', destCategory);
+
+                              // Create new highlights in destination module with same data
+                              const newHighlights = {};
+                              legacyHighlightsToCopy.forEach(h => {
+                                const newId = generateUUID();
+                                newHighlights[newId] = {
+                                  ...h,
+                                  id: newId,
+                                  moduleId: module.id,
+                                  categoryId: destCategory?.id || null
+                                };
+                              });
+
+                              console.log('New highlights to add:', newHighlights);
+
+                              // Update highlightAnnotations state
+                              setHighlightAnnotations(prev => ({
+                                ...prev,
+                                ...newHighlights
+                              }));
+
+                              // Only close modal if we're done with all items
+                              if (itemIdsToCopy.length === 0) {
+                                setTransferState(null);
+                              }
+                            }
+
+                            // If no items found at all, log warning
+                            if (itemIdsToCopy.length === 0 && legacyHighlightsToCopy.length === 0) {
+                              console.warn('No items found to copy. Selected IDs:', transferState.items);
+                              setTransferState(null);
+                            }
+                          }}
+                          className="btn btn-default btn-md"
+                          style={{
+                            textAlign: 'left',
+                            justifyContent: 'flex-start',
+                            padding: '12px 16px',
+                            background: '#333',
+                            border: '1px solid #444'
+                          }}
+                        >
+                          <div style={{ fontWeight: '500', color: '#fff' }}>
+                            {module.name || 'Untitled Module'}
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )
+        }
+
+        {/* Item Transfer - Checklist Prompt Modal */}
+        {
+          transferState && transferState.mode === 'checklist' && selectedTemplate && (
+            <>
+              <div
+                onClick={() => setTransferState(null)}
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  zIndex: 10004,
+                  animation: 'fadeIn 0.2s ease-out',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    background: '#2b2b2b',
+                    border: '1px solid #444',
+                    borderRadius: '8px',
+                    padding: '24px',
+                    width: '500px',
+                    maxWidth: '90vw',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                    animation: 'fadeIn 0.2s ease-out'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '20px'
+                  }}>
+                    <h3 style={{
+                      margin: 0,
+                      fontSize: '18px',
+                      fontWeight: '600',
+                      color: '#fff',
+                      fontFamily: FONT_FAMILY
+                    }}>
+                      Missing Categories Detected
+                    </h3>
+                    <button
+                      onClick={() => setTransferState(null)}
+                      className="btn btn-icon btn-icon-sm"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#999'
+                      }}
+                    >
+                      <Icon name="close" size={18} />
+                    </button>
+                  </div>
+
+                  <p style={{ color: '#999', fontSize: '14px', marginBottom: '20px' }}>
+                    The following categories need to be created in the destination space:
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                    {(() => {
+                      const itemsToCheck = transferState.items.map(itemId => items[itemId]);
+                      const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
+                      const missingCategories = itemTypes.filter(itemType =>
+                        !categoryExists(selectedTemplate, transferState.destSpaceId, itemType)
+                      );
+
+                      return missingCategories.map(itemType => (
+                        <div key={itemType} style={{
                           padding: '12px',
                           background: '#333',
                           border: '1px solid #444',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          textAlign: 'left'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#3a3a3a';
-                          e.currentTarget.style.borderColor = '#555';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#333';
-                          e.currentTarget.style.borderColor = '#444';
-                        }}
-                      >
-                        <div style={{
-                          fontWeight: '600',
+                          borderRadius: '4px',
                           color: '#fff',
-                          marginBottom: '4px'
+                          fontWeight: '500'
                         }}>
-                          {highlight.name || 'Untitled Item'}
+                          {itemType}
                         </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: '#999',
-                          display: 'flex',
-                          gap: '8px'
-                        }}>
-                          <span>{highlight.moduleName}</span>
-                          <span>•</span>
-                          <span>{highlight.categoryName}</span>
-                        </div>
-                        {highlight.note?.text && (
-                          <div style={{
-                            fontSize: '12px',
-                            color: '#777',
-                            marginTop: '4px',
-                            fontStyle: 'italic',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            maxWidth: '100%'
-                          }}>
-                            "{highlight.note.text}"
-                          </div>
-                        )}
-                      </button>
-                    ));
-                  })()}
+                      ));
+                    })()}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => {
+                        // Transfer as-is - clone checklists
+                        const result = transferItems(
+                          transferState.items,
+                          transferState.sourceSpaceId,
+                          transferState.destSpaceId,
+                          selectedTemplate,
+                          items,
+                          annotations
+                        );
+
+                        // TODO: Actually create categories in template with cloned checklists
+                        // For now, just complete the transfer
+                        setItems(result.newItems);
+                        setAnnotations(result.updatedAnnotations);
+
+                        // Create highlight entries for UI display (same logic as direct transfer)
+                        const newHighlights = {};
+                        transferState.items.forEach(itemId => {
+                          const item = result.newItems[itemId];
+                          if (!item) return;
+
+                          const destAnnotation = Object.values(result.updatedAnnotations).find(ann =>
+                            ann.itemId === itemId && ann.spaceId === transferState.destSpaceId
+                          );
+
+                          if (destAnnotation && destAnnotation.pdfCoordinates) {
+                            const sourceAnnotation = Object.values(annotations).find(a =>
+                              a.itemId === itemId && a.spaceId === transferState.sourceSpaceId
+                            );
+
+                            const sourceHighlight = sourceAnnotation ? Object.values(highlightAnnotations).find(h =>
+                              h.spaceId === transferState.sourceSpaceId &&
+                              h.bounds &&
+                              sourceAnnotation.pdfCoordinates &&
+                              Math.abs((h.bounds.x || 0) - (sourceAnnotation.pdfCoordinates.x || 0)) < 1 &&
+                              Math.abs((h.bounds.y || 0) - (sourceAnnotation.pdfCoordinates.y || 0)) < 1
+                            ) : null;
+
+                            const destModule = ((selectedTemplate.modules || selectedTemplate.spaces) || []).find(m => m.id === transferState.destModuleId);
+                            const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
+
+                            const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                            newHighlights[highlightId] = {
+                              id: highlightId,
+                              pageNumber: sourceHighlight?.pageNumber || 1,
+                              bounds: destAnnotation.pdfCoordinates,
+                              moduleId: transferState.destModuleId,
+                              categoryId: destCategory?.id || null,
+                              name: item.name || sourceHighlight?.name || 'Untitled Item',
+                              checklistResponses: {}
+                            };
+                          }
+                        });
+
+                        if (Object.keys(newHighlights).length > 0) {
+                          setHighlightAnnotations(prev => ({
+                            ...prev,
+                            ...newHighlights
+                          }));
+                        }
+
+                        setTransferState(null);
+                      }}
+                      className="btn btn-primary btn-md"
+                      style={{ flex: 1 }}
+                    >
+                      Copy As-Is
+                    </button>
+                    <button
+                      onClick={() => setTransferState(null)}
+                      className="btn btn-default btn-md"
+                      style={{ flex: 1 }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            </>
           )
-          }
-        </div >
+        }
 
-        {/* Export Location Choice Modal */}
-        {showExportLocationModal && exportPendingData && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000
-          }}>
-            <div style={{
-              background: '#2a2a2a',
-              borderRadius: '12px',
-              padding: '32px',
-              maxWidth: '500px',
-              width: '90%',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-            }}>
-              <h2 style={{ color: '#fff', marginBottom: '16px', fontSize: '24px' }}>
-                Choose Export Location
-              </h2>
-              <p style={{ color: '#ccc', marginBottom: '32px', lineHeight: '1.6' }}>
-                Where would you like to save your Excel file?
-              </p>
-              <div style={{ display: 'flex', gap: '16px', flexDirection: 'column' }}>
+        {/* Locate Modal */}
+        {showLocateModal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.7)',
+              zIndex: 10000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backdropFilter: 'blur(4px)'
+            }}
+            onClick={() => setShowLocateModal(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: '#2b2b2b',
+                border: '1px solid #444',
+                borderRadius: '8px',
+                padding: '24px',
+                width: '600px',
+                maxWidth: '90vw',
+                maxHeight: '80vh',
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                animation: 'fadeIn 0.2s ease-out'
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '20px'
+              }}>
+                <h2 style={{
+                  margin: 0,
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  color: '#fff',
+                  fontFamily: FONT_FAMILY
+                }}>
+                  Locate Item
+                </h2>
                 <button
-                  onClick={async () => {
-                    setShowExportLocationModal(false);
-                    // Export to computer (local file)
-                    try {
-                      const defaultName = `${exportPendingData.fileName}_export.xlsx`;
-                      const result = await window.electronAPI.saveFile({
-                        title: 'Save Survey Export',
-                        defaultPath: defaultName,
-                        filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
-                        data: exportPendingData.buffer
-                      });
-
-                      if (result && !result.canceled && result.filePath) {
-                        const updatedTemplate = {
-                          ...selectedTemplate,
-                          linkedExcelPath: result.filePath,
-                          lastSyncTime: new Date().toISOString()
-                        };
-                        setSelectedTemplate(updatedTemplate);
-                        alert('Export to computer successful!');
-                      }
-                    } catch (error) {
-                      console.error('Failed to export to computer:', error);
-                      alert('Failed to export to computer.');
-                    }
-                    setExportPendingData(null);
-                  }}
+                  onClick={() => setShowLocateModal(false)}
+                  className="btn btn-icon btn-icon-sm"
                   style={{
-                    padding: '16px 24px',
-                    background: '#3498db',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#999'
+                  }}
+                >
+                  <Icon name="close" size={18} />
+                </button>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <input
+                  type="text"
+                  value={locateSearchQuery}
+                  onChange={(e) => setLocateSearchQuery(e.target.value)}
+                  placeholder="Search items by name, category, or notes..."
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    background: '#1b1b1b',
+                    border: '1px solid #444',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    fontSize: '14px',
+                    fontFamily: FONT_FAMILY,
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                minHeight: '200px'
+              }}>
+                {(() => {
+                  const query = locateSearchQuery.toLowerCase().trim();
+                  if (!query) {
+                    return (
+                      <div style={{
+                        textAlign: 'center',
+                        color: '#666',
+                        marginTop: '40px'
+                      }}>
+                        Start typing to search...
+                      </div>
+                    );
+                  }
+
+                  const matches = [];
+                  Object.values(highlightAnnotations).forEach(highlight => {
+                    const name = highlight.name || '';
+                    const note = highlight.note?.text || '';
+
+                    // Resolve category and module names
+                    let categoryName = '';
+                    let moduleName = '';
+
+                    if (selectedTemplate) {
+                      const moduleId = highlight.moduleId || highlight.spaceId;
+                      const module = (selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === moduleId);
+                      if (module) {
+                        moduleName = module.name;
+                        const category = module.categories?.find(c => c.id === highlight.categoryId);
+                        if (category) {
+                          categoryName = category.name;
+                        }
+                      }
+                    }
+
+                    if (
+                      name.toLowerCase().includes(query) ||
+                      note.toLowerCase().includes(query) ||
+                      categoryName.toLowerCase().includes(query)
+                    ) {
+                      matches.push({
+                        ...highlight,
+                        categoryName,
+                        moduleName
+                      });
+                    }
+                  });
+
+                  if (matches.length === 0) {
+                    return (
+                      <div style={{
+                        textAlign: 'center',
+                        color: '#666',
+                        marginTop: '40px'
+                      }}>
+                        No items found.
+                      </div>
+                    );
+                  }
+
+                  return matches.map(highlight => (
+                    <button
+                      key={highlight.id}
+                      onClick={() => {
+                        // Navigation Logic
+                        const moduleId = highlight.moduleId || highlight.spaceId;
+
+                        // 1. Switch to module
+                        setSelectedModuleId(moduleId);
+
+                        // 2. Expand category
+                        setExpandedCategories(prev => ({
+                          ...prev,
+                          [highlight.categoryId]: true
+                        }));
+
+                        // 3. Ensure Survey Panel is open
+                        setShowSurveyPanel(true);
+                        setIsSurveyPanelCollapsed(false);
+
+                        // 4. Close modal
+                        setShowLocateModal(false);
+
+                        // 5. Scroll to item
+                        setTimeout(() => {
+                          const element = document.getElementById(`highlight-item-${highlight.id}`);
+                          if (element) {
+                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            // Flash effect
+                            element.style.transition = 'box-shadow 0.5s';
+                            element.style.boxShadow = '0 0 0 2px #4A90E2';
+                            setTimeout(() => {
+                              element.style.boxShadow = 'none';
+                            }, 2000);
+                          }
+                        }, 300);
+                      }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        padding: '12px',
+                        background: '#333',
+                        border: '1px solid #444',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        textAlign: 'left'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#3a3a3a';
+                        e.currentTarget.style.borderColor = '#555';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#333';
+                        e.currentTarget.style.borderColor = '#444';
+                      }}
+                    >
+                      <div style={{
+                        fontWeight: '600',
+                        color: '#fff',
+                        marginBottom: '4px'
+                      }}>
+                        {highlight.name || 'Untitled Item'}
+                      </div>
+                      <div style={{
+                        fontSize: '12px',
+                        color: '#999',
+                        display: 'flex',
+                        gap: '8px'
+                      }}>
+                        <span>{highlight.moduleName}</span>
+                        <span>•</span>
+                        <span>{highlight.categoryName}</span>
+                      </div>
+                      {highlight.note?.text && (
+                        <div style={{
+                          fontSize: '12px',
+                          color: '#777',
+                          marginTop: '4px',
+                          fontStyle: 'italic',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          maxWidth: '100%'
+                        }}>
+                          "{highlight.note.text}"
+                        </div>
+                      )}
+                    </button>
+                  ));
+                })()}
+              </div>
+            </div>
+          </div>
+        )
+        }
+      </div >
+
+      {/* Export Location Choice Modal */}
+      {showExportLocationModal && exportPendingData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000
+        }}>
+          <div style={{
+            background: '#2a2a2a',
+            borderRadius: '12px',
+            padding: '32px',
+            maxWidth: '500px',
+            width: '90%',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+          }}>
+            <h2 style={{ color: '#fff', marginBottom: '16px', fontSize: '24px' }}>
+              Choose Export Location
+            </h2>
+            <p style={{ color: '#ccc', marginBottom: '32px', lineHeight: '1.6' }}>
+              Where would you like to save your Excel file?
+            </p>
+            <div style={{ display: 'flex', gap: '16px', flexDirection: 'column' }}>
+              <button
+                onClick={async () => {
+                  setShowExportLocationModal(false);
+                  // Export to computer (local file)
+                  try {
+                    const defaultName = `${exportPendingData.fileName}_export.xlsx`;
+                    const result = await window.electronAPI.saveFile({
+                      title: 'Save Survey Export',
+                      defaultPath: defaultName,
+                      filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
+                      data: exportPendingData.buffer
+                    });
+
+                    if (result && !result.canceled && result.filePath) {
+                      const updatedTemplate = {
+                        ...selectedTemplate,
+                        linkedExcelPath: result.filePath,
+                        lastSyncTime: new Date().toISOString()
+                      };
+                      setSelectedTemplate(updatedTemplate);
+                      alert('Export to computer successful!');
+                    }
+                  } catch (error) {
+                    console.error('Failed to export to computer:', error);
+                    alert('Failed to export to computer.');
+                  }
+                  setExportPendingData(null);
+                }}
+                style={{
+                  padding: '16px 24px',
+                  background: '#3498db',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#2980b9'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#3498db'}
+              >
+                💻 Save to Computer
+              </button>
+              <button
+                onClick={async () => {
+                  setShowExportLocationModal(false);
+                  // Check if authenticated
+                  if (!isMSAuthenticated) {
+                    setShowMSLoginModal(true);
+                    return;
+                  }
+
+                  // Export to OneDrive
+                  try {
+                    const fileName = `${exportPendingData.fileName}_export.xlsx`;
+                    const filePath = `/Documents/${fileName}`;
+
+                    await uploadExcelFile(graphClient, filePath, exportPendingData.buffer);
+
+                    const updatedTemplate = {
+                      ...selectedTemplate,
+                      linkedExcelPath: filePath,
+                      isOneDrive: true,
+                      lastSyncTime: new Date().toISOString()
+                    };
+                    setSelectedTemplate(updatedTemplate);
+                    alert('Export to OneDrive successful!');
+                  } catch (error) {
+                    console.error('Failed to export to OneDrive:', error);
+                    alert(`Failed to export to OneDrive: ${error.message}`);
+                  }
+                  setExportPendingData(null);
+                }}
+                style={{
+                  padding: '16px 24px',
+                  background: '#0078d4',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#106ebe'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#0078d4'}
+              >
+                ☁️ Save to OneDrive
+              </button>
+              <button
+                onClick={() => {
+                  setShowExportLocationModal(false);
+                  setExportPendingData(null);
+                }}
+                style={{
+                  padding: '12px 24px',
+                  background: 'transparent',
+                  border: '1px solid #666',
+                  borderRadius: '8px',
+                  color: '#ccc',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = '#999'}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = '#666'}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Microsoft Login Modal */}
+      {showMSLoginModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000
+        }}>
+          <div style={{
+            background: '#2a2a2a',
+            borderRadius: '12px',
+            padding: '32px',
+            maxWidth: '450px',
+            width: '90%',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+          }}>
+            <h2 style={{ color: '#fff', marginBottom: '16px', fontSize: '24px' }}>
+              Microsoft Account Required
+            </h2>
+            <p style={{ color: '#ccc', marginBottom: '24px', lineHeight: '1.6' }}>
+              To sync with Excel files in OneDrive or Microsoft Teams, you need to connect your Microsoft account.
+            </p>
+            {isMSAuthenticated ? (
+              <div>
+                <div style={{
+                  background: '#1e1e1e',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  marginBottom: '24px'
+                }}>
+                  <p style={{ color: '#27ae60', marginBottom: '8px', fontSize: '14px' }}>
+                    ✓ Connected as
+                  </p>
+                  <p style={{ color: '#fff', fontWeight: 600 }}>
+                    {msAccount?.name || msAccount?.username}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowMSLoginModal(false)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    background: '#27ae60',
                     border: 'none',
                     borderRadius: '8px',
                     color: '#fff',
                     fontSize: '16px',
                     fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
+                    cursor: 'pointer'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#2980b9'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#3498db'}
                 >
-                  💻 Save to Computer
+                  Continue
                 </button>
+              </div>
+            ) : (
+              <div>
                 <button
                   onClick={async () => {
-                    setShowExportLocationModal(false);
-                    // Check if authenticated
-                    if (!isMSAuthenticated) {
-                      setShowMSLoginModal(true);
+                    if (!features?.sso) {
+                      alert('OneDrive integration is an Enterprise feature. Please upgrade.');
                       return;
                     }
-
-                    // Export to OneDrive
                     try {
-                      const fileName = `${exportPendingData.fileName}_export.xlsx`;
-                      const filePath = `/Documents/${fileName}`;
-
-                      await uploadExcelFile(graphClient, filePath, exportPendingData.buffer);
-
-                      const updatedTemplate = {
-                        ...selectedTemplate,
-                        linkedExcelPath: filePath,
-                        isOneDrive: true,
-                        lastSyncTime: new Date().toISOString()
-                      };
-                      setSelectedTemplate(updatedTemplate);
-                      alert('Export to OneDrive successful!');
+                      await msLogin();
+                      // Modal will stay open to show connected status
                     } catch (error) {
-                      console.error('Failed to export to OneDrive:', error);
-                      alert(`Failed to export to OneDrive: ${error.message}`);
+                      console.error('Login failed:', error);
+                      alert('Failed to sign in with Microsoft.');
                     }
-                    setExportPendingData(null);
                   }}
                   style={{
-                    padding: '16px 24px',
+                    width: '100%',
+                    padding: '16px',
                     background: '#0078d4',
                     border: 'none',
                     borderRadius: '8px',
@@ -19731,498 +19838,380 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     fontSize: '16px',
                     fontWeight: 600,
                     cursor: 'pointer',
+                    marginBottom: '12px',
                     transition: 'all 0.2s'
                   }}
                   onMouseEnter={(e) => e.currentTarget.style.background = '#106ebe'}
                   onMouseLeave={(e) => e.currentTarget.style.background = '#0078d4'}
                 >
-                  ☁️ Save to OneDrive
+                  Connect Microsoft Account
                 </button>
                 <button
-                  onClick={() => {
-                    setShowExportLocationModal(false);
-                    setExportPendingData(null);
-                  }}
+                  onClick={() => setShowMSLoginModal(false)}
                   style={{
-                    padding: '12px 24px',
+                    width: '100%',
+                    padding: '12px',
                     background: 'transparent',
                     border: '1px solid #666',
                     borderRadius: '8px',
                     color: '#ccc',
                     fontSize: '14px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
+                    cursor: 'pointer'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.borderColor = '#999'}
-                  onMouseLeave={(e) => e.currentTarget.style.borderColor = '#666'}
                 >
                   Cancel
                 </button>
               </div>
-            </div>
+            )}
           </div>
-        )}
-
-        {/* Microsoft Login Modal */}
-        {showMSLoginModal && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000
-          }}>
-            <div style={{
-              background: '#2a2a2a',
-              borderRadius: '12px',
-              padding: '32px',
-              maxWidth: '450px',
-              width: '90%',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-            }}>
-              <h2 style={{ color: '#fff', marginBottom: '16px', fontSize: '24px' }}>
-                Microsoft Account Required
-              </h2>
-              <p style={{ color: '#ccc', marginBottom: '24px', lineHeight: '1.6' }}>
-                To sync with Excel files in OneDrive or Microsoft Teams, you need to connect your Microsoft account.
-              </p>
-              {isMSAuthenticated ? (
-                <div>
-                  <div style={{
-                    background: '#1e1e1e',
-                    padding: '16px',
-                    borderRadius: '8px',
-                    marginBottom: '24px'
-                  }}>
-                    <p style={{ color: '#27ae60', marginBottom: '8px', fontSize: '14px' }}>
-                      ✓ Connected as
-                    </p>
-                    <p style={{ color: '#fff', fontWeight: 600 }}>
-                      {msAccount?.name || msAccount?.username}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowMSLoginModal(false)}
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      background: '#27ae60',
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: '#fff',
-                      fontSize: '16px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Continue
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <button
-                    onClick={async () => {
-                      if (!features?.sso) {
-                        alert('OneDrive integration is an Enterprise feature. Please upgrade.');
-                        return;
-                      }
-                      try {
-                        await msLogin();
-                        // Modal will stay open to show connected status
-                      } catch (error) {
-                        console.error('Login failed:', error);
-                        alert('Failed to sign in with Microsoft.');
-                      }
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '16px',
-                      background: '#0078d4',
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: '#fff',
-                      fontSize: '16px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      marginBottom: '12px',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#106ebe'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = '#0078d4'}
-                  >
-                    Connect Microsoft Account
-                  </button>
-                  <button
-                    onClick={() => setShowMSLoginModal(false)}
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      background: 'transparent',
-                      border: '1px solid #666',
-                      borderRadius: '8px',
-                      color: '#ccc',
-                      fontSize: '14px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </>
-    );
-  }
+        </div>
+      )}
+    </>
+  );
+}
 
 // Main App Component
 export default function App() {
-    // Microsoft Graph authentication hook
-    const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount } = useMSGraph();
+  // Microsoft Graph authentication hook
+  const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount } = useMSGraph();
 
-    const [currentView, setCurrentView] = useState('dashboard');
-    const [selectedPDF, setSelectedPDF] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [documents, setDocuments] = useState([]);
-    const dashboardRef = useRef(null);
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [selectedPDF, setSelectedPDF] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [documents, setDocuments] = useState([]);
+  const dashboardRef = useRef(null);
 
-    // Tab management state
-    const HOME_TAB_ID = 'home-tab';
-    const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }
-    const [activeTabId, setActiveTabId] = useState(HOME_TAB_ID);
+  // Tab management state
+  const HOME_TAB_ID = 'home-tab';
+  const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }
+  const [activeTabId, setActiveTabId] = useState(HOME_TAB_ID);
 
-    // Template management state
-    const [appTemplates, setAppTemplates] = useState([]);
+  // Template management state
+  const [appTemplates, setAppTemplates] = useState([]);
 
-    const handleTemplatesChange = useCallback((nextTemplates) => {
-      const normalized = Array.isArray(nextTemplates) ? nextTemplates : [];
-      setAppTemplates(normalized);
-    }, []);
+  const handleTemplatesChange = useCallback((nextTemplates) => {
+    const normalized = Array.isArray(nextTemplates) ? nextTemplates : [];
+    setAppTemplates(normalized);
+  }, []);
 
-    const [ballInCourtEntities, setBallInCourtEntities] = useState([
-      { id: `entity-${Date.now()}-1`, name: 'GC', color: '#E3D1FB' },
-      { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: '#FFF5C3' },
-      { id: `entity-${Date.now()}-3`, name: 'My Company', color: '#CBDCFF' },
-      { id: `entity-${Date.now()}-4`, name: '100% Complete', color: '#B2FFB2' },
-      { id: `entity-${Date.now()}-5`, name: 'Removed', color: '#BBBBBB' }
-    ].map(entity => ({
-      ...entity,
-      color: hexToRgba(entity.color, 0.2)
-    })));
+  const [ballInCourtEntities, setBallInCourtEntities] = useState([
+    { id: `entity-${Date.now()}-1`, name: 'GC', color: '#E3D1FB' },
+    { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: '#FFF5C3' },
+    { id: `entity-${Date.now()}-3`, name: 'My Company', color: '#CBDCFF' },
+    { id: `entity-${Date.now()}-4`, name: '100% Complete', color: '#B2FFB2' },
+    { id: `entity-${Date.now()}-5`, name: 'Removed', color: '#BBBBBB' }
+  ].map(entity => ({
+    ...entity,
+    color: hexToRgba(entity.color, 0.2)
+  })));
 
-    // Authentication state
-    const { user, isAuthenticated, loading: authLoading } = useAuth();
-    const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
+  // Authentication state
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
-    // Clean up any old localStorage data that might be causing issues
-    useEffect(() => {
-      // Remove old document data to prevent quota issues
-      localStorage.removeItem('pdfDocuments');
-    }, []);
+  // Clean up any old localStorage data that might be causing issues
+  useEffect(() => {
+    // Remove old document data to prevent quota issues
+    localStorage.removeItem('pdfDocuments');
+  }, []);
 
-    // Clear preferences and settings for non-authenticated users on app load
-    // Non-authenticated users should not have their preferences persisted
-    useEffect(() => {
-      if (!authLoading && !isAuthenticated) {
-        // Clear user preferences and settings
-        localStorage.removeItem('dashboardViewMode');
-        localStorage.removeItem('projects');
-        localStorage.removeItem('templates');
-        localStorage.removeItem('pdfViewerZoomPreference');
-        // Note: We keep PDF-specific data (pdfData_*, highlightAnnotations_*, pdfSidebar_*) 
-        // as they're needed for the current session, but they won't persist across sessions
-        // for non-authenticated users since they're tied to specific PDF files
+  // Clear preferences and settings for non-authenticated users on app load
+  // Non-authenticated users should not have their preferences persisted
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      // Clear user preferences and settings
+      localStorage.removeItem('dashboardViewMode');
+      localStorage.removeItem('projects');
+      localStorage.removeItem('templates');
+      localStorage.removeItem('pdfViewerZoomPreference');
+      // Note: We keep PDF-specific data (pdfData_*, highlightAnnotations_*, pdfSidebar_*) 
+      // as they're needed for the current session, but they won't persist across sessions
+      // for non-authenticated users since they're tied to specific PDF files
+    }
+  }, [authLoading, isAuthenticated]);
+
+  // Generate unique tab ID
+  const generateTabId = () => `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  const handleDocumentSelect = (file, filePath = null) => {
+    // console.log('handleDocumentSelect called with file:', file, 'filePath:', filePath);
+    if (!file) {
+      console.error('No file provided to handleDocumentSelect');
+      return;
+    }
+
+    // Check if this file is already open in a tab (excluding home tab)
+    const existingTab = tabs.find(tab => {
+      // Compare by name and size for uniqueness, and make sure it's not the home tab
+      // Also check path if available for more robust matching
+      if (tab.isHome || !tab.file) return false;
+
+      const sameName = tab.file.name === file.name;
+      const sameSize = tab.file.size === file.size;
+      const samePath = tab.filePath && filePath ? tab.filePath === filePath : true;
+
+      return sameName && sameSize && samePath;
+    });
+
+    if (existingTab) {
+      console.log('Switching to existing tab:', existingTab.id);
+      // Switch to existing tab
+      setActiveTabId(existingTab.id);
+      if (selectedPDF !== existingTab.file) {
+        setSelectedPDF(existingTab.file);
       }
-    }, [authLoading, isAuthenticated]);
-
-    // Generate unique tab ID
-    const generateTabId = () => `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    const handleDocumentSelect = (file, filePath = null) => {
-      // console.log('handleDocumentSelect called with file:', file, 'filePath:', filePath);
-      if (!file) {
-        console.error('No file provided to handleDocumentSelect');
-        return;
-      }
-
-      // Check if this file is already open in a tab (excluding home tab)
-      const existingTab = tabs.find(tab => {
-        // Compare by name and size for uniqueness, and make sure it's not the home tab
-        // Also check path if available for more robust matching
-        if (tab.isHome || !tab.file) return false;
-
-        const sameName = tab.file.name === file.name;
-        const sameSize = tab.file.size === file.size;
-        const samePath = tab.filePath && filePath ? tab.filePath === filePath : true;
-
-        return sameName && sameSize && samePath;
-      });
-
-      if (existingTab) {
-        console.log('Switching to existing tab:', existingTab.id);
-        // Switch to existing tab
-        setActiveTabId(existingTab.id);
-        if (selectedPDF !== existingTab.file) {
-          setSelectedPDF(existingTab.file);
-        }
-        setCurrentView('viewer');
-        return;
-      }
-
-      // Create new tab
-      const newTab = {
-        id: generateTabId(),
-        name: file.name,
-        file: file,
-        filePath: filePath, // Store file path in tab
-        isHome: false,
-        viewState: null // Initialize view state
-      };
-
-      setTabs(prev => [...prev, newTab]);
-      setActiveTabId(newTab.id);
-      setSelectedPDF(file);
       setCurrentView('viewer');
-      setIsLoading(true);
-      // Reset loading after a short delay
-      setTimeout(() => setIsLoading(false), 100);
+      return;
+    }
+
+    // Create new tab
+    const newTab = {
+      id: generateTabId(),
+      name: file.name,
+      file: file,
+      filePath: filePath, // Store file path in tab
+      isHome: false,
+      viewState: null // Initialize view state
     };
 
-    const handleTabClick = (tabId) => {
-      const tab = tabs.find(t => t.id === tabId);
-      if (tab) {
-        // Exit selection mode when switching tabs
-        if (dashboardRef.current?.exitSelectionMode) {
-          dashboardRef.current.exitSelectionMode();
-        }
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+    setSelectedPDF(file);
+    setCurrentView('viewer');
+    setIsLoading(true);
+    // Reset loading after a short delay
+    setTimeout(() => setIsLoading(false), 100);
+  };
 
-        setActiveTabId(tabId);
-        if (tab.isHome) {
-          // Home tab - show dashboard
-          // setSelectedPDF(null); // Keep selectedPDF to prevent unmounting
-          setCurrentView('dashboard');
-        } else {
-          // PDF tab - show viewer
-          setSelectedPDF(tab.file);
-          setCurrentView('viewer');
-        }
+  const handleTabClick = (tabId) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (tab) {
+      // Exit selection mode when switching tabs
+      if (dashboardRef.current?.exitSelectionMode) {
+        dashboardRef.current.exitSelectionMode();
       }
-    };
 
-    const handleViewStateChange = useCallback((viewState) => {
-      setTabs(prev => prev.map(tab => {
-        if (tab.id === activeTabId) {
-          return { ...tab, viewState };
-        }
-        return tab;
-      }));
-    }, [activeTabId]);
+      setActiveTabId(tabId);
+      if (tab.isHome) {
+        // Home tab - show dashboard
+        // setSelectedPDF(null); // Keep selectedPDF to prevent unmounting
+        setCurrentView('dashboard');
+      } else {
+        // PDF tab - show viewer
+        setSelectedPDF(tab.file);
+        setCurrentView('viewer');
+      }
+    }
+  };
 
-    // Memoized callback to track unsaved annotations - uses selectedPDF to find the correct tab
-    const handleUnsavedAnnotationsChange = useCallback((hasUnsaved) => {
-      setTabs(prev => {
-        const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
-        if (!pdfTab) return prev;
-        return prev.map(tab =>
-          tab.id === pdfTab.id ? { ...tab, hasUnsavedAnnotations: hasUnsaved } : tab
-        );
-      });
-    }, [selectedPDF]);
+  const handleViewStateChange = useCallback((viewState) => {
+    setTabs(prev => prev.map(tab => {
+      if (tab.id === activeTabId) {
+        return { ...tab, viewState };
+      }
+      return tab;
+    }));
+  }, [activeTabId]);
 
-    // Memoized callback to update PDF file
-    const handleUpdatePDFFile = useCallback((newFile) => {
-      setTabs(prev => {
-        const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
-        if (!pdfTab) return prev;
-        return prev.map(tab =>
-          tab.id === pdfTab.id ? { ...tab, file: newFile } : tab
-        );
-      });
-      setSelectedPDF(newFile);
-    }, [selectedPDF]);
+  // Memoized callback to track unsaved annotations - uses selectedPDF to find the correct tab
+  const handleUnsavedAnnotationsChange = useCallback((hasUnsaved) => {
+    setTabs(prev => {
+      const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
+      if (!pdfTab) return prev;
+      return prev.map(tab =>
+        tab.id === pdfTab.id ? { ...tab, hasUnsavedAnnotations: hasUnsaved } : tab
+      );
+    });
+  }, [selectedPDF]);
 
-    const handleTabClose = (tabId) => {
-      // Prevent closing the home tab
-      if (tabId === HOME_TAB_ID) return;
+  // Memoized callback to update PDF file
+  const handleUpdatePDFFile = useCallback((newFile) => {
+    setTabs(prev => {
+      const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
+      if (!pdfTab) return prev;
+      return prev.map(tab =>
+        tab.id === pdfTab.id ? { ...tab, file: newFile } : tab
+      );
+    });
+    setSelectedPDF(newFile);
+  }, [selectedPDF]);
 
-      const tabIndex = tabs.findIndex(t => t.id === tabId);
-      if (tabIndex === -1) return;
+  const handleTabClose = (tabId) => {
+    // Prevent closing the home tab
+    if (tabId === HOME_TAB_ID) return;
 
-      const newTabs = tabs.filter(t => t.id !== tabId);
-      setTabs(newTabs);
+    const tabIndex = tabs.findIndex(t => t.id === tabId);
+    if (tabIndex === -1) return;
 
-      // If closing the active tab, switch to another tab or go back to home
-      if (tabId === activeTabId) {
-        if (newTabs.length > 1) { // More than just home tab
-          // Switch to the tab that was at the same position, or the last tab (excluding home)
-          const pdfTabs = newTabs.filter(t => !t.isHome);
-          if (pdfTabs.length > 0) {
-            const newActiveIndex = Math.min(tabIndex - 1, pdfTabs.length - 1);
-            const newActiveTab = pdfTabs[newActiveIndex >= 0 ? newActiveIndex : 0];
-            setActiveTabId(newActiveTab.id);
-            setSelectedPDF(newActiveTab.file);
-            setCurrentView('viewer');
-          } else {
-            // Only home tab left
-            setActiveTabId(HOME_TAB_ID);
-            setSelectedPDF(null);
-            setCurrentView('dashboard');
-          }
+    const newTabs = tabs.filter(t => t.id !== tabId);
+    setTabs(newTabs);
+
+    // If closing the active tab, switch to another tab or go back to home
+    if (tabId === activeTabId) {
+      if (newTabs.length > 1) { // More than just home tab
+        // Switch to the tab that was at the same position, or the last tab (excluding home)
+        const pdfTabs = newTabs.filter(t => !t.isHome);
+        if (pdfTabs.length > 0) {
+          const newActiveIndex = Math.min(tabIndex - 1, pdfTabs.length - 1);
+          const newActiveTab = pdfTabs[newActiveIndex >= 0 ? newActiveIndex : 0];
+          setActiveTabId(newActiveTab.id);
+          setSelectedPDF(newActiveTab.file);
+          setCurrentView('viewer');
         } else {
           // Only home tab left
           setActiveTabId(HOME_TAB_ID);
           setSelectedPDF(null);
           setCurrentView('dashboard');
         }
-      }
-    };
-
-    const handleTabReorder = (reorderedTabs) => {
-      // Ensure home tab is always first
-      const homeTab = reorderedTabs.find(t => t.isHome);
-      const otherTabs = reorderedTabs.filter(t => !t.isHome);
-      if (homeTab) {
-        setTabs([homeTab, ...otherTabs]);
       } else {
-        setTabs(reorderedTabs);
+        // Only home tab left
+        setActiveTabId(HOME_TAB_ID);
+        setSelectedPDF(null);
+        setCurrentView('dashboard');
       }
-    };
-
-    const handlePageDrop = (sourceTabId, pageNumber, targetTabId) => {
-      // This is a placeholder - actual PDF page copying would require PDF manipulation
-      // For now, we'll just show a message or implement basic structure
-      console.log(`Page ${pageNumber} from tab ${sourceTabId} dropped on tab ${targetTabId}`);
-
-      // TODO: Implement actual page copying using PDF.js or a PDF manipulation library
-      // This would involve:
-      // 1. Getting the page from source PDF
-      // 2. Creating a new PDF or modifying target PDF
-      // 3. Adding the page to target PDF
-      // 4. Updating the target tab's file
-
-      alert(`Page ${pageNumber} drag-and-drop functionality is being implemented. This feature requires PDF manipulation capabilities.`);
-    };
-
-    const handleBack = () => {
-      // Switch to home tab instead of closing all tabs
-      setActiveTabId(HOME_TAB_ID);
-      // setSelectedPDF(null); // Keep selectedPDF to prevent unmounting
-      setCurrentView('dashboard');
-    };
-
-    const handleCreateTemplateRequest = (options) => {
-      if (options?.mode === 'edit' && options.templateId) {
-        dashboardRef.current?.openEditTemplateModal?.(options.templateId, {
-          moduleId: options.moduleId,
-          startAddingCategory: options.startAddingCategory
-        });
-      } else {
-        dashboardRef.current?.openTemplateModal?.();
-      }
-    };
-
-    if (isLoading) {
-      return (
-        <div style={{
-          height: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#F5F5F5',
-          fontFamily: FONT_FAMILY
-        }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'center' }}>
-              <Icon name="document" size={24} />
-            </div>
-            <div style={{ fontSize: '16px', color: '#666' }}>Loading document...</div>
-          </div>
-        </div>
-      );
     }
+  };
 
-    // Determine what to render based on active tab
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
+  const handleTabReorder = (reorderedTabs) => {
+    // Ensure home tab is always first
+    const homeTab = reorderedTabs.find(t => t.isHome);
+    const otherTabs = reorderedTabs.filter(t => !t.isHome);
+    if (homeTab) {
+      setTabs([homeTab, ...otherTabs]);
+    } else {
+      setTabs(reorderedTabs);
+    }
+  };
 
-    // Find the tab associated with the selected PDF to pass the correct tabId
-    // This ensures that even if we are on Home tab, the PDFViewer still gets the correct tabId prop
-    const pdfTab = tabs.find(t => t.file === selectedPDF && !t.isHome);
-    const viewerTabId = pdfTab ? pdfTab.id : activeTabId;
-    const viewerViewState = pdfTab ? pdfTab.viewState : null;
+  const handlePageDrop = (sourceTabId, pageNumber, targetTabId) => {
+    // This is a placeholder - actual PDF page copying would require PDF manipulation
+    // For now, we'll just show a message or implement basic structure
+    console.log(`Page ${pageNumber} from tab ${sourceTabId} dropped on tab ${targetTabId}`);
 
+    // TODO: Implement actual page copying using PDF.js or a PDF manipulation library
+    // This would involve:
+    // 1. Getting the page from source PDF
+    // 2. Creating a new PDF or modifying target PDF
+    // 3. Adding the page to target PDF
+    // 4. Updating the target tab's file
+
+    alert(`Page ${pageNumber} drag-and-drop functionality is being implemented. This feature requires PDF manipulation capabilities.`);
+  };
+
+  const handleBack = () => {
+    // Switch to home tab instead of closing all tabs
+    setActiveTabId(HOME_TAB_ID);
+    // setSelectedPDF(null); // Keep selectedPDF to prevent unmounting
+    setCurrentView('dashboard');
+  };
+
+  const handleCreateTemplateRequest = (options) => {
+    if (options?.mode === 'edit' && options.templateId) {
+      dashboardRef.current?.openEditTemplateModal?.(options.templateId, {
+        moduleId: options.moduleId,
+        startAddingCategory: options.startAddingCategory
+      });
+    } else {
+      dashboardRef.current?.openTemplateModal?.();
+    }
+  };
+
+  if (isLoading) {
     return (
-      <>
-        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-          {tabs.length > 0 && ( // Show tab bar if there are any tabs (including home)
-            <TabBar
-              tabs={tabs}
-              activeTabId={activeTabId}
-              onTabClick={handleTabClick}
-              onTabClose={handleTabClose}
-              onTabReorder={handleTabReorder}
-              onPageDrop={handlePageDrop}
-            />
-          )}
-          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-            <Dashboard
-              ref={dashboardRef}
-              onDocumentSelect={handleDocumentSelect}
-              onBack={handleBack}
-              documents={documents}
-              setDocuments={setDocuments}
-              templates={appTemplates}
-              onTemplatesChange={handleTemplatesChange}
-              onShowAuthModal={() => setShowAuthModal(true)}
-              ballInCourtEntities={ballInCourtEntities}
-              setBallInCourtEntities={setBallInCourtEntities}
-            />
-            {selectedPDF && (
-              <div style={{
-                position: 'absolute',
-                inset: 0,
-                background: '#1f1f1f',
-                zIndex: 5000,
-                display: isViewerVisible ? 'block' : 'none'
-              }}>
-                <PDFViewer
-                  pdfFile={selectedPDF}
-                  pdfFilePath={pdfTab?.filePath}
-                  onBack={handleBack}
-                  tabId={viewerTabId}
-                  onPageDrop={handlePageDrop}
-                  onUpdatePDFFile={handleUpdatePDFFile}
-                  onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
-                  onRequestCreateTemplate={handleCreateTemplateRequest}
-                  initialViewState={viewerViewState}
-                  onViewStateChange={handleViewStateChange}
-                  templates={appTemplates}
-                  onTemplatesChange={handleTemplatesChange}
-                  user={user}
-                  isMSAuthenticated={isMSAuthenticated}
-                  msLogin={msLogin}
-                  graphClient={graphClient}
-                  msAccount={msAccount}
-                  ballInCourtEntities={ballInCourtEntities}
-                  setBallInCourtEntities={setBallInCourtEntities}
-                />
-              </div>
-            )}
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#F5F5F5',
+        fontFamily: FONT_FAMILY
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'center' }}>
+            <Icon name="document" size={24} />
           </div>
+          <div style={{ fontSize: '16px', color: '#666' }}>Loading document...</div>
         </div>
-
-        {/* Authentication Modal */}
-        <AuthModal
-          isOpen={showAuthModal}
-          onClose={() => setShowAuthModal(false)}
-          onDismiss={!authPromptDismissed ? handleDismiss : null}
-        />
-      </>
+      </div>
     );
   }
+
+  // Determine what to render based on active tab
+  const activeTab = tabs.find(t => t.id === activeTabId);
+  const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
+
+  // Find the tab associated with the selected PDF to pass the correct tabId
+  // This ensures that even if we are on Home tab, the PDFViewer still gets the correct tabId prop
+  const pdfTab = tabs.find(t => t.file === selectedPDF && !t.isHome);
+  const viewerTabId = pdfTab ? pdfTab.id : activeTabId;
+  const viewerViewState = pdfTab ? pdfTab.viewState : null;
+
+  return (
+    <>
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        {tabs.length > 0 && ( // Show tab bar if there are any tabs (including home)
+          <TabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onTabClick={handleTabClick}
+            onTabClose={handleTabClose}
+            onTabReorder={handleTabReorder}
+            onPageDrop={handlePageDrop}
+          />
+        )}
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          <Dashboard
+            ref={dashboardRef}
+            onDocumentSelect={handleDocumentSelect}
+            onBack={handleBack}
+            documents={documents}
+            setDocuments={setDocuments}
+            templates={appTemplates}
+            onTemplatesChange={handleTemplatesChange}
+            onShowAuthModal={() => setShowAuthModal(true)}
+            ballInCourtEntities={ballInCourtEntities}
+            setBallInCourtEntities={setBallInCourtEntities}
+          />
+          {selectedPDF && (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: '#1f1f1f',
+              zIndex: 5000,
+              display: isViewerVisible ? 'block' : 'none'
+            }}>
+              <PDFViewer
+                pdfFile={selectedPDF}
+                pdfFilePath={pdfTab?.filePath}
+                onBack={handleBack}
+                tabId={viewerTabId}
+                onPageDrop={handlePageDrop}
+                onUpdatePDFFile={handleUpdatePDFFile}
+                onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
+                onRequestCreateTemplate={handleCreateTemplateRequest}
+                initialViewState={viewerViewState}
+                onViewStateChange={handleViewStateChange}
+                templates={appTemplates}
+                onTemplatesChange={handleTemplatesChange}
+                user={user}
+                isMSAuthenticated={isMSAuthenticated}
+                msLogin={msLogin}
+                graphClient={graphClient}
+                msAccount={msAccount}
+                ballInCourtEntities={ballInCourtEntities}
+                setBallInCourtEntities={setBallInCourtEntities}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Authentication Modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onDismiss={!authPromptDismissed ? handleDismiss : null}
+      />
+    </>
+  );
+}
