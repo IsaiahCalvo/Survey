@@ -13888,7 +13888,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         <div
           ref={bottomToolbarRef}
           style={{
-            padding: '11px 20px 12px 20px',
+            height: '49px',
+            padding: '10px 20px 18px 20px',
             background: 'transparent',
             borderTop: '1px solid #444',
             display: 'flex',
@@ -14018,15 +14019,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 onClick={() => setShowAnnotationColorPicker(!showAnnotationColorPicker)}
                 className="btn btn-default"
                 style={{
-                  width: '32px',
-                  height: '28px',
+                  width: '30px',
+                  height: '20px',
                   padding: 0,
                   borderRadius: '4px',
                   border: '1px solid transparent',
                   background: strokeColor,
                   opacity: strokeOpacity / 100,
                   position: 'relative',
-                  overflow: 'hidden'
+                  overflow: 'visible',
+                  boxSizing: 'content-box'
                 }}
                 title="Color"
               />
@@ -14068,6 +14070,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 }}
                 style={{
                   width: "40px",
+                  height: "20px",
                   padding: "6px 4px",
                   background: "#444",
                   color: "#ddd",
@@ -14273,7 +14276,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 left: '8px'
               }}
             >
-              <Icon name={scrollMode === 'continuous' ? 'pages' : 'pageSingle'} size={16} />
+              <Icon 
+                name={scrollMode === 'continuous' ? 'pages' : 'pageSingle'} 
+                size={16}
+                style={{
+                  boxSizing: 'content-box',
+                  marginTop: '8px'
+                }}
+              />
               {scrollMode === 'continuous' ? 'Continuous' : 'Single Page'}
             </button>
 

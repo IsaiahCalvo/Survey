@@ -171,6 +171,7 @@ const PDFSidebar = ({
                   name={tab.icon}
                   size={16}
                   color={activeTab === tab.id ? '#4A90E2' : '#999'}
+                  style={tab.icon === 'pages' ? { boxSizing: 'content-box', marginTop: '3px' } : undefined}
                 />
                 <span>{tab.label}</span>
               </button>
