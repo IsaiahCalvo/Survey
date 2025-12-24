@@ -14266,24 +14266,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               onClick={toggleScrollMode}
               className="btn btn-default btn-sm"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                justifyContent: 'center',
                 paddingLeft: '10px',
                 paddingRight: '10px',
                 position: 'absolute',
                 left: '8px'
               }}
             >
-              <Icon 
-                name={scrollMode === 'continuous' ? 'pages' : 'pageSingle'} 
-                size={16}
-                style={{
-                  boxSizing: 'content-box',
-                  transform: 'translateY(-2px)'
-                }}
-              />
               {scrollMode === 'continuous' ? 'Continuous' : 'Single Page'}
             </button>
 
