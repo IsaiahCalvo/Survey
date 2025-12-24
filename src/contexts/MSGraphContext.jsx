@@ -38,7 +38,15 @@ export const MSGraphProvider = ({ children }) => {
 
     // Persist connection to Supabase
     const persistConnection = useCallback(async (msalAccount) => {
-        if (!user || !isSupabaseAvailable()) return;
+        if (!user) {
+            console.warn('[Microsoft Persist] No user authenticated, skipping persist');
+            return;
+        }
+
+        if (!isSupabaseAvailable()) {
+            console.warn('[Microsoft Persist] Supabase not available, skipping persist');
+            return;
+        }
 
         try {
             const serviceData = {
@@ -56,17 +64,25 @@ export const MSGraphProvider = ({ children }) => {
                 last_used_at: new Date().toISOString(),
             };
 
-            const { error } = await supabase
+            console.log('[Microsoft Persist] Attempting to persist connection for:', msalAccount.username);
+
+            const { data, error } = await supabase
                 .from('connected_services')
                 .upsert(serviceData, { onConflict: 'user_id,service_name' });
 
             if (error) {
-                console.log('Could not persist connection (table not ready), will retry later');
+                console.error('[Microsoft Persist] ❌ Failed to persist connection');
+                console.error('[Microsoft Persist] Error code:', error.code);
+                console.error('[Microsoft Persist] Error message:', error.message);
+                console.error('[Microsoft Persist] Error details:', error.details);
+                console.error('[Microsoft Persist] Full error:', error);
             } else {
-                console.log('Microsoft connection persisted to Supabase');
+                console.log('[Microsoft Persist] ✅ Successfully persisted to Supabase');
+                console.log('[Microsoft Persist] Data:', data);
             }
         } catch (err) {
-            console.log('Could not persist connection, will retry later');
+            console.error('[Microsoft Persist] ❌ Exception during persist:', err.message);
+            console.error('[Microsoft Persist] Stack:', err.stack);
         }
     }, [user]);
 
@@ -121,20 +137,25 @@ export const MSGraphProvider = ({ children }) => {
                 try {
                     const response = await pca.acquireTokenSilent({
                         ...loginRequest,
-                        account: account
+                        account: account,
+                        forceRefresh: false, // Use cached token if still valid
                     });
                     done(null, response.accessToken);
                 } catch (error) {
-                    console.error("Silent token acquisition failed, trying popup", error);
+                    console.error("[Microsoft Auth] Token acquisition failed for API call:", error.message);
+
+                    // Try SSO silent before giving up (no popup)
                     try {
-                        const response = await pca.acquireTokenPopup({
+                        const ssoResponse = await pca.ssoSilent({
                             ...loginRequest,
-                            account: account
+                            loginHint: account.username,
                         });
-                        done(null, response.accessToken);
-                    } catch (err) {
-                        console.error("Popup token acquisition failed", err);
-                        done(err, null);
+                        done(null, ssoResponse.accessToken);
+                    } catch (ssoError) {
+                        console.error("[Microsoft Auth] SSO silent also failed:", ssoError.message);
+                        // Don't show popup - set reconnect flag instead
+                        setNeedsReconnect(true);
+                        done(new Error("Authentication required. Please reconnect Microsoft account."), null);
                     }
                 }
             }
@@ -166,8 +187,9 @@ export const MSGraphProvider = ({ children }) => {
                     // Persist the connection if user is logged in
                     if (user) {
                         // Use direct Supabase call to avoid dependency on persistConnection
+                        console.log('[Microsoft Init] User authenticated, persisting connection...');
                         try {
-                            const { error } = await supabase
+                            const { data, error } = await supabase
                                 .from('connected_services')
                                 .upsert({
                                     user_id: user.id,
@@ -184,11 +206,18 @@ export const MSGraphProvider = ({ children }) => {
                                 }, { onConflict: 'user_id,service_name' });
 
                             if (error) {
-                                console.log('Could not persist connection on init, will retry later');
+                                console.error('[Microsoft Init] ❌ Failed to persist on init');
+                                console.error('[Microsoft Init] Error:', error);
+                            } else {
+                                console.log('[Microsoft Init] ✅ Successfully persisted on init');
+                                console.log('[Microsoft Init] Data:', data);
                             }
                         } catch (err) {
-                            console.log('Could not persist connection on init, will retry later');
+                            console.error('[Microsoft Init] ❌ Exception during persist on init:', err.message);
+                            console.error('[Microsoft Init] Stack:', err.stack);
                         }
+                    } else {
+                        console.warn('[Microsoft Init] No user authenticated, skipping persist on init');
                     }
                 } else if (user && isSupabaseAvailable()) {
                     // No cached accounts, but user is logged in - check if we should restore
@@ -288,6 +317,94 @@ export const MSGraphProvider = ({ children }) => {
             // Silently fail - not critical
         }
     }, [user]);
+
+    // Automatic token refresh to prevent session expiration
+    useEffect(() => {
+        if (!isAuthenticated || !msalInstance || !account) return;
+
+        let refreshInterval;
+        let retryTimeout;
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+
+        const refreshToken = async (isRetry = false) => {
+            try {
+                if (!isRetry) {
+                    console.log('[Microsoft Auth] Proactively refreshing token...');
+                } else {
+                    console.log(`[Microsoft Auth] Retry attempt ${retryCount}/${MAX_RETRIES}...`);
+                }
+
+                const response = await msalInstance.acquireTokenSilent({
+                    ...loginRequest,
+                    account: account,
+                    forceRefresh: false, // Let MSAL decide if refresh is needed
+                });
+
+                if (response) {
+                    console.log('[Microsoft Auth] Token refreshed successfully, expires at:', response.expiresOn);
+                    // Clear reconnect flag if it was set
+                    setNeedsReconnect(false);
+                    // Reset retry count on success
+                    retryCount = 0;
+                }
+            } catch (error) {
+                console.warn('[Microsoft Auth] Silent token refresh failed:', error.message);
+
+                // Try SSO silent as fallback
+                try {
+                    console.log('[Microsoft Auth] Attempting SSO silent fallback...');
+                    const ssoResponse = await msalInstance.ssoSilent({
+                        ...loginRequest,
+                        loginHint: account.username,
+                    });
+
+                    if (ssoResponse) {
+                        console.log('[Microsoft Auth] Token refreshed via SSO silent');
+                        setNeedsReconnect(false);
+                        retryCount = 0;
+                    }
+                } catch (ssoError) {
+                    console.error('[Microsoft Auth] SSO silent also failed:', ssoError.message);
+
+                    // Check if this might be a temporary network error
+                    const isNetworkError = error.message?.includes('network') ||
+                                          error.message?.includes('timeout') ||
+                                          ssoError.message?.includes('network') ||
+                                          ssoError.message?.includes('timeout');
+
+                    if (isNetworkError && retryCount < MAX_RETRIES) {
+                        // Retry with exponential backoff: 5s, 10s, 20s
+                        const retryDelay = 5000 * Math.pow(2, retryCount);
+                        retryCount++;
+                        console.log(`[Microsoft Auth] Network error detected, retrying in ${retryDelay/1000}s...`);
+                        retryTimeout = setTimeout(() => refreshToken(true), retryDelay);
+                    } else {
+                        // Both methods failed and no more retries - user needs to reconnect
+                        console.error('[Microsoft Auth] All refresh attempts exhausted, manual reconnect required');
+                        setNeedsReconnect(true);
+                        retryCount = 0;
+                    }
+                }
+            }
+        };
+
+        // Initial refresh attempt to establish baseline
+        refreshToken();
+
+        // Set up periodic refresh every 30 minutes
+        // This ensures tokens stay fresh well before the typical 1-hour expiration
+        refreshInterval = setInterval(() => refreshToken(false), 30 * 60 * 1000);
+
+        return () => {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+            if (retryTimeout) {
+                clearTimeout(retryTimeout);
+            }
+        };
+    }, [isAuthenticated, msalInstance, account]);
 
     const login = async () => {
         if (!msalInstance) return;

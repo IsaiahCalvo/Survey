@@ -278,71 +278,41 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   return (
     <div className="account-settings-overlay" onClick={onClose}>
-      <div className="account-settings-modal" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', maxWidth: '1200px', width: '95%', height: '85vh', maxHeight: '800px', padding: 0 }}>
+      <div className="account-settings-modal" onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
-        <div className="account-settings-header" style={{ padding: '20px 24px', borderBottom: '1px solid #333' }}>
-          <h2 style={{ margin: 0 }}>Settings</h2>
+        <div className="account-settings-header">
+          <h2>Settings</h2>
           <button className="account-settings-close" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
 
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div className="account-settings-body">
           {/* Sidebar */}
-          <div style={{ width: '200px', borderRight: '1px solid #333', background: '#252525', display: 'flex', flexDirection: 'column' }}>
+          <div className="account-settings-sidebar">
             <button
               onClick={() => setActiveTab('general')}
-              style={{
-                padding: '12px 20px',
-                textAlign: 'left',
-                background: activeTab === 'general' ? 'rgba(255,255,255,0.05)' : 'transparent',
-                border: 'none',
-                borderLeft: activeTab === 'general' ? '3px solid #4A90E2' : '3px solid transparent',
-                color: activeTab === 'general' ? '#fff' : '#aaa',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}
+              className={`account-sidebar-btn ${activeTab === 'general' ? 'active' : ''}`}
             >
               General
             </button>
             <button
               onClick={() => setActiveTab('connected-services')}
-              style={{
-                padding: '12px 20px',
-                textAlign: 'left',
-                background: activeTab === 'connected-services' ? 'rgba(255,255,255,0.05)' : 'transparent',
-                border: 'none',
-                borderLeft: activeTab === 'connected-services' ? '3px solid #4A90E2' : '3px solid transparent',
-                color: activeTab === 'connected-services' ? '#fff' : '#aaa',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}
+              className={`account-sidebar-btn ${activeTab === 'connected-services' ? 'active' : ''}`}
             >
               Connected Services
             </button>
             <button
               onClick={() => setActiveTab('subscription')}
-              style={{
-                padding: '12px 20px',
-                textAlign: 'left',
-                background: activeTab === 'subscription' ? 'rgba(255,255,255,0.05)' : 'transparent',
-                border: 'none',
-                borderLeft: activeTab === 'subscription' ? '3px solid #4A90E2' : '3px solid transparent',
-                color: activeTab === 'subscription' ? '#fff' : '#aaa',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}
+              className={`account-sidebar-btn ${activeTab === 'subscription' ? 'active' : ''}`}
             >
               Manage Subscription
             </button>
           </div>
 
           {/* Content */}
-          <div className="account-settings-content" style={{ flex: 1, padding: '20px', overflowY: 'auto' }}>
+          <div className="account-settings-content">
             {error && <div className="account-error">{error}</div>}
             {message && <div className="account-message">{message}</div>}
 
