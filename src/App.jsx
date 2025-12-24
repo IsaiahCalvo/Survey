@@ -1296,12 +1296,25 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
       }
 
       try {
-        // Load PDF
-        const loadingTask = pdfjsLib.getDocument({
-          data: arrayBuffer,
-          verbosity: pdfjsLib.VerbosityLevel.ERRORS
-        });
-        const pdf = await loadingTask.promise;
+        // Load PDF with recovery mode fallback
+        let pdf;
+        try {
+          const loadingTask = pdfjsLib.getDocument({
+            data: arrayBuffer,
+            verbosity: pdfjsLib.VerbosityLevel.ERRORS
+          });
+          pdf = await loadingTask.promise;
+        } catch (firstError) {
+          // Try recovery mode for potentially corrupt PDFs
+          const recoveryTask = pdfjsLib.getDocument({
+            data: arrayBuffer,
+            verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+            stopAtErrors: false,
+            disableAutoFetch: true,
+            disableStream: true
+          });
+          pdf = await recoveryTask.promise;
+        }
 
         // Get first page
         const page = await pdf.getPage(1);
@@ -1767,10 +1780,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                 name: file.name,
                 size: arrayBuffer.byteLength
               });
-              const pdfDoc = await pdfjsLib.getDocument({
-                data: arrayBuffer,
-                verbosity: pdfjsLib.VerbosityLevel.ERRORS
-              }).promise;
+              let pdfDoc;
+              try {
+                pdfDoc = await pdfjsLib.getDocument({
+                  data: arrayBuffer,
+                  verbosity: pdfjsLib.VerbosityLevel.ERRORS
+                }).promise;
+              } catch (firstError) {
+                console.warn('Standard PDF load failed during upload, trying recovery mode:', firstError.message);
+                // Try recovery mode
+                pdfDoc = await pdfjsLib.getDocument({
+                  data: arrayBuffer,
+                  verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+                  stopAtErrors: false,
+                  disableAutoFetch: true,
+                  disableStream: true
+                }).promise;
+              }
               return pdfDoc.numPages;
             })();
 
@@ -1853,10 +1879,22 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           const pageCountPromise = (async () => {
             try {
               const arrayBuffer = await file.arrayBuffer();
-              const pdfDoc = await pdfjsLib.getDocument({
-                data: arrayBuffer,
-                verbosity: pdfjsLib.VerbosityLevel.ERRORS
-              }).promise;
+              let pdfDoc;
+              try {
+                pdfDoc = await pdfjsLib.getDocument({
+                  data: arrayBuffer,
+                  verbosity: pdfjsLib.VerbosityLevel.ERRORS
+                }).promise;
+              } catch (firstError) {
+                console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
+                pdfDoc = await pdfjsLib.getDocument({
+                  data: arrayBuffer,
+                  verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+                  stopAtErrors: false,
+                  disableAutoFetch: true,
+                  disableStream: true
+                }).promise;
+              }
               return pdfDoc.numPages;
             } catch (err) {
               console.error('Error getting page count:', err);
@@ -1987,10 +2025,22 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         const pageCountPromise = (async () => {
           try {
             const arrayBuffer = await file.arrayBuffer();
-            const pdfDoc = await pdfjsLib.getDocument({
-              data: arrayBuffer,
-              verbosity: pdfjsLib.VerbosityLevel.ERRORS
-            }).promise;
+            let pdfDoc;
+            try {
+              pdfDoc = await pdfjsLib.getDocument({
+                data: arrayBuffer,
+                verbosity: pdfjsLib.VerbosityLevel.ERRORS
+              }).promise;
+            } catch (firstError) {
+              console.warn(`Standard PDF load failed for ${file.name}, trying recovery mode:`, firstError.message);
+              pdfDoc = await pdfjsLib.getDocument({
+                data: arrayBuffer,
+                verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+                stopAtErrors: false,
+                disableAutoFetch: true,
+                disableStream: true
+              }).promise;
+            }
             return pdfDoc.numPages;
           } catch (err) {
             console.error(`Error getting page count for ${file.name}:`, err);
@@ -11121,11 +11171,32 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           }
         } catch (e) { console.error('Error checking header', e); }
 
-        const loadingTask = pdfjsLib.getDocument({
-          data: arrayBuffer,
-          verbosity: pdfjsLib.VerbosityLevel.ERRORS
-        });
-        const pdf = await loadingTask.promise;
+        let pdf;
+        try {
+          // First attempt: standard loading
+          const loadingTask = pdfjsLib.getDocument({
+            data: arrayBuffer,
+            verbosity: pdfjsLib.VerbosityLevel.ERRORS
+          });
+          pdf = await loadingTask.promise;
+        } catch (firstError) {
+          console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
+          // Second attempt: recovery mode with lenient options
+          try {
+            const recoveryTask = pdfjsLib.getDocument({
+              data: arrayBuffer,
+              verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+              stopAtErrors: false,
+              disableAutoFetch: true,
+              disableStream: true
+            });
+            pdf = await recoveryTask.promise;
+            console.log('PDF loaded in recovery mode');
+          } catch (recoveryError) {
+            // If recovery also fails, throw the original error
+            throw firstError;
+          }
+        }
         // console.log('PDF loaded successfully. Pages:', pdf.numPages);
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
