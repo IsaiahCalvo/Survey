@@ -39,12 +39,10 @@ export const MSGraphProvider = ({ children }) => {
     // Persist connection to Supabase
     const persistConnection = useCallback(async (msalAccount, tokenExpiresAt = null) => {
         if (!user) {
-            console.warn('[Microsoft Persist] No user authenticated, skipping persist');
             return;
         }
 
         if (!isSupabaseAvailable()) {
-            console.warn('[Microsoft Persist] Supabase not available, skipping persist');
             return;
         }
 
@@ -66,25 +64,15 @@ export const MSGraphProvider = ({ children }) => {
                 last_used_at: new Date().toISOString(),
             };
 
-            console.log('[Microsoft Persist] Attempting to persist connection for:', msalAccount.username);
-
             const { data, error } = await supabase
                 .from('connected_services')
                 .upsert(serviceData, { onConflict: 'user_id,service_name' });
 
             if (error) {
-                console.error('[Microsoft Persist] ❌ Failed to persist connection');
-                console.error('[Microsoft Persist] Error code:', error.code);
-                console.error('[Microsoft Persist] Error message:', error.message);
-                console.error('[Microsoft Persist] Error details:', error.details);
-                console.error('[Microsoft Persist] Full error:', error);
-            } else {
-                console.log('[Microsoft Persist] ✅ Successfully persisted to Supabase');
-                console.log('[Microsoft Persist] Data:', data);
+                console.error('[Microsoft Persist] Failed to persist connection:', error.message);
             }
         } catch (err) {
-            console.error('[Microsoft Persist] ❌ Exception during persist:', err.message);
-            console.error('[Microsoft Persist] Stack:', err.stack);
+            console.error('[Microsoft Persist] Exception during persist:', err.message);
         }
     }, [user]);
 
@@ -93,19 +81,13 @@ export const MSGraphProvider = ({ children }) => {
         if (!user || !isSupabaseAvailable()) return;
 
         try {
-            const { error } = await supabase
+            await supabase
                 .from('connected_services')
                 .delete()
                 .eq('user_id', user.id)
                 .eq('service_name', 'microsoft');
-
-            if (error) {
-                console.log('Could not remove connection (table not ready)');
-            } else {
-                console.log('Microsoft connection removed from Supabase');
-            }
         } catch (err) {
-            console.log('Could not remove connection');
+            // Silently fail
         }
     }, [user]);
 
@@ -144,8 +126,6 @@ export const MSGraphProvider = ({ children }) => {
                     });
                     done(null, response.accessToken);
                 } catch (error) {
-                    console.error("[Microsoft Auth] Token acquisition failed for API call:", error.message);
-
                     // Try SSO silent before giving up (no popup)
                     try {
                         const ssoResponse = await pca.ssoSilent({
@@ -154,7 +134,6 @@ export const MSGraphProvider = ({ children }) => {
                         });
                         done(null, ssoResponse.accessToken);
                     } catch (ssoError) {
-                        console.error("[Microsoft Auth] SSO silent also failed:", ssoError.message);
                         // Don't show popup - set reconnect flag instead
                         setNeedsReconnect(true);
                         done(new Error("Authentication required. Please reconnect Microsoft account."), null);
@@ -189,9 +168,8 @@ export const MSGraphProvider = ({ children }) => {
                     // Persist the connection if user is logged in
                     if (user) {
                         // Use direct Supabase call to avoid dependency on persistConnection
-                        console.log('[Microsoft Init] User authenticated, persisting connection...');
                         try {
-                            const { data, error } = await supabase
+                            const { error } = await supabase
                                 .from('connected_services')
                                 .upsert({
                                     user_id: user.id,
@@ -208,18 +186,11 @@ export const MSGraphProvider = ({ children }) => {
                                 }, { onConflict: 'user_id,service_name' });
 
                             if (error) {
-                                console.error('[Microsoft Init] ❌ Failed to persist on init');
-                                console.error('[Microsoft Init] Error:', error);
-                            } else {
-                                console.log('[Microsoft Init] ✅ Successfully persisted on init');
-                                console.log('[Microsoft Init] Data:', data);
+                                console.error('[Microsoft Init] Failed to persist on init:', error.message);
                             }
                         } catch (err) {
-                            console.error('[Microsoft Init] ❌ Exception during persist on init:', err.message);
-                            console.error('[Microsoft Init] Stack:', err.stack);
+                            console.error('[Microsoft Init] Exception during persist on init:', err.message);
                         }
-                    } else {
-                        console.warn('[Microsoft Init] No user authenticated, skipping persist on init');
                     }
                 } else if (user && isSupabaseAvailable()) {
                     // No cached accounts, but user is logged in - check if we should restore
