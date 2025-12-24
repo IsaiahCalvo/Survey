@@ -1791,6 +1791,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             console.log('Background upload completed for:', file.name, 'New Doc:', newDoc);
           } catch (err) {
             console.error('Error uploading file in background:', err);
+            // Remove temp document from list since upload failed
+            setDocuments(prev => prev.filter(d => !(d.id === tempDoc.id)));
             alert('Failed to save document to cloud: ' + (err.message || 'Unknown error'));
           }
         })();
@@ -1893,6 +1895,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           refetchAllDocuments();
         } catch (err) {
           console.error('Error uploading file in background:', err);
+          // Remove temp document from list since upload failed
+          setDocuments(prev => prev.filter(d => !(d.id === tempDoc.id)));
           alert('Failed to save document to cloud: ' + (err.message || 'Unknown error'));
         }
       })();
@@ -2424,6 +2428,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         // Delete documents from Supabase
         for (const docId of selectedIds) {
           try {
+            // Check if this is a temp document (local only, not yet in Supabase)
+            if (typeof docId === 'string' && docId.startsWith('temp-')) {
+              // Just remove from local state, no Supabase deletion needed
+              setDocuments(prev => prev.filter(d => d.id !== docId));
+              continue;
+            }
             // Get document to get file path
             const doc = supabaseDocuments.find(d => d.id === docId);
             if (doc?.file_path) {
@@ -2451,6 +2461,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           // Delete document records and files from Supabase
           for (const docId of selectedIds) {
             try {
+              // Check if this is a temp document (local only, not yet in Supabase)
+              if (typeof docId === 'string' && docId.startsWith('temp-')) {
+                // Just remove from local state, no Supabase deletion needed
+                setDocuments(prev => prev.filter(d => d.id !== docId));
+                continue;
+              }
               const doc = supabaseDocuments.find(d => d.id === docId);
               if (doc?.file_path) {
                 await deleteFromStorage(doc.file_path);

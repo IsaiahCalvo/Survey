@@ -1,17 +1,10 @@
 chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-SilentHandler.ts:259 Unrecognized feature: 'local-network-access'.
-createHiddenIframe @ SilentHandler.ts:259
-SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-createHiddenIframe @ SilentHandler.ts:260
-SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-createHiddenIframe @ SilentHandler.ts:260
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI1MTU0LWU3NjgtNzAxZS1hYTQ4LWMxZmE0YWU3M2JjYyIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI1MTU0LWU3MzgtNzBjZS04YTUzLTc1ZmYxOGM5YTA0ZSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-App.jsx:1787 Error uploading file in background: InvalidPDFException
-(anonymous) @ App.jsx:1787
-App.jsx:11167 Error loading PDF: InvalidPDFException
-loadPDF @ App.jsx:11167
-App.jsx:11168 Error stack: Error
+App.jsx:1766 Background Upload PDF Check: Object
+App.jsx:11093 PDF load check: Object
+App.jsx:11102 PDF Header Check: %PDF-
+App.jsx:11188 Error loading PDF: InvalidPDFException {message: 'Invalid Root reference.', name: 'InvalidPDFException'}
+loadPDF @ App.jsx:11188
+App.jsx:11189 Error stack: Error
     at BaseExceptionClosure (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:7056:44)
     at Object.defineProperty.value (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:7059:16)
     at __w_pdfjs_require__ (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24698:42)
@@ -22,4 +15,56 @@ App.jsx:11168 Error stack: Error
     at node_modules/pdfjs-dist/build/pdf.js (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:6639:7)
     at __require2 (http://localhost:5173/node_modules/.vite/deps/chunk-F2KOVKPX.js?v=20d15701:28:50)
     at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24989:16
-loadPDF @ App.jsx:11168
+loadPDF @ App.jsx:11189
+App.jsx:1793 Error uploading file in background: InvalidPDFException {message: 'Invalid Root reference.', name: 'InvalidPDFException'}
+(anonymous) @ App.jsx:1793
+fetch.ts:7     DELETE https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/documents?id=eq.temp-1766616305123 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+App.jsx:2434 Error deleting document: {code: '22P02', details: null, hint: null, message: 'invalid input syntax for type uuid: "temp-1766616305123"'}
+handleBulkDelete @ App.jsx:2434
+await in handleBulkDelete (async)
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+fetch.ts:7     DELETE https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/documents?id=eq.temp-1766616305123 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+App.jsx:2434 Error deleting document: {code: '22P02', details: null, hint: null, message: 'invalid input syntax for type uuid: "temp-1766616305123"'}
+handleBulkDelete @ App.jsx:2434
+await in handleBulkDelete (async)
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
