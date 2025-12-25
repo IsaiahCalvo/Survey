@@ -4717,25 +4717,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
         </nav>
 
-        <div
-          onClick={() => setShowAccountSettings(true)}
-          style={{
-            padding: '10px 16px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            transition: 'background 0.2s'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-        >
-          <span style={navIconWrapperStyle}>
-            <Icon name="settings" size={20} color="#FFFFFF" />
-          </span>
-          <span style={navLabelStyle}>Settings</span>
-        </div>
-
         <div style={{
           padding: '12px 16px',
           borderTop: '1px solid rgba(255,255,255,0.1)',
@@ -4840,8 +4821,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                   e.currentTarget.style.background = 'transparent';
                 }}
               >
-                <Icon name="user" size={16} color="#fff" />
-                Account
+                Settings
               </button>
               <button
                 onClick={async (e) => {
