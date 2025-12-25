@@ -836,7 +836,10 @@ const PageAnnotationLayer = memo(({
     canvas.skipTargetFind = tool === 'eraser';
 
     // Update cursors
-    canvas.defaultCursor = (tool === 'eraser' ? 'crosshair' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
+    // Set cursor based on tool (Using 'none' for eraser to hide native cursor)
+    canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
+    canvas.hoverCursor = tool === 'eraser' ? 'none' : (tool === 'select' ? 'move' : (tool === 'pan' ? 'grab' : 'move'));
+    canvas.moveCursor = tool === 'eraser' ? 'none' : 'move';
     canvas.hoverCursor = canvas.defaultCursor;
 
     // Update brush properties
@@ -2707,8 +2710,21 @@ const PageAnnotationLayer = memo(({
     canvas.selection = false;
     // Prevent Fabric.js from finding targets for eraser tool - we handle it ourselves with geometry checks
     canvas.skipTargetFind = tool === 'eraser';
-    canvas.defaultCursor = (tool === 'eraser' ? 'crosshair' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
-    canvas.hoverCursor = canvas.defaultCursor;
+    // Set cursor based on tool (Using 'none' for eraser to hide native cursor)
+    canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
+    canvas.hoverCursor = tool === 'eraser' ? 'none' : (tool === 'select' ? 'move' : (tool === 'pan' ? 'grab' : 'move'));
+    canvas.moveCursor = tool === 'eraser' ? 'none' : 'move';
+    canvas.freeDrawingCursor = tool === 'eraser' ? 'none' : 'crosshair';
+
+    // Force DOM usage to completely hide it if Fabric overrides
+    if (tool === 'eraser') {
+      canvas.upperCanvasEl.style.cursor = 'none';
+      canvas.lowerCanvasEl.style.cursor = 'none';
+    } else {
+      // Reset to empty to let Fabric handle it
+      canvas.upperCanvasEl.style.cursor = '';
+      canvas.lowerCanvasEl.style.cursor = '';
+    }
     const c = tool === 'highlighter' ? 'rgba(255, 235, 59, 0.35)' : strokeColor;
     const w = tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth;
     if (canvas.freeDrawingBrush) {
