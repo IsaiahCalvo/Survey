@@ -1481,7 +1481,7 @@ const PageAnnotationLayer = memo(({
           opt.e.stopPropagation();
           return;
         }
-        
+
         // Set interaction type to 'wait-for-transform'
         panInteractionTypeRef.current = 'wait-for-transform';
         opt.e.preventDefault();
@@ -1703,240 +1703,34 @@ const PageAnnotationLayer = memo(({
       }
 
       if (currentTool === 'eraser') {
-        // For eraser, use geometry-based hit testing for all object types
-        const pointer = canvas.getPointer(opt.e);
+        // Start erasing mode for drag-to-erase (both partial and entire modes)
+        // We defer the actual erasure or splitting to mouseUp to allow the user to see the stroke
         const eraserRadius = eraserSizeRef.current || 20;
-        console.log('[Eraser] MouseDown - pointer:', pointer, 'radius:', eraserRadius, 'mode:', currentEraserMode);
+        isErasingRef.current = true;
+        eraserPathRef.current = {
+          startX: x,
+          startY: y,
+          points: [{ x, y }]
+        };
 
-        // Find the closest object whose geometry is actually under the cursor
-        let target = null;
-        let minDistance = Infinity;
+        // Create visual eraser stroke overlay
+        const eraserStroke = new Polyline([[x, y]], {
+          stroke: 'rgba(74, 144, 226, 0.3)', // Light blue, semi-translucent
+          strokeWidth: eraserRadius * 2,
+          fill: 'transparent',
+          selectable: false,
+          evented: false,
+          excludeFromExport: true,
+          strokeUniform: true,
+          strokeLineCap: 'round', // Round cap for smoother start
+          strokeLineJoin: 'round' // Round join for smoother corners
+        });
 
-        const objects = canvas.getObjects();
-        console.log('[Eraser] Objects on canvas:', objects.length, objects.map(o => ({ type: o.type, spaceId: o.spaceId })));
-        for (const obj of objects) {
-          // Only check objects from current space
-          const objSpaceId = obj.spaceId || null;
-          if (selectedSpaceIdRef.current !== null && objSpaceId !== selectedSpaceIdRef.current) {
-            continue;
-          }
-
-          // Skip invisible objects
-          if (!obj.visible) continue;
-
-          // Check if this is a highlight (always delete entirely)
-          const hasHighlightId = obj.highlightId != null;
-          const hasNeedsBICFlag = obj.needsBIC === true;
-          const isColoredHighlight = obj.type === 'rect' && (
-            (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
-            (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
-          );
-          const fillIsTransparent = !obj.fill || obj.fill === 'transparent' ||
-            (typeof obj.fill === 'string' && obj.fill === 'transparent');
-          const hasStroke = obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent';
-          const isNeedsBICHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
-          const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
-
-          // Use geometry-based hit testing for all object types
-          const hitTest = isPointOnObject(pointer, obj, eraserRadius);
-          console.log('[Eraser] Hit test for', obj.type, ':', hitTest);
-          if (hitTest) {
-            if (isHighlight) {
-              // Highlights take priority - select immediately
-              target = obj;
-              break;
-            } else {
-              // For non-highlights, track the closest one
-              const bounds = obj.getBoundingRect();
-              const centerX = bounds.left + bounds.width / 2;
-              const centerY = bounds.top + bounds.height / 2;
-              const distance = Math.sqrt(
-                Math.pow(pointer.x - centerX, 2) + Math.pow(pointer.y - centerY, 2)
-              );
-              if (distance < minDistance) {
-                minDistance = distance;
-                target = obj;
-              }
-            }
-          }
-        }
-
-        console.log('[Eraser] Target found:', target ? target.type : 'none');
-        if (target) {
-          // Check if this is a highlight
-          const hasHighlightId = target.highlightId != null;
-          const hasNeedsBICFlag = target.needsBIC === true;
-          const isColoredHighlight = target.type === 'rect' && (
-            (target.fill && typeof target.fill === 'string' && target.fill.includes('rgba')) ||
-            (target.fill && typeof target.fill === 'string' && target.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
-          );
-          const fillIsTransparent = !target.fill || target.fill === 'transparent' ||
-            (typeof target.fill === 'string' && target.fill === 'transparent');
-          const hasStroke = target.stroke && typeof target.stroke === 'string' && target.stroke !== 'transparent';
-          const isNeedsBICHighlight = target.type === 'rect' && fillIsTransparent && hasStroke;
-          const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
-
-          // Survey Highlights must always be deleted entirely regardless of mode
-          if (isHighlight) {
-            // Always delete highlights entirely
-            if (onHighlightDeletedRef.current) {
-              const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
-              const bounds = {
-                x: target.left / currentZoom,
-                y: target.top / currentZoom,
-                width: target.width / currentZoom,
-                height: target.height / currentZoom,
-                pageNumber
-              };
-              const highlightId = target.highlightId || null;
-
-              if (highlightId && renderedHighlightsRef.current.has(highlightId)) {
-                renderedHighlightsRef.current.delete(highlightId);
-              }
-
-              const highlightKey = highlightId || `${bounds.x}-${bounds.y}-${bounds.width}-${bounds.height}`;
-              processedHighlightsRef.current.delete(highlightKey);
-
-              canvas.discardActiveObject();
-              canvas.remove(target);
-              canvas.requestRenderAll();
-              saveCanvas();
-
-              if (onHighlightDeletedRef.current) {
-                onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
-              }
-            }
-            return;
-          }
-
-          // For non-highlight objects, check eraser mode
-          if (currentEraserMode === 'entire') {
-            // Entire mode: Remove object immediately on touch and set up for continuous drag erasing
-            canvas.remove(target);
-            canvas.discardActiveObject();
-            canvas.requestRenderAll();
-            saveCanvas();
-            // Enable continuous erasing during drag
-            isErasingRef.current = true;
-            eraserPathRef.current = {
-              target: null,
-              startX: x,
-              startY: y,
-              points: [{ x, y }]
-            };
-            // Create visual eraser stroke overlay
-            const eraserRadius = eraserSizeRef.current || 20;
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1827',message:'Creating eraser stroke visual - entire mode',data:{x,y,eraserRadius,strokeWidth:eraserRadius*2},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
-            const eraserStroke = new Polyline([[x, y]], {
-              stroke: 'rgba(74, 144, 226, 0.3)', // Light blue, semi-translucent
-              strokeWidth: eraserRadius * 2,
-              fill: 'transparent',
-              selectable: false,
-              evented: false,
-              excludeFromExport: true,
-              strokeUniform: true,
-              strokeLineCap: 'round',
-              strokeLineJoin: 'round'
-            });
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1840',message:'Eraser stroke created - entire mode - checking properties',data:{stroke:eraserStroke.stroke,strokeWidth:eraserStroke.strokeWidth,points:eraserStroke.points,visible:eraserStroke.visible,onCanvas:canvas.getObjects().includes(eraserStroke)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
-            canvas.add(eraserStroke);
-            // Bring eraser stroke to front so it's visible above other objects
-            canvas.bringToFront(eraserStroke);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1842',message:'Eraser stroke added to canvas - entire mode',data:{totalObjects:canvas.getObjects().length,eraserStrokeIndex:canvas.getObjects().indexOf(eraserStroke),zIndex:canvas.getObjects().indexOf(eraserStroke),isAtFront:canvas.getObjects()[canvas.getObjects().length-1]===eraserStroke},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix2',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
-            eraserStrokeVisualRef.current = eraserStroke;
-            canvas.requestRenderAll();
-          } else {
-            // Partial mode: Set up erasing state for drag-based erasing
-            isErasingRef.current = true;
-            canvas.discardActiveObject();
-            eraserPathRef.current = {
-              target: target,
-              startX: x,
-              startY: y,
-              points: [{ x, y }]
-            };
-            // Create visual eraser stroke overlay
-            const eraserRadius = eraserSizeRef.current || 20;
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1853',message:'Creating eraser stroke visual - partial mode',data:{x,y,eraserRadius,strokeWidth:eraserRadius*2},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
-            const eraserStroke = new Polyline([[x, y]], {
-              stroke: 'rgba(74, 144, 226, 0.3)', // Light blue, semi-translucent
-              strokeWidth: eraserRadius * 2,
-              fill: 'transparent',
-              selectable: false,
-              evented: false,
-              excludeFromExport: true,
-              strokeUniform: true,
-              strokeLineCap: 'round',
-              strokeLineJoin: 'round'
-            });
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1866',message:'Eraser stroke created - partial mode - checking properties',data:{stroke:eraserStroke.stroke,strokeWidth:eraserStroke.strokeWidth,points:eraserStroke.points,visible:eraserStroke.visible,onCanvas:canvas.getObjects().includes(eraserStroke)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
-            canvas.add(eraserStroke);
-            // Bring eraser stroke to front so it's visible above other objects
-            canvas.bringToFront(eraserStroke);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1868',message:'Eraser stroke added to canvas - partial mode',data:{totalObjects:canvas.getObjects().length,eraserStrokeIndex:canvas.getObjects().indexOf(eraserStroke),zIndex:canvas.getObjects().indexOf(eraserStroke),isAtFront:canvas.getObjects()[canvas.getObjects().length-1]===eraserStroke},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix2',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
-            eraserStrokeVisualRef.current = eraserStroke;
-            canvas.requestRenderAll();
-
-            // FEATURE: Single-click partial erase - immediately erase if clicking on a path
-            if (target.type === 'path') {
-              console.log('[Eraser] Calling erasePathSegment for single-click partial erase');
-              const wasErased = erasePathSegment(target, eraserPathRef.current, eraserSizeRef.current || 20, canvas);
-              console.log('[Eraser] erasePathSegment result:', wasErased);
-              if (wasErased) {
-                canvas.requestRenderAll();
-                saveCanvas();
-              }
-            }
-          }
-        } else {
-          // No target found, start erasing mode for drag-to-erase (both partial and entire modes)
-          isErasingRef.current = true;
-          eraserPathRef.current = {
-            target: null,
-            startX: x,
-            startY: y,
-            points: [{ x, y }]
-          };
-          // Create visual eraser stroke overlay
-          const eraserRadius = eraserSizeRef.current || 20;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1890',message:'Creating eraser stroke visual - no target',data:{x,y,eraserRadius,strokeWidth:eraserRadius*2},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
-          const eraserStroke = new Polyline([[x, y]], {
-            stroke: 'rgba(74, 144, 226, 0.3)', // Light blue, semi-translucent
-            strokeWidth: eraserRadius * 2,
-            fill: 'transparent',
-            selectable: false,
-            evented: false,
-            excludeFromExport: true,
-            strokeUniform: true,
-            strokeLineCap: 'round',
-            strokeLineJoin: 'round'
-          });
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1903',message:'Eraser stroke created - checking properties',data:{stroke:eraserStroke.stroke,strokeWidth:eraserStroke.strokeWidth,points:eraserStroke.points,visible:eraserStroke.visible,onCanvas:canvas.getObjects().includes(eraserStroke)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
-            canvas.add(eraserStroke);
-            // Bring eraser stroke to front so it's visible above other objects
-            canvas.bringToFront(eraserStroke);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1905',message:'Eraser stroke added to canvas',data:{totalObjects:canvas.getObjects().length,eraserStrokeIndex:canvas.getObjects().indexOf(eraserStroke),zIndex:canvas.getObjects().indexOf(eraserStroke),isAtFront:canvas.getObjects()[canvas.getObjects().length-1]===eraserStroke},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix2',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
-            eraserStrokeVisualRef.current = eraserStroke;
-            canvas.requestRenderAll();
-        }
+        canvas.add(eraserStroke);
+        // Bring eraser stroke to front so it's visible above other objects
+        canvas.bringToFront(eraserStroke);
+        eraserStrokeVisualRef.current = eraserStroke;
+        canvas.requestRenderAll();
         return;
       }
       if (currentTool === 'text') {
@@ -2046,107 +1840,12 @@ const PageAnnotationLayer = memo(({
       const currentTool = toolRef.current;
       const currentEraserMode = eraserModeRef.current;
 
-      // Handle continuous erasing in "entire" mode (remove any object touched during drag)
-      if (currentTool === 'eraser' && currentEraserMode === 'entire' && isErasingRef.current && eraserPathRef.current) {
-        const { x, y } = canvas.getPointer(opt.e);
-        const eraserRadius = eraserSizeRef.current || 20;
-        const pointer = { x, y };
-        
-        // Update visual eraser stroke overlay
-        if (eraserStrokeVisualRef.current) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2030',message:'Updating eraser stroke - entire mode',data:{x,y,hasVisual:!!eraserStrokeVisualRef.current,currentPoints:eraserStrokeVisualRef.current.get('points'),onCanvas:canvas.getObjects().includes(eraserStrokeVisualRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'G'})}).catch(()=>{});
-          // #endregion
-          const points = eraserStrokeVisualRef.current.get('points') || [];
-          // Fix: Use array format [x, y] to match Polyline's expected format, not object format {x, y}
-          points.push([x, y]);
-          eraserStrokeVisualRef.current.set({ points });
-          // Ensure eraser stroke stays on top
-          canvas.bringToFront(eraserStrokeVisualRef.current);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2034',message:'Eraser stroke updated - entire mode',data:{newPointsCount:eraserStrokeVisualRef.current.get('points').length,newPoints:eraserStrokeVisualRef.current.get('points'),isAtFront:canvas.getObjects()[canvas.getObjects().length-1]===eraserStrokeVisualRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix2',hypothesisId:'G'})}).catch(()=>{});
-          // #endregion
-        } else {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2030',message:'Eraser stroke visual ref is null - entire mode',data:{x,y,isErasing:isErasingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
-        }
-
-        // Find and remove any objects touched by the eraser
-        const objects = canvas.getObjects();
-        for (const obj of objects) {
-          // Skip if not from current space
-          const objSpaceId = obj.spaceId || null;
-          if (selectedSpaceIdRef.current !== null && objSpaceId !== selectedSpaceIdRef.current) {
-            continue;
-          }
-
-          // Skip invisible objects
-          if (!obj.visible) continue;
-
-          // Check if this is a highlight (handled separately)
-          const hasHighlightId = obj.highlightId != null;
-          const hasNeedsBICFlag = obj.needsBIC === true;
-          const isColoredHighlight = obj.type === 'rect' && (
-            (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
-            (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
-          );
-          const fillIsTransparent = !obj.fill || obj.fill === 'transparent' ||
-            (typeof obj.fill === 'string' && obj.fill === 'transparent');
-          const hasStroke = obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent';
-          const isNeedsBICHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
-          const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
-
-          // Use geometry-based hit testing to check if eraser touches this object
-          if (isPointOnObject(pointer, obj, eraserRadius)) {
-            if (isHighlight) {
-              // Handle highlight deletion (same logic as mousedown)
-              if (onHighlightDeletedRef.current) {
-                const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
-                const bounds = {
-                  x: obj.left / currentZoom,
-                  y: obj.top / currentZoom,
-                  width: obj.width / currentZoom,
-                  height: obj.height / currentZoom,
-                  pageNumber
-                };
-                const highlightId = obj.highlightId || null;
-
-                if (highlightId && renderedHighlightsRef.current.has(highlightId)) {
-                  renderedHighlightsRef.current.delete(highlightId);
-                }
-
-                const highlightKey = highlightId || `${bounds.x}-${bounds.y}-${bounds.width}-${bounds.height}`;
-                processedHighlightsRef.current.delete(highlightKey);
-
-                canvas.remove(obj);
-                canvas.requestRenderAll();
-                saveCanvas();
-
-                if (onHighlightDeletedRef.current) {
-                  onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
-                }
-              }
-            } else {
-              // Remove entire object
-              canvas.remove(obj);
-              canvas.requestRenderAll();
-              saveCanvas();
-            }
-          }
-        }
-        return;
-      }
-
-      // Handle partial erasing - OPTIMIZED: collect points during drag, apply on mouse up
-      if (currentTool === 'eraser' && currentEraserMode === 'partial' && isErasingRef.current && eraserPathRef.current) {
-        // #region agent log
-        const moveStartTime = performance.now();
-        // #endregion
+      // Handle eraser drag: collect points and update visual
+      if (currentTool === 'eraser' && isErasingRef.current && eraserPathRef.current) {
         const { x, y } = canvas.getPointer(opt.e);
         const eraserPath = eraserPathRef.current;
 
-        // Check minimum movement before adding point
+        // Check minimum movement before adding point to avoid excess points
         const lastPoint = eraserPath.points.length > 0 ? eraserPath.points[eraserPath.points.length - 1] : null;
         const MIN_MOVE_DIST = 2;
         if (lastPoint) {
@@ -2157,39 +1856,21 @@ const PageAnnotationLayer = memo(({
           }
         }
 
-        // Collect ALL points during drag (no sliding window - we need all for final clipPath)
+        // Add point
         eraserPath.points.push({ x, y });
-        const pointAddTime = performance.now();
-        const timeSinceLastMove = lastPoint ? (pointAddTime - (eraserPath.lastMoveTime || pointAddTime)) : 0;
-        eraserPath.lastMoveTime = pointAddTime;
-        console.log('[Eraser:Move] Point added, total:', eraserPath.points.length, 'pos:', { x: x.toFixed(1), y: y.toFixed(1) });
 
         // Update visual eraser stroke overlay
         if (eraserStrokeVisualRef.current) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2130',message:'Updating eraser stroke - partial mode',data:{x,y,hasVisual:!!eraserStrokeVisualRef.current,currentPoints:eraserStrokeVisualRef.current.get('points'),onCanvas:canvas.getObjects().includes(eraserStrokeVisualRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'G'})}).catch(()=>{});
-          // #endregion
           const points = eraserStrokeVisualRef.current.get('points') || [];
-          // Fix: Use array format [x, y] to match Polyline's expected format, not object format {x, y}
           points.push([x, y]);
           eraserStrokeVisualRef.current.set({ points });
           // Ensure eraser stroke stays on top
           canvas.bringToFront(eraserStrokeVisualRef.current);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2134',message:'Eraser stroke updated - partial mode',data:{newPointsCount:eraserStrokeVisualRef.current.get('points').length,newPoints:eraserStrokeVisualRef.current.get('points'),isAtFront:canvas.getObjects()[canvas.getObjects().length-1]===eraserStrokeVisualRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix2',hypothesisId:'G'})}).catch(()=>{});
-          // #endregion
-        } else {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2130',message:'Eraser stroke visual ref is null - partial mode',data:{x,y,isErasing:isErasingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
+          eraserStrokeVisualRef.current.setCoords();
         }
 
-        // Just request render to update eraser overlay visual - DON'T apply clipPath yet
-        const renderStart = performance.now();
+        // Just render to show the stroke; do NOT erase yet
         canvas.requestRenderAll();
-        const renderTime = performance.now() - renderStart;
-        console.log('[Eraser:Move] requestRenderAll took:', renderTime.toFixed(2), 'ms');
-        const totalMoveTime = performance.now() - moveStartTime;
         return;
       }
 
@@ -2221,27 +1902,26 @@ const PageAnnotationLayer = memo(({
       if (currentTool === 'eraser' && isErasingRef.current) {
         const eraserPath = eraserPathRef.current;
 
-        // Apply partial erasing on mouse up (optimized: only process once at end of stroke)
-        if (currentEraserMode === 'partial' && eraserPath && eraserPath.points.length > 0) {
-          // #region agent log
-          const mouseUpStartTime = performance.now();
-          // #endregion
+        // Apply deletion on mouse up
+        if (eraserPath && eraserPath.points.length > 0) {
           const eraserRadius = eraserSizeRef.current || 20;
           const objects = [...canvas.getObjects()];
           let needsRenderAndSave = false;
-          let objectsChecked = 0;
-          let pathsProcessed = 0;
-          let nonPathsProcessed = 0;
 
           for (const obj of objects) {
-            objectsChecked++;
+            // Skip eraser stroke itself
+            if (obj === eraserStrokeVisualRef.current) continue;
+
             // Skip if not from current space
             const objSpaceId = obj.spaceId || null;
             if (selectedSpaceIdRef.current !== null && objSpaceId !== selectedSpaceIdRef.current) {
               continue;
             }
 
-            // Skip highlights
+            // Skip highlights from partial logic if you want (or handle them if you want consistency)
+            // Original logic handled highlights separately. We can keep that or unify.
+            // For now, let's process them.
+
             const hasHighlightId = obj.highlightId != null;
             const hasNeedsBICFlag = obj.needsBIC === true;
             const isColoredHighlight = obj.type === 'rect' && (
@@ -2254,18 +1934,60 @@ const PageAnnotationLayer = memo(({
             const isNeedsBICHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
             const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
 
-            if (isHighlight) continue;
-
-            if (obj.type === 'path') {
-              pathsProcessed++;
-              const wasErased = erasePathSegment(obj, eraserPath, eraserRadius, canvas);
-              if (wasErased) needsRenderAndSave = true;
-            } else {
-              // For non-path objects, check if eraser touched them
-              nonPathsProcessed++;
-              const touchCheckStart = performance.now();
+            // Highlights are special: they are always fully deleted if touched
+            if (isHighlight) {
+              // Check if eraser touched it
               const isTouching = eraserPath.points.some(point => isPointOnObject(point, obj, eraserRadius));
-              const touchCheckTime = performance.now() - touchCheckStart;
+
+              if (isTouching) {
+                // Delete highlight
+                if (onHighlightDeletedRef.current) {
+                  const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
+                  const bounds = {
+                    x: obj.left / currentZoom,
+                    y: obj.top / currentZoom,
+                    width: obj.width / currentZoom,
+                    height: obj.height / currentZoom,
+                    pageNumber
+                  };
+                  const highlightId = obj.highlightId || null;
+
+                  if (highlightId && renderedHighlightsRef.current.has(highlightId)) {
+                    renderedHighlightsRef.current.delete(highlightId);
+                  }
+
+                  const highlightKey = highlightId || `${bounds.x}-${bounds.y}-${bounds.width}-${bounds.height}`;
+                  processedHighlightsRef.current.delete(highlightKey);
+
+                  canvas.remove(obj);
+                  needsRenderAndSave = true;
+
+                  onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
+                } else {
+                  canvas.remove(obj);
+                  needsRenderAndSave = true;
+                }
+              }
+              continue;
+            }
+
+            if (currentEraserMode === 'partial') {
+              if (obj.type === 'path') {
+                const wasErased = erasePathSegment(obj, eraserPath, eraserRadius, canvas);
+                if (wasErased) needsRenderAndSave = true;
+              } else {
+                // Non-paths in partial mode: remove if touched (fallback)
+                // Or should we ignore? Usually partial eraser on infinite objects (images/text) 
+                // might behave like eraser or be ignored. Let's assume remove-if-touched for now to match consistency.
+                const isTouching = eraserPath.points.some(point => isPointOnObject(point, obj, eraserRadius));
+                if (isTouching) {
+                  canvas.remove(obj);
+                  needsRenderAndSave = true;
+                }
+              }
+            } else {
+              // Entire mode: Remove object if touched
+              const isTouching = eraserPath.points.some(point => isPointOnObject(point, obj, eraserRadius));
               if (isTouching) {
                 canvas.remove(obj);
                 needsRenderAndSave = true;
@@ -2273,33 +1995,20 @@ const PageAnnotationLayer = memo(({
             }
           }
 
-          const mouseUpTime = performance.now() - mouseUpStartTime;
-
           if (needsRenderAndSave) {
-            const saveStart = performance.now();
             saveCanvas();
-            const saveTime = performance.now() - saveStart;
           }
         }
 
         // Remove visual eraser stroke overlay
         if (eraserStrokeVisualRef.current) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2227',message:'Removing eraser stroke visual',data:{pointsCount:eraserStrokeVisualRef.current.get('points')?.length,onCanvas:canvas.getObjects().includes(eraserStrokeVisualRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
           canvas.remove(eraserStrokeVisualRef.current);
           eraserStrokeVisualRef.current = null;
-        } else {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2227',message:'Eraser stroke visual already null on mouse up',data:{isErasing:isErasingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
         }
-        
+
         isErasingRef.current = false;
         eraserPathRef.current = null;
-        const finalRenderStart = performance.now();
         canvas.requestRenderAll();
-        const finalRenderTime = performance.now() - finalRenderStart;
         return;
       }
 
@@ -2623,13 +2332,13 @@ const PageAnnotationLayer = memo(({
           if (activeObject) {
             // Check if click is inside the bounding box (not just the geometry)
             const isOnSelectedBody = isPointInBoundingBox(pointer, activeObject);
-            
+
             if (isOnSelectedBody) {
               // Click is inside bounding box - keep selection
               return; // Don't deselect
             }
           }
-          
+
           // Clicked on empty space (outside bounding box) - deselect all
           canvas.discardActiveObject();
           canvas.requestRenderAll();
