@@ -12270,14 +12270,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, []);
 
   // Memoized styles for performance
+  // Memoized styles for performance
   const containerStyle = useMemo(() => {
     // Only show grab cursor when pan tool is active and region selection is not active
     const shouldShowGrabCursor = activeTool === 'pan' && !showRegionSelection;
 
+    // Determine cursor style
+    let cursorStyle = 'default';
+    if (activeTool === 'eraser' && eraserCursorPos.visible) {
+      cursorStyle = 'none'; // Hide native cursor for eraser
+    } else if (shouldShowGrabCursor) {
+      cursorStyle = isPanning ? 'grabbing' : (canPan ? 'grab' : 'default');
+    }
+
     return {
       flex: 1,
       overflow: 'auto',
-      cursor: shouldShowGrabCursor ? (isPanning ? 'grabbing' : (canPan ? 'grab' : 'default')) : 'default',
+      cursor: cursorStyle,
       background: '#2b2b2b',
       padding: '20px',
       position: 'relative',
@@ -12285,7 +12294,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       minHeight: 0,
       minWidth: 0
     };
-  }, [isPanning, canPan, activeTool, showRegionSelection]);
+  }, [isPanning, canPan, activeTool, showRegionSelection, eraserCursorPos.visible]);
 
   const contentStyle = useMemo(() => ({
     minWidth: 'max-content',
