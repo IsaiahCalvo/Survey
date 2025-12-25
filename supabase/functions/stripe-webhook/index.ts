@@ -340,8 +340,7 @@ async function handleSubscriptionDeleted(supabase: any, subscription: Stripe.Sub
                     user.user.email,
                     'Subscription Canceled',
                     {
-                        firstName: user.user.user_metadata?.firstName || user.user.user_metadata?.first_name,
-                        appUrl: 'http://localhost:5173'
+                        firstName: user.user.user_metadata?.firstName || user.user.user_metadata?.first_name
                     }
                 );
             }
@@ -368,9 +367,10 @@ async function handleTrialWillEnd(supabase: any, subscription: Stripe.Subscripti
             const daysLeft = Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
             // Create billing portal session
+            // Note: return_url should be updated to your actual landing page URL
             const portalSession = await stripe.billingPortal.sessions.create({
                 customer: userSubscription.stripe_customer_id || subscription.customer as string,
-                return_url: 'http://localhost:5173',
+                return_url: 'https://www.google.com', // Placeholder - update with your landing page
             });
 
             await sendEmail(
@@ -413,7 +413,7 @@ async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
             // Create billing portal session
             const portalSession = await stripe.billingPortal.sessions.create({
                 customer: invoice.customer as string,
-                return_url: 'http://localhost:5173',
+                return_url: 'https://www.google.com', // Placeholder
             });
 
             await sendEmail(
@@ -450,7 +450,7 @@ async function handlePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
             // Create billing portal session
             const portalSession = await stripe.billingPortal.sessions.create({
                 customer: invoice.customer as string,
-                return_url: 'http://localhost:5173',
+                return_url: 'https://www.google.com', // Placeholder
             });
 
             await sendEmail(

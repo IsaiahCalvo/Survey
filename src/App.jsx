@@ -13709,11 +13709,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         transformOrigin: 'center center',
                         boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
                       }}>
-                        {/* Zoom container - applies CSS transform for smooth zoom animation */}
-                        <div style={{
-                          ...zoomStyle,
-                          transformOrigin: 'top left',
-                        }}>
+                        {/* Zoom container - applies CSS transform for smooth cursor-centered zoom */}
+                        <div style={zoomStyle}>
                           <PDFPageCanvas
                             page={pageObjects[pageNum]}
                             scale={renderedScale}

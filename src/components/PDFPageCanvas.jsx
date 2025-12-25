@@ -1,16 +1,20 @@
 /**
  * PDFPageCanvas - PDF Page Renderer
  *
- * Renders a PDF page to canvas at the specified scale.
- * CSS transform zoom is handled at the parent container level
- * to keep canvas and annotation layers in sync.
+ * Renders a PDF page to canvas using double-buffering to prevent flicker.
+ * CSS transform zoom is handled at the parent container level.
+ *
+ * Anti-flicker technique (from react-pdf and professional viewers):
+ * - Render to off-screen canvas first
+ * - Only copy to visible canvas when render is complete
+ * - Old content stays visible until new content is ready
  */
 
 import React, { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { perfRender } from '../utils/performanceLogger';
 
-// Configuration
-const MAX_CONCURRENT_RENDERS = 3; // Global limit on simultaneous renders
+// Configuration - limit concurrent renders to prevent main thread blocking
+const MAX_CONCURRENT_RENDERS = 2;
 
 // Global render queue for limiting concurrent renders
 let activeRenderCount = 0;
@@ -18,7 +22,6 @@ const renderQueue = [];
 
 const processRenderQueue = () => {
   while (activeRenderCount < MAX_CONCURRENT_RENDERS && renderQueue.length > 0) {
-    // Sort by priority before taking next item
     renderQueue.sort((a, b) => a.priority - b.priority);
     const next = renderQueue.shift();
     if (next && next.execute) {
@@ -48,15 +51,15 @@ const PDFPageCanvas = ({
   scale,
   pageNum,
   isVisible = true,
-  priority = 2, // 0 = high, 1 = medium, 2 = low
+  priority = 2,
   onFinishRender
 }) => {
   const canvasRef = useRef(null);
+  const offscreenCanvasRef = useRef(null);
   const renderTaskRef = useRef(null);
   const lastRenderedScaleRef = useRef(null);
   const cancelQueueRef = useRef(null);
   const isMountedRef = useRef(true);
-  const [isRendering, setIsRendering] = useState(false);
   const [hasRendered, setHasRendered] = useState(false);
 
   // Cancel any ongoing render
@@ -75,11 +78,11 @@ const PDFPageCanvas = ({
     }
   }, []);
 
-  // Perform the actual canvas render
+  // Perform the actual canvas render using double-buffering
   const performRender = useCallback(async (targetScale) => {
     if (!page || !canvasRef.current || !isMountedRef.current) return;
 
-    const canvas = canvasRef.current;
+    const visibleCanvas = canvasRef.current;
     const pageLabel = pageNum || 'unknown';
 
     // Skip if already rendered at this scale
@@ -91,25 +94,31 @@ const PDFPageCanvas = ({
     cancelCurrentRender();
 
     perfRender.start(pageLabel);
-    setIsRendering(true);
 
     try {
       const viewport = page.getViewport({ scale: targetScale });
       const outputScale = window.devicePixelRatio || 1;
+      const width = Math.floor(viewport.width * outputScale);
+      const height = Math.floor(viewport.height * outputScale);
 
-      // Set canvas dimensions
-      canvas.width = Math.floor(viewport.width * outputScale);
-      canvas.height = Math.floor(viewport.height * outputScale);
-      canvas.style.width = `${Math.floor(viewport.width)}px`;
-      canvas.style.height = `${Math.floor(viewport.height)}px`;
+      // Create or reuse off-screen canvas for double-buffering
+      // This prevents flicker by rendering to hidden canvas first
+      if (!offscreenCanvasRef.current) {
+        offscreenCanvasRef.current = document.createElement('canvas');
+      }
+      const offscreen = offscreenCanvasRef.current;
+      offscreen.width = width;
+      offscreen.height = height;
 
-      const context = canvas.getContext('2d');
+      const context = offscreen.getContext('2d', {
+        alpha: false,  // Opaque for better performance
+        willReadFrequently: false  // GPU acceleration
+      });
       context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
-      context.clearRect(0, 0, canvas.width, canvas.height);
 
       perfRender.mark(pageLabel, 'Canvas prepared');
 
-      // Render the page
+      // Render to off-screen canvas
       renderTaskRef.current = page.render({
         canvasContext: context,
         viewport: viewport,
@@ -120,7 +129,16 @@ const PDFPageCanvas = ({
 
       if (!isMountedRef.current) return;
 
-      // Update last rendered scale
+      // Now copy to visible canvas (atomic operation - no flicker)
+      visibleCanvas.width = width;
+      visibleCanvas.height = height;
+      visibleCanvas.style.width = `${Math.floor(viewport.width)}px`;
+      visibleCanvas.style.height = `${Math.floor(viewport.height)}px`;
+
+      const visibleContext = visibleCanvas.getContext('2d');
+      visibleContext.drawImage(offscreen, 0, 0);
+
+      // Update state
       lastRenderedScaleRef.current = targetScale;
       setHasRendered(true);
 
@@ -133,10 +151,6 @@ const PDFPageCanvas = ({
       if (error.name !== 'RenderingCancelledException') {
         console.error('Error rendering page:', error);
       }
-    } finally {
-      if (isMountedRef.current) {
-        setIsRendering(false);
-      }
     }
   }, [page, pageNum, onFinishRender, cancelCurrentRender]);
 
@@ -145,19 +159,17 @@ const PDFPageCanvas = ({
     cancelQueueRef.current = enqueueRender(renderPriority, () => performRender(targetScale));
   }, [performRender]);
 
-  // Handle scale changes - re-render when scale changes
+  // Handle scale changes
   useEffect(() => {
     if (!page) return;
 
-    // Skip if already at this scale
     if (lastRenderedScaleRef.current === scale) {
       return;
     }
 
-    // Calculate render priority based on visibility
     const renderPriority = isVisible ? 0 : priority;
 
-    // Skip rendering if not visible and already has a render
+    // Skip non-visible pages that already have a render
     if (!isVisible && priority > 1 && hasRendered) {
       return;
     }
@@ -168,7 +180,7 @@ const PDFPageCanvas = ({
   // Initial render when becoming visible
   useEffect(() => {
     if (page && !hasRendered && isVisible) {
-      queueRender(scale, 0); // High priority for initial visible render
+      queueRender(scale, 0);
     }
   }, [page, isVisible, hasRendered, scale, queueRender]);
 
@@ -178,12 +190,12 @@ const PDFPageCanvas = ({
     return () => {
       isMountedRef.current = false;
       cancelCurrentRender();
+      offscreenCanvasRef.current = null;
     };
   }, [cancelCurrentRender]);
 
   if (!page) return null;
 
-  // Calculate display dimensions
   const viewport = page.getViewport({ scale });
 
   return (
@@ -201,7 +213,6 @@ const PDFPageCanvas = ({
           display: 'block',
         }}
       />
-      {/* Loading placeholder for initial render */}
       {!hasRendered && (
         <div
           style={{

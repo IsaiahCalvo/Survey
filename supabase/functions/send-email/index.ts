@@ -77,16 +77,11 @@ Deno.serve(async (req) => {
                     <ul>
                         <li>You've been moved to the Free plan</li>
                         <li>Your data is safe and secure</li>
-                        <li>You can reactivate anytime</li>
+                        <li>You can reactivate anytime from Account Settings in the app</li>
                     </ul>
-                    <p>We're sorry to see you go! If there's anything we could have done better, please let us know.</p>
-                    <div style="margin: 30px 0;">
-                        <a href="${data.appUrl}" style="background: #4A90E2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                            Back to App
-                        </a>
-                    </div>
-                    <p style="color: #666; font-size: 14px;">
-                        Want to come back? You can restart your subscription anytime!
+                    <p>We're sorry to see you go! If there's anything we could have done better, please let us know by replying to this email.</p>
+                    <p style="color: #666; font-size: 14px; margin-top: 30px;">
+                        Want to come back? Open Survey and go to Account Settings → Manage Subscription to reactivate.
                     </p>
                 </div>
             `,

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, memo } from 'react';
+import React, { useEffect, useRef, memo, useState, useCallback } from 'react';
 
 // Globally patch getContext BEFORE importing Fabric.js to prevent willReadFrequently warnings
 // This must happen before any canvas contexts are created by Fabric
@@ -760,6 +760,203 @@ const PageAnnotationLayer = memo(({
   // Rotation tracking for modifier-based rotation
   const rotationStateRef = useRef(null); // { object, startAngle, startPointer, center }
   const lastSavedAnnotationsRef = useRef(null); // Track last saved annotations to detect external updates (Undo/Redo)
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, type: 'annotation' | 'canvas', target: object }
+  // Clipboard for Cut/Copy/Paste - using Ref to persist across renders without triggering them
+  const clipboardRef = useRef(null);
+  // Edit Modal State
+  const [editModal, setEditModal] = useState(null); // { x, y, object }
+  const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1 });
+
+  // Helper to trigger save
+  const triggerSave = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+    onSaveAnnotations(pageNumber, canvasJSON);
+  }, [pageNumber, onSaveAnnotations]);
+
+  // Context Menu Handlers
+  const handleContextMenu = useCallback((e) => {
+    // Only show context menu if not in drawing mode or other active interaction
+    if (drawingStateRef.current.isDrawingShape || panInteractionTypeRef.current) {
+      return;
+    }
+
+    e.preventDefault();
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    // Get pointer position relative to canvas
+    const target = canvas.findTarget(e, false);
+
+    // If we clicked on an object, select it (if not already selected)
+    if (target) {
+      if (!canvas.getActiveObjects().includes(target)) {
+        canvas.setActiveObject(target);
+        canvas.requestRenderAll();
+      }
+
+      setContextMenu({
+        visible: true,
+        x: e.clientX,
+        y: e.clientY,
+        type: 'annotation',
+        target: target
+      });
+    } else {
+      // Empty space click - check if we have something to paste
+      setContextMenu({
+        visible: true,
+        x: e.clientX,
+        y: e.clientY,
+        type: 'canvas',
+        target: null
+      });
+    }
+  }, []);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  const closeEditModal = useCallback(() => {
+    setEditModal(null);
+  }, []);
+
+  // Action Handlers
+  const handleCut = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const activeObject = canvas.getActiveObject();
+    if (activeObject) {
+      activeObject.clone((cloned) => {
+        clipboardRef.current = cloned;
+      });
+      canvas.remove(...canvas.getActiveObjects());
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+      triggerSave();
+    }
+    closeContextMenu();
+  }, [triggerSave, closeContextMenu]);
+
+  const handleCopy = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const activeObject = canvas.getActiveObject();
+    if (activeObject) {
+      activeObject.clone((cloned) => {
+        clipboardRef.current = cloned;
+      });
+    }
+    closeContextMenu();
+  }, [closeContextMenu]);
+
+  const handlePaste = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || !clipboardRef.current) return;
+
+    clipboardRef.current.clone((cloned) => {
+      canvas.discardActiveObject();
+      cloned.set({
+        left: cloned.left + 10,
+        top: cloned.top + 10,
+        evented: true,
+      });
+      if (cloned.type === 'activeSelection') {
+        // Active selection needs special handling
+        cloned.canvas = canvas;
+        cloned.forEachObject((obj) => {
+          canvas.add(obj);
+        });
+        cloned.setCoords();
+      } else {
+        canvas.add(cloned);
+      }
+
+      // Select the pasted object
+      if (cloned.type === 'activeSelection') {
+        canvas.setActiveObject(cloned);
+      } else {
+        canvas.setActiveObject(cloned);
+      }
+
+      canvas.requestRenderAll();
+      triggerSave();
+    });
+    closeContextMenu();
+  }, [triggerSave, closeContextMenu]);
+
+  const handleGroup = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const activeObject = canvas.getActiveObject();
+    if (activeObject && activeObject.type === 'activeSelection') {
+      activeObject.toGroup();
+      canvas.requestRenderAll();
+      triggerSave();
+    }
+    closeContextMenu();
+  }, [triggerSave, closeContextMenu]);
+
+  const handleUngroup = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const activeObject = canvas.getActiveObject();
+    if (activeObject && activeObject.type === 'group') {
+      activeObject.toActiveSelection();
+      canvas.requestRenderAll();
+      triggerSave();
+    }
+    closeContextMenu();
+  }, [triggerSave, closeContextMenu]);
+
+  const handleEdit = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const activeObject = canvas.getActiveObject();
+
+    if (activeObject) {
+      // Get initial values from first object if selection
+      const target = activeObject.type === 'activeSelection' ? activeObject.getObjects()[0] : activeObject;
+
+      setEditValues({
+        stroke: target.stroke || '#000000',
+        strokeWidth: target.strokeWidth || 1
+      });
+
+      setEditModal({
+        visible: true,
+        x: contextMenu.x,
+        y: contextMenu.y,
+        object: activeObject
+      });
+    }
+    closeContextMenu();
+  }, [contextMenu, closeContextMenu]);
+
+  const saveEdit = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || !editModal) return;
+
+    const objects = editModal.object.type === 'activeSelection'
+      ? editModal.object.getObjects()
+      : [editModal.object];
+
+    objects.forEach(obj => {
+      obj.set({
+        stroke: editValues.stroke,
+        strokeWidth: parseInt(editValues.strokeWidth, 10)
+      });
+    });
+
+    canvas.requestRenderAll();
+    triggerSave();
+    closeEditModal();
+  }, [editModal, editValues, triggerSave, closeEditModal]);
+
 
   // Keep highlight callback refs in sync
   useEffect(() => {
@@ -2490,6 +2687,10 @@ const PageAnnotationLayer = memo(({
         return;
       }
 
+      // Context Menu Handlers - MOVED TO COMPONENT SCOPE
+      // (Lines removed from here to fix ReferenceError)
+
+
       if (activeObject) {
         const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
         const isOnAnyHandle = isPointOnAnyHandle(pointer, activeObject);
@@ -3076,6 +3277,11 @@ const PageAnnotationLayer = memo(({
 
   return (
     <div
+      onContextMenu={handleContextMenu}
+      onClick={() => {
+        if (contextMenu) closeContextMenu();
+        if (editModal) closeEditModal();
+      }}
       style={{
         position: 'absolute',
         top: 0,
@@ -3095,6 +3301,192 @@ const PageAnnotationLayer = memo(({
           cursor: (tool === 'pen' || tool === 'highlighter' || tool === 'highlight') ? 'crosshair' : 'default'
         }}
       />
+
+      {/* Context Menu */}
+      {contextMenu && contextMenu.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            background: '#ffffff',
+            border: '1px solid #e0e0e0',
+            borderRadius: '6px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 10000,
+            padding: '4px 0',
+            minWidth: '140px',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"'
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {contextMenu.type === 'annotation' && (
+            <>
+              <div
+                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+                onClick={handleCut}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Cut
+              </div>
+              <div
+                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+                onClick={handleCopy}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Copy
+              </div>
+            </>
+          )}
+
+          {/* Paste is available if clipboard has something */}
+          {clipboardRef.current && (
+            <div
+              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+              onClick={handlePaste}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              Paste
+            </div>
+          )}
+
+          {contextMenu.type === 'annotation' && (
+            <>
+              <div style={{ height: '1px', background: '#e0e0e0', margin: '4px 0' }} />
+
+              {/* Group/Ungroup */}
+              {contextMenu.target && contextMenu.target.type === 'activeSelection' && (
+                <div
+                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+                  onClick={handleGroup}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  Group
+                </div>
+              )}
+              {contextMenu.target && contextMenu.target.type === 'group' && (
+                <div
+                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+                  onClick={handleUngroup}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  Ungroup
+                </div>
+              )}
+
+              <div
+                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+                onClick={handleEdit}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Edit...
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editModal && editModal.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            top: editModal.y,
+            left: editModal.x,
+            background: '#ffffff',
+            border: '1px solid #e0e0e0',
+            borderRadius: '6px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 10001,
+            padding: '12px',
+            minWidth: '200px',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ marginBottom: '12px', fontSize: '14px', fontWeight: '500', color: '#333' }}>Edit Property</div>
+
+          <div style={{ marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Color</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="color"
+                value={editValues.stroke}
+                onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
+                style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
+              />
+              <input
+                type="text"
+                value={editValues.stroke}
+                onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
+                style={{
+                  width: '80px',
+                  height: '30px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  padding: '0 8px',
+                  fontSize: '12px',
+                  fontFamily: 'monospace'
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Line Weight</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="range"
+                min="1"
+                max="20"
+                step="1"
+                value={editValues.strokeWidth}
+                onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
+                style={{ flex: 1, cursor: 'pointer' }}
+              />
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={editValues.strokeWidth}
+                onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
+                style={{
+                  width: '50px',
+                  height: '30px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  padding: '0 4px',
+                  fontSize: '12px',
+                  textAlign: 'center'
+                }}
+              />
+              <span style={{ fontSize: '12px', color: '#666' }}>px</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <button
+              onClick={closeEditModal}
+              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', background: 'white', cursor: 'pointer', fontSize: '12px' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={saveEdit}
+              style={{ padding: '4px 8px', borderRadius: '4px', border: 'none', background: '#007bff', color: 'white', cursor: 'pointer', fontSize: '12px' }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }, (prevProps, nextProps) => {
