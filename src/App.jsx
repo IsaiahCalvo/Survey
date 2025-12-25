@@ -1299,15 +1299,16 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
         // Load PDF with recovery mode fallback
         let pdf;
         try {
+          // Clone buffer since PDF.js may detach it when transferring to worker
           const loadingTask = pdfjsLib.getDocument({
-            data: arrayBuffer,
+            data: arrayBuffer.slice(0),
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
           pdf = await loadingTask.promise;
         } catch (firstError) {
-          // Try recovery mode for potentially corrupt PDFs
+          // Try recovery mode for potentially corrupt PDFs with fresh buffer clone
           const recoveryTask = pdfjsLib.getDocument({
-            data: arrayBuffer,
+            data: arrayBuffer.slice(0),
             verbosity: pdfjsLib.VerbosityLevel.ERRORS,
             stopAtErrors: false,
             disableAutoFetch: true,
@@ -1782,15 +1783,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               });
               let pdfDoc;
               try {
+                // Clone buffer since PDF.js may detach it when transferring to worker
                 pdfDoc = await pdfjsLib.getDocument({
-                  data: arrayBuffer,
+                  data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS
                 }).promise;
               } catch (firstError) {
                 console.warn('Standard PDF load failed during upload, trying recovery mode:', firstError.message);
-                // Try recovery mode
+                // Try recovery mode with fresh buffer clone
                 pdfDoc = await pdfjsLib.getDocument({
-                  data: arrayBuffer,
+                  data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                   stopAtErrors: false,
                   disableAutoFetch: true,
@@ -1881,14 +1883,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               const arrayBuffer = await file.arrayBuffer();
               let pdfDoc;
               try {
+                // Clone buffer since PDF.js may detach it when transferring to worker
                 pdfDoc = await pdfjsLib.getDocument({
-                  data: arrayBuffer,
+                  data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS
                 }).promise;
               } catch (firstError) {
                 console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
+                // Try recovery mode with fresh buffer clone
                 pdfDoc = await pdfjsLib.getDocument({
-                  data: arrayBuffer,
+                  data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                   stopAtErrors: false,
                   disableAutoFetch: true,
@@ -2027,14 +2031,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             const arrayBuffer = await file.arrayBuffer();
             let pdfDoc;
             try {
+              // Clone buffer since PDF.js may detach it when transferring to worker
               pdfDoc = await pdfjsLib.getDocument({
-                data: arrayBuffer,
+                data: arrayBuffer.slice(0),
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS
               }).promise;
             } catch (firstError) {
               console.warn(`Standard PDF load failed for ${file.name}, trying recovery mode:`, firstError.message);
+              // Try recovery mode with fresh buffer clone
               pdfDoc = await pdfjsLib.getDocument({
-                data: arrayBuffer,
+                data: arrayBuffer.slice(0),
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                 stopAtErrors: false,
                 disableAutoFetch: true,
@@ -11174,8 +11180,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         let pdf;
         try {
           // First attempt: standard loading
+          // Clone buffer since PDF.js may detach it when transferring to worker
           const loadingTask = pdfjsLib.getDocument({
-            data: arrayBuffer,
+            data: arrayBuffer.slice(0),
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
           pdf = await loadingTask.promise;
@@ -11183,8 +11190,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
           // Second attempt: recovery mode with lenient options
           try {
+            // Use fresh buffer clone for recovery attempt
             const recoveryTask = pdfjsLib.getDocument({
-              data: arrayBuffer,
+              data: arrayBuffer.slice(0),
               verbosity: pdfjsLib.VerbosityLevel.ERRORS,
               stopAtErrors: false,
               disableAutoFetch: true,

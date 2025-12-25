@@ -1,53 +1,22 @@
-chunk-F2KOVKPX.js?v=20d15701:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-App.jsx:1766 Background Upload PDF Check: {name: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf', size: 25735711}
-App.jsx:11109 PDF load check: {size: 25735711, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
-App.jsx:11118 PDF Header Check: %PDF-
-App.jsx:11204 Error loading PDF: InvalidPDFException {message: 'Invalid Root reference.', name: 'InvalidPDFException'}
-loadPDF @ App.jsx:11204
-await in loadPDF (async)
-(anonymous) @ App.jsx:11211
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:11205 Error stack: Error
-    at BaseExceptionClosure (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:7056:44)
-    at Object.defineProperty.value (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:7059:16)
-    at __w_pdfjs_require__ (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24698:42)
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24971:26
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24982:13
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24984:11
-    at webpackUniversalModuleDefinition (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:6630:42)
-    at node_modules/pdfjs-dist/build/pdf.js (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:6639:7)
-    at __require2 (http://localhost:5173/node_modules/.vite/deps/chunk-F2KOVKPX.js?v=20d15701:28:50)
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24989:16
-loadPDF @ App.jsx:11205
-await in loadPDF (async)
-(anonymous) @ App.jsx:11211
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:1793 Error uploading file in background: InvalidPDFException {message: 'Invalid Root reference.', name: 'InvalidPDFException'}
-(anonymous) @ App.jsx:1793
+App.jsx:1779 Background Upload PDF Check: {name: 'report.pdf', size: 17434376}
+App.jsx:11159 PDF load check: {size: 17434376, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
+App.jsx:11168 PDF Header Check: %PDF-
+useDatabase.js:220 createDocument success, updating state with: {id: 'c9a29d23-ad2a-42f4-b839-446b534410e4', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'report.pdf', …}
+App.jsx:1817 Background upload completed for: report.pdf New Doc: {id: 'c9a29d23-ad2a-42f4-b839-446b534410e4', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'report.pdf', …}
+App.jsx:1779 Background Upload PDF Check: {name: 'temp.pdf', size: 801968}
+App.jsx:11159 PDF load check: {size: 801968, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
+App.jsx:11168 PDF Header Check: %PDF-
+useDatabase.js:220 createDocument success, updating state with: {id: '9a8068f5-e545-4075-bf7f-3baefca5e73d', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'temp.pdf', …}
+App.jsx:1817 Background upload completed for: temp.pdf New Doc: {id: '9a8068f5-e545-4075-bf7f-3baefca5e73d', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'temp.pdf', …}
+App.jsx:1779 Background Upload PDF Check: {name: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf', size: 25735711}
+App.jsx:11159 PDF load check: {size: 25735711, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
+App.jsx:11168 PDF Header Check: %PDF-
+main.jsx:24 Standard PDF load failed during upload, trying recovery mode: Invalid Root reference.
+console.warn @ main.jsx:24
+(anonymous) @ App.jsx:1790
 await in (anonymous) (async)
-handleUploadClick @ App.jsx:1798
+(anonymous) @ App.jsx:1801
+handleUploadClick @ App.jsx:1824
 await in handleUploadClick (async)
 callCallback2 @ chunk-DSUIPI7G.js:10563
 invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
@@ -65,3 +34,89 @@ dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay 
 dispatchEvent @ chunk-DSUIPI7G.js:12361
 dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
 Show 15 more frames
+App.jsx:1819 Error uploading file in background: TypeError: Cannot perform Construct on a detached ArrayBuffer
+    at new Uint8Array (<anonymous>)
+    at getDataProp (api.js:558:12)
+    at Object.getDocument (api.js:256:27)
+    at App.jsx:1792:41
+    at async Promise.all (:5173/index 1)
+    at async App.jsx:1803:43
+(anonymous) @ App.jsx:1819
+await in (anonymous) (async)
+handleUploadClick @ App.jsx:1824
+await in handleUploadClick (async)
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+main.jsx:24 Standard PDF load failed, trying recovery mode: Invalid Root reference.
+console.warn @ main.jsx:24
+loadPDF @ App.jsx:11183
+await in loadPDF (async)
+(anonymous) @ App.jsx:11282
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:11275 Error loading PDF: InvalidPDFException {message: 'Invalid Root reference.', name: 'InvalidPDFException'}
+loadPDF @ App.jsx:11275
+await in loadPDF (async)
+(anonymous) @ App.jsx:11282
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:11276 Error stack: Error
+    at BaseExceptionClosure (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:7056:44)
+    at Object.defineProperty.value (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:7059:16)
+    at __w_pdfjs_require__ (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24698:42)
+    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24971:26
+    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24982:13
+    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24984:11
+    at webpackUniversalModuleDefinition (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:6630:42)
+    at node_modules/pdfjs-dist/build/pdf.js (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:6639:7)
+    at __require2 (http://localhost:5173/node_modules/.vite/deps/chunk-F2KOVKPX.js?v=20d15701:28:50)
+    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24989:16
+loadPDF @ App.jsx:11276
+await in loadPDF (async)
+(anonymous) @ App.jsx:11282
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
