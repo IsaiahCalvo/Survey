@@ -11598,46 +11598,50 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const newScrollLeft = (oldScrollLeft + anchorX) * scaleFactor - anchorX;
     const newScrollTop = (oldScrollTop + anchorY) * scaleFactor - anchorY;
 
+    // Store zoom data for scroll adjustment
     zoomDataRef.current = {
       newScrollLeft,
       newScrollTop,
-      zoomScale: safeScale // Store for end timing
+      zoomScale: safeScale
     };
 
     isZoomingRef.current = true;
     scaleRef.current = safeScale;
-    setScale(safeScale);
 
-    const applyScrollAdjustment = () => {
+    // Apply scroll adjustment with optional clamping
+    const applyScrollAdjustment = (clamp = true) => {
       const currentContainer = containerRef.current;
       if (!currentContainer || !currentContainer.isConnected || !zoomDataRef.current) return;
 
       const data = zoomDataRef.current;
-      const currentRect = currentContainer.getBoundingClientRect();
 
-      const maxScrollLeft = Math.max(0, currentContainer.scrollWidth - currentRect.width);
-      const maxScrollTop = Math.max(0, currentContainer.scrollHeight - currentRect.height);
-
-      const finalLeft = Math.max(0, Math.min(data.newScrollLeft, maxScrollLeft));
-      const finalTop = Math.max(0, Math.min(data.newScrollTop, maxScrollTop));
-
-      currentContainer.scrollLeft = finalLeft;
-      currentContainer.scrollTop = finalTop;
-
-      zoomDataRef.current = null;
-      isZoomingRef.current = false;
+      if (clamp) {
+        // After re-render, clamp to valid scroll bounds
+        const currentRect = currentContainer.getBoundingClientRect();
+        const maxScrollLeft = Math.max(0, currentContainer.scrollWidth - currentRect.width);
+        const maxScrollTop = Math.max(0, currentContainer.scrollHeight - currentRect.height);
+        currentContainer.scrollLeft = Math.max(0, Math.min(data.newScrollLeft, maxScrollLeft));
+        currentContainer.scrollTop = Math.max(0, Math.min(data.newScrollTop, maxScrollTop));
+      } else {
+        // Before re-render, apply unclamped (will be corrected after layout)
+        currentContainer.scrollLeft = Math.max(0, data.newScrollLeft);
+        currentContainer.scrollTop = Math.max(0, data.newScrollTop);
+      }
     };
 
-    setTimeout(applyScrollAdjustment, 0);
-    setTimeout(applyScrollAdjustment, 16);
-    setTimeout(applyScrollAdjustment, 50);
-    setTimeout(() => {
-      applyScrollAdjustment();
-      // End zoom timing after all adjustments
-      perfZoom.end(safeScale);
-    }, 100);
+    // Trigger state update first (causes re-render with CSS transform)
+    setScale(safeScale);
+
+    // Apply scroll adjustment immediately after state update
+    // Use requestAnimationFrame for proper timing with browser paint
     requestAnimationFrame(() => {
-      requestAnimationFrame(applyScrollAdjustment);
+      applyScrollAdjustment(false); // Initial application
+      requestAnimationFrame(() => {
+        applyScrollAdjustment(true); // Final clamped application
+        zoomDataRef.current = null;
+        isZoomingRef.current = false;
+        perfZoom.end(safeScale);
+      });
     });
   }, [setScale]);
 
@@ -11887,24 +11891,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     controller.setScale(DEFAULT_ZOOM_PREFERENCES.manualScale);
   }, []);
 
-  // OPTIMIZED: Wheel handler with throttling
+  // OPTIMIZED: Wheel handler with smooth cursor-centered zoom
+  // Using smaller increments and minimal throttle for fluid feel
   const wheelTimerRef = useRef(null);
   const handleWheel = useCallback((e) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
 
+      // Minimal throttle (16ms = 1 frame) for smooth but not overwhelming updates
       if (wheelTimerRef.current) return;
-
       wheelTimerRef.current = setTimeout(() => {
         wheelTimerRef.current = null;
-      }, 50);
+      }, 16);
 
-      const deltaFactor = e.deltaY > 0 ? 0.9 : 1.1;
+      // Smaller zoom increments for smoother feel (5% instead of 10%)
+      const deltaFactor = e.deltaY > 0 ? 0.95 : 1.05;
       const currentScale = scaleRef.current || manualZoomScaleRef.current || 1.0;
       const nextScale = clampScale(currentScale * deltaFactor);
 
       if (Math.abs(nextScale - currentScale) > 0.0001) {
-        zoomControllerRef.current?.setScale(nextScale);
+        // Get cursor position relative to the container for centered zoom
+        const container = containerRef.current;
+        if (container) {
+          const rect = container.getBoundingClientRect();
+          const cursorX = e.clientX - rect.left;
+          const cursorY = e.clientY - rect.top;
+          zoomControllerRef.current?.setScale(nextScale, { anchor: { x: cursorX, y: cursorY } });
+        } else {
+          zoomControllerRef.current?.setScale(nextScale);
+        }
       }
     }
   }, []);

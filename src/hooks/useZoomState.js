@@ -5,14 +5,18 @@
  * Provides:
  * - Instant CSS transform for visual zoom feedback
  * - Debounced "rendered scale" for actual re-rendering
+ * - Cursor-centered zoom via dynamic transform origin
  * - Both layers stay in sync
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-const RENDER_DEBOUNCE_MS = 200;
+// Debounce for re-render after zoom settles
+// 150ms provides good balance: fast enough to feel responsive,
+// slow enough to batch rapid wheel events
+const RENDER_DEBOUNCE_MS = 150;
 
-export function useZoomState(targetScale) {
+export function useZoomState(targetScale, anchorPoint = null) {
   // The scale we've actually rendered at
   const [renderedScale, setRenderedScale] = useState(targetScale);
   const debounceRef = useRef(null);
@@ -67,11 +71,12 @@ export function useZoomState(targetScale) {
     isZooming,
     // Force immediate re-render
     forceRender,
-    // Style object to apply to container
+    // Style object to apply to container - INSTANT transform (no transition)
+    // Smoothness comes from debounced re-render + immediate scroll adjustment
+    // Using transition here causes visual disconnect with scroll adjustment
     zoomStyle: isZooming ? {
       transform: `scale(${cssScale})`,
       transformOrigin: 'top left',
-      transition: 'transform 150ms cubic-bezier(0.25, 0.1, 0.25, 1)',
       willChange: 'transform',
     } : {},
   };

@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
         console.log(`Sending ${template} email to ${to}`);
 
         const result = await resend.emails.send({
-            from: 'Survey App <onboarding@resend.dev>',
+            from: 'Survey <onboarding@resend.dev>',
             to: [to],
             subject: subject,
             html: html,
