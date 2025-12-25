@@ -1,21 +1,15 @@
 /**
- * PDFPageCanvas - Optimized PDF Page Renderer
+ * PDFPageCanvas - PDF Page Renderer
  *
- * Professional rendering optimizations:
- * 1. CSS transform for instant zoom feedback (GPU accelerated)
- * 2. Debounced high-quality re-rendering after zoom settles
- * 3. Keeps last render as placeholder during zoom animation
- * 4. Smooth transition animation hiding render latency
- * 5. Concurrent render limiting via queue
- * 6. Visibility-aware rendering (skip off-screen pages)
+ * Renders a PDF page to canvas at the specified scale.
+ * CSS transform zoom is handled at the parent container level
+ * to keep canvas and annotation layers in sync.
  */
 
 import React, { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { perfRender } from '../utils/performanceLogger';
 
 // Configuration
-const RENDER_DEBOUNCE_MS = 200; // Wait after zoom before re-rendering
-const ZOOM_TRANSITION_MS = 150; // CSS transition duration for smooth zoom
 const MAX_CONCURRENT_RENDERS = 3; // Global limit on simultaneous renders
 
 // Global render queue for limiting concurrent renders
@@ -60,12 +54,8 @@ const PDFPageCanvas = ({
   const canvasRef = useRef(null);
   const renderTaskRef = useRef(null);
   const lastRenderedScaleRef = useRef(null);
-  const debounceTimerRef = useRef(null);
   const cancelQueueRef = useRef(null);
   const isMountedRef = useRef(true);
-
-  // Track CSS scale for smooth zoom animation
-  const [cssScale, setCssScale] = useState(1);
   const [isRendering, setIsRendering] = useState(false);
   const [hasRendered, setHasRendered] = useState(false);
 
@@ -91,6 +81,11 @@ const PDFPageCanvas = ({
 
     const canvas = canvasRef.current;
     const pageLabel = pageNum || 'unknown';
+
+    // Skip if already rendered at this scale
+    if (lastRenderedScaleRef.current === targetScale) {
+      return;
+    }
 
     // Cancel any ongoing render first
     cancelCurrentRender();
@@ -125,9 +120,8 @@ const PDFPageCanvas = ({
 
       if (!isMountedRef.current) return;
 
-      // Update last rendered scale and reset CSS transform
+      // Update last rendered scale
       lastRenderedScaleRef.current = targetScale;
-      setCssScale(1);
       setHasRendered(true);
 
       perfRender.end(pageLabel);
@@ -151,45 +145,24 @@ const PDFPageCanvas = ({
     cancelQueueRef.current = enqueueRender(renderPriority, () => performRender(targetScale));
   }, [performRender]);
 
-  // Handle scale changes with CSS transform + debounced re-render
+  // Handle scale changes - re-render when scale changes
   useEffect(() => {
     if (!page) return;
 
-    // Clear any pending debounce
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    // If we have a previous render, use CSS transform for instant visual feedback
-    if (lastRenderedScaleRef.current && hasRendered) {
-      const newCssScale = scale / lastRenderedScaleRef.current;
-      setCssScale(newCssScale);
+    // Skip if already at this scale
+    if (lastRenderedScaleRef.current === scale) {
+      return;
     }
 
     // Calculate render priority based on visibility
     const renderPriority = isVisible ? 0 : priority;
 
-    // Skip rendering if not visible and low priority
+    // Skip rendering if not visible and already has a render
     if (!isVisible && priority > 1 && hasRendered) {
       return;
     }
 
-    // Debounce the actual high-quality render
-    const debounceTime = hasRendered ? RENDER_DEBOUNCE_MS : 0;
-
-    debounceTimerRef.current = setTimeout(() => {
-      // Only re-render if scale actually changed significantly
-      if (!lastRenderedScaleRef.current ||
-          Math.abs(scale - lastRenderedScaleRef.current) > 0.001) {
-        queueRender(scale, renderPriority);
-      }
-    }, debounceTime);
-
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
+    queueRender(scale, renderPriority);
   }, [page, scale, isVisible, priority, hasRendered, queueRender]);
 
   // Initial render when becoming visible
@@ -205,31 +178,20 @@ const PDFPageCanvas = ({
     return () => {
       isMountedRef.current = false;
       cancelCurrentRender();
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
     };
   }, [cancelCurrentRender]);
 
   if (!page) return null;
 
   // Calculate display dimensions
-  const baseScale = lastRenderedScaleRef.current || scale;
-  const viewport = page.getViewport({ scale: baseScale });
-  const displayWidth = Math.floor(viewport.width * cssScale);
-  const displayHeight = Math.floor(viewport.height * cssScale);
-
-  // Determine if we should show transition (only when CSS scaling)
-  const shouldTransition = cssScale !== 1 && hasRendered;
+  const viewport = page.getViewport({ scale });
 
   return (
     <div
       style={{
         position: 'relative',
-        width: `${displayWidth}px`,
-        height: `${displayHeight}px`,
-        overflow: 'hidden',
-        // Background placeholder while loading
+        width: `${Math.floor(viewport.width)}px`,
+        height: `${Math.floor(viewport.height)}px`,
         backgroundColor: hasRendered ? 'transparent' : '#f5f5f5',
       }}
     >
@@ -237,15 +199,6 @@ const PDFPageCanvas = ({
         ref={canvasRef}
         style={{
           display: 'block',
-          transformOrigin: 'top left',
-          transform: cssScale !== 1 ? `scale(${cssScale})` : 'none',
-          // Smooth transition for zoom animation
-          transition: shouldTransition
-            ? `transform ${ZOOM_TRANSITION_MS}ms cubic-bezier(0.25, 0.1, 0.25, 1)`
-            : 'none',
-          // GPU acceleration hints
-          willChange: shouldTransition ? 'transform' : 'auto',
-          backfaceVisibility: 'hidden',
         }}
       />
       {/* Loading placeholder for initial render */}
@@ -273,17 +226,12 @@ const PDFPageCanvas = ({
 
 PDFPageCanvas.displayName = 'PDFPageCanvas';
 
-// Optimized comparison - avoid re-renders for scale changes (handled internally)
+// Optimized comparison
 const arePropsEqual = (prevProps, nextProps) => {
-  // Re-render if page object changes
   if (prevProps.page !== nextProps.page) return false;
-  // Re-render if page number changes
   if (prevProps.pageNum !== nextProps.pageNum) return false;
-  // Re-render if visibility changes
   if (prevProps.isVisible !== nextProps.isVisible) return false;
-
-  // Scale changes trigger internal useEffect, not React re-render
-  // This is key to performance - we handle scale with CSS transform + debounce
+  if (Math.abs(prevProps.scale - nextProps.scale) > 0.001) return false;
   return true;
 };
 

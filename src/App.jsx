@@ -48,6 +48,7 @@ import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNot
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { supabase } from './supabaseClient';
 import { perfUpload, perfLoad, perfRender, perfZoom } from './utils/performanceLogger';
+import { useZoomState } from './hooks/useZoomState';
 
 // Set up the PDF.js worker
 // Set up the PDF.js worker
@@ -7907,6 +7908,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [manualZoomScale, setManualZoomScale] = useState(initialViewState?.scale || initialZoomPreferences.manualScale);
   const [zoomInputValue, setZoomInputValue] = useState(String(Math.round((initialViewState?.scale || initialZoomPreferences.manualScale) * 100)));
   const [isZoomMenuOpen, setIsZoomMenuOpen] = useState(false);
+
+  // Zoom state for coordinated CSS transform zoom (keeps canvas and annotations in sync)
+  const { renderedScale, cssScale, isZooming, zoomStyle } = useZoomState(scale);
   const [scrollMode, setScrollMode] = useState('continuous');
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -13536,65 +13540,71 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             transform: getPageTransform(pageNumber),
                             transformOrigin: 'center center'
                           }}>
-                            <PDFPageCanvas
-                              page={pageObjects[pageNumber]}
-                              scale={scale}
-                              pageNum={pageNumber}
-                              isVisible={visiblePagesSet.has(pageNumber)}
-                              priority={visiblePagesSet.has(pageNumber) ? 0 : (Math.abs(pageNumber - pageNum) <= 2 ? 1 : 2)}
-                              onFinishRender={() => {
-                                setRenderedPages(prev => new Set([...prev, pageNumber]));
-                              }}
-                            />
-                            {pageSizes[pageNumber] && pageObjects[pageNumber] && (
-                              <TextLayer
-                                pageNumber={pageNumber}
+                            {/* Zoom container - applies CSS transform for smooth zoom animation */}
+                            <div style={{
+                              ...zoomStyle,
+                              transformOrigin: 'top left',
+                            }}>
+                              <PDFPageCanvas
                                 page={pageObjects[pageNumber]}
-                                scale={scale}
-                                width={pageSizes[pageNumber].width}
-                                height={pageSizes[pageNumber].height}
-                                onTextSelected={handleTextSelected}
-                                isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
+                                scale={renderedScale}
+                                pageNum={pageNumber}
+                                isVisible={visiblePagesSet.has(pageNumber)}
+                                priority={visiblePagesSet.has(pageNumber) ? 0 : (Math.abs(pageNumber - pageNum) <= 2 ? 1 : 2)}
+                                onFinishRender={() => {
+                                  setRenderedPages(prev => new Set([...prev, pageNumber]));
+                                }}
                               />
-                            )}
-                            {/* Search Highlight Layer */}
-                            {pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
-                              <SearchHighlightLayer
-                                pageNumber={pageNumber}
-                                width={pageSizes[pageNumber].width}
-                                height={pageSizes[pageNumber].height}
-                                scale={scale}
-                                highlights={searchResultsByPage[pageNumber]}
-                                activeMatchId={currentMatch?.id}
-                                isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
-                              />
-                            )}
-                            {pageSizes[pageNumber] && (
-                              <PageAnnotationLayer
-                                pageNumber={pageNumber}
-                                width={pageSizes[pageNumber].width}
-                                height={pageSizes[pageNumber].height}
-                                scale={scale}
-                                tool={activeTool}
-                                strokeColor={strokeColor}
-                                strokeWidth={Number(strokeWidth) || 3}
-                                annotations={annotationsByPage[pageNumber]}
-                                onSaveAnnotations={handleSaveAnnotations}
-                                newHighlights={newHighlightsByPage[pageNumber]}
-                                highlightsToRemove={highlightsToRemoveByPage[pageNumber]}
-                                onHighlightCreated={handleHighlightCreated}
-                                onHighlightDeleted={handleHighlightDeleted}
-                                onHighlightClicked={handleHighlightClicked}
-                                selectedSpaceId={annotationSpaceId}
-                                selectedModuleId={selectedModuleId}
-                                selectedCategoryId={selectedCategoryId}
-                                activeRegions={pageRegions}
-                                eraserMode={eraserMode}
-                                eraserSize={eraserSize}
-                                showSurveyPanel={showSurveyPanel}
-                                layerVisibility={annotationLayerVisibility}
-                              />
-                            )}
+                              {pageSizes[pageNumber] && pageObjects[pageNumber] && (
+                                <TextLayer
+                                  pageNumber={pageNumber}
+                                  page={pageObjects[pageNumber]}
+                                  scale={renderedScale}
+                                  width={pageSizes[pageNumber].width}
+                                  height={pageSizes[pageNumber].height}
+                                  onTextSelected={handleTextSelected}
+                                  isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
+                                />
+                              )}
+                              {/* Search Highlight Layer */}
+                              {pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                                <SearchHighlightLayer
+                                  pageNumber={pageNumber}
+                                  width={pageSizes[pageNumber].width}
+                                  height={pageSizes[pageNumber].height}
+                                  scale={renderedScale}
+                                  highlights={searchResultsByPage[pageNumber]}
+                                  activeMatchId={currentMatch?.id}
+                                  isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
+                                />
+                              )}
+                              {pageSizes[pageNumber] && (
+                                <PageAnnotationLayer
+                                  pageNumber={pageNumber}
+                                  width={pageSizes[pageNumber].width}
+                                  height={pageSizes[pageNumber].height}
+                                  scale={renderedScale}
+                                  tool={activeTool}
+                                  strokeColor={strokeColor}
+                                  strokeWidth={Number(strokeWidth) || 3}
+                                  annotations={annotationsByPage[pageNumber]}
+                                  onSaveAnnotations={handleSaveAnnotations}
+                                  newHighlights={newHighlightsByPage[pageNumber]}
+                                  highlightsToRemove={highlightsToRemoveByPage[pageNumber]}
+                                  onHighlightCreated={handleHighlightCreated}
+                                  onHighlightDeleted={handleHighlightDeleted}
+                                  onHighlightClicked={handleHighlightClicked}
+                                  selectedSpaceId={annotationSpaceId}
+                                  selectedModuleId={selectedModuleId}
+                                  selectedCategoryId={selectedCategoryId}
+                                  activeRegions={pageRegions}
+                                  eraserMode={eraserMode}
+                                  eraserSize={eraserSize}
+                                  showSurveyPanel={showSurveyPanel}
+                                  layerVisibility={annotationLayerVisibility}
+                                />
+                              )}
+                            </div>
                             {/* Space Region Dimming Overlay */}
                             {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (
                               <SpaceRegionOverlay
@@ -13667,65 +13677,71 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         transformOrigin: 'center center',
                         boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
                       }}>
-                        <PDFPageCanvas
-                          page={pageObjects[pageNum]}
-                          scale={scale}
-                          pageNum={pageNum}
-                          isVisible={true}
-                          priority={0}
-                          onFinishRender={() => {
-                            setRenderedPages(prev => new Set([...prev, pageNum]));
-                          }}
-                        />
-                        {pageSizes[pageNum] && pageObjects[pageNum] && (
-                          <TextLayer
-                            pageNumber={pageNum}
+                        {/* Zoom container - applies CSS transform for smooth zoom animation */}
+                        <div style={{
+                          ...zoomStyle,
+                          transformOrigin: 'top left',
+                        }}>
+                          <PDFPageCanvas
                             page={pageObjects[pageNum]}
-                            scale={scale}
-                            width={pageSizes[pageNum].width}
-                            height={pageSizes[pageNum].height}
-                            onTextSelected={handleTextSelected}
-                            isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
+                            scale={renderedScale}
+                            pageNum={pageNum}
+                            isVisible={true}
+                            priority={0}
+                            onFinishRender={() => {
+                              setRenderedPages(prev => new Set([...prev, pageNum]));
+                            }}
                           />
-                        )}
-                        {/* Search Highlight Layer */}
-                        {pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
-                          <SearchHighlightLayer
-                            pageNumber={pageNum}
-                            width={pageSizes[pageNum].width}
-                            height={pageSizes[pageNum].height}
-                            scale={scale}
-                            highlights={searchResultsByPage[pageNum]}
-                            activeMatchId={currentMatch?.id}
-                            isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNum}
-                          />
-                        )}
-                        {pageSizes[pageNum] && (
-                          <PageAnnotationLayer
-                            pageNumber={pageNum}
-                            width={pageSizes[pageNum].width}
-                            height={pageSizes[pageNum].height}
-                            scale={scale}
-                            tool={activeTool}
-                            strokeColor={strokeColor}
-                            strokeWidth={Number(strokeWidth) || 3}
-                            annotations={annotationsByPage[pageNum]}
-                            onSaveAnnotations={handleSaveAnnotations}
-                            newHighlights={newHighlightsByPage[pageNum]}
-                            highlightsToRemove={highlightsToRemoveByPage[pageNum]}
-                            onHighlightCreated={handleHighlightCreated}
-                            onHighlightDeleted={handleHighlightDeleted}
-                            onHighlightClicked={handleHighlightClicked}
-                            selectedSpaceId={annotationSpaceId}
-                            selectedModuleId={selectedModuleId}
-                            selectedCategoryId={selectedCategoryId}
-                            activeRegions={pageRegions}
-                            eraserMode={eraserMode}
-                            eraserSize={eraserSize}
-                            showSurveyPanel={showSurveyPanel}
-                            layerVisibility={annotationLayerVisibility}
-                          />
-                        )}
+                          {pageSizes[pageNum] && pageObjects[pageNum] && (
+                            <TextLayer
+                              pageNumber={pageNum}
+                              page={pageObjects[pageNum]}
+                              scale={renderedScale}
+                              width={pageSizes[pageNum].width}
+                              height={pageSizes[pageNum].height}
+                              onTextSelected={handleTextSelected}
+                              isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
+                            />
+                          )}
+                          {/* Search Highlight Layer */}
+                          {pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
+                            <SearchHighlightLayer
+                              pageNumber={pageNum}
+                              width={pageSizes[pageNum].width}
+                              height={pageSizes[pageNum].height}
+                              scale={renderedScale}
+                              highlights={searchResultsByPage[pageNum]}
+                              activeMatchId={currentMatch?.id}
+                              isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNum}
+                            />
+                          )}
+                          {pageSizes[pageNum] && (
+                            <PageAnnotationLayer
+                              pageNumber={pageNum}
+                              width={pageSizes[pageNum].width}
+                              height={pageSizes[pageNum].height}
+                              scale={renderedScale}
+                              tool={activeTool}
+                              strokeColor={strokeColor}
+                              strokeWidth={Number(strokeWidth) || 3}
+                              annotations={annotationsByPage[pageNum]}
+                              onSaveAnnotations={handleSaveAnnotations}
+                              newHighlights={newHighlightsByPage[pageNum]}
+                              highlightsToRemove={highlightsToRemoveByPage[pageNum]}
+                              onHighlightCreated={handleHighlightCreated}
+                              onHighlightDeleted={handleHighlightDeleted}
+                              onHighlightClicked={handleHighlightClicked}
+                              selectedSpaceId={annotationSpaceId}
+                              selectedModuleId={selectedModuleId}
+                              selectedCategoryId={selectedCategoryId}
+                              activeRegions={pageRegions}
+                              eraserMode={eraserMode}
+                              eraserSize={eraserSize}
+                              showSurveyPanel={showSurveyPanel}
+                              layerVisibility={annotationLayerVisibility}
+                            />
+                          )}
+                        </div>
                         {/* Space Region Dimming Overlay */}
                         {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNum) && (
                           <SpaceRegionOverlay
@@ -13733,7 +13749,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             regions={pageRegions}
                             width={pageSizes[pageNum]?.width || 0}
                             height={pageSizes[pageNum]?.height || 0}
-                            scale={scale}
+                            scale={renderedScale}
                           />
                         )}
                         {/* Region Selection Overlay for this specific page */}
