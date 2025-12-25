@@ -7,7 +7,7 @@ import StripeCheckout from './StripeCheckout';
 import './AccountSettings.css';
 
 export const AccountSettings = ({ isOpen, onClose }) => {
-  const { user, updateProfile, updatePassword, signOut, signInWithGoogle } = useAuth();
+  const { user, updateProfile, updatePassword, signOut, signInWithGoogle, refreshSubscriptionTier } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -526,7 +526,35 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
             {activeTab === 'subscription' && (
               <section className="account-section">
-                <h3>Manage Subscription</h3>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <h3 style={{ margin: 0 }}>Manage Subscription</h3>
+                  <button
+                    onClick={async () => {
+                      console.log('Manual refresh triggered');
+                      fetchSubscription();
+                      // Also refresh the tier in AuthContext to update feature gates
+                      if (refreshSubscriptionTier) {
+                        await refreshSubscriptionTier();
+                      }
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      background: '#4A90E2',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    disabled={loadingSubscription}
+                  >
+                    <Icon name="refresh" size={14} />
+                    {loadingSubscription ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                </div>
 
                 {loadingSubscription ? (
                   <div style={{ textAlign: 'center', padding: '20px', color: '#888', fontSize: '13px' }}>
@@ -534,6 +562,28 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   </div>
                 ) : (
                   <>
+                    {/* Canceled Subscription Banner */}
+                    {subscription && subscription.tier === 'free' && subscription.status === 'canceled' && (
+                      <div style={{
+                        background: 'rgba(239, 68, 68, 0.08)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        borderRadius: '6px',
+                        padding: '10px 14px',
+                        marginBottom: '16px',
+                        fontSize: '12px',
+                        lineHeight: '1.5'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#ef4444' }}>
+                            ❌ Subscription Canceled
+                          </span>
+                          <span style={{ color: '#888', fontSize: '12px' }}>
+                            Your subscription has been canceled and you've been moved to the Free plan
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Consolidated Subscription Status Banner */}
                     {subscription && subscription.tier !== 'free' && (
                       <div style={{

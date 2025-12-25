@@ -14,7 +14,7 @@ if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype._wi
 }
 
 import { fabric as fabricLib } from 'fabric';
-const { Canvas, Rect, Circle, Line, Triangle, Textbox, PencilBrush, Polyline, Group, util, Path } = fabricLib;
+const { Canvas, Rect, Circle, Line, Triangle, Textbox, PencilBrush, Polyline, Group, Control, util, Path } = fabricLib;
 // Note: polygon-clipping removed - using clipPath-based erasing instead
 import { regionContainsPoint } from './utils/regionMath';
 import {
@@ -28,6 +28,74 @@ import { configureFabricOverrides } from './utils/fabricCustomization';
 
 // Apply custom Drawboard-style controls and selection visuals
 configureFabricOverrides();
+
+// Helper to create the Callout Group with custom controls
+const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
+  // Calculate initial knee (midpoint)
+  const midX = (start.x + end.x) / 2;
+  const midY = (start.y + end.y) / 2;
+
+  // Create Polyline (Tip -> Knee -> Box)
+  const line = new Polyline([
+    { x: start.x, y: start.y },
+    { x: midX, y: midY },
+    { x: end.x, y: end.y }
+  ], {
+    stroke: strokeColor,
+    strokeWidth: strokeWidth,
+    fill: null,
+    strokeLineCap: 'round',
+    strokeLineJoin: 'round',
+    objectCaching: false,
+    name: 'calloutLine',
+    originX: 'left',
+    originY: 'top' // Helps with point calculations
+  });
+
+  // Calculate Arrow Head Angle (Tip to Knee)
+  const angle = Math.atan2(midY - start.y, midX - start.x) * 180 / Math.PI;
+  const head = new Triangle({
+    left: start.x, // Initial pos, will be adjusted by group
+    top: start.y,
+    width: 12 + strokeWidth,
+    height: 12 + strokeWidth,
+    fill: strokeColor,
+    originX: 'center',
+    originY: 'center',
+    angle: angle + 90,
+    name: 'calloutHead'
+  });
+
+  // Create Textbox
+  const text = new Textbox('Text', {
+    left: end.x,
+    top: end.y,
+    fontSize: 16,
+    fill: strokeColor,
+    width: 100,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    name: 'calloutText',
+    originX: 'left',
+    originY: 'top'
+  });
+
+  // Create Grid
+  const group = new Group([line, head, text], {
+    subTargetCheck: true, // Allows selecting inner objects (handled by our custom logic potentially)
+    objectCaching: false,
+    hasControls: true,
+    hasBorders: true,
+    lockScalingX: true,
+    lockScalingY: true,
+    lockRotation: true,
+    padding: 10,
+    data: { type: 'callout' }
+  });
+
+  // TODO: Add custom controls here for independent movement
+
+  return group;
+};
 
 // Helper function to check if a point is within eraser radius of any point in eraser path
 const isPointNearEraserPath = (point, eraserPath, eraserRadius) => {
@@ -768,6 +836,7 @@ const PageAnnotationLayer = memo(({
   // Edit Modal State
   const [editModal, setEditModal] = useState(null); // { x, y, object }
   const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1 });
+  const editModalRef = useRef(null);
 
   // Helper to trigger save
   const triggerSave = useCallback(() => {
@@ -807,13 +876,15 @@ const PageAnnotationLayer = memo(({
       });
     } else {
       // Empty space click - check if we have something to paste
-      setContextMenu({
-        visible: true,
-        x: e.clientX,
-        y: e.clientY,
-        type: 'canvas',
-        target: null
-      });
+      if (clipboardRef.current) {
+        setContextMenu({
+          visible: true,
+          x: e.clientX,
+          y: e.clientY,
+          type: 'canvas',
+          target: null
+        });
+      }
     }
   }, []);
 
@@ -925,7 +996,13 @@ const PageAnnotationLayer = memo(({
       setEditValues({
         stroke: target.stroke || '#000000',
         strokeWidth: target.strokeWidth || 1,
-        opacity: target.opacity !== undefined ? target.opacity : 1
+        opacity: target.opacity !== undefined ? target.opacity : 1,
+        // Callout specific props
+        fill: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fill || '#000000') : (target.fill || 'transparent'),
+        fontSize: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontSize || 16) : 16,
+        fontWeight: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontWeight || 'normal') : 'normal',
+        fontStyle: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontStyle || 'normal') : 'normal',
+        textAlign: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.textAlign || 'left') : 'left'
       });
 
       // Capture initial state for revert
@@ -956,11 +1033,35 @@ const PageAnnotationLayer = memo(({
       : [editModal.object];
 
     objects.forEach(obj => {
-      obj.set({
-        stroke: editValues.stroke,
-        strokeWidth: parseInt(editValues.strokeWidth, 10),
-        opacity: parseFloat(editValues.opacity)
-      });
+      if (obj.data?.type === 'callout') {
+        // Apply to Callout parts
+        const line = obj.getObjects().find(o => o.name === 'calloutLine');
+        const head = obj.getObjects().find(o => o.name === 'calloutHead');
+        const text = obj.getObjects().find(o => o.name === 'calloutText');
+
+        if (line) {
+          line.set({ stroke: editValues.stroke, strokeWidth: parseInt(editValues.strokeWidth, 10) });
+        }
+        if (head) {
+          head.set({ fill: editValues.stroke }); // Arrow head matches line color
+        }
+        if (text) {
+          text.set({
+            fill: editValues.fill, // Text color
+            fontSize: parseInt(editValues.fontSize, 10),
+            fontWeight: editValues.fontWeight,
+            fontStyle: editValues.fontStyle,
+            textAlign: editValues.textAlign
+          });
+        }
+        obj.set({ opacity: parseFloat(editValues.opacity) });
+      } else {
+        obj.set({
+          stroke: editValues.stroke,
+          strokeWidth: parseInt(editValues.strokeWidth, 10),
+          opacity: parseFloat(editValues.opacity)
+        });
+      }
     });
 
     canvas.requestRenderAll();
@@ -983,11 +1084,27 @@ const PageAnnotationLayer = memo(({
     objects.forEach(obj => {
       // Don't modify if values are not valid numbers
       if (editValues.opacity >= 0 && editValues.opacity <= 1) {
-        obj.set({
-          stroke: editValues.stroke,
-          strokeWidth: parseInt(editValues.strokeWidth, 10),
-          opacity: parseFloat(editValues.opacity)
-        });
+        if (obj.data?.type === 'callout') {
+          const line = obj.getObjects().find(o => o.name === 'calloutLine');
+          const head = obj.getObjects().find(o => o.name === 'calloutHead');
+          const text = obj.getObjects().find(o => o.name === 'calloutText');
+          if (line) line.set({ stroke: editValues.stroke, strokeWidth: parseInt(editValues.strokeWidth, 10) });
+          if (head) head.set({ fill: editValues.stroke });
+          if (text) text.set({
+            fill: editValues.fill,
+            fontSize: parseInt(editValues.fontSize, 10),
+            fontWeight: editValues.fontWeight,
+            fontStyle: editValues.fontStyle,
+            textAlign: editValues.textAlign
+          });
+          obj.set({ opacity: parseFloat(editValues.opacity) });
+        } else {
+          obj.set({
+            stroke: editValues.stroke,
+            strokeWidth: parseInt(editValues.strokeWidth, 10),
+            opacity: parseFloat(editValues.opacity)
+          });
+        }
       }
     });
 
@@ -1011,8 +1128,61 @@ const PageAnnotationLayer = memo(({
     });
 
     if (canvas) canvas.requestRenderAll();
+    if (canvas) canvas.requestRenderAll();
     setEditModal(null);
   }, [editModal]);
+
+  // Click outside listener for Edit Modal
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Check if click is outside the modal
+      // We check for both mousedown (left/right start) and contextmenu
+      if (editModal && editModalRef.current && !editModalRef.current.contains(event.target)) {
+        // Also ensure we're not clicking on an annotation that might have triggered the context menu
+        // But generally, any click outside should dismiss
+        cancelEdit();
+      }
+    };
+
+    if (editModal) {
+      // Use capture phase to handle it before other handlers might swallow it
+      document.addEventListener('mousedown', handleClickOutside, true);
+      document.addEventListener('contextmenu', handleClickOutside, true);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside, true);
+      document.removeEventListener('contextmenu', handleClickOutside, true);
+    };
+  }, [editModal, cancelEdit]);
+
+
+  // Click outside listener for Edit Modal
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Check if click is outside the modal
+      if (editModal && editModalRef.current && !editModalRef.current.contains(event.target)) {
+        // Prevent context menu from opening if we are just dismissing the modal
+        event.stopPropagation();
+        // If it's a right click, we also want to prevent the default context menu
+        if (event.type === 'contextmenu') {
+          event.preventDefault();
+        }
+        cancelEdit();
+      }
+    };
+
+    if (editModal) {
+      // Use capture phase to handle it before other handlers might swallow it
+      document.addEventListener('mousedown', handleClickOutside, true);
+      document.addEventListener('contextmenu', handleClickOutside, true);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside, true);
+      document.removeEventListener('contextmenu', handleClickOutside, true);
+    };
+  }, [editModal, cancelEdit]);
 
 
   // Keep highlight callback refs in sync
@@ -2047,6 +2217,9 @@ const PageAnnotationLayer = memo(({
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'arrow') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
+      } else if (currentTool === 'callout') {
+        // Use a temporary Line for visual feedback during drag (same as arrow)
+        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'squiggly') {
         temp = new Polyline([[x, y]], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'note') {
@@ -2329,6 +2502,42 @@ const PageAnnotationLayer = memo(({
         }
         canvas.add(group);
         canvas.remove(ds.tempObj);
+      } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
+        const { x1, y1, x2, y2 } = ds.tempObj;
+
+        // Remove temp line
+        canvas.remove(ds.tempObj);
+
+        // Create the complex Callout Group
+        const group = createCalloutGroup(
+          { x: x1, y: y1 },
+          { x: x2, y: y2 },
+          currentStrokeColor,
+          strokeWidthRef.current,
+          canvas
+        );
+
+        // Store current selectedSpaceId on the group
+        if (selectedSpaceIdRef.current) {
+          group.set({ spaceId: selectedSpaceIdRef.current });
+        }
+        if (selectedModuleIdRef.current) {
+          group.set({ moduleId: selectedModuleIdRef.current });
+        }
+
+        canvas.add(group);
+        canvas.setActiveObject(group);
+
+        // Auto-focus the textbox
+        // Find the textbox inside the group
+        const textObj = group.getObjects().find(o => o.name === 'calloutText');
+        if (textObj) {
+          group.enterEditing(textObj); // Enter group editing
+          textObj.enterEditing();      // Enter text editing
+          textObj.selectAll();         // Select default text
+        }
+
+        canvas.requestRenderAll();
       }
       ds.isDrawingShape = false;
       ds.tempObj = null;
@@ -3453,6 +3662,7 @@ const PageAnnotationLayer = memo(({
       {/* Edit Modal */}
       {editModal && editModal.visible && (
         <div
+          ref={editModalRef}
           style={{
             position: 'fixed',
             top: editModal.y,

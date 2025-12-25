@@ -307,14 +307,26 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
 
 // Handle subscription deletion (cancellation)
 async function handleSubscriptionDeleted(supabase: any, subscription: Stripe.Subscription) {
+    console.log('=== handleSubscriptionDeleted START ===');
+    console.log('Stripe subscription ID:', subscription.id);
+
     // Get user email before deleting subscription info
-    const { data: userSubscription } = await supabase
+    const { data: userSubscription, error: fetchError } = await supabase
         .from('user_subscriptions')
-        .select('user_id')
+        .select('user_id, stripe_subscription_id, tier, status')
         .eq('stripe_subscription_id', subscription.id)
         .single();
 
-    const { error } = await supabase
+    console.log('Found user subscription:', userSubscription);
+    console.log('Fetch error:', fetchError);
+
+    if (!userSubscription) {
+        console.error('ERROR: No subscription found with stripe_subscription_id:', subscription.id);
+        console.log('=== handleSubscriptionDeleted END (no subscription found) ===');
+        return;
+    }
+
+    const { data: updatedData, error } = await supabase
         .from('user_subscriptions')
         .update({
             tier: 'free',
@@ -323,11 +335,15 @@ async function handleSubscriptionDeleted(supabase: any, subscription: Stripe.Sub
             stripe_price_id: null,
             trial_ends_at: null,
         })
-        .eq('stripe_subscription_id', subscription.id);
+        .eq('stripe_subscription_id', subscription.id)
+        .select();
 
     if (error) {
         console.error('Error handling subscription deletion:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
     } else {
+        console.log('Update result:', updatedData);
+        console.log('Number of rows updated:', updatedData?.length || 0);
         console.log(`Subscription canceled, downgraded to free tier`);
 
         // Send cancellation confirmation email
@@ -346,6 +362,7 @@ async function handleSubscriptionDeleted(supabase: any, subscription: Stripe.Sub
             }
         }
     }
+    console.log('=== handleSubscriptionDeleted END ===');
 }
 
 // Handle trial ending soon

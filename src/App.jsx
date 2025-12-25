@@ -14001,6 +14001,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'text' },
+                  { id: 'callout', label: 'Callout', iconName: 'callout' },
                   { id: 'note', label: 'Note', iconName: 'note' },
                   { id: 'underline', label: 'Underline', iconName: 'underline' },
                   { id: 'strikeout', label: 'Strikeout', iconName: 'strikeout' },
@@ -14152,7 +14153,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 const isActive = activeCategoryDropdown === 'review';
                 setActiveCategoryDropdown(isActive ? null : 'review');
                 if (!isActive) {
-                  if (!['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
+                  if (!['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
                     setActiveTool(lastReviewTool);
                   }
                 }
@@ -14162,7 +14163,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setTooltip({ visible: true, text: 'Review', x: rect.left + rect.width / 2, y: rect.top - 10 });
               }}
               onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-md ${activeCategoryDropdown === 'review' || ['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
+              className={`btn btn-md ${activeCategoryDropdown === 'review' || ['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Review"
             >
