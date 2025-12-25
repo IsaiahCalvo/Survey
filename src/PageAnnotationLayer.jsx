@@ -968,6 +968,52 @@ const PageAnnotationLayer = memo(({
     closeEditModal();
   }, [editModal, editValues, triggerSave, closeEditModal]);
 
+  // Live preview effect
+  useEffect(() => {
+    if (!editModal || !editModal.object) return;
+
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const objects = editModal.object.type === 'activeSelection'
+      ? editModal.object.getObjects()
+      : [editModal.object];
+
+    // Apply changes in real-time
+    objects.forEach(obj => {
+      // Don't modify if values are not valid numbers
+      if (editValues.opacity >= 0 && editValues.opacity <= 1) {
+        obj.set({
+          stroke: editValues.stroke,
+          strokeWidth: parseInt(editValues.strokeWidth, 10),
+          opacity: parseFloat(editValues.opacity)
+        });
+      }
+    });
+
+    canvas.requestRenderAll();
+  }, [editValues, editModal]);
+
+  const cancelEdit = useCallback(() => {
+    if (!editModal) return;
+    const canvas = fabricRef.current;
+
+    const objects = editModal.object.type === 'activeSelection'
+      ? editModal.object.getObjects()
+      : [editModal.object];
+
+    // Revert to initial states
+    objects.forEach((obj, index) => {
+      const state = editModal.initialStates ? editModal.initialStates[index] : null;
+      if (state) {
+        obj.set(state);
+      }
+    });
+
+    if (canvas) canvas.requestRenderAll();
+    setEditModal(null);
+  }, [editModal]);
+
 
   // Keep highlight callback refs in sync
   useEffect(() => {
