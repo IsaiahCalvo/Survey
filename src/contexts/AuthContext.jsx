@@ -15,10 +15,49 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [subscriptionTier, setSubscriptionTier] = useState('free');
+  const [loadingTier, setLoadingTier] = useState(true);
+
+  // Fetch subscription tier from database
+  const fetchSubscriptionTier = async (userId) => {
+    if (!userId || !isSupabaseAvailable()) {
+      setSubscriptionTier('free');
+      setLoadingTier(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .select('tier, status')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching subscription tier:', error);
+        setSubscriptionTier('free');
+      } else {
+        // Only allow Pro/Enterprise if subscription is active or trialing
+        const activeStatuses = ['active', 'trialing'];
+        if (activeStatuses.includes(data.status)) {
+          setSubscriptionTier(data.tier);
+        } else {
+          // Canceled, past_due, incomplete -> fall back to free
+          setSubscriptionTier('free');
+        }
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setSubscriptionTier('free');
+    } finally {
+      setLoadingTier(false);
+    }
+  };
 
   useEffect(() => {
     if (!isSupabaseAvailable()) {
       setLoading(false);
+      setLoadingTier(false);
       return;
     }
 
@@ -27,6 +66,13 @@ export const AuthProvider = ({ children }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      // Fetch subscription tier
+      if (session?.user) {
+        fetchSubscriptionTier(session.user.id);
+      } else {
+        setLoadingTier(false);
+      }
     });
 
     // Listen for auth changes
@@ -36,10 +82,31 @@ export const AuthProvider = ({ children }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      // Fetch subscription tier when user changes
+      if (session?.user) {
+        fetchSubscriptionTier(session.user.id);
+      } else {
+        setSubscriptionTier('free');
+        setLoadingTier(false);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Refetch subscription tier when window regains focus (user returns from Stripe)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (user?.id) {
+        console.log('Window focused, refetching subscription tier...');
+        fetchSubscriptionTier(user.id);
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user]);
 
   // Sign up with email and password
   const signUp = async (email, password, metadata = {}) => {
@@ -170,10 +237,17 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
+  // Refresh subscription tier (call after user returns from Stripe checkout)
+  const refreshSubscriptionTier = async () => {
+    if (user?.id) {
+      await fetchSubscriptionTier(user.id);
+    }
+  };
+
   const value = {
     user,
     session,
-    loading,
+    loading: loading || loadingTier,
     signUp,
     signIn,
     signInWithGoogle,
@@ -182,14 +256,16 @@ export const AuthProvider = ({ children }) => {
     resetPassword,
     updatePassword,
     updateProfile,
+    refreshSubscriptionTier,
     isAuthenticated: !!user,
     isSupabaseAvailable: isSupabaseAvailable(),
-    plan: user?.app_metadata?.plan || 'free',
+    plan: subscriptionTier,
+    tier: subscriptionTier,
     features: {
-      cloudSync: ['pro', 'enterprise'].includes(user?.app_metadata?.plan || 'free'),
-      advancedSurvey: ['pro', 'enterprise'].includes(user?.app_metadata?.plan || 'free'),
-      excelExport: ['pro', 'enterprise'].includes(user?.app_metadata?.plan || 'free'),
-      sso: (user?.app_metadata?.plan || 'free') === 'enterprise',
+      cloudSync: ['pro', 'enterprise'].includes(subscriptionTier),
+      advancedSurvey: ['pro', 'enterprise'].includes(subscriptionTier),
+      excelExport: ['pro', 'enterprise'].includes(subscriptionTier),
+      sso: subscriptionTier === 'enterprise',
     }
   };
 

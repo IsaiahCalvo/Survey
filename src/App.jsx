@@ -2342,6 +2342,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   };
 
   const handleSectionNavClick = (section, { resetProject = false, resetTemplate = false } = {}) => {
+    // Feature gate Templates section for Pro/Enterprise users
+    if (section === 'templates' && !features?.advancedSurvey) {
+      alert('Survey Templates are a Pro feature. Please upgrade to access Templates.');
+      return;
+    }
+
     if (section !== activeSection && isSelectionMode) {
       exitSelectionMode();
     }
@@ -4715,21 +4721,26 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             onClick={() => handleSectionNavClick('templates', { resetProject: true, resetTemplate: true })}
             style={{
               padding: '10px 16px',
-              cursor: 'pointer',
+              cursor: features?.advancedSurvey ? 'pointer' : 'not-allowed',
               display: 'flex',
               alignItems: 'center',
               gap: '12px',
               transition: 'background 0.2s',
               background: activeSection === 'templates' ? 'rgba(255,255,255,0.1)' : 'transparent',
-              borderLeft: activeSection === 'templates' ? '3px solid #4A90E2' : '3px solid transparent'
+              borderLeft: activeSection === 'templates' ? '3px solid #4A90E2' : '3px solid transparent',
+              opacity: features?.advancedSurvey ? 1 : 0.5
             }}
             onMouseEnter={(e) => e.currentTarget.style.background = activeSection === 'templates' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)'}
             onMouseLeave={(e) => e.currentTarget.style.background = activeSection === 'templates' ? 'rgba(255,255,255,0.1)' : 'transparent'}
+            title={!features?.advancedSurvey ? 'Pro feature - Upgrade to unlock' : ''}
           >
             <span style={navIconWrapperStyle}>
               <Icon name="template" size={20} color={activeSection === 'templates' ? '#4A90E2' : '#FFFFFF'} />
             </span>
-            <span style={navLabelStyle}>Templates</span>
+            <span style={navLabelStyle}>
+              Templates
+              {!features?.advancedSurvey && <Icon name="lock" size={12} style={{ marginLeft: '6px', display: 'inline' }} />}
+            </span>
           </div>
 
         </nav>
@@ -13349,9 +13360,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             <Icon name="redo" size={14} />
           </button>
 
-          {/* Survey Button */}
+          {/* Survey Button - Gated for Pro/Enterprise */}
           <button
             onClick={() => {
+              if (!features?.advancedSurvey) {
+                alert('Survey Templates are a Pro feature. Please upgrade to use this tool.');
+                return;
+              }
               if (!showSurveyPanel) {
                 // Show template selection modal
                 setShowTemplateSelection(true);
@@ -13373,11 +13388,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               transition: 'all 0.2s ease',
               background: showSurveyPanel ? 'rgba(74, 144, 226, 0.1)' : 'rgba(255, 255, 255, 0.05)',
               border: showSurveyPanel ? '1px solid #4A90E2' : '1px solid #555',
-              color: showSurveyPanel ? '#4A90E2' : '#FFF'
+              color: showSurveyPanel ? '#4A90E2' : '#FFF',
+              opacity: features?.advancedSurvey ? 1 : 0.6
             }}
+            title={!features?.advancedSurvey ? 'Pro feature - Upgrade to unlock' : ''}
           >
             <Icon name="survey" size={18} />
             Survey
+            {!features?.advancedSurvey && <Icon name="lock" size={12} />}
           </button>
         </div>
 

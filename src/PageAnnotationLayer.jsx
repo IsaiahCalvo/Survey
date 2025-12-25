@@ -767,7 +767,7 @@ const PageAnnotationLayer = memo(({
   const clipboardRef = useRef(null);
   // Edit Modal State
   const [editModal, setEditModal] = useState(null); // { x, y, object }
-  const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1 });
+  const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1 });
 
   // Helper to trigger save
   const triggerSave = useCallback(() => {
@@ -924,14 +924,24 @@ const PageAnnotationLayer = memo(({
 
       setEditValues({
         stroke: target.stroke || '#000000',
-        strokeWidth: target.strokeWidth || 1
+        strokeWidth: target.strokeWidth || 1,
+        opacity: target.opacity !== undefined ? target.opacity : 1
       });
+
+      // Capture initial state for revert
+      const objects = activeObject.type === 'activeSelection' ? activeObject.getObjects() : [activeObject];
+      const initialStates = objects.map(obj => ({
+        stroke: obj.stroke,
+        strokeWidth: obj.strokeWidth,
+        opacity: obj.opacity
+      }));
 
       setEditModal({
         visible: true,
         x: contextMenu.x,
         y: contextMenu.y,
-        object: activeObject
+        object: activeObject,
+        initialStates: initialStates
       });
     }
     closeContextMenu();
@@ -948,7 +958,8 @@ const PageAnnotationLayer = memo(({
     objects.forEach(obj => {
       obj.set({
         stroke: editValues.stroke,
-        strokeWidth: parseInt(editValues.strokeWidth, 10)
+        strokeWidth: parseInt(editValues.strokeWidth, 10),
+        opacity: parseFloat(editValues.opacity)
       });
     });
 
@@ -3445,7 +3456,7 @@ const PageAnnotationLayer = memo(({
               <input
                 type="range"
                 min="1"
-                max="20"
+                max="50"
                 step="1"
                 value={editValues.strokeWidth}
                 onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
@@ -3454,7 +3465,7 @@ const PageAnnotationLayer = memo(({
               <input
                 type="number"
                 min="1"
-                max="20"
+                max="50"
                 value={editValues.strokeWidth}
                 onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
                 style={{
@@ -3471,9 +3482,46 @@ const PageAnnotationLayer = memo(({
             </div>
           </div>
 
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Opacity</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={Math.round((editValues.opacity !== undefined ? editValues.opacity : 1) * 100)}
+                onChange={(e) => setEditValues(prev => ({ ...prev, opacity: parseFloat(e.target.value) / 100 }))}
+                style={{ flex: 1, cursor: 'pointer' }}
+              />
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={Math.round((editValues.opacity !== undefined ? editValues.opacity : 1) * 100)}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  if (!isNaN(val)) {
+                    setEditValues(prev => ({ ...prev, opacity: Math.min(100, Math.max(0, val)) / 100 }));
+                  }
+                }}
+                style={{
+                  width: '50px',
+                  height: '30px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  padding: '0 4px',
+                  fontSize: '12px',
+                  textAlign: 'center'
+                }}
+              />
+              <span style={{ fontSize: '12px', color: '#666' }}>%</span>
+            </div>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
             <button
-              onClick={closeEditModal}
+              onClick={cancelEdit}
               style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', background: 'white', cursor: 'pointer', fontSize: '12px' }}
             >
               Cancel
