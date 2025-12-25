@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, memo } from 'react';
+import { perfRender } from '../utils/performanceLogger';
 
-const PDFPageCanvas = ({ page, scale, onFinishRender }) => {
+const PDFPageCanvas = ({ page, scale, pageNum, onFinishRender }) => {
     const canvasRef = useRef(null);
     const renderTaskRef = useRef(null);
 
@@ -9,6 +10,9 @@ const PDFPageCanvas = ({ page, scale, onFinishRender }) => {
 
         const canvas = canvasRef.current;
         if (!canvas) return;
+
+        const pageLabel = pageNum || 'unknown';
+        perfRender.start(pageLabel);
 
         const viewport = page.getViewport({ scale });
         const outputScale = window.devicePixelRatio || 1;
@@ -32,6 +36,8 @@ const PDFPageCanvas = ({ page, scale, onFinishRender }) => {
         // Clear canvas
         context.clearRect(0, 0, canvas.width, canvas.height);
 
+        perfRender.mark(pageLabel, 'Canvas prepared');
+
         // Render the page
         // Disable annotation rendering - we import editable annotations as Fabric.js objects
         // AnnotationMode: 0 = DISABLE, 1 = ENABLE, 2 = ENABLE_FORMS, 3 = ENABLE_STORAGE
@@ -43,6 +49,7 @@ const PDFPageCanvas = ({ page, scale, onFinishRender }) => {
 
         renderTaskRef.current.promise
             .then(() => {
+                perfRender.end(pageLabel);
                 if (onFinishRender) {
                     onFinishRender();
                 }
