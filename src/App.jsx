@@ -11294,6 +11294,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         perfLoad.end(docName);
         setIsLoadingPDF(false);
 
+        // Pre-mount first 5 pages for faster initial scrolling
+        const initialPages = new Set();
+        for (let i = 1; i <= Math.min(5, pdf.numPages); i++) {
+          initialPages.add(i);
+        }
+        setMountedPages(initialPages);
+        setVisiblePagesSet(new Set([1])); // Mark page 1 as visible for priority rendering
+
       } catch (error) {
         perfLoad.end(docName);
         console.error('Error loading PDF:', error);
@@ -13604,37 +13612,37 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   layerVisibility={annotationLayerVisibility}
                                 />
                               )}
-                            </div>
-                            {/* Space Region Dimming Overlay */}
-                            {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (
-                              <SpaceRegionOverlay
-                                pageNumber={pageNumber}
-                                regions={pageRegions}
-                                width={pageSizes[pageNumber]?.width || 0}
-                                height={pageSizes[pageNumber]?.height || 0}
-                                scale={scale}
-                              />
-                            )}
-                            {/* Region Selection Overlay for this specific page */}
-                            {showRegionSelection && regionSelectionPage === pageNumber && (
-                              <div style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                width: `${(pageSizes[pageNumber]?.width || 0) * scale}px`,
-                                height: `${(pageSizes[pageNumber]?.height || 0) * scale}px`,
-                                pointerEvents: 'none',
-                                zIndex: 1000
-                              }}>
-                                <div id="region-selection-target" style={{
+                              {/* Space Region Dimming Overlay */}
+                              {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (
+                                <SpaceRegionOverlay
+                                  pageNumber={pageNumber}
+                                  regions={pageRegions}
+                                  width={pageSizes[pageNumber]?.width || 0}
+                                  height={pageSizes[pageNumber]?.height || 0}
+                                  scale={renderedScale}
+                                />
+                              )}
+                              {/* Region Selection Overlay for this specific page */}
+                              {showRegionSelection && regionSelectionPage === pageNumber && (
+                                <div style={{
                                   position: 'absolute',
                                   top: 0,
                                   left: 0,
-                                  width: '100%',
-                                  height: '100%'
-                                }} />
-                              </div>
-                            )}
+                                  width: `${(pageSizes[pageNumber]?.width || 0) * renderedScale}px`,
+                                  height: `${(pageSizes[pageNumber]?.height || 0) * renderedScale}px`,
+                                  pointerEvents: 'none',
+                                  zIndex: 1000
+                                }}>
+                                  <div id="region-selection-target" style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: '100%'
+                                  }} />
+                                </div>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           /* Lightweight placeholder for unmounted pages */
@@ -19994,6 +20002,8 @@ export default function App() {
   const HOME_TAB_ID = 'home-tab';
   const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }
   const [activeTabId, setActiveTabId] = useState(HOME_TAB_ID);
+  // Track PDFs that are currently being opened to prevent duplicate opens
+  const openingPdfsRef = useRef(new Set());
 
   // Template management state
   const [appTemplates, setAppTemplates] = useState([]);
@@ -20049,6 +20059,15 @@ export default function App() {
       return;
     }
 
+    // Create a unique key for this PDF (name + size + path)
+    const pdfKey = `${file.name}-${file.size}-${filePath || ''}`;
+
+    // Check if this PDF is already being opened (prevents duplicate opens when app is slow)
+    if (openingPdfsRef.current.has(pdfKey)) {
+      console.log('PDF is already being opened, ignoring duplicate request:', file.name);
+      return;
+    }
+
     // Check if this file is already open in a tab (excluding home tab)
     const existingTab = tabs.find(tab => {
       // Compare by name and size for uniqueness, and make sure it's not the home tab
@@ -20064,6 +20083,8 @@ export default function App() {
 
     if (existingTab) {
       console.log('Switching to existing tab:', existingTab.id);
+      // Clear the opening flag in case it was set (shouldn't happen, but just in case)
+      openingPdfsRef.current.delete(pdfKey);
       // Switch to existing tab
       setActiveTabId(existingTab.id);
       if (selectedPDF !== existingTab.file) {
@@ -20072,6 +20093,9 @@ export default function App() {
       setCurrentView('viewer');
       return;
     }
+
+    // Mark this PDF as being opened
+    openingPdfsRef.current.add(pdfKey);
 
     // Create new tab
     const newTab = {
@@ -20088,8 +20112,13 @@ export default function App() {
     setSelectedPDF(file);
     setCurrentView('viewer');
     setIsLoading(true);
-    // Reset loading after a short delay
-    setTimeout(() => setIsLoading(false), 100);
+    
+    // Clear the opening flag after a short delay to allow the tab to be created
+    // This ensures that if the same PDF is clicked again, it will find the existing tab
+    setTimeout(() => {
+      openingPdfsRef.current.delete(pdfKey);
+      setIsLoading(false);
+    }, 100);
   };
 
   const handleTabClick = (tabId) => {
