@@ -47,6 +47,7 @@ import SearchHighlightLayer from './components/SearchHighlightLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { supabase } from './supabaseClient';
+import { perfUpload, perfLoad, perfRender, perfZoom } from './utils/performanceLogger';
 
 // Set up the PDF.js worker
 // Set up the PDF.js worker
@@ -1726,12 +1727,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     // In Electron, use dialog to get file path
     if (window.electronAPI && window.electronAPI.openFile) {
       try {
+        perfUpload.start('electron-dialog');
         const result = await window.electronAPI.openFile({
           title: 'Open PDF Document',
           filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
         });
+        perfUpload.mark('electron-dialog', 'Dialog closed');
 
         if (result.canceled) {
+          perfUpload.end('electron-dialog');
           return;
         }
 
@@ -1742,10 +1746,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         }
 
         // Create File object
+        perfUpload.mark('electron-dialog', 'Creating File object');
         const fileData = new Uint8Array(result.data);
         const file = new File([fileData], result.fileName, { type: 'application/pdf' });
         // Store the file path separately (File.path is read-only)
         const filePath = result.filePath;
+        perfUpload.mark('electron-dialog', 'File object created');
+        perfUpload.end('electron-dialog');
+
+        // Start upload timing for this specific file
+        perfUpload.start(file.name);
 
         // Determine Project ID
         let projectId = null;
@@ -1773,10 +1783,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         // Background Upload Process
         (async () => {
           try {
+            perfUpload.mark(file.name, 'Starting cloud upload');
             // Upload file to Supabase Storage
             const uploadPromise = uploadToStorage(file, projectId || 'general');
             const pageCountPromise = (async () => {
               const arrayBuffer = await file.arrayBuffer();
+              perfUpload.mark(file.name, 'ArrayBuffer ready for page count');
               console.log('Background Upload PDF Check:', {
                 name: file.name,
                 size: arrayBuffer.byteLength
@@ -1803,6 +1815,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             })();
 
             const [filePath, pageCount] = await Promise.all([uploadPromise, pageCountPromise]);
+            perfUpload.mark(file.name, 'Cloud upload + page count complete');
 
             // Create document record in Supabase
             const newDoc = await createSupabaseDocument({
@@ -1812,12 +1825,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               page_count: pageCount,
               project_id: projectId || null
             });
+            perfUpload.mark(file.name, 'Database record created');
 
             // Refresh global document list to update counts
             refetchAllDocuments();
 
+            perfUpload.end(file.name);
             console.log('Background upload completed for:', file.name, 'New Doc:', newDoc);
           } catch (err) {
+            perfUpload.end(file.name);
             console.error('Error uploading file in background:', err);
             // Remove temp document from list since upload failed
             setDocuments(prev => prev.filter(d => !(d.id === tempDoc.id)));
