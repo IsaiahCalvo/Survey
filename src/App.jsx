@@ -7910,7 +7910,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [isZoomMenuOpen, setIsZoomMenuOpen] = useState(false);
 
   // Zoom state for coordinated CSS transform zoom (keeps canvas and annotations in sync)
-  const { renderedScale, cssScale, isZooming, zoomStyle } = useZoomState(scale);
+  // Using technique from Mozilla pdf.js and Adobe Acrobat for smooth cursor-centered zoom
+  const { renderedScale, cssScale, isZooming, zoomStyle, setAnchor } = useZoomState(scale);
   const [scrollMode, setScrollMode] = useState('continuous');
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -11565,6 +11566,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     goToPage(pageNum + 1, { fallback: 'next' });
   }, [goToPage, pageNum]);
 
+  /**
+   * Cursor-centered zoom implementation based on Mozilla pdf.js and Adobe Acrobat technique.
+   *
+   * Key insight: Transform origin should be relative to CONTENT (cursor + scroll),
+   * not relative to viewport. This makes the point under cursor stay fixed during zoom.
+   *
+   * Formula from pdf.js pinch zoom:
+   * - transformOrigin = cursorX + scrollLeft, cursorY + scrollTop
+   * - After zoom: scrollLeft += cursorX * (scaleFactor - 1)
+   */
   const setScaleWithViewportPreservation = useCallback((incomingScale, options = {}) => {
     const container = containerRef.current;
     const previousScale = scaleRef.current || 1.0;
@@ -11588,62 +11599,50 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     const rect = container.getBoundingClientRect();
     const anchor = options.anchor || {};
-    const anchorX = typeof anchor.x === 'number' ? anchor.x : rect.width / 2;
-    const anchorY = typeof anchor.y === 'number' ? anchor.y : rect.height / 2;
-    const oldScrollLeft = container.scrollLeft;
-    const oldScrollTop = container.scrollTop;
-    const safePreviousScale = previousScale || 1.0;
-    const scaleFactor = safeScale / safePreviousScale;
 
-    const newScrollLeft = (oldScrollLeft + anchorX) * scaleFactor - anchorX;
-    const newScrollTop = (oldScrollTop + anchorY) * scaleFactor - anchorY;
+    // Cursor position relative to viewport (or center if not specified)
+    const cursorX = typeof anchor.x === 'number' ? anchor.x : rect.width / 2;
+    const cursorY = typeof anchor.y === 'number' ? anchor.y : rect.height / 2;
 
-    // Store zoom data for scroll adjustment
-    zoomDataRef.current = {
-      newScrollLeft,
-      newScrollTop,
-      zoomScale: safeScale
-    };
+    // Calculate transform origin relative to CONTENT (cursor + scroll offset)
+    // This is the key formula from pdf.js for cursor-centered zoom
+    const originX = cursorX + container.scrollLeft;
+    const originY = cursorY + container.scrollTop;
+
+    const scaleFactor = safeScale / previousScale;
+
+    // Set the zoom anchor for CSS transform origin
+    // This makes the CSS transform scale around the cursor position
+    setAnchor({ x: originX, y: originY });
 
     isZoomingRef.current = true;
     scaleRef.current = safeScale;
 
-    // Apply scroll adjustment with optional clamping
-    const applyScrollAdjustment = (clamp = true) => {
-      const currentContainer = containerRef.current;
-      if (!currentContainer || !currentContainer.isConnected || !zoomDataRef.current) return;
-
-      const data = zoomDataRef.current;
-
-      if (clamp) {
-        // After re-render, clamp to valid scroll bounds
-        const currentRect = currentContainer.getBoundingClientRect();
-        const maxScrollLeft = Math.max(0, currentContainer.scrollWidth - currentRect.width);
-        const maxScrollTop = Math.max(0, currentContainer.scrollHeight - currentRect.height);
-        currentContainer.scrollLeft = Math.max(0, Math.min(data.newScrollLeft, maxScrollLeft));
-        currentContainer.scrollTop = Math.max(0, Math.min(data.newScrollTop, maxScrollTop));
-      } else {
-        // Before re-render, apply unclamped (will be corrected after layout)
-        currentContainer.scrollLeft = Math.max(0, data.newScrollLeft);
-        currentContainer.scrollTop = Math.max(0, data.newScrollTop);
-      }
-    };
-
-    // Trigger state update first (causes re-render with CSS transform)
+    // Trigger state update (causes CSS transform with correct origin)
     setScale(safeScale);
 
-    // Apply scroll adjustment immediately after state update
-    // Use requestAnimationFrame for proper timing with browser paint
+    // Adjust scroll position to keep cursor point stationary
+    // Formula from pdf.js: scroll += cursor * (scaleFactor - 1)
     requestAnimationFrame(() => {
-      applyScrollAdjustment(false); // Initial application
-      requestAnimationFrame(() => {
-        applyScrollAdjustment(true); // Final clamped application
-        zoomDataRef.current = null;
-        isZoomingRef.current = false;
-        perfZoom.end(safeScale);
-      });
+      if (!container.isConnected) return;
+
+      const scrollAdjustX = cursorX * (scaleFactor - 1);
+      const scrollAdjustY = cursorY * (scaleFactor - 1);
+
+      const newScrollLeft = container.scrollLeft + scrollAdjustX;
+      const newScrollTop = container.scrollTop + scrollAdjustY;
+
+      // Clamp to valid bounds
+      const maxScrollLeft = Math.max(0, container.scrollWidth - rect.width);
+      const maxScrollTop = Math.max(0, container.scrollHeight - rect.height);
+
+      container.scrollLeft = Math.max(0, Math.min(newScrollLeft, maxScrollLeft));
+      container.scrollTop = Math.max(0, Math.min(newScrollTop, maxScrollTop));
+
+      isZoomingRef.current = false;
+      perfZoom.end(safeScale);
     });
-  }, [setScale]);
+  }, [setScale, setAnchor]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index) => {
@@ -13563,11 +13562,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             transform: getPageTransform(pageNumber),
                             transformOrigin: 'center center'
                           }}>
-                            {/* Zoom container - applies CSS transform for smooth zoom animation */}
-                            <div style={{
-                              ...zoomStyle,
-                              transformOrigin: 'top left',
-                            }}>
+                            {/* Zoom container - applies CSS transform for smooth cursor-centered zoom */}
+                            <div style={zoomStyle}>
                               <PDFPageCanvas
                                 page={pageObjects[pageNumber]}
                                 scale={renderedScale}
