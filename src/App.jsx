@@ -7912,6 +7912,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [renderedPages, setRenderedPages] = useState(new Set());
   const [mountedPages, setMountedPages] = useState(new Set([1])); // Track which pages should be mounted (DOM created)
+  const [visiblePagesSet, setVisiblePagesSet] = useState(new Set([1])); // Track currently visible pages for render priority
   const [pageHeights, setPageHeights] = useState({});
   const [pageSizes, setPageSizes] = useState({}); // { [page]: { width, height } }
   const [canPan, setCanPan] = useState(false);
@@ -11396,6 +11397,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       });
 
+      // Update visible pages state for render prioritization
+      setVisiblePagesSet(new Set(visiblePages.keys()));
+
       // Update mounted pages if any changes
       if (pagesToMount.size > 0) {
         setMountedPages(prev => {
@@ -13536,6 +13540,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               page={pageObjects[pageNumber]}
                               scale={scale}
                               pageNum={pageNumber}
+                              isVisible={visiblePagesSet.has(pageNumber)}
+                              priority={visiblePagesSet.has(pageNumber) ? 0 : (Math.abs(pageNumber - pageNum) <= 2 ? 1 : 2)}
                               onFinishRender={() => {
                                 setRenderedPages(prev => new Set([...prev, pageNumber]));
                               }}
@@ -13665,6 +13671,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           page={pageObjects[pageNum]}
                           scale={scale}
                           pageNum={pageNum}
+                          isVisible={true}
+                          priority={0}
                           onFinishRender={() => {
                             setRenderedPages(prev => new Set([...prev, pageNum]));
                           }}

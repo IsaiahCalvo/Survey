@@ -177,6 +177,32 @@ export const perfScroll = {
 if (typeof window !== 'undefined') {
   window.pdfPerf = perfLogger;
   console.log('%c[PERF] Performance logger initialized. Use window.pdfPerf.printSummary() to see stats.', 'color: #2196F3;');
+
+  // Add helper to compare before/after optimization
+  window.pdfPerf.compareRenders = () => {
+    const renders = perfLogger.metrics.renders;
+    if (renders.length === 0) {
+      console.log('No render data yet');
+      return;
+    }
+
+    const durations = renders.map(r => r.duration);
+    const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+    const max = Math.max(...durations);
+    const min = Math.min(...durations);
+
+    console.log('%c\n=== Render Performance ===', 'color: #4CAF50; font-weight: bold;');
+    console.log(`Total renders: ${renders.length}`);
+    console.log(`Average: ${avg.toFixed(0)}ms`);
+    console.log(`Min: ${min.toFixed(0)}ms`);
+    console.log(`Max: ${max.toFixed(0)}ms`);
+
+    // Show slow renders (>1000ms)
+    const slowRenders = renders.filter(r => r.duration > 1000);
+    if (slowRenders.length > 0) {
+      console.log(`%cSlow renders (>1s): ${slowRenders.length}`, 'color: #f44336;');
+    }
+  };
 }
 
 export default perfLogger;
