@@ -11138,6 +11138,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     const loadPDF = async () => {
+      const docName = pdfFile.name || 'unknown';
+      perfLoad.start(docName);
       try {
         // Suppress PDF.js warnings
         pdfjsLib.verbosity = pdfjsLib.VerbosityLevel.ERRORS;
@@ -11148,11 +11150,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         if (typeof pdfFile.arrayBuffer === 'function') {
           // Local file
           arrayBuffer = await pdfFile.arrayBuffer();
+          perfLoad.mark(docName, 'Local file to ArrayBuffer');
         } else if (pdfFile.filePath) {
           // Supabase file - download it
+          perfLoad.mark(docName, 'Starting Supabase download');
           const blob = await downloadFromStorage(pdfFile.filePath);
           if (!blob) throw new Error('Failed to download PDF');
+          perfLoad.mark(docName, 'Supabase download complete');
           arrayBuffer = await blob.arrayBuffer();
+          perfLoad.mark(docName, 'Blob to ArrayBuffer');
         } else {
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
@@ -11174,6 +11180,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         } catch (e) { console.error('Error checking header', e); }
 
         let pdf;
+        perfLoad.mark(docName, 'Starting PDF.js getDocument');
         try {
           // First attempt: standard loading
           // Clone buffer since PDF.js may detach it when transferring to worker
@@ -11182,6 +11189,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
           pdf = await loadingTask.promise;
+          perfLoad.mark(docName, 'PDF.js document parsed');
         } catch (firstError) {
           console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
           // Second attempt: recovery mode with lenient options
@@ -11195,6 +11203,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               disableStream: true
             });
             pdf = await recoveryTask.promise;
+            perfLoad.mark(docName, 'PDF.js document parsed (recovery mode)');
             console.log('PDF loaded in recovery mode');
           } catch (recoveryError) {
             // If recovery also fails, throw the original error
@@ -11212,6 +11221,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
 
         // Calculate page sizes for layout and annotation layer
+        perfLoad.mark(docName, 'Calculating page sizes');
         const heights = {};
         const sizes = {};
         const pages = {};
@@ -11222,6 +11232,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           sizes[i] = { width: viewport.width, height: viewport.height };
           pages[i] = page; // Store page object for text layer
         }
+        perfLoad.mark(docName, `Page sizes calculated (${pdf.numPages} pages)`);
         // console.log('Page sizes calculated:', Object.keys(sizes).length, 'pages');
         setPageHeights(heights);
         setPageSizes(sizes);
@@ -11233,6 +11244,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         lastScaleRef.current = scale;
 
         // Import existing PDF annotations as editable Fabric.js objects
+        perfLoad.mark(docName, 'Importing PDF annotations');
         try {
           const { annotationsByPage: importedAnnotations, unsupportedTypes } = await importAnnotationsFromPdf(pdf);
 
@@ -11273,9 +11285,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // as a URL/blob, not as a File object with an .id property.
         // The simple canvas rendering in PDFPageCanvas will handle rendering on the main thread.
 
+        perfLoad.mark(docName, 'PDF ready for rendering');
+        perfLoad.end(docName);
         setIsLoadingPDF(false);
 
       } catch (error) {
+        perfLoad.end(docName);
         console.error('Error loading PDF:', error);
         console.error('Error stack:', error.stack);
         setIsLoadingPDF(false);
