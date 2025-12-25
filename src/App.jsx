@@ -7946,7 +7946,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }); // 'partial' | 'entire'
   const [eraserSize, setEraserSize] = useState(20); // Default 20px radius
-  const [eraserCursorPos, setEraserCursorPos] = useState({ x: 0, y: 0, visible: false });
+  const [eraserCursorPos, setEraserCursorPos] = useState({ visible: false });
+  const eraserCursorRef = useRef(null);
   const [showEraserMenu, setShowEraserMenu] = useState(false);
   const eraserMenuRef = useRef(null);
 
@@ -12037,44 +12038,45 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Track eraser cursor position when eraser tool is active
   useEffect(() => {
     if (activeTool !== 'eraser') {
-      setEraserCursorPos(prev => ({ ...prev, visible: false }));
+      setEraserCursorPos({ visible: false });
       return;
     }
 
     const handleMouseMove = (e) => {
-      // Check if cursor is within the PDF container viewport
-      const pdfContainer = document.querySelector('[data-testid="pdf-container"]');
-      let isWithinViewport = false;
+      // Optimized visibility check using target presence instead of geometry calculation
+      // storage of querySelector result outside loop would be better, but closest() is cheap enough
+      // and accounts for dynamic DOM. pointer-events: none on overlay helps this work.
+      const isWithinViewport = !!e.target.closest('[data-testid="pdf-container"]');
 
-      if (pdfContainer) {
-        const rect = pdfContainer.getBoundingClientRect();
-        isWithinViewport = (
-          e.clientX >= rect.left &&
-          e.clientX <= rect.right &&
-          e.clientY >= rect.top &&
-          e.clientY <= rect.bottom
-        );
-      }
-
-      setEraserCursorPos({
-        x: e.clientX,
-        y: e.clientY,
-        visible: isWithinViewport
+      // Update state only if visibility changes
+      setEraserCursorPos(prev => {
+        if (prev.visible !== isWithinViewport) {
+          return { visible: isWithinViewport };
+        }
+        return prev;
       });
+
+      // Direct DOM manipulation for performance (no react render loop)
+      if (eraserCursorRef.current && isWithinViewport) {
+        const radius = eraserSize * scale;
+        // Use translate3d to force GPU acceleration
+        eraserCursorRef.current.style.transform = `translate3d(${e.clientX - radius}px, ${e.clientY - radius}px, 0)`;
+      }
     };
 
     const handleMouseLeave = () => {
       setEraserCursorPos(prev => ({ ...prev, visible: false }));
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
+    // Use passive: true where possible, though mousemove usually doesn't block scroll unless preventing default
+    document.addEventListener('mousemove', handleMouseMove, { passive: true });
     document.addEventListener('mouseleave', handleMouseLeave);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [activeTool]);
+  }, [activeTool, eraserSize, scale]);
 
   // Input handlers with validation
   const handlePageInputChange = useCallback((e) => {
@@ -13252,10 +13254,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       {/* Eraser Cursor Overlay */}
       {activeTool === 'eraser' && eraserCursorPos.visible && (
         <div
+          ref={eraserCursorRef}
           style={{
             position: 'fixed',
-            left: eraserCursorPos.x - (eraserSize * scale),
-            top: eraserCursorPos.y - (eraserSize * scale),
+            left: 0,
+            top: 0,
             width: eraserSize * 2 * scale,
             height: eraserSize * 2 * scale,
             borderRadius: '50%',
@@ -13263,7 +13266,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             border: `${Math.max(1, 2 * scale)}px solid rgba(100, 100, 100, 0.6)`,
             pointerEvents: 'none',
             zIndex: 99999,
-            transition: 'width 0.1s ease, height 0.1s ease, left 0.1s ease, top 0.1s ease, border-width 0.1s ease'
+            willChange: 'transform',
+            // Removed transitions for instant follow
           }}
         />
       )}
@@ -20143,7 +20147,7 @@ export default function App() {
     setSelectedPDF(file);
     setCurrentView('viewer');
     setIsLoading(true);
-    
+
     // Clear the opening flag after a short delay to allow the tab to be created
     // This ensures that if the same PDF is clicked again, it will find the existing tab
     setTimeout(() => {
