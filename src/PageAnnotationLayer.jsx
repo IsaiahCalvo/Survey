@@ -749,6 +749,7 @@ const PageAnnotationLayer = memo(({
   const selectionRectObjRef = useRef(null); // Temporary rectangle object for visual feedback
   const isErasingRef = useRef(false);
   const eraserPathRef = useRef(null);
+  const eraserStrokeVisualRef = useRef(null); // Visual overlay for eraser stroke
   // Rotation tracking for select tool
   const selectRotationStateRef = useRef(null); // { object, startAngle, startPointer, center }
   // Pan tool drag tracking for Drawboard PDF-style behavior
@@ -1336,9 +1337,6 @@ const PageAnnotationLayer = memo(({
 
       // Only handle pan tool (select tool has its own handler)
       if (currentTool !== 'pan') {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'Early return - wrong tool', data: { currentTool }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'A' }) }).catch(() => { });
-        // #endregion
         return;
       }
 
@@ -1347,10 +1345,6 @@ const PageAnnotationLayer = memo(({
       const pointer = canvas.getPointer(opt.e);
       const activeObject = canvas.getActiveObject();
       const nativeEvent = opt.e;
-
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'Handler called', data: { hasActiveObject: !!activeObject, pointer: { x: pointer.x, y: pointer.y }, target: opt.target?.type || 'canvas' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'A' }) }).catch(() => { });
-      // #endregion
 
       // Reset drag tracking with CLIENT coordinates for stable panning
       panDragStartRef.current = {
@@ -1378,9 +1372,6 @@ const PageAnnotationLayer = memo(({
           if (corner) {
             // Hit a handle!
             panInteractionTypeRef.current = 'transform';
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'Hit handle - transform', data: { corner }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'E' }) }).catch(() => { });
-            // #endregion
             // Fabric.js will handle the actual transform interaction automatically
             return;
           }
@@ -1393,10 +1384,6 @@ const PageAnnotationLayer = memo(({
         const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
         const isOutsideBody = !isOnSelectedBody;
 
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 2 - Modifier rotation check', data: { isOnSelectedBody, isOutsideBody, isOnHandle, willStartRotation: isOutsideBody && !isOnHandle, modifierPressed: isModifierPressed(nativeEvent) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'B' }) }).catch(() => { });
-        // #endregion
-
         // If modifier is pressed and clicking OUTSIDE the object body (not on a handle), start rotation
         // Clicking INSIDE should allow normal move behavior (handled by PRIORITY 4)
         // Clicking ON handles should allow normal resize behavior (handled by PRIORITY 1)
@@ -1408,18 +1395,10 @@ const PageAnnotationLayer = memo(({
             startPointer: { x: pointer.x, y: pointer.y },
             center: activeObject.getCenterPoint()
           };
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 2 - Rotation state SET (modifier)', data: { startAngle: rotationStateRef.current.startAngle, center: rotationStateRef.current.center, interactionType: panInteractionTypeRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'D' }) }).catch(() => { });
-          // #endregion
           opt.e.preventDefault();
           opt.e.stopPropagation();
           return;
         }
-        // #region agent log
-        else {
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 2 - Modifier held but conditions not met', data: { isOnSelectedBody, isOutsideBody, isOnHandle }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'B' }) }).catch(() => { });
-        }
-        // #endregion
         // If modifier is held but clicking inside, let it fall through to normal move behavior
       }
 
@@ -1427,10 +1406,6 @@ const PageAnnotationLayer = memo(({
       if (activeObject) {
         const proximityCorner = getCornerHandleInProximity(pointer, activeObject);
         const isOnHandle = isPointOnCornerHandle(pointer, activeObject);
-
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 3 - Proximity rotation check', data: { proximityCorner, isOnHandle, willStartRotation: proximityCorner && !isOnHandle, pointer: { x: pointer.x, y: pointer.y } }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'C' }) }).catch(() => { });
-        // #endregion
 
         // If in proximity zone (but not directly on handle), allow rotation
         if (proximityCorner && !isOnHandle) {
@@ -1441,9 +1416,6 @@ const PageAnnotationLayer = memo(({
             startPointer: { x: pointer.x, y: pointer.y },
             center: activeObject.getCenterPoint()
           };
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 3 - Rotation state SET (proximity)', data: { startAngle: rotationStateRef.current.startAngle, center: rotationStateRef.current.center, interactionType: panInteractionTypeRef.current, proximityCorner }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'D' }) }).catch(() => { });
-          // #endregion
           opt.e.preventDefault();
           opt.e.stopPropagation();
           return;
@@ -1499,9 +1471,17 @@ const PageAnnotationLayer = memo(({
       // PRIORITY 6: Empty space / Canvas
       // If there's an active object, check if Fabric is handling a transform
       if (activeObject) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseDownForPan', message: 'PRIORITY 6 - Empty space with active object', data: { hasActiveObject: !!activeObject, pointer: { x: pointer.x, y: pointer.y } }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'E' }) }).catch(() => { });
-        // #endregion
+        // FIX: If click is inside bounding box, keep selection and allow move
+        // This handles cases where PRIORITY 4 didn't catch it (e.g., boundary box visual area)
+        const isOnSelectedBody = isPointInBoundingBox(pointer, activeObject);
+        if (isOnSelectedBody) {
+          // Click is on selected item body - allow move
+          panInteractionTypeRef.current = 'move';
+          opt.e.preventDefault();
+          opt.e.stopPropagation();
+          return;
+        }
+        
         // Set interaction type to 'wait-for-transform'
         panInteractionTypeRef.current = 'wait-for-transform';
         opt.e.preventDefault();
@@ -1540,19 +1520,9 @@ const PageAnnotationLayer = memo(({
       const start = panDragStartRef.current;
 
       // Handle rotation
-      // #region agent log
-      if (panInteractionTypeRef.current === 'rotate' || rotationStateRef.current) {
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseMoveForPan', message: 'Rotation check', data: { interactionType: panInteractionTypeRef.current, hasRotationState: !!rotationStateRef.current, willProcess: panInteractionTypeRef.current === 'rotate' && !!rotationStateRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'D' }) }).catch(() => { });
-      }
-      // #endregion
-
       if (panInteractionTypeRef.current === 'rotate' && rotationStateRef.current) {
         const rotationState = rotationStateRef.current;
         const obj = rotationState.object;
-
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseMoveForPan', message: 'Processing rotation', data: { hasRotationState: !!rotationStateRef.current, interactionType: panInteractionTypeRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'D' }) }).catch(() => { });
-        // #endregion
 
         // Calculate angle from center to current pointer
         const center = rotationState.center;
@@ -1579,20 +1549,10 @@ const PageAnnotationLayer = memo(({
         obj.setCoords();
         canvas.requestRenderAll();
 
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseMoveForPan', message: 'Rotation applied', data: { newAngle, deltaAngle, startAngle: rotationState.startAngle, objAngle: obj.angle }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'D' }) }).catch(() => { });
-        // #endregion
-
         opt.e.preventDefault();
         opt.e.stopPropagation();
         return;
       }
-
-      // #region agent log
-      if (panInteractionTypeRef.current === 'rotate' && !rotationStateRef.current) {
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:handleMouseMoveForPan', message: 'Rotation type set but no state', data: { interactionType: panInteractionTypeRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
-      }
-      // #endregion
 
       // Calculate drag distance using CLIENT coordinates (stable during scroll)
       const dx = nativeEvent.clientX - start.clientX;
@@ -1864,6 +1824,33 @@ const PageAnnotationLayer = memo(({
               startY: y,
               points: [{ x, y }]
             };
+            // Create visual eraser stroke overlay
+            const eraserRadius = eraserSizeRef.current || 20;
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1827',message:'Creating eraser stroke visual - entire mode',data:{x,y,eraserRadius,strokeWidth:eraserRadius*2},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+            const eraserStroke = new Polyline([[x, y]], {
+              stroke: 'rgba(74, 144, 226, 0.3)', // Light blue, semi-translucent
+              strokeWidth: eraserRadius * 2,
+              fill: 'transparent',
+              selectable: false,
+              evented: false,
+              excludeFromExport: true,
+              strokeUniform: true,
+              strokeLineCap: 'round',
+              strokeLineJoin: 'round'
+            });
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1840',message:'Eraser stroke created - entire mode - checking properties',data:{stroke:eraserStroke.stroke,strokeWidth:eraserStroke.strokeWidth,points:eraserStroke.points,visible:eraserStroke.visible,onCanvas:canvas.getObjects().includes(eraserStroke)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+            // #endregion
+            canvas.add(eraserStroke);
+            // Bring eraser stroke to front so it's visible above other objects
+            canvas.bringToFront(eraserStroke);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1842',message:'Eraser stroke added to canvas - entire mode',data:{totalObjects:canvas.getObjects().length,eraserStrokeIndex:canvas.getObjects().indexOf(eraserStroke),zIndex:canvas.getObjects().indexOf(eraserStroke),isAtFront:canvas.getObjects()[canvas.getObjects().length-1]===eraserStroke},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix2',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+            eraserStrokeVisualRef.current = eraserStroke;
+            canvas.requestRenderAll();
           } else {
             // Partial mode: Set up erasing state for drag-based erasing
             isErasingRef.current = true;
@@ -1874,6 +1861,33 @@ const PageAnnotationLayer = memo(({
               startY: y,
               points: [{ x, y }]
             };
+            // Create visual eraser stroke overlay
+            const eraserRadius = eraserSizeRef.current || 20;
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1853',message:'Creating eraser stroke visual - partial mode',data:{x,y,eraserRadius,strokeWidth:eraserRadius*2},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+            const eraserStroke = new Polyline([[x, y]], {
+              stroke: 'rgba(74, 144, 226, 0.3)', // Light blue, semi-translucent
+              strokeWidth: eraserRadius * 2,
+              fill: 'transparent',
+              selectable: false,
+              evented: false,
+              excludeFromExport: true,
+              strokeUniform: true,
+              strokeLineCap: 'round',
+              strokeLineJoin: 'round'
+            });
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1866',message:'Eraser stroke created - partial mode - checking properties',data:{stroke:eraserStroke.stroke,strokeWidth:eraserStroke.strokeWidth,points:eraserStroke.points,visible:eraserStroke.visible,onCanvas:canvas.getObjects().includes(eraserStroke)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+            // #endregion
+            canvas.add(eraserStroke);
+            // Bring eraser stroke to front so it's visible above other objects
+            canvas.bringToFront(eraserStroke);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1868',message:'Eraser stroke added to canvas - partial mode',data:{totalObjects:canvas.getObjects().length,eraserStrokeIndex:canvas.getObjects().indexOf(eraserStroke),zIndex:canvas.getObjects().indexOf(eraserStroke),isAtFront:canvas.getObjects()[canvas.getObjects().length-1]===eraserStroke},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix2',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+            eraserStrokeVisualRef.current = eraserStroke;
+            canvas.requestRenderAll();
 
             // FEATURE: Single-click partial erase - immediately erase if clicking on a path
             if (target.type === 'path') {
@@ -1895,6 +1909,33 @@ const PageAnnotationLayer = memo(({
             startY: y,
             points: [{ x, y }]
           };
+          // Create visual eraser stroke overlay
+          const eraserRadius = eraserSizeRef.current || 20;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1890',message:'Creating eraser stroke visual - no target',data:{x,y,eraserRadius,strokeWidth:eraserRadius*2},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
+          const eraserStroke = new Polyline([[x, y]], {
+            stroke: 'rgba(74, 144, 226, 0.3)', // Light blue, semi-translucent
+            strokeWidth: eraserRadius * 2,
+            fill: 'transparent',
+            selectable: false,
+            evented: false,
+            excludeFromExport: true,
+            strokeUniform: true,
+            strokeLineCap: 'round',
+            strokeLineJoin: 'round'
+          });
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1903',message:'Eraser stroke created - checking properties',data:{stroke:eraserStroke.stroke,strokeWidth:eraserStroke.strokeWidth,points:eraserStroke.points,visible:eraserStroke.visible,onCanvas:canvas.getObjects().includes(eraserStroke)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+            canvas.add(eraserStroke);
+            // Bring eraser stroke to front so it's visible above other objects
+            canvas.bringToFront(eraserStroke);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1905',message:'Eraser stroke added to canvas',data:{totalObjects:canvas.getObjects().length,eraserStrokeIndex:canvas.getObjects().indexOf(eraserStroke),zIndex:canvas.getObjects().indexOf(eraserStroke),isAtFront:canvas.getObjects()[canvas.getObjects().length-1]===eraserStroke},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix2',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+            eraserStrokeVisualRef.current = eraserStroke;
+            canvas.requestRenderAll();
         }
         return;
       }
@@ -2010,6 +2051,26 @@ const PageAnnotationLayer = memo(({
         const { x, y } = canvas.getPointer(opt.e);
         const eraserRadius = eraserSizeRef.current || 20;
         const pointer = { x, y };
+        
+        // Update visual eraser stroke overlay
+        if (eraserStrokeVisualRef.current) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2030',message:'Updating eraser stroke - entire mode',data:{x,y,hasVisual:!!eraserStrokeVisualRef.current,currentPoints:eraserStrokeVisualRef.current.get('points'),onCanvas:canvas.getObjects().includes(eraserStrokeVisualRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'G'})}).catch(()=>{});
+          // #endregion
+          const points = eraserStrokeVisualRef.current.get('points') || [];
+          // Fix: Use array format [x, y] to match Polyline's expected format, not object format {x, y}
+          points.push([x, y]);
+          eraserStrokeVisualRef.current.set({ points });
+          // Ensure eraser stroke stays on top
+          canvas.bringToFront(eraserStrokeVisualRef.current);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2034',message:'Eraser stroke updated - entire mode',data:{newPointsCount:eraserStrokeVisualRef.current.get('points').length,newPoints:eraserStrokeVisualRef.current.get('points'),isAtFront:canvas.getObjects()[canvas.getObjects().length-1]===eraserStrokeVisualRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix2',hypothesisId:'G'})}).catch(()=>{});
+          // #endregion
+        } else {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2030',message:'Eraser stroke visual ref is null - entire mode',data:{x,y,isErasing:isErasingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+        }
 
         // Find and remove any objects touched by the eraser
         const objects = canvas.getObjects();
@@ -2102,6 +2163,26 @@ const PageAnnotationLayer = memo(({
         const timeSinceLastMove = lastPoint ? (pointAddTime - (eraserPath.lastMoveTime || pointAddTime)) : 0;
         eraserPath.lastMoveTime = pointAddTime;
         console.log('[Eraser:Move] Point added, total:', eraserPath.points.length, 'pos:', { x: x.toFixed(1), y: y.toFixed(1) });
+
+        // Update visual eraser stroke overlay
+        if (eraserStrokeVisualRef.current) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2130',message:'Updating eraser stroke - partial mode',data:{x,y,hasVisual:!!eraserStrokeVisualRef.current,currentPoints:eraserStrokeVisualRef.current.get('points'),onCanvas:canvas.getObjects().includes(eraserStrokeVisualRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'G'})}).catch(()=>{});
+          // #endregion
+          const points = eraserStrokeVisualRef.current.get('points') || [];
+          // Fix: Use array format [x, y] to match Polyline's expected format, not object format {x, y}
+          points.push([x, y]);
+          eraserStrokeVisualRef.current.set({ points });
+          // Ensure eraser stroke stays on top
+          canvas.bringToFront(eraserStrokeVisualRef.current);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2134',message:'Eraser stroke updated - partial mode',data:{newPointsCount:eraserStrokeVisualRef.current.get('points').length,newPoints:eraserStrokeVisualRef.current.get('points'),isAtFront:canvas.getObjects()[canvas.getObjects().length-1]===eraserStrokeVisualRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix2',hypothesisId:'G'})}).catch(()=>{});
+          // #endregion
+        } else {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2130',message:'Eraser stroke visual ref is null - partial mode',data:{x,y,isErasing:isErasingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+        }
 
         // Just request render to update eraser overlay visual - DON'T apply clipPath yet
         const renderStart = performance.now();
@@ -2201,6 +2282,19 @@ const PageAnnotationLayer = memo(({
           }
         }
 
+        // Remove visual eraser stroke overlay
+        if (eraserStrokeVisualRef.current) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2227',message:'Removing eraser stroke visual',data:{pointsCount:eraserStrokeVisualRef.current.get('points')?.length,onCanvas:canvas.getObjects().includes(eraserStrokeVisualRef.current)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+          canvas.remove(eraserStrokeVisualRef.current);
+          eraserStrokeVisualRef.current = null;
+        } else {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2227',message:'Eraser stroke visual already null on mouse up',data:{isErasing:isErasingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+        }
+        
         isErasingRef.current = false;
         eraserPathRef.current = null;
         const finalRenderStart = performance.now();
@@ -2524,7 +2618,19 @@ const PageAnnotationLayer = memo(({
           canvas.setActiveObject(hitObject);
           canvas.requestRenderAll();
         } else {
-          // Clicked on empty space - deselect all
+          // FIX: Before deselecting, check if click is inside the bounding box of the currently selected object
+          const activeObject = canvas.getActiveObject();
+          if (activeObject) {
+            // Check if click is inside the bounding box (not just the geometry)
+            const isOnSelectedBody = isPointInBoundingBox(pointer, activeObject);
+            
+            if (isOnSelectedBody) {
+              // Click is inside bounding box - keep selection
+              return; // Don't deselect
+            }
+          }
+          
+          // Clicked on empty space (outside bounding box) - deselect all
           canvas.discardActiveObject();
           canvas.requestRenderAll();
         }

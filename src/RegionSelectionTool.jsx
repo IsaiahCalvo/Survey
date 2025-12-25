@@ -946,7 +946,9 @@ const RegionSelectionTool = ({
   }, [onSetFullPage, handleCancel, regions.length]);
 
   const handleRegionPointerDown = useCallback((region, event) => {
-    if (!active || effectiveToolType !== 'move' || !targetElement) return;
+    if (!active || effectiveToolType !== 'move' || !targetElement) {
+      return;
+    }
     event.stopPropagation();
 
     // If not in move mode, ignore
