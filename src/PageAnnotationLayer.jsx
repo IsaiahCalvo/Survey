@@ -842,7 +842,7 @@ const PageAnnotationLayer = memo(({
   const triggerSave = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+    const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
     onSaveAnnotations(pageNumber, canvasJSON);
   }, [pageNumber, onSaveAnnotations]);
 
@@ -1410,7 +1410,7 @@ const PageAnnotationLayer = memo(({
       if (!fabricRef.current) return;
       try {
         // Include spaceId in the saved JSON to preserve space associations
-        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON);
         onSaveAnnotations(pageNumber, canvasJSON);
@@ -3308,7 +3308,7 @@ const PageAnnotationLayer = memo(({
 
       // Save annotations
       try {
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'highlightId', 'needsBIC', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
@@ -3383,7 +3383,7 @@ const PageAnnotationLayer = memo(({
 
       // Save annotations
       try {
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error after removal:`, e);
@@ -3525,7 +3525,7 @@ const PageAnnotationLayer = memo(({
 
       // Save the canvas state
       try {
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (error) {
         console.error(`[Page ${pageNumber}] Error saving after deletion:`, error);
@@ -3737,6 +3737,74 @@ const PageAnnotationLayer = memo(({
               <span style={{ fontSize: '12px', color: '#666' }}>px</span>
             </div>
           </div>
+
+          {editModal.object.data?.type === 'callout' && (
+            <>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Text Style</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {/* Text Color */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <input
+                      type="color"
+                      value={editValues.fill || '#000000'}
+                      onChange={(e) => setEditValues(prev => ({ ...prev, fill: e.target.value }))}
+                      style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
+                      title="Text Color"
+                    />
+                  </div>
+
+                  {/* Font Size */}
+                  <input
+                    type="number"
+                    min="8"
+                    max="72"
+                    value={editValues.fontSize || 16}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, fontSize: parseInt(e.target.value, 10) }))}
+                    style={{ width: '50px', height: '24px', borderRadius: '4px', border: '1px solid #ddd', padding: '0 4px', fontSize: '12px' }}
+                    title="Font Size"
+                  />
+
+                  {/* Bold */}
+                  <button
+                    onClick={() => setEditValues(prev => ({ ...prev, fontWeight: prev.fontWeight === 'bold' ? 'normal' : 'bold' }))}
+                    style={{
+                      padding: '2px 8px', borderRadius: '4px', border: '1px solid #ddd',
+                      background: editValues.fontWeight === 'bold' ? '#e6f7ff' : 'white',
+                      fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
+                    }}
+                  >B</button>
+
+                  {/* Italic */}
+                  <button
+                    onClick={() => setEditValues(prev => ({ ...prev, fontStyle: prev.fontStyle === 'italic' ? 'normal' : 'italic' }))}
+                    style={{
+                      padding: '2px 8px', borderRadius: '4px', border: '1px solid #ddd',
+                      background: editValues.fontStyle === 'italic' ? '#e6f7ff' : 'white',
+                      fontStyle: 'italic', cursor: 'pointer', fontSize: '12px'
+                    }}
+                  >I</button>
+                </div>
+
+                {/* Alignment */}
+                <div style={{ marginTop: '8px', display: 'flex', gap: '4px' }}>
+                  {['left', 'center', 'right'].map(align => (
+                    <button
+                      key={align}
+                      onClick={() => setEditValues(prev => ({ ...prev, textAlign: align }))}
+                      style={{
+                        flex: 1, padding: '4px', borderRadius: '4px', border: '1px solid #ddd',
+                        background: editValues.textAlign === align ? '#e6f7ff' : 'white',
+                        cursor: 'pointer', fontSize: '10px', textTransform: 'capitalize'
+                      }}
+                    >
+                      {align}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           <div style={{ marginBottom: '12px' }}>
             <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Opacity</label>
