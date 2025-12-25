@@ -2,14 +2,27 @@ import { Resend } from 'https://esm.sh/resend@2.0.0';
 
 const resend = new Resend(Deno.env.get('RESEND_API_KEY'));
 
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 Deno.serve(async (req) => {
+    // Handle CORS preflight requests
+    if (req.method === 'OPTIONS') {
+        return new Response(null, { headers: corsHeaders });
+    }
+
     try {
         const { to, subject, template, data } = await req.json();
 
         if (!to || !subject || !template) {
             return new Response(
                 JSON.stringify({ error: 'Missing required fields: to, subject, template' }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
+                {
+                    status: 400,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                }
             );
         }
 
@@ -105,7 +118,10 @@ Deno.serve(async (req) => {
         if (!getTemplate) {
             return new Response(
                 JSON.stringify({ error: `Unknown template: ${template}` }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
+                {
+                    status: 400,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                }
             );
         }
 
@@ -120,12 +136,16 @@ Deno.serve(async (req) => {
             html: html,
         });
 
-        console.log('Email sent:', result);
+        console.log('Email sent successfully!');
+        console.log('Resend Response:', JSON.stringify(result, null, 2));
+        console.log('Email ID:', result.data?.id);
+        console.log('To:', to);
+        console.log('Subject:', subject);
 
         return new Response(
             JSON.stringify({ success: true, id: result.data?.id }),
             {
-                headers: { 'Content-Type': 'application/json' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 200,
             }
         );
@@ -134,7 +154,7 @@ Deno.serve(async (req) => {
         return new Response(
             JSON.stringify({ error: error.message }),
             {
-                headers: { 'Content-Type': 'application/json' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 500,
             }
         );

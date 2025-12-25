@@ -6,14 +6,27 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     httpClient: Stripe.createFetchHttpClient(),
 });
 
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 Deno.serve(async (req) => {
+    // Handle CORS preflight requests
+    if (req.method === 'OPTIONS') {
+        return new Response(null, { headers: corsHeaders });
+    }
+
     try {
         // Get the user from the request
         const authHeader = req.headers.get('Authorization');
         if (!authHeader) {
             return new Response(
                 JSON.stringify({ error: 'Missing authorization header' }),
-                { status: 401, headers: { 'Content-Type': 'application/json' } }
+                {
+                    status: 401,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                }
             );
         }
 
@@ -31,7 +44,10 @@ Deno.serve(async (req) => {
         if (userError || !user) {
             return new Response(
                 JSON.stringify({ error: 'Unauthorized' }),
-                { status: 401, headers: { 'Content-Type': 'application/json' } }
+                {
+                    status: 401,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                }
             );
         }
 
@@ -47,7 +63,10 @@ Deno.serve(async (req) => {
         if (subError || !subscription?.stripe_customer_id) {
             return new Response(
                 JSON.stringify({ error: 'No Stripe customer found. Please start a subscription first.' }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
+                {
+                    status: 400,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                }
             );
         }
 
@@ -65,7 +84,7 @@ Deno.serve(async (req) => {
         return new Response(
             JSON.stringify({ url: session.url }),
             {
-                headers: { 'Content-Type': 'application/json' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 200,
             }
         );
@@ -74,7 +93,7 @@ Deno.serve(async (req) => {
         return new Response(
             JSON.stringify({ error: error.message }),
             {
-                headers: { 'Content-Type': 'application/json' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 500,
             }
         );

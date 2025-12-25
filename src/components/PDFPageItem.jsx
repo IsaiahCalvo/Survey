@@ -28,6 +28,7 @@ const PDFPageItem = ({
             <PDFPageCanvas
                 page={page}
                 scale={scale}
+                pageNum={pageNumber}
                 onFinishRender={onFinishRender}
             />
             {width && height && page && (

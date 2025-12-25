@@ -89,7 +89,7 @@ PDFPageCanvas.displayName = 'PDFPageCanvas';
 // Custom comparison function to ignore onFinishRender changes
 // (onFinishRender is not in useEffect deps, so changes shouldn't trigger re-render)
 const arePropsEqual = (prevProps, nextProps) => {
-    return prevProps.page === nextProps.page && prevProps.scale === nextProps.scale;
+    return prevProps.page === nextProps.page && prevProps.scale === nextProps.scale && prevProps.pageNum === nextProps.pageNum;
 };
 
 export default memo(PDFPageCanvas, arePropsEqual);

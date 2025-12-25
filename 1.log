@@ -1,122 +1,423 @@
-App.jsx:1779 Background Upload PDF Check: {name: 'report.pdf', size: 17434376}
-App.jsx:11159 PDF load check: {size: 17434376, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
-App.jsx:11168 PDF Header Check: %PDF-
-useDatabase.js:220 createDocument success, updating state with: {id: 'c9a29d23-ad2a-42f4-b839-446b534410e4', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'report.pdf', …}
-App.jsx:1817 Background upload completed for: report.pdf New Doc: {id: 'c9a29d23-ad2a-42f4-b839-446b534410e4', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'report.pdf', …}
-App.jsx:1779 Background Upload PDF Check: {name: 'temp.pdf', size: 801968}
-App.jsx:11159 PDF load check: {size: 801968, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
-App.jsx:11168 PDF Header Check: %PDF-
-useDatabase.js:220 createDocument success, updating state with: {id: '9a8068f5-e545-4075-bf7f-3baefca5e73d', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'temp.pdf', …}
-App.jsx:1817 Background upload completed for: temp.pdf New Doc: {id: '9a8068f5-e545-4075-bf7f-3baefca5e73d', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'temp.pdf', …}
-App.jsx:1779 Background Upload PDF Check: {name: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf', size: 25735711}
-App.jsx:11159 PDF load check: {size: 25735711, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
-App.jsx:11168 PDF Header Check: %PDF-
-main.jsx:24 Standard PDF load failed during upload, trying recovery mode: Invalid Root reference.
-console.warn @ main.jsx:24
-(anonymous) @ App.jsx:1790
-await in (anonymous) (async)
-(anonymous) @ App.jsx:1801
-handleUploadClick @ App.jsx:1824
-await in handleUploadClick (async)
-callCallback2 @ chunk-DSUIPI7G.js:10563
-invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
-invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
-invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
-executeDispatch @ chunk-DSUIPI7G.js:13903
-processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
-processDispatchQueue @ chunk-DSUIPI7G.js:13932
-dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
-(anonymous) @ chunk-DSUIPI7G.js:14063
-batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
-batchedUpdates @ chunk-DSUIPI7G.js:10468
-dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
-dispatchEvent @ chunk-DSUIPI7G.js:12361
-dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
-Show 15 more frames
-App.jsx:1819 Error uploading file in background: TypeError: Cannot perform Construct on a detached ArrayBuffer
-    at new Uint8Array (<anonymous>)
-    at getDataProp (api.js:558:12)
-    at Object.getDocument (api.js:256:27)
-    at App.jsx:1792:41
-    at async Promise.all (:5173/index 1)
-    at async App.jsx:1803:43
-(anonymous) @ App.jsx:1819
-await in (anonymous) (async)
-handleUploadClick @ App.jsx:1824
-await in handleUploadClick (async)
-callCallback2 @ chunk-DSUIPI7G.js:10563
-invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
-invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
-invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
-executeDispatch @ chunk-DSUIPI7G.js:13903
-processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
-processDispatchQueue @ chunk-DSUIPI7G.js:13932
-dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
-(anonymous) @ chunk-DSUIPI7G.js:14063
-batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
-batchedUpdates @ chunk-DSUIPI7G.js:10468
-dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
-dispatchEvent @ chunk-DSUIPI7G.js:12361
-dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
-Show 15 more frames
-main.jsx:24 Standard PDF load failed, trying recovery mode: Invalid Root reference.
-console.warn @ main.jsx:24
-loadPDF @ App.jsx:11183
-await in loadPDF (async)
-(anonymous) @ App.jsx:11282
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:11275 Error loading PDF: InvalidPDFException {message: 'Invalid Root reference.', name: 'InvalidPDFException'}
-loadPDF @ App.jsx:11275
-await in loadPDF (async)
-(anonymous) @ App.jsx:11282
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:11276 Error stack: Error
-    at BaseExceptionClosure (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:7056:44)
-    at Object.defineProperty.value (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:7059:16)
-    at __w_pdfjs_require__ (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24698:42)
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24971:26
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24982:13
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24984:11
-    at webpackUniversalModuleDefinition (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:6630:42)
-    at node_modules/pdfjs-dist/build/pdf.js (http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:6639:7)
-    at __require2 (http://localhost:5173/node_modules/.vite/deps/chunk-F2KOVKPX.js?v=20d15701:28:50)
-    at http://localhost:5173/node_modules/.vite/deps/pdfjs-dist.js?v=20d15701:24989:16
-loadPDF @ App.jsx:11276
-await in loadPDF (async)
-(anonymous) @ App.jsx:11282
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
+performanceLogger.js:76 [PERF] Upload: electron-dialog: 11500.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Dialog closed: +10998.50ms (at 10998.50ms)
+performanceLogger.js:87     → Creating File object: +0.00ms (at 10998.50ms)
+performanceLogger.js:87     → File object created: +501.70ms (at 11500.20ms)
+App.jsx:1792 Background Upload PDF Check: {name: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf', size: 25716812}
+App.jsx:11167 PDF load check: {size: 25716812, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
+App.jsx:11176 PDF Header Check: %PDF-
+performanceLogger.js:76 [PERF] Load PDF: SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf: 459.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Local file to ArrayBuffer: +77.10ms (at 77.10ms)
+performanceLogger.js:87     → Starting PDF.js getDocument: +4.90ms (at 82.00ms)
+performanceLogger.js:87     → PDF.js document parsed: +295.90ms (at 377.90ms)
+performanceLogger.js:87     → Calculating page sizes: +0.10ms (at 378.00ms)
+performanceLogger.js:87     → Page sizes calculated (99 pages): +50.20ms (at 428.20ms)
+performanceLogger.js:87     → Importing PDF annotations: +0.40ms (at 428.60ms)
+performanceLogger.js:87     → PDF ready for rendering: +31.10ms (at 459.70ms)
+performanceLogger.js:76 [PERF] Render Page 1: 462.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +16.20ms (at 16.20ms)
+performanceLogger.js:76 [PERF] Render Page 4: 976.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +5.70ms (at 5.70ms)
+performanceLogger.js:76 [PERF] Render Page 3: 1092.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.00ms (at 3.00ms)
+performanceLogger.js:76 [PERF] Render Page 2: 1270.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.90ms (at 0.90ms)
+performanceLogger.js:76 [PERF] Render Page 5: 1292.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.80ms (at 2.80ms)
+useDatabase.js:220 createDocument success, updating state with: {id: 'c12ac1c7-3648-4afc-a248-ad67fcf90124', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf', …}
+performanceLogger.js:76 [PERF] Upload: SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf: 2924.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Starting cloud upload: +4.60ms (at 4.60ms)
+performanceLogger.js:87     → ArrayBuffer ready for page count: +32.30ms (at 36.90ms)
+performanceLogger.js:87     → Cloud upload + page count complete: +2831.00ms (at 2867.90ms)
+performanceLogger.js:87     → Database record created: +56.60ms (at 2924.50ms)
+App.jsx:1834 Background upload completed for: SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf New Doc: {id: 'c12ac1c7-3648-4afc-a248-ad67fcf90124', user_id: '170d915c-5741-4e0b-b03f-deaeedae27bd', project_id: null, template_id: null, name: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf', …}
+performanceLogger.js:76 [PERF] Render Page 6: 4971.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.50ms (at 1.50ms)
+performanceLogger.js:76 [PERF] Render Page 10: 4319.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +71.30ms (at 71.30ms)
+performanceLogger.js:76 [PERF] Render Page 7: 4944.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.90ms (at 1.90ms)
+performanceLogger.js:76 [PERF] Render Page 12: 3123.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.50ms (at 1.50ms)
+performanceLogger.js:76 [PERF] Render Page 13: 3127.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.40ms (at 1.40ms)
+performanceLogger.js:76 [PERF] Render Page 14: 3013.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.30ms (at 1.30ms)
+performanceLogger.js:76 [PERF] Render Page 11: 4543.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +16.70ms (at 16.70ms)
+performanceLogger.js:76 [PERF] Render Page 8: 5249.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.10ms (at 2.10ms)
+performanceLogger.js:76 [PERF] Render Page 9: 4890.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.70ms (at 0.70ms)
+performanceLogger.js:76 [PERF] Render Page 25: 1157.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.40ms (at 2.40ms)
+performanceLogger.js:76 [PERF] Render Page 15: 2717.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.30ms (at 1.30ms)
+performanceLogger.js:76 [PERF] Render Page 16: 2852.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.50ms (at 1.50ms)
+performanceLogger.js:76 [PERF] Render Page 20: 2458.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.40ms (at 2.40ms)
+performanceLogger.js:76 [PERF] Render Page 17: 2711.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.80ms (at 1.80ms)
+performanceLogger.js:76 [PERF] Render Page 18: 2758.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.10ms (at 2.10ms)
+performanceLogger.js:76 [PERF] Render Page 19: 2721.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.70ms (at 1.70ms)
+performanceLogger.js:76 [PERF] Render Page 23: 1847.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.70ms (at 2.70ms)
+performanceLogger.js:76 [PERF] Render Page 26: 1747.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +19.70ms (at 19.70ms)
+performanceLogger.js:76 [PERF] Render Page 21: 1927.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.40ms (at 1.40ms)
+performanceLogger.js:76 [PERF] Render Page 22: 1888.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.70ms (at 1.70ms)
+performanceLogger.js:76 [PERF] Render Page 24: 1845.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.70ms (at 2.70ms)
+performanceLogger.js:76 [PERF] Zoom to 0.972x: 1076.80ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → From 81% to 97%: +0.10ms (at 0.10ms)
+performanceLogger.js:76 [PERF] Zoom to 1.1663999999999999x: 629.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → From 97% to 117%: +0.10ms (at 0.10ms)
+App.jsx:11059 Auto-saving document...
+App.jsx:11017 Saving document with embedded annotations... (auto-save)
+App.jsx:11018 PDF file path: /Users/isaiahcalvo/Desktop/SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf
+App.jsx:11032 Document saved successfully
+App.jsx:11041 Skipping Supabase sync (Free Plan)
+performanceLogger.js:76 [PERF] Render Page 1: 3405.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +5.40ms (at 5.40ms)
+performanceLogger.js:76 [PERF] Render Page 4: 3432.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +6.90ms (at 6.90ms)
+performanceLogger.js:76 [PERF] Render Page 3: 3579.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +8.00ms (at 8.00ms)
+performanceLogger.js:76 [PERF] Render Page 2: 3641.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.70ms (at 3.70ms)
+performanceLogger.js:76 [PERF] Render Page 5: 3985.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.70ms (at 3.70ms)
+performanceLogger.js:76 [PERF] Render Page 7: 4067.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +4.80ms (at 4.80ms)
+performanceLogger.js:76 [PERF] Render Page 10: 6981.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.20ms (at 3.20ms)
+performanceLogger.js:76 [PERF] Render Page 12: 7002.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +4.80ms (at 4.80ms)
+performanceLogger.js:76 [PERF] Render Page 16: 7048.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.90ms (at 3.90ms)
+performanceLogger.js:76 [PERF] Render Page 11: 7476.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +4.70ms (at 4.70ms)
+performanceLogger.js:76 [PERF] Render Page 14: 7490.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.70ms (at 3.70ms)
+performanceLogger.js:76 [PERF] Render Page 15: 7491.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.70ms (at 3.70ms)
+performanceLogger.js:76 [PERF] Render Page 25: 7559.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +7.20ms (at 7.20ms)
+performanceLogger.js:76 [PERF] Render Page 18: 7876.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.50ms (at 2.50ms)
+performanceLogger.js:76 [PERF] Render Page 20: 7874.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +12.10ms (at 12.10ms)
+performanceLogger.js:76 [PERF] Render Page 13: 8185.80ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.80ms (at 2.80ms)
+performanceLogger.js:76 [PERF] Render Page 17: 8175.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.90ms (at 3.90ms)
+performanceLogger.js:76 [PERF] Render Page 19: 8168.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +5.00ms (at 5.00ms)
+performanceLogger.js:76 [PERF] Render Page 22: 8603.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.50ms (at 3.50ms)
+performanceLogger.js:76 [PERF] Render Page 23: 8614.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.40ms (at 3.40ms)
+performanceLogger.js:76 [PERF] Render Page 21: 8817.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.70ms (at 2.70ms)
+performanceLogger.js:76 [PERF] Render Page 24: 8807.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +4.30ms (at 4.30ms)
+performanceLogger.js:76 [PERF] Render Page 26: 10534.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +4.00ms (at 4.00ms)
+performanceLogger.js:76 [PERF] Render Page 9: 10896.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +12.50ms (at 12.50ms)
+performanceLogger.js:76 [PERF] Render Page 6: 10927.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +5.10ms (at 5.10ms)
+performanceLogger.js:76 [PERF] Render Page 8: 10922.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +9.30ms (at 9.30ms)
+performanceLogger.js:76 [PERF] Zoom to 0.972x: 927.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → From 117% to 97%: +0.00ms (at 0.00ms)
+performanceLogger.js:76 [PERF] Zoom to 0.81x: 530.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → From 97% to 81%: +0.00ms (at 0.00ms)
+performanceLogger.js:76 [PERF] Zoom to 0.675x: 448.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → From 81% to 68%: +0.00ms (at 0.00ms)
+performanceLogger.js:76 [PERF] Zoom to 0.5625000000000001x: 416.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → From 68% to 56%: +0.00ms (at 0.00ms)
+performanceLogger.js:76 [PERF] Render Page 1: 8549.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.20ms (at 1.20ms)
+performanceLogger.js:76 [PERF] Render Page 2: 8565.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.40ms (at 0.40ms)
+performanceLogger.js:76 [PERF] Render Page 3: 8573.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.30ms (at 0.30ms)
+performanceLogger.js:76 [PERF] Render Page 4: 8623.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.40ms (at 0.40ms)
+performanceLogger.js:76 [PERF] Render Page 5: 9067.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.40ms (at 0.40ms)
+performanceLogger.js:76 [PERF] Render Page 7: 9129.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.70ms (at 0.70ms)
+performanceLogger.js:76 [PERF] Render Page 10: 11381.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.70ms (at 0.70ms)
+performanceLogger.js:76 [PERF] Render Page 12: 11654.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.30ms (at 1.30ms)
+performanceLogger.js:76 [PERF] Render Page 11: 12007.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 13: 12018.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.90ms (at 0.90ms)
+performanceLogger.js:76 [PERF] Render Page 14: 12022.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.80ms (at 0.80ms)
+performanceLogger.js:76 [PERF] Render Page 15: 12025.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.70ms (at 0.70ms)
+performanceLogger.js:76 [PERF] Render Page 16: 12563.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.70ms (at 0.70ms)
+performanceLogger.js:76 [PERF] Render Page 25: 12695.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 17: 13098.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 18: 13107.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 21: 13152.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.40ms (at 0.40ms)
+performanceLogger.js:76 [PERF] Render Page 19: 13453.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 20: 13457.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.70ms (at 0.70ms)
+performanceLogger.js:76 [PERF] Render Page 22: 13462.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 24: 13902.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 23: 14690.80ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 36: 14712.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 28: 16805.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 29: 16800.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.70ms (at 0.70ms)
+performanceLogger.js:76 [PERF] Render Page 35: 16522.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.70ms (at 0.70ms)
+performanceLogger.js:76 [PERF] Render Page 27: 17256.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.10ms (at 1.10ms)
+performanceLogger.js:76 [PERF] Render Page 34: 18527.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 31: 19014.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +5.80ms (at 5.80ms)
+performanceLogger.js:76 [PERF] Render Page 33: 18761.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.90ms (at 0.90ms)
+performanceLogger.js:76 [PERF] Render Page 26: 19625.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.70ms (at 0.70ms)
+performanceLogger.js:76 [PERF] Render Page 32: 19150.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.90ms (at 2.90ms)
+performanceLogger.js:76 [PERF] Render Page 30: 19527.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.80ms (at 0.80ms)
+performanceLogger.js:76 [PERF] Render Page 6: 20327.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.70ms (at 0.70ms)
+performanceLogger.js:76 [PERF] Render Page 9: 20332.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Render Page 8: 20349.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.60ms (at 0.60ms)
+performanceLogger.js:76 [PERF] Zoom to 0.6187500000000001x: 418.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → From 56% to 62%: +0.00ms (at 0.00ms)
+performanceLogger.js:76 [PERF] Render Page 1: 293.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.10ms (at 3.10ms)
+performanceLogger.js:76 [PERF] Render Page 2: 301.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +10.20ms (at 10.20ms)
+performanceLogger.js:76 [PERF] Render Page 4: 338.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.20ms (at 3.20ms)
+performanceLogger.js:76 [PERF] Render Page 3: 486.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.70ms (at 2.70ms)
+performanceLogger.js:76 [PERF] Render Page 5: 1447.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +5.60ms (at 5.60ms)
+performanceLogger.js:76 [PERF] Render Page 7: 1601.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +9.30ms (at 9.30ms)
+performanceLogger.js:76 [PERF] Render Page 11: 3750.00ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.00ms (at 1.00ms)
+performanceLogger.js:76 [PERF] Render Page 12: 4030.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.80ms (at 0.80ms)
+performanceLogger.js:76 [PERF] Render Page 15: 4068.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.20ms (at 1.20ms)
+performanceLogger.js:76 [PERF] Render Page 10: 4249.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.30ms (at 1.30ms)
+performanceLogger.js:76 [PERF] Render Page 14: 4263.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.00ms (at 1.00ms)
+performanceLogger.js:76 [PERF] Render Page 16: 4269.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.60ms (at 1.60ms)
+performanceLogger.js:76 [PERF] Render Page 13: 4418.80ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.30ms (at 1.30ms)
+performanceLogger.js:76 [PERF] Render Page 17: 4410.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.10ms (at 1.10ms)
+performanceLogger.js:76 [PERF] Render Page 18: 4419.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.00ms (at 1.00ms)
+performanceLogger.js:76 [PERF] Render Page 30: 4567.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.80ms (at 0.80ms)
+performanceLogger.js:76 [PERF] Render Page 31: 5006.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.90ms (at 1.90ms)
+performanceLogger.js:76 [PERF] Render Page 32: 5014.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.10ms (at 2.10ms)
+performanceLogger.js:76 [PERF] Render Page 25: 5748.80ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.90ms (at 0.90ms)
+performanceLogger.js:76 [PERF] Render Page 33: 5784.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.10ms (at 2.10ms)
+performanceLogger.js:76 [PERF] Render Page 34: 5786.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.50ms (at 1.50ms)
+performanceLogger.js:76 [PERF] Render Page 36: 5802.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.90ms (at 0.90ms)
+performanceLogger.js:76 [PERF] Render Page 29: 6144.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.00ms (at 1.00ms)
+performanceLogger.js:76 [PERF] Render Page 28: 6501.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.10ms (at 1.10ms)
+performanceLogger.js:76 [PERF] Render Page 35: 6500.70ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.80ms (at 0.80ms)
+performanceLogger.js:76 [PERF] Render Page 20: 6756.30ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +0.90ms (at 0.90ms)
+performanceLogger.js:76 [PERF] Render Page 21: 6768.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.60ms (at 1.60ms)
+performanceLogger.js:76 [PERF] Render Page 23: 6787.60ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.30ms (at 1.30ms)
+performanceLogger.js:76 [PERF] Render Page 24: 6790.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.10ms (at 1.10ms)
+performanceLogger.js:76 [PERF] Render Page 19: 6964.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.20ms (at 1.20ms)
+performanceLogger.js:76 [PERF] Render Page 22: 6962.10ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.60ms (at 2.60ms)
+performanceLogger.js:76 [PERF] Render Page 27: 7361.90ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.70ms (at 2.70ms)
+performanceLogger.js:76 [PERF] Render Page 26: 10220.80ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.00ms (at 1.00ms)
+performanceLogger.js:76 [PERF] Render Page 6: 10841.50ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +3.50ms (at 3.50ms)
+performanceLogger.js:76 [PERF] Render Page 8: 10866.40ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +2.70ms (at 2.70ms)
+performanceLogger.js:76 [PERF] Render Page 9: 10904.20ms
+performanceLogger.js:83   Breakdown:
+performanceLogger.js:87     → Canvas prepared: +1.10ms (at 1.10ms)

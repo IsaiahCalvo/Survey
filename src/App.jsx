@@ -11566,6 +11566,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
+    // Start zoom performance tracking
+    perfZoom.start(safeScale);
+    perfZoom.mark(safeScale, `From ${(previousScale * 100).toFixed(0)}% to ${(safeScale * 100).toFixed(0)}%`);
+
     const rect = container.getBoundingClientRect();
     const anchor = options.anchor || {};
     const anchorX = typeof anchor.x === 'number' ? anchor.x : rect.width / 2;
@@ -11580,7 +11584,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     zoomDataRef.current = {
       newScrollLeft,
-      newScrollTop
+      newScrollTop,
+      zoomScale: safeScale // Store for end timing
     };
 
     isZoomingRef.current = true;
@@ -11610,7 +11615,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setTimeout(applyScrollAdjustment, 0);
     setTimeout(applyScrollAdjustment, 16);
     setTimeout(applyScrollAdjustment, 50);
-    setTimeout(applyScrollAdjustment, 100);
+    setTimeout(() => {
+      applyScrollAdjustment();
+      // End zoom timing after all adjustments
+      perfZoom.end(safeScale);
+    }, 100);
     requestAnimationFrame(() => {
       requestAnimationFrame(applyScrollAdjustment);
     });
@@ -13526,6 +13535,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             <PDFPageCanvas
                               page={pageObjects[pageNumber]}
                               scale={scale}
+                              pageNum={pageNumber}
                               onFinishRender={() => {
                                 setRenderedPages(prev => new Set([...prev, pageNumber]));
                               }}
@@ -13654,6 +13664,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         <PDFPageCanvas
                           page={pageObjects[pageNum]}
                           scale={scale}
+                          pageNum={pageNum}
                           onFinishRender={() => {
                             setRenderedPages(prev => new Set([...prev, pageNum]));
                           }}
