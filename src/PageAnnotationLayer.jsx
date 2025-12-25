@@ -988,10 +988,42 @@ const PageAnnotationLayer = memo(({
         const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON);
+        onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
       }
     };
+
+    // Handle selection state changes to toggle perPixelTargetFind
+    // When selected: disable per-pixel find to allow clicking anywhere in bounding box
+    // When deselected: enable per-pixel find for precise selection
+    const setPerPixelTargetFind = (objects, value) => {
+      if (!objects) return;
+      objects.forEach(obj => {
+        // Apply to all interactive objects (exclude utility objects like selection rects if they are not selectable)
+        if (obj.selectable !== false && obj.evented !== false) {
+          obj.perPixelTargetFind = value;
+          // Ensure coordinates are updated for hit testing
+          if (!value) {
+            obj.setCoords();
+          }
+        }
+      });
+      canvas.requestRenderAll();
+    };
+
+    canvas.on('selection:created', (e) => {
+      setPerPixelTargetFind(e.selected, false);
+    });
+
+    canvas.on('selection:updated', (e) => {
+      setPerPixelTargetFind(e.deselected, true);
+      setPerPixelTargetFind(e.selected, false);
+    });
+
+    canvas.on('selection:cleared', (e) => {
+      setPerPixelTargetFind(e.deselected, true);
+    });
 
     const handlePathCreated = (e) => {
       if (e.path) {
@@ -2307,7 +2339,40 @@ const PageAnnotationLayer = memo(({
       // e.target will be an object with a type property when clicking on a Fabric object
       // Allow single-click selection of objects - we'll handle that in mouseUp
       // Only skip if this is clearly an object click (not a drag start)
+      // Only skip if clicking on an actual object (not canvas/background)
+      // e.target will be an object with a type property when clicking on a Fabric object
+      // Allow single-click selection of objects - we'll handle that in mouseUp
+      // Only skip if this is clearly an object click (not a drag start)
       const isObjectClick = e.target && e.target !== canvas && e.target.type !== undefined;
+
+      // Sticky Selection: If clicking inside the bounding box of the CURRENTLY selected object,
+      // keep it selected even if Fabric didn't detect a target (e.g. clicking empty space inside box).
+      const activeObject = canvas.getActiveObject();
+      if (!isObjectClick && activeObject) {
+        // Check if point is inside the object's Oriented Bounding Box (aCoords)
+        // Use pointerAbsolute which matches the coordinate system of aCoords
+        const ptr = canvas.getPointer(e.e, true);
+        const aCoords = activeObject.aCoords;
+
+        if (aCoords) {
+          const points = [aCoords.tl, aCoords.tr, aCoords.br, aCoords.bl];
+          // fabricLib is the imported 'fabric' object
+          const isInside = fabricLib.util.isPointInPolygon(ptr, points);
+
+          if (isInside) {
+            // It's a sticky hit! Prevent deselection.
+            // We re-select the object in the next tick to override Fabric's native deselection
+            setTimeout(() => {
+              if (canvas.getActiveObject() !== activeObject) {
+                canvas.setActiveObject(activeObject);
+                canvas.renderAll();
+              }
+            }, 0);
+            return; // Stop selection rectangle from appearing
+          }
+        }
+      }
+
       if (isObjectClick) {
         // Don't initialize selection rect - allow single-click object selection to work normally
         // But also don't prevent the object from being selected

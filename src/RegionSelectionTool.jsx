@@ -585,6 +585,30 @@ const RegionSelectionTool = ({
     setIsCursorOverCanvas(true);
 
     if (effectiveToolType === 'move') {
+      // In move mode, check if click is inside any selected region's boundary box
+      const x = (event.clientX - rect.left) / scale;
+      const y = (event.clientY - rect.top) / scale;
+      
+      // Check if click is inside any selected region's bounds
+      let clickedInsideBoundary = false;
+      for (const regionId of selectedRegionIds) {
+        const region = regions.find(r => r.regionId === regionId);
+        if (region) {
+          const bounds = getRegionBounds(region);
+          if (bounds && 
+              x >= bounds.minX && x <= bounds.maxX &&
+              y >= bounds.minY && y <= bounds.maxY) {
+            clickedInsideBoundary = true;
+            break;
+          }
+        }
+      }
+      
+      // If clicked outside all boundary boxes, deselect
+      if (!clickedInsideBoundary && selectedRegionIds.size > 0) {
+        setSelectedRegionIds(new Set());
+        setInteractionState(null);
+      }
       return;
     }
 
@@ -599,7 +623,7 @@ const RegionSelectionTool = ({
       setIsDrawing(true);
       setPolygonPoints([{ x, y }]);
     }
-  }, [active, targetElement, effectiveToolType, scale]);
+  }, [active, targetElement, effectiveToolType, scale, selectedRegionIds, regions, getRegionBounds]);
 
   const handleMouseMove = useCallback((event) => {
     if (!active || !targetElement) return;
@@ -1963,6 +1987,16 @@ const RegionSelectionTool = ({
                 boundaryBox = (
                   <div
                     key="boundary-box"
+                    onMouseDown={(event) => {
+                      // Keep selection when clicking inside boundary box
+                      // Allow dragging by not stopping propagation if region is already selected
+                      // The handleMouseDown will check if click is inside bounds and keep selection
+                      if (selectedRegionIds.has(selectedRegion.regionId)) {
+                        // If clicking on an already selected region's boundary box,
+                        // trigger the same behavior as clicking on the region path
+                        handleRegionPointerDown(selectedRegion, event);
+                      }
+                    }}
                     style={{
                       position: 'absolute',
                       left: `${left}px`,
@@ -1972,9 +2006,10 @@ const RegionSelectionTool = ({
                       background: 'transparent',
                       border: '1px solid #87CEEB',
                       borderRadius: '0px',
-                      pointerEvents: 'none',
+                      pointerEvents: 'auto',
                       zIndex: 1002,
-                      boxSizing: 'border-box'
+                      boxSizing: 'border-box',
+                      cursor: 'move'
                     }}
                   />
                 );
@@ -2019,6 +2054,13 @@ const RegionSelectionTool = ({
                 <>
                   {/* Selection boundary box - Drawboard style */}
                   <div
+                    onMouseDown={(event) => {
+                      // Keep selection when clicking inside boundary box
+                      // Allow dragging by triggering the same behavior as clicking on the region path
+                      if (selectedRegionIds.has(selectedRegion.regionId)) {
+                        handleRegionPointerDown(selectedRegion, event);
+                      }
+                    }}
                     style={{
                       position: 'absolute',
                       left: `${left}px`,
@@ -2028,9 +2070,10 @@ const RegionSelectionTool = ({
                       background: 'transparent',
                       border: '1px solid #87CEEB',
                       borderRadius: '0px',
-                      pointerEvents: 'none',
+                      pointerEvents: 'auto',
                       zIndex: 1002,
-                      boxSizing: 'border-box'
+                      boxSizing: 'border-box',
+                      cursor: 'move'
                     }}
                   />
                   {resizeHandles.map(handle => {
