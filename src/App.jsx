@@ -14079,6 +14079,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   }
                 }
               }}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setTooltip({ visible: true, text: 'Draw', x: rect.left + rect.width / 2, y: rect.top - 10 });
+              }}
+              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
               className={`btn btn-md ${activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'eraser'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Draw"
@@ -14099,6 +14104,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   }
                 }
               }}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setTooltip({ visible: true, text: 'Shape', x: rect.left + rect.width / 2, y: rect.top - 10 });
+              }}
+              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
               className={`btn btn-md ${activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Shape"
@@ -14119,6 +14129,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   }
                 }
               }}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setTooltip({ visible: true, text: 'Review', x: rect.left + rect.width / 2, y: rect.top - 10 });
+              }}
+              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
               className={`btn btn-md ${activeCategoryDropdown === 'review' || ['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Review"
@@ -14136,6 +14151,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     setActiveTool('highlight');
                   }
                 }}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setTooltip({ visible: true, text: 'Survey', x: rect.left + rect.width / 2, y: rect.top - 10 });
+                }}
+                onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                 className={`btn btn-md ${activeCategoryDropdown === 'survey' || activeTool === 'highlight' ? 'btn-active' : 'btn-default'}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
                 title="Survey"
