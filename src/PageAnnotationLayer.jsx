@@ -121,32 +121,23 @@ const calloutPositionHandler = (type) => {
       // Let's stick to Text.left/top (which is top-left in our creation logic)
       localPoint = new fabricLib.Point(text.left, text.top);
     } else if (type === 'knee') {
-      // Knee is tougher. It's inside the Polyline points.
-      // Line.points[1] is relative to Line's top/left. 
-      // And Line is positioned relative to Group.
-      // Line origin is top/left?
-      // fabric.Polyline points are relative to the bounding box of the polyline.
-      // This double nesting (Point -> Polyline -> Group) makes matrix math hard.
+      // Robust Knee Position:
+      // Use the Line's own matrix to transform the specific point to canvas space.
+      // We must account for pathOffset because Polyline drawing shifts by -pathOffset.
+      const pts = line.points;
+      const matrix = line.calcTransformMatrix();
 
-      // UNLESS: We ensure Polyline is always encompassing or positioned at 0,0 of group? No.
+      // Point relative to the object's origin (accounting for pathOffset)
+      const point = {
+        x: pts[1].x - line.pathOffset.x,
+        y: pts[1].y - line.pathOffset.y
+      };
 
-      // ALT: We treat 'knee' as the point connected to Tip and Text. 
-      // We know it's points[1].
-      // To get its Group-Space coordinate:
-      // line.left + points[1].x ? Only if line is not scaled/rotated inside group.
-      // Let's assuming line has scale 1, angle 0 inside group.
-      // Then pointGroup = { x: line.left + points[1].x - line.pathOffset.x, y: ... }
-      // This is risky.
-
-      // ROBUST WAY:
-      // Just look at points[1].
-      // Polyline points are usually centered around (0,0) after initialization if origin is center.
-      // But we set originX: left, originY: top.
-
-      localPoint = new fabricLib.Point(line.left + line.points[1].x, line.top + line.points[1].y);
+      // Transform directly to canvas space
+      return util.transformPoint(point, matrix);
     }
 
-    // Transform Local (Group) Point to Canvas Point
+    // Transform Local (Group) Point to Canvas Point (for tip/text)
     const matrix = group.calcTransformMatrix();
     return util.transformPoint(localPoint, matrix);
   };
@@ -233,10 +224,10 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
   });
 
   const group = new Group([line, head, text], {
-    subTargetCheck: true,
+    subTargetCheck: false, // Force group selection always (prevents individual object selection)
     objectCaching: false,
     hasControls: true,
-    hasBorders: false, // We don't want the group border? Or do we? Maybe yes for selection.
+    hasBorders: true, // Enable borders for visual feedback
     selectable: true,
     lockScalingX: true, // We will hide handles anyway
     lockScalingY: true,
