@@ -136,11 +136,65 @@ const calloutPositionHandler = (type) => {
       // Transform directly to canvas space
       return util.transformPoint(point, matrix);
     }
+    // Text Corner Handles
+    else if (type.startsWith('text')) {
+      // Calculate corner based on Textbox dimensions
+      // Text origin is 'left', 'top'
+      const w = text.getScaledWidth();
+      const h = text.getScaledHeight();
+
+      let px = text.left;
+      let py = text.top;
+
+      if (type.includes('R')) px += w;
+      if (type.includes('B')) py += h;
+
+      localPoint = { x: px, y: py };
+    }
 
     // Transform Local (Group) Point to Canvas Point (for tip/text)
     const matrix = group.calcTransformMatrix();
     return util.transformPoint(localPoint, matrix);
   };
+};
+
+
+// Helper to re-calculate callout line connections
+const updateCalloutGroupConnections = (group) => {
+  const line = group.getObjects().find(o => o.name === 'calloutLine');
+  const head = group.getObjects().find(o => o.name === 'calloutHead');
+  const text = group.getObjects().find(o => o.name === 'calloutText');
+
+  if (!line || !head || !text) return;
+
+  const pTip = { x: head.left, y: head.top };
+  const pText = { x: text.left, y: text.top + text.height / 2 };
+
+  const pts = line.points;
+  const kneeIdx = 1;
+
+  // Calculate Knee in Group Space using line.left/top
+  const pKnee = {
+    x: line.left + pts[kneeIdx].x,
+    y: line.top + pts[kneeIdx].y
+  };
+
+  // Update Arrow Angle
+  const angle = Math.atan2(pKnee.y - pTip.y, pKnee.x - pTip.x) * 180 / Math.PI;
+  head.set({ angle: angle + 270 });
+
+  // Re-construct line points (un-normalized)
+  const allPts = [pTip, pKnee, pText];
+  const minX = Math.min(pTip.x, pKnee.x, pText.x);
+  const minY = Math.min(pTip.y, pKnee.y, pText.y);
+
+  line.set({
+    left: minX,
+    top: minY,
+    points: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
+  });
+
+  group.addWithUpdate();
 };
 
 
@@ -277,79 +331,44 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
 
     if (type === 'tip') {
       head.set({ left: localPoint.x, top: localPoint.y });
-    } else if (type === 'text') {
-      text.set({ left: localPoint.x, top: localPoint.y });
     } else if (type === 'knee') {
       // Virtual knee point changed. We just track it for the line update.
     }
+    // Text Resize Logic
+    else if (type.startsWith('text')) {
+      // We only adjust width for Textbox (it auto-wraps height)
+      // And position if dragging left/top
+      const minWidth = 20;
 
-    // Calculate connection points
-    const pTip = { x: head.left, y: head.top };
-    const pText = { x: text.left, y: text.top + text.height / 2 };
+      if (type === 'textBR' || type === 'textTR') {
+        const newW = Math.max(minWidth, localPoint.x - text.left);
+        text.set({ width: newW });
+      }
+      if (type === 'textBL' || type === 'textTL') {
+        // Resizing from left: Shift Left and Increase Width
+        const rightEdge = text.left + text.width;
+        const newLeft = Math.min(rightEdge - minWidth, localPoint.x);
+        const newW = rightEdge - newLeft;
+        text.set({ left: newLeft, width: newW });
+      }
 
-    // Current Knee? 
-    // If we moved knee, use mouse. If not, use existing knee.
-    // Existing knee is line.points[1] ... transformed to group space.
-    // Complex.
-
-    // Simplify: Store 'knee' position on the group or line data? 
-    // Or just read it from the line.
-    // Line.left + points[1].x
-
-    // Note: Polyline points are mutable.
-    const pts = line.points;
-    const kneeIdx = 1;
-
-    // Calculate current Knee in Group Space
-    let pKnee = {
-      x: line.left + pts[kneeIdx].x,
-      y: line.top + pts[kneeIdx].y
-    };
-
-    if (type === 'knee') {
-      pKnee = { x: localPoint.x, y: localPoint.y };
+      // Vertical movement for handling Top handles?
+      // Start strictly with width resizing.
+      // User usually wants to just resize the box width to reflow text.
+      // Allow moving Top/Bottom?
+      if (type === 'textTL' || type === 'textTR') {
+        text.set({ top: localPoint.y });
+      }
+      if (type === 'textBL' || type === 'textBR') {
+        // If we drag bottom, we usually expect height change?
+        // Textbox height is auto. 
+        // Maybe we shouldn't change top/left based on bottom handles.
+      }
     }
 
-    // Update Head Angle (Tip -> Knee)
-    const angle = Math.atan2(pKnee.y - pTip.y, pKnee.x - pTip.x) * 180 / Math.PI;
-    head.set({ angle: angle + 270 });
-
-    // Re-construct line
-    // Problem: Polyline bounding box shifts when points change, changing .left/.top automatically?
-    // No, set({ points: ... }) usually requires manual recalc or it shifts visually.
-    // Easiest is to Un-normalize:
-    // Create new points in absolute group coords: [pTip, pKnee, pText]
-    // Canvas will normalize them into (minX, minY) and set line.left/top.
-
-    // Logic:
-    // 1. Calculate new points relative to Group Center (0,0 is center).
-    //    Wait, Group coords are centered.
-    //    So pTip, pKnee, pText are already in Group Coords.
-    //    Example: pTip = {x: -50, y: -50}.
-
-    // 2. Map these to Polyline-local coords.
-    //    Find minX, minY of the 3 points.
-    //    line.left = minX, line.top = minY.
-    //    newPts = points.map(p => ({ x: p.x - minX, y: p.y - minY }))
-
-    const allPts = [pTip, pKnee, pText];
-    const minX = Math.min(pTip.x, pKnee.x, pText.x);
-    const minY = Math.min(pTip.y, pKnee.y, pText.y);
-
-    line.set({
-      left: minX,
-      top: minY,
-      points: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
-    });
-
-    // Mark group as dirty to redraw
-    // Important: If we expanded the group bounds, we must notify group?
-    // group.addWithUpdate() triggers a full recalc of group bounds based on children.
-    // usage: group.addWithUpdate(); // with no args, just recalcs.
-
-    // However, addWithUpdate might reset rotation/scale of controls?
-    // During drag, we usually want to avoid heavy bounding box recalcs that shift the center under the mouse.
-    // But if we don't, the controls might detach.
+    // Calculate connection points and line update
+    // Use shared helper
+    updateCalloutGroupConnections(target);
 
     return true; // render request
   };
@@ -372,13 +391,22 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     render: renderControl
   });
 
-  // Text Control
-  group.controls.text = new Control({
-    x: 0.5, y: 0.5,
-    cursorStyle: 'move',
-    actionHandler: (e, t, x, y) => updateGeometry(t, x, y, 'text'),
-    positionHandler: calloutPositionHandler('text'),
-    render: renderControl
+  // Text Corners (Resize)
+  const textControls = [
+    { name: 'textTL', cursor: 'nwse-resize' },
+    { name: 'textTR', cursor: 'nesw-resize' },
+    { name: 'textBL', cursor: 'nesw-resize' },
+    { name: 'textBR', cursor: 'nwse-resize' }
+  ];
+
+  textControls.forEach(ctrl => {
+    group.controls[ctrl.name] = new Control({
+      x: 0, y: 0,
+      cursorStyle: ctrl.cursor,
+      actionHandler: (e, t, x, y) => updateGeometry(t, x, y, ctrl.name),
+      positionHandler: calloutPositionHandler(ctrl.name),
+      render: renderControl
+    });
   });
 
   return group;
@@ -1133,6 +1161,52 @@ const PageAnnotationLayer = memo(({
   const [editModal, setEditModal] = useState(null); // { x, y, object }
   const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1 });
   const editModalRef = useRef(null);
+
+
+
+  // Callout Text Drag State
+  const isDraggingCalloutTextRef = useRef(false);
+  const dragStartPointerRef = useRef(null);
+
+  // Helper to re-calculate callout line connections
+  const updateCalloutConnections = useCallback((group) => {
+    const line = group.getObjects().find(o => o.name === 'calloutLine');
+    const head = group.getObjects().find(o => o.name === 'calloutHead');
+    const text = group.getObjects().find(o => o.name === 'calloutText');
+
+    if (!line || !head || !text) return;
+
+    const pTip = { x: head.left, y: head.top };
+    const pText = { x: text.left, y: text.top + text.height / 2 };
+
+    const pts = line.points;
+    const kneeIdx = 1;
+
+    // We assume knee is at pts[1] relative to current line position. 
+    // But if line moved, pts[1] is relative.
+    // Stable approach: Calculate Knee in Group Space using line.left/top
+    const pKnee = {
+      x: line.left + pts[kneeIdx].x,
+      y: line.top + pts[kneeIdx].y
+    };
+
+    // Update Arrow Angle
+    const angle = Math.atan2(pKnee.y - pTip.y, pKnee.x - pTip.x) * 180 / Math.PI;
+    head.set({ angle: angle + 270 });
+
+    // Re-construct line points (un-normalized)
+    const allPts = [pTip, pKnee, pText];
+    const minX = Math.min(pTip.x, pKnee.x, pText.x);
+    const minY = Math.min(pTip.y, pKnee.y, pText.y);
+
+    line.set({
+      left: minX,
+      top: minY,
+      points: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
+    });
+
+    group.addWithUpdate();
+  }, []);
 
   // Helper to trigger save
   const triggerSave = useCallback(() => {
@@ -2488,6 +2562,37 @@ const PageAnnotationLayer = memo(({
       const currentStrokeWidth = strokeWidthRef.current;
       const currentEraserMode = eraserModeRef.current;
       const { x, y } = canvas.getPointer(opt.e);
+      const pointer = { x, y }; // Ensure pointer object exists
+
+      // --- Callout Text Direct Drag Handling ---
+      const target = opt.target;
+      if (target && target.data?.type === 'callout' && !canvas.getActiveTransform()) {
+        const isOverHandle = isPointOnAnyHandle ? isPointOnAnyHandle(pointer, target) : false;
+
+        if (!isOverHandle) {
+          const textObj = target.getObjects().find(o => o.name === 'calloutText');
+          if (textObj) {
+            const groupMatrix = target.calcTransformMatrix();
+            const invertedMatrix = fabric.util.invertTransform(groupMatrix);
+            const localPointer = fabric.util.transformPoint(pointer, invertedMatrix);
+
+            const w = textObj.getScaledWidth();
+            const h = textObj.getScaledHeight();
+
+            if (
+              localPointer.x >= textObj.left &&
+              localPointer.x <= textObj.left + w &&
+              localPointer.y >= textObj.top &&
+              localPointer.y <= textObj.top + h
+            ) {
+              isDraggingCalloutTextRef.current = true;
+              dragStartPointerRef.current = pointer;
+              target.lockMovementX = true;
+              target.lockMovementY = true;
+            }
+          }
+        }
+      }
 
       // Early return for select tool to avoid interfering with selection handlers
       if (currentTool === 'select') {
@@ -2660,6 +2765,35 @@ const PageAnnotationLayer = memo(({
     };
 
     const handleMouseMove = (opt) => {
+      // --- Callout Text Drag Update ---
+      if (isDraggingCalloutTextRef.current) {
+        const pointer = canvas.getPointer(opt.e);
+        const lastPointer = dragStartPointerRef.current;
+        if (lastPointer) {
+          const deltaX = pointer.x - lastPointer.x;
+          const deltaY = pointer.y - lastPointer.y;
+
+          const group = canvas.getActiveObject();
+          if (group && group.data?.type === 'callout') {
+            const text = group.getObjects().find(o => o.name === 'calloutText');
+            if (text) {
+              // Update Text Position
+              text.set({
+                left: text.left + deltaX,
+                top: text.top + deltaY
+              });
+
+              // Reflow Line
+              updateCalloutGroupConnections(group);
+
+              dragStartPointerRef.current = pointer;
+              canvas.requestRenderAll();
+            }
+          }
+        }
+        return;
+      }
+
       const currentTool = toolRef.current;
       const currentEraserMode = eraserModeRef.current;
 
@@ -2718,6 +2852,27 @@ const PageAnnotationLayer = memo(({
     };
 
     const handleMouseUp = (opt) => {
+      // --- Callout Text Drag End ---
+      if (isDraggingCalloutTextRef.current) {
+        isDraggingCalloutTextRef.current = false;
+        dragStartPointerRef.current = null;
+
+        const group = canvas.getActiveObject();
+        if (group && group.data?.type === 'callout') {
+          // Unlock group movement
+          group.lockMovementX = true; // Wait, we set it to true to BLOCK. 
+          // Correction: We must allow it again. But previously defined as lockScalingX: true etc.
+          // Standard callout creation: lockScalingX: true, lockRotation: true.
+          // Movement was NOT locked.
+          group.lockMovementX = false;
+          group.lockMovementY = false;
+
+          group.addWithUpdate();
+          triggerSave();
+        }
+        return;
+      }
+
       const currentTool = toolRef.current;
       const currentEraserMode = eraserModeRef.current;
 
@@ -2948,6 +3103,20 @@ const PageAnnotationLayer = memo(({
     };
 
     const handleDblClick = (opt) => {
+      const target = opt.target;
+      if (!target) return;
+
+      // Handle Callout Text Editing (since subTargetCheck is false)
+      if (target.data?.type === 'callout') {
+        const textObj = target.getObjects().find(o => o.name === 'calloutText');
+        if (textObj) {
+          // We must enter editing mode on the IText, even if it's inside a group
+          textObj.enterEditing();
+          textObj.selectAll();
+          canvas.requestRenderAll();
+        }
+      }
+
       if (toolRef.current !== 'note') return;
       // handled in creation; keep stub for future
     };

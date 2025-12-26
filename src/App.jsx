@@ -46,6 +46,7 @@ import BallInCourtIndicator from './components/BallInCourtIndicator';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
+import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { supabase } from './supabaseClient';
 import { perfUpload, perfLoad, perfRender, perfZoom, setDebugEnabled, isDebugEnabled } from './utils/performanceLogger';
 import { useZoomState } from './hooks/useZoomState';
@@ -1460,6 +1461,17 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
   const { uploadDocument: uploadToStorage, uploadDataFile, deleteDocumentFile: deleteFromStorage, downloadDocument: downloadFromStorage, getDocumentUrl } = useStorage();
 
+  // Subscription limits and usage tracking
+  const {
+    canCreateProject,
+    canUploadDocument,
+    canCreateTemplate,
+    canCreateRegion,
+    hasFeatureAccess,
+    usage,
+    limits,
+    refetch: refetchUsage
+  } = useSubscriptionLimits();
 
   const [selectedColorPickerId, setSelectedColorPickerId] = useState(null); // Track which color picker is selected
   const [colorPickerMode, setColorPickerMode] = useState('grid'); // 'grid' or 'advanced'
@@ -2010,6 +2022,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     const trimmedName = name.trim();
 
+    // Check subscription limits BEFORE attempting to create project
+    const projectCheck = canCreateProject();
+    if (!projectCheck.allowed) {
+      const error = new Error(projectCheck.reason);
+      error.code = 'PROJECT_LIMIT_REACHED';
+      throw error;
+    }
+
+    // Check file upload limits for each file
+    const totalFileSize = files.reduce((sum, file) => sum + file.size, 0);
+    const documentCheck = canUploadDocument(totalFileSize);
+    if (!documentCheck.allowed) {
+      const error = new Error(documentCheck.reason);
+      error.code = 'UPLOAD_LIMIT_REACHED';
+      throw error;
+    }
+
     // Refetch projects to ensure we have the latest data
     const latestProjects = await refetchProjects() || supabaseProjects || [];
     console.log('Checking for name conflict. Current projects:', latestProjects.map(p => ({ id: p.id, name: p.name })));
@@ -2150,6 +2179,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // Refetch projects and documents
       await refetchProjects();
       await refetchDocuments();
+      // Refetch usage to update subscription limits
+      await refetchUsage();
     } catch (err) {
       console.error('Error refetching data:', err);
       // Don't throw here - the project was created successfully, just refresh failed
@@ -2196,6 +2227,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       if (err?.code === 'NOT_AUTHENTICATED') {
         alert('Please sign in to create projects.');
         onShowAuthModal();
+        return;
+      }
+
+      if (err?.code === 'PROJECT_LIMIT_REACHED') {
+        alert(err.message);
+        return;
+      }
+
+      if (err?.code === 'UPLOAD_LIMIT_REACHED') {
+        alert(err.message);
         return;
       }
 

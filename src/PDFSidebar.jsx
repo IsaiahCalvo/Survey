@@ -4,6 +4,7 @@ import PagesPanel from './sidebar/PagesPanel';
 import SearchTextPanel from './sidebar/SearchTextPanel';
 import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
+import UsageIndicator from './components/UsageIndicator';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -255,6 +256,15 @@ const PDFSidebar = ({
                 features={features}
               />
             )}
+          </div>
+
+          {/* Usage Indicator */}
+          <div style={{
+            padding: '12px',
+            borderTop: '1px solid #3a3a3a',
+            background: '#252525'
+          }}>
+            <UsageIndicator />
           </div>
         </>
       )}

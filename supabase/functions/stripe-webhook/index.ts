@@ -356,6 +356,19 @@ async function handleSubscriptionDeleted(supabase: any, subscription: Stripe.Sub
         console.log('Number of rows updated:', updatedData?.length || 0);
         console.log(`Subscription canceled, downgraded to free tier`);
 
+        // Archive excess projects and documents for Free tier
+        console.log('Archiving excess projects/documents for downgrade to Free tier...');
+        const { data: archiveResult, error: archiveError } = await supabase.rpc('handle_downgrade_to_free', {
+            p_user_id: userSubscription.user_id
+        });
+
+        if (archiveError) {
+            console.error('Error archiving excess items:', archiveError);
+        } else {
+            console.log('Archive result:', archiveResult);
+            console.log(`Archived ${archiveResult?.projects_archived_count || 0} projects and ${archiveResult?.documents_archived_count || 0} documents`);
+        }
+
         // Send cancellation confirmation email
         if (userSubscription) {
             const { data: user } = await supabase.auth.admin.getUserById(userSubscription.user_id);
