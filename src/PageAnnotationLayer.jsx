@@ -1682,6 +1682,12 @@ const PageAnnotationLayer = memo(({
         // If we just finished typing in a new callout, switch to select
         onToolChange('select');
         justCreatedCalloutRef.current = false;
+        // Force proper deselection to clear focus
+        const canvas = fabricRef.current;
+        if (canvas) {
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+        }
       }
     };
 
@@ -1691,6 +1697,12 @@ const PageAnnotationLayer = memo(({
         // If we deselected the new callout (clicked outside), switch to select
         onToolChange('select');
         justCreatedCalloutRef.current = false;
+        // Force render
+        const canvas = fabricRef.current;
+        if (canvas) {
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+        }
       }
     };
 
