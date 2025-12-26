@@ -1697,9 +1697,22 @@ const PageAnnotationLayer = memo(({
         // If we deselected the new callout (clicked outside), switch to select
         onToolChange('select');
         justCreatedCalloutRef.current = false;
-        // Force render
+
+        // Force deep cleanup of editing state
         const canvas = fabricRef.current;
         if (canvas) {
+          // 1. Find any object currently in editing mode and stop it
+          // Note: activeObject is likely null due to 'selection:cleared', but the IText might still be in edit mode internally
+          canvas.getObjects().forEach(obj => {
+            if (obj.data?.type === 'callout') {
+              const textObj = obj.getObjects().find(o => o.name === 'calloutText');
+              if (textObj && textObj.isEditing) {
+                textObj.exitEditing();
+              }
+            }
+          });
+
+          // 2. Discard active object again to be sure
           canvas.discardActiveObject();
           canvas.requestRenderAll();
         }
