@@ -188,7 +188,7 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     fill: strokeColor,
     originX: 'center',
     originY: 'center',
-    angle: angle + 90,
+    angle: angle + 270,
     name: 'calloutHead'
   });
 
@@ -321,7 +321,7 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
 
     // Update Head Angle (Tip -> Knee)
     const angle = Math.atan2(pKnee.y - pTip.y, pKnee.x - pTip.x) * 180 / Math.PI;
-    head.set({ angle: angle + 90 });
+    head.set({ angle: angle + 270 });
 
     // Re-construct line
     // Problem: Polyline bounding box shifts when points change, changing .left/.top automatically?
@@ -1075,6 +1075,7 @@ const PageAnnotationLayer = memo(({
   strokeWidth = 3,
   annotations = null,
   onSaveAnnotations = () => { },
+  onToolChange = () => { },
   highlightColor = 'rgba(255, 193, 7, 0.3)',
   newHighlights = null, // Array of {x, y, width, height} to add
   highlightsToRemove = null, // Array of {x, y, width, height} to remove
@@ -1097,7 +1098,15 @@ const PageAnnotationLayer = memo(({
   const drawingStateRef = useRef({ isDrawingShape: false, startX: 0, startY: 0, tempObj: null });
   const toolRef = useRef(tool);
   const strokeColorRef = useRef(strokeColor);
+
+  // Keep refs in sync with props
+  useEffect(() => {
+    toolRef.current = tool;
+    strokeColorRef.current = strokeColor;
+    strokeWidthRef.current = strokeWidth;
+  }, [tool, strokeColor, strokeWidth]);
   const strokeWidthRef = useRef(strokeWidth);
+  const justCreatedCalloutRef = useRef(false);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
   const onHighlightDeletedRef = useRef(onHighlightDeleted);
   const onHighlightClickedRef = useRef(onHighlightClicked);
@@ -1667,16 +1676,88 @@ const PageAnnotationLayer = memo(({
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
       navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
 
+    // Event listener for finishing text editing (Callout workflow)
+    const handleTextEditingExited = (e) => {
+      if (justCreatedCalloutRef.current && toolRef.current === 'callout') {
+        // If we just finished typing in a new callout, switch to select
+        onToolChange('select');
+        justCreatedCalloutRef.current = false;
+      }
+    };
+
+    // Event listener for selection cleared (clicking outside)
+    const handleSelectionCleared = (e) => {
+      if (justCreatedCalloutRef.current && toolRef.current === 'callout') {
+        // If we deselected the new callout (clicked outside), switch to select
+        onToolChange('select');
+        justCreatedCalloutRef.current = false;
+      }
+    };
+
+    // Global Keydown
+    const handleKeyDown = (e) => {
+      // Escape Key
+      if (e.key === 'Escape') {
+        if (toolRef.current === 'callout') {
+          onToolChange('select');
+          justCreatedCalloutRef.current = false;
+        }
+        return;
+      }
+
+      // Delete / Backspace Key
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        // Ignore if typing in an input field external to canvas or contentEditable
+        const activeEl = document.activeElement;
+        if (activeEl && (['INPUT', 'TEXTAREA'].includes(activeEl.tagName) || activeEl.isContentEditable)) return;
+
+        const canvas = fabricRef.current;
+        if (!canvas) return;
+        const activeObj = canvas.getActiveObject();
+
+        if (activeObj) {
+          console.log('[Callout Debug] Delete Pressed', {
+            activeObjType: activeObj.type,
+            dataType: activeObj.data?.type,
+            hasCustomData: !!activeObj.data,
+            objects: activeObj.getObjects ? activeObj.getObjects().length : 0
+          });
+        }
+
+        // Check for Callout (Checking data.type OR internal structure as fallback)
+        const isCallout = (activeObj?.data?.type === 'callout') ||
+          (activeObj?.type === 'group' && activeObj.getObjects().some(o => o.name === 'calloutText'));
+
+        if (isCallout) {
+          // Ensure we are not editing the text inside the callout
+          const isEditing = activeObj.isEditing || (activeObj.getObjects && activeObj.getObjects().some(o => o.isEditing));
+
+          if (!isEditing) {
+            canvas.remove(activeObj);
+            canvas.requestRenderAll();
+            triggerSave();
+            e.preventDefault();
+          } else {
+            console.log('[Callout Debug] Deletion blocked: text is editing');
+          }
+        }
+      }
+    };
+
     const canvas = new Canvas(canvasRef.current, {
-      width: width * scale,
-      height: height * scale,
+      width: Math.floor(width * scale),
+      height: Math.floor(height * scale),
       backgroundColor: 'transparent',
-      // Disable Fabric.js built-in selection for select tool - we use custom selection handlers
-      // Only enable built-in selection for pan tool (for object manipulation)
       // Disable Fabric.js built-in selection for Pan tool (we use drag-to-pan)
       // Also disable for Select tool as we use custom selection handlers
-      selection: false,
-      isDrawingMode: tool === 'pen' || tool === 'highlighter',
+      selection: tool !== 'pan', // Add selection: false when pan is active
+      preserveObjectStacking: true,
+      perPixelTargetFind: false, // Don't require clicking exactly on pixels (bounding box is enough)
+      targetFindTolerance: 4,     // Increase tolerance slightly
+      // renderOnAddRemove: false, // Performance optimization
+      enableRetinaScaling: true, // Crisper rendering
+      stopContextMenu: true, // Prevent default browser context menu
+      fireRightClick: true, // Enable right-click events
       // Ensure canvas is interactive to receive mouse events
       interactive: true,
       // AutoCAD-style selection: mode determined dynamically by drag direction
@@ -1692,14 +1773,17 @@ const PageAnnotationLayer = memo(({
       // in handleObjectScaling to ensure platform-specific behavior (Command on Mac, Control on Windows)
     });
 
+    canvas.on('text:editing:exited', handleTextEditingExited);
+    canvas.on('selection:cleared', handleSelectionCleared);
+    window.addEventListener('keydown', handleKeyDown);
+
     const brush = new PencilBrush(canvas);
     brush.color = strokeColor;
     brush.width = strokeWidth;
     canvas.freeDrawingBrush = brush;
 
     fabricRef.current = canvas;
-
-
+    // Load initial annotations
     loadAnnotations(annotations);
 
     const saveCanvas = () => {
@@ -2833,6 +2917,8 @@ const PageAnnotationLayer = memo(({
             if (textObj.enterEditing) {
               textObj.enterEditing();
               textObj.selectAll();
+              // Flag that we are in the post-creation phase
+              justCreatedCalloutRef.current = true;
             }
             canvas.requestRenderAll();
           }, 50);
@@ -3301,6 +3387,7 @@ const PageAnnotationLayer = memo(({
     canvas.on('mouse:move', handleMouseMoveForCursor);
 
     return () => {
+      window.removeEventListener('keydown', handleKeyDown);
       // console.log(`[Page ${pageNumber}] Cleanup`);
       isInitializedRef.current = false;
       if (fabricRef.current) {

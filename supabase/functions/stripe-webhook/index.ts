@@ -1,8 +1,8 @@
-import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno';
+import Stripe from 'https://esm.sh/stripe@11.1.0?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10?target=deno';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
-    apiVersion: '2024-06-20',
+    apiVersion: '2023-10-16',
     httpClient: Stripe.createFetchHttpClient(),
 });
 
@@ -35,15 +35,22 @@ async function sendEmail(template: string, to: string, subject: string, data: an
 }
 
 Deno.serve(async (req) => {
+    console.log('=== WEBHOOK REQUEST RECEIVED ===');
     const signature = req.headers.get('Stripe-Signature');
     const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 
+    console.log('Signature present:', !!signature);
+    console.log('Webhook secret present:', !!webhookSecret);
+
     if (!signature || !webhookSecret) {
+        console.error('Missing signature or webhook secret');
         return new Response('Missing signature or webhook secret', { status: 400 });
     }
 
     try {
         const body = await req.text();
+        console.log('Request body length:', body.length);
+
         const event = await stripe.webhooks.constructEventAsync(
             body,
             signature,
@@ -52,7 +59,7 @@ Deno.serve(async (req) => {
             cryptoProvider
         );
 
-        console.log(`Processing webhook event: ${event.type}`);
+        console.log(`✅ Successfully verified webhook event: ${event.type}`);
 
         // Initialize Supabase client with service role (bypasses RLS)
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -118,7 +125,10 @@ Deno.serve(async (req) => {
             status: 200,
         });
     } catch (error) {
-        console.error('Webhook error:', error);
+        console.error('❌ WEBHOOK ERROR:', error);
+        console.error('Error type:', error.constructor.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
         return new Response(
             JSON.stringify({ error: error.message }),
             {
