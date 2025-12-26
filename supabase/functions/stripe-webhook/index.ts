@@ -284,7 +284,7 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
             // We just update the tier here
         }
 
-        // Update subscription
+        // Update subscription with null-safe date handling
         const { error } = await supabase
             .from('user_subscriptions')
             .update({
@@ -292,8 +292,8 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
                 status: subscription.status,
                 stripe_price_id: priceId,
                 trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-                current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-                current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+                current_period_start: subscription.current_period_start ? new Date(subscription.current_period_start * 1000).toISOString() : null,
+                current_period_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
             })
             .eq('stripe_subscription_id', subscription.id);
 

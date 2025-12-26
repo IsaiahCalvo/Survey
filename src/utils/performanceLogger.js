@@ -1,9 +1,12 @@
 /**
  * Performance Logger for PDF Operations
  * Tracks timing for upload, load, render, zoom, and scroll operations
+ *
+ * Toggle via UI debug button or console: window.pdfPerf.setEnabled(true/false)
  */
 
-const DEBUG_ENABLED = true; // Set to false to disable all logging
+// Controllable debug flag - can be toggled at runtime
+let DEBUG_ENABLED = false; // Default OFF - toggle via UI or console
 
 class PerformanceLogger {
   constructor() {
@@ -173,10 +176,22 @@ export const perfScroll = {
   end: (pageNum) => perfLogger.end(`Scroll Render Page ${pageNum}`, 'scrollRenders'),
 };
 
+// Functions to control debug state from UI or console
+export const setDebugEnabled = (enabled) => {
+  DEBUG_ENABLED = enabled;
+  if (typeof window !== 'undefined') {
+    console.log(`%c[PERF] Performance logging ${enabled ? 'ENABLED' : 'DISABLED'}`,
+      `color: ${enabled ? '#4CAF50' : '#f44336'}; font-weight: bold;`);
+  }
+};
+
+export const isDebugEnabled = () => DEBUG_ENABLED;
+
 // Expose to window for debugging in console
 if (typeof window !== 'undefined') {
   window.pdfPerf = perfLogger;
-  console.log('%c[PERF] Performance logger initialized. Use window.pdfPerf.printSummary() to see stats.', 'color: #2196F3;');
+  window.pdfPerf.setEnabled = setDebugEnabled;
+  window.pdfPerf.isEnabled = isDebugEnabled;
 
   // Add helper to compare before/after optimization
   window.pdfPerf.compareRenders = () => {
