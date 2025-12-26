@@ -45,7 +45,8 @@
     "util": "^0.12.5",
     "vite": "^5.2.0",
     "vite-plugin-node-polyfills": "^0.24.0",
-    "wait-on": "^7.0.1"
+    "wait-on": "^7.0.1",
+    "ws": "^8.18.3"
   },
   "build": {
     "appId": "com.example.survey",

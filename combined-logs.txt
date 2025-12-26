@@ -1,0 +1,34 @@
+
+================================================================================
+Log session started at 2025-12-26T03:43:36.070Z
+================================================================================
+[2025-12-26T03:43:36.076Z] [SYSTEM] Starting Supabase log listener...
+[2025-12-26T03:43:36.092Z] [SYSTEM] Starting Stripe webhook listener...
+[2025-12-26T03:43:36.341Z] [SYSTEM] WebSocket server listening on ws://localhost:8765
+[2025-12-26T03:43:37.131Z] [STRIPE] Checking for new versions...
+[2025-12-26T03:43:37.449Z] [SUPABASE-ERROR] Usage:
+[2025-12-26T03:43:37.450Z] [SUPABASE-ERROR]   supabase functions [command]
+[2025-12-26T03:43:37.450Z] [SUPABASE-ERROR] Available Commands:
+[2025-12-26T03:43:37.450Z] [SUPABASE-ERROR]   delete      Delete a Function from Supabase
+[2025-12-26T03:43:37.450Z] [SUPABASE-ERROR]   deploy      Deploy a Function to Supabase
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]   download    Download a Function from Supabase
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]   list        List all Functions in Supabase
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]   new         Create a new Function locally
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]   serve       Serve all Functions locally
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR] Flags:
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]   -h, --help   help for functions
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR] Global Flags:
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]       --create-ticket                                  create a support ticket for any CLI error
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]       --debug                                          output debug logs to stderr
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]       --dns-resolver [ native | https ]                lookup domain names using the specified resolver (default native)
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]       --experimental                                   enable experimental features
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]       --network-id string                              use the specified docker network instead of a generated one
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]   -o, --output [ env | pretty | json | toml | yaml ]   output format of status variables (default pretty)
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]       --profile string                                 use a specific profile for connecting to Supabase API (default "supabase")
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]       --workdir string                                 path to a Supabase project directory
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR]       --yes                                            answer yes to all prompts
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR] Use "supabase functions [command] --help" for more information about a command.
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR] unknown flag: --follow
+[2025-12-26T03:43:37.451Z] [SUPABASE-ERROR] Try rerunning the command with --debug to troubleshoot the error.
+[2025-12-26T03:43:37.454Z] [SYSTEM] Supabase listener stopped (code: 1)
+[2025-12-26T03:43:37.460Z] [STRIPE-ERROR] Getting ready...

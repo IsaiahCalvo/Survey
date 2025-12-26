@@ -47,7 +47,7 @@ import SearchHighlightLayer from './components/SearchHighlightLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { supabase } from './supabaseClient';
-import { perfUpload, perfLoad, perfRender, perfZoom } from './utils/performanceLogger';
+import { perfUpload, perfLoad, perfRender, perfZoom, setDebugEnabled, isDebugEnabled } from './utils/performanceLogger';
 import { useZoomState } from './hooks/useZoomState';
 
 // Set up the PDF.js worker
@@ -7927,6 +7927,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [renderedPages, setRenderedPages] = useState(new Set());
+  const [debugLogging, setDebugLogging] = useState(isDebugEnabled());
   const [mountedPages, setMountedPages] = useState(new Set([1])); // Track which pages should be mounted (DOM created)
   const [visiblePagesSet, setVisiblePagesSet] = useState(new Set([1])); // Track currently visible pages for render priority
   const [pageHeights, setPageHeights] = useState({});
@@ -14554,7 +14555,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             gap: '20px',
             fontFamily: FONT_FAMILY,
             fontWeight: '400',
-            letterSpacing: '-0.1px'
+            letterSpacing: '-0.1px',
+            flexShrink: 0
           }}>
           <span>
             {scrollMode === 'continuous'
@@ -14562,17 +14564,49 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               : 'Use arrow keys • Ctrl+Scroll to zoom • Drag to pan'}
           </span>
           {scrollMode === 'continuous' && (
-            <>
-              <span style={{
-                marginLeft: 'auto',
-                color: '#aaa',
-                fontFamily: FONT_FAMILY,
-                fontWeight: '500'
-              }}>
-                {renderedPages.size} of {numPages} pages rendered
-              </span>
-            </>
+            <span style={{
+              color: '#aaa',
+              fontFamily: FONT_FAMILY,
+              fontWeight: '500'
+            }}>
+              {renderedPages.size} of {numPages} pages rendered
+            </span>
           )}
+
+          {/* Debug Logging Toggle */}
+          <button
+            onClick={() => {
+              const newState = !debugLogging;
+              setDebugLogging(newState);
+              setDebugEnabled(newState);
+            }}
+            style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              background: debugLogging ? '#4CAF50' : '#555',
+              border: 'none',
+              borderRadius: '12px',
+              color: debugLogging ? '#fff' : '#999',
+              fontSize: '11px',
+              fontFamily: FONT_FAMILY,
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            title={debugLogging ? 'Click to disable performance logging' : 'Click to enable performance logging'}
+          >
+            <span style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: debugLogging ? '#fff' : '#777',
+              boxShadow: debugLogging ? '0 0 6px rgba(255,255,255,0.5)' : 'none'
+            }} />
+            {debugLogging ? 'Debug ON' : 'Debug OFF'}
+          </button>
         </div>
 
         {/* Space Selection Modal */}
