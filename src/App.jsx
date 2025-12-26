@@ -13640,6 +13640,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   strokeWidth={Number(strokeWidth) || 3}
                                   annotations={annotationsByPage[pageNumber]}
                                   onSaveAnnotations={handleSaveAnnotations}
+                                  onToolChange={setActiveTool}
+                                  highlightColor="rgba(255, 193, 7, 0.3)"
                                   newHighlights={newHighlightsByPage[pageNumber]}
                                   highlightsToRemove={highlightsToRemoveByPage[pageNumber]}
                                   onHighlightCreated={handleHighlightCreated}
