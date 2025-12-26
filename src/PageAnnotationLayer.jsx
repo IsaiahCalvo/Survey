@@ -29,33 +29,159 @@ import { configureFabricOverrides } from './utils/fabricCustomization';
 // Apply custom Drawboard-style controls and selection visuals
 configureFabricOverrides();
 
-// Helper to create the Callout Group with custom controls
+// --- Callout Control Helpers ---
+
+const getLocalPoint = (transform, x, y) => {
+  const target = transform.target;
+  const invMat = util.invertTransform(target.calcTransformMatrix());
+  const point = util.transformPoint({ x, y }, invMat);
+  return point;
+};
+
+// Position Handler: Places the control at a specific relative point of the group
+const calloutControlPositionHandler = (pointIndex, object, lineName) => {
+  const line = object.getObjects().find(o => o.name === lineName);
+  if (!line) return { x: 0, y: 0 };
+  // Points in polyline are relative to group center in a standardized group? 
+  // Actually in a Group, object.left/top are relative to group center.
+  // But Polyline points are internal.
+  // We need to transform the internal point to canvas space.
+
+  // Group structure caveats: 
+  // When grouped, objects have .group set. their .left/.top are relative to group center (originX/Y center).
+  // Polyline points... usually relative to Polyline's bounding box ??
+  // No, if passed to Group, they are baked.
+
+  // Simplification: We rely on the objects inside the group being positioned relative to center.
+  // The polyline object itself has left/top.
+  // And its points are relative to its own center/top-left?
+  // Fabric Polyline points are relative to the object's (left, top).
+
+  // Let's rely on the object positions (Head, Knee-virtual, Text).
+
+  // Actually, simpler approach:
+  // We update the objects (Head, Text) and the Line connects them.
+  // So we track the OBJECTS.
+  // Tip = Head position.
+  // Text = Textbox position.
+  // Knee = The middle point of the polyline.
+
+  return function (dim, finalMatrix, fabricObject) {
+    let point;
+    if (pointIndex === 'head') {
+      const head = fabricObject.getObjects().find(o => o.name === 'calloutHead');
+      point = { x: head.left, y: head.top };
+    } else if (pointIndex === 'text') {
+      const text = fabricObject.getObjects().find(o => o.name === 'calloutText');
+      // Control at top-left of text or center? Let's say top-left (origin of text object in group)
+      point = { x: text.left, y: text.top };
+    } else if (pointIndex === 'knee') {
+      const line = fabricObject.getObjects().find(o => o.name === 'calloutLine');
+      const pts = line.points;
+      // Line points are relative to Line's top/left. 
+      // And Line is positioned relative to Group.
+      // This is getting nested.
+
+      // Easier Strategy used by Fabric demos:
+      // Calculate the matrix transform for the specific child object.
+      const matrix = line.calcTransformMatrix();
+      const p = util.transformPoint({ x: pts[1].x, y: pts[1].y }, matrix); // Canvas space
+      return p;
+    }
+
+    // Transform group-relative point to canvas space
+    const matrix = fabricObject.calcTransformMatrix();
+    return util.transformPoint(point, matrix);
+  };
+};
+
+// Since the above Position Handler logic for 'knee' uses calcTransformMatrix which returns Canvas Coords,
+// we just need to return that directly? 
+// Fabric expects positionHandler to return result of transformPoint(point, finalMatrix) generally.
+// But if we calculate absolute coords manually, we can return them.
+// Let's refine.
+
+const calloutPositionHandler = (type) => {
+  return function (dim, finalMatrix, fabricObject) {
+    const group = fabricObject;
+    const line = group.getObjects().find(o => o.name === 'calloutLine');
+    const head = group.getObjects().find(o => o.name === 'calloutHead');
+    const text = group.getObjects().find(o => o.name === 'calloutText');
+
+    let localPoint;
+
+    if (type === 'tip') {
+      // Use Head position (center)
+      localPoint = new fabricLib.Point(head.left, head.top);
+    } else if (type === 'text') {
+      // Use Text position (top-left usually, or center depending on logic)
+      // We set originX/Y to center for group children usually? No we set left/top.
+      // We'll use Text center for the handle to be intuitive?
+      // Or top-left seems safer for text flow. 
+      // Let's stick to Text.left/top (which is top-left in our creation logic)
+      localPoint = new fabricLib.Point(text.left, text.top);
+    } else if (type === 'knee') {
+      // Knee is tougher. It's inside the Polyline points.
+      // Line.points[1] is relative to Line's top/left. 
+      // And Line is positioned relative to Group.
+      // Line origin is top/left?
+      // fabric.Polyline points are relative to the bounding box of the polyline.
+      // This double nesting (Point -> Polyline -> Group) makes matrix math hard.
+
+      // UNLESS: We ensure Polyline is always encompassing or positioned at 0,0 of group? No.
+
+      // ALT: We treat 'knee' as the point connected to Tip and Text. 
+      // We know it's points[1].
+      // To get its Group-Space coordinate:
+      // line.left + points[1].x ? Only if line is not scaled/rotated inside group.
+      // Let's assuming line has scale 1, angle 0 inside group.
+      // Then pointGroup = { x: line.left + points[1].x - line.pathOffset.x, y: ... }
+      // This is risky.
+
+      // ROBUST WAY:
+      // Just look at points[1].
+      // Polyline points are usually centered around (0,0) after initialization if origin is center.
+      // But we set originX: left, originY: top.
+
+      localPoint = new fabricLib.Point(line.left + line.points[1].x, line.top + line.points[1].y);
+    }
+
+    // Transform Local (Group) Point to Canvas Point
+    const matrix = group.calcTransformMatrix();
+    return util.transformPoint(localPoint, matrix);
+  };
+};
+
+
 const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
-  // Calculate initial knee (midpoint)
-  const midX = (start.x + end.x) / 2;
-  const midY = (start.y + end.y) / 2;
+  // --- 1. L-Shape Logic ---
+  // Default Knee: Horizontal from text, Vertical from Tip? or Horizontal from Tip?
+  // User image usually implies: Tip -> Line -> Horizontal Segment -> Text.
+  // So Knee Y = Text Y (roughly). Knee X = Somewhere.
+  // Or Knee Y = Tip Y? 
+  // Let's use the midpoint X, but align Y to Text center.
+  // Actually, standard is: Tip -> (diagonal) -> Knee -> (horizontal) -> Text.
+  // So Knee.y == Text.y + offset?
+  // Let's set Knee to mimic the Text's connection point (middle-left).
 
-  // Create Polyline (Tip -> Knee -> Box)
-  const line = new Polyline([
-    { x: start.x, y: start.y },
-    { x: midX, y: midY },
-    { x: end.x, y: end.y }
-  ], {
-    stroke: strokeColor,
-    strokeWidth: strokeWidth,
-    fill: null,
-    strokeLineCap: 'round',
-    strokeLineJoin: 'round',
-    objectCaching: false,
-    name: 'calloutLine',
-    originX: 'left',
-    originY: 'top' // Helps with point calculations
-  });
+  // Let's try: Knee X is half-way. Knee Y is same as Text Y (middle).
+  const textHeight = 24; // approx
+  const knee = {
+    x: (start.x + end.x) / 2,
+    y: end.y + textHeight / 2
+  };
 
-  // Calculate Arrow Head Angle (Tip to Knee)
-  const angle = Math.atan2(midY - start.y, midX - start.x) * 180 / Math.PI;
+  // Correction: If user drags strictly, end.y is top-left of text box.
+  // Text center-left is roughly (end.x, end.y + 12).
+
+  // --- 2. Create Objects ---
+
+  // Triangle Arrow Head
+  // Initial angle pointing to knee
+  const angle = Math.atan2(knee.y - start.y, knee.x - start.x) * 180 / Math.PI;
+
   const head = new Triangle({
-    left: start.x, // Initial pos, will be adjusted by group
+    left: start.x,
     top: start.y,
     width: 12 + strokeWidth,
     height: 12 + strokeWidth,
@@ -66,7 +192,6 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     name: 'calloutHead'
   });
 
-  // Create Textbox
   const text = new Textbox('Text', {
     left: end.x,
     top: end.y,
@@ -79,20 +204,191 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     originY: 'top'
   });
 
-  // Create Grid
+  // Polyline
+  // Points are absolute initally, Group will normalize them.
+  // NOTE: When passing points to Polyline in a Group, Fabric subtracts the minX/minY 
+  // to create a bounding box, then positions the object.
+  // This shifts the points! This makes "knee" handling hard.
+
+  // BETTTER APPROACH: Use a simple Line from Tip to Knee, and another Line from Knee to Text?
+  // Or just 1 Polyline but be careful about its position.
+
+  // Let's use Polyline but we must be aware that `line.points` will be normalized (0,0 based).
+  // AND `line.left/top` will be set.
+
+  const line = new Polyline([
+    { x: start.x, y: start.y },
+    { x: knee.x, y: knee.y },
+    { x: end.x, y: end.y + 10 } // Connect to roughly middle of text
+  ], {
+    stroke: strokeColor,
+    strokeWidth: strokeWidth,
+    fill: null,
+    strokeLineCap: 'round',
+    strokeLineJoin: 'round',
+    objectCaching: false,
+    name: 'calloutLine',
+    originX: 'left',
+    originY: 'top'
+  });
+
   const group = new Group([line, head, text], {
-    subTargetCheck: true, // Allows selecting inner objects (handled by our custom logic potentially)
+    subTargetCheck: true,
     objectCaching: false,
     hasControls: true,
-    hasBorders: true,
-    lockScalingX: true,
+    hasBorders: false, // We don't want the group border? Or do we? Maybe yes for selection.
+    selectable: true,
+    lockScalingX: true, // We will hide handles anyway
     lockScalingY: true,
     lockRotation: true,
-    padding: 10,
     data: { type: 'callout' }
   });
 
-  // TODO: Add custom controls here for independent movement
+  // --- 3. Custom Controls ---
+
+  // Clear default controls
+  group.controls = {};
+
+  // Define Reusable Render Function (Circle with shadow)
+  const renderControl = (ctx, left, top, styleOverride, fabricObject) => {
+    const size = 12;
+    ctx.save();
+    ctx.translate(left, top);
+    ctx.beginPath();
+    ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#4a90e2';
+    ctx.lineWidth = 1;
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 3;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  // -- Action Handler: Common Update Logic --
+  // We need to update all 3 objects (Head, Line, Text) based on which handle moves.
+  // AND `group.addWithUpdate()` to keep group bounds correct.
+
+  const updateGeometry = (transform, x, y, type) => {
+    const target = transform.target; // The Group
+    const localPoint = getLocalPoint(transform, x, y); // Mouse pos in Group coords
+
+    const line = target.getObjects().find(o => o.name === 'calloutLine');
+    const head = target.getObjects().find(o => o.name === 'calloutHead');
+    const text = target.getObjects().find(o => o.name === 'calloutText');
+    if (!line || !head || !text) return false;
+
+    // Current Points (we need to be careful about Line normalization)
+    // Actually, since we are inside a Group, it's easier to just:
+    // 1. Update the 'leading' objects (Head, Text, or Knee coord).
+    // 2. Re-create or Re-set the Line points based on these positions.
+
+    if (type === 'tip') {
+      head.set({ left: localPoint.x, top: localPoint.y });
+    } else if (type === 'text') {
+      text.set({ left: localPoint.x, top: localPoint.y });
+    } else if (type === 'knee') {
+      // Virtual knee point changed. We just track it for the line update.
+    }
+
+    // Calculate connection points
+    const pTip = { x: head.left, y: head.top };
+    const pText = { x: text.left, y: text.top + text.height / 2 };
+
+    // Current Knee? 
+    // If we moved knee, use mouse. If not, use existing knee.
+    // Existing knee is line.points[1] ... transformed to group space.
+    // Complex.
+
+    // Simplify: Store 'knee' position on the group or line data? 
+    // Or just read it from the line.
+    // Line.left + points[1].x
+
+    // Note: Polyline points are mutable.
+    const pts = line.points;
+    const kneeIdx = 1;
+
+    // Calculate current Knee in Group Space
+    let pKnee = {
+      x: line.left + pts[kneeIdx].x,
+      y: line.top + pts[kneeIdx].y
+    };
+
+    if (type === 'knee') {
+      pKnee = { x: localPoint.x, y: localPoint.y };
+    }
+
+    // Update Head Angle (Tip -> Knee)
+    const angle = Math.atan2(pKnee.y - pTip.y, pKnee.x - pTip.x) * 180 / Math.PI;
+    head.set({ angle: angle + 90 });
+
+    // Re-construct line
+    // Problem: Polyline bounding box shifts when points change, changing .left/.top automatically?
+    // No, set({ points: ... }) usually requires manual recalc or it shifts visually.
+    // Easiest is to Un-normalize:
+    // Create new points in absolute group coords: [pTip, pKnee, pText]
+    // Canvas will normalize them into (minX, minY) and set line.left/top.
+
+    // Logic:
+    // 1. Calculate new points relative to Group Center (0,0 is center).
+    //    Wait, Group coords are centered.
+    //    So pTip, pKnee, pText are already in Group Coords.
+    //    Example: pTip = {x: -50, y: -50}.
+
+    // 2. Map these to Polyline-local coords.
+    //    Find minX, minY of the 3 points.
+    //    line.left = minX, line.top = minY.
+    //    newPts = points.map(p => ({ x: p.x - minX, y: p.y - minY }))
+
+    const allPts = [pTip, pKnee, pText];
+    const minX = Math.min(pTip.x, pKnee.x, pText.x);
+    const minY = Math.min(pTip.y, pKnee.y, pText.y);
+
+    line.set({
+      left: minX,
+      top: minY,
+      points: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
+    });
+
+    // Mark group as dirty to redraw
+    // Important: If we expanded the group bounds, we must notify group?
+    // group.addWithUpdate() triggers a full recalc of group bounds based on children.
+    // usage: group.addWithUpdate(); // with no args, just recalcs.
+
+    // However, addWithUpdate might reset rotation/scale of controls?
+    // During drag, we usually want to avoid heavy bounding box recalcs that shift the center under the mouse.
+    // But if we don't, the controls might detach.
+
+    return true; // render request
+  };
+
+  // Tip Control
+  group.controls.tip = new Control({
+    x: -0.5, y: -0.5, // Ignored by custom positionHandler
+    cursorStyle: 'crosshair',
+    actionHandler: (e, t, x, y) => updateGeometry(t, x, y, 'tip'),
+    positionHandler: calloutPositionHandler('tip'),
+    render: renderControl
+  });
+
+  // Knee Control
+  group.controls.knee = new Control({
+    x: 0, y: 0,
+    cursorStyle: 'crosshair',
+    actionHandler: (e, t, x, y) => updateGeometry(t, x, y, 'knee'),
+    positionHandler: calloutPositionHandler('knee'),
+    render: renderControl
+  });
+
+  // Text Control
+  group.controls.text = new Control({
+    x: 0.5, y: 0.5,
+    cursorStyle: 'move',
+    actionHandler: (e, t, x, y) => updateGeometry(t, x, y, 'text'),
+    positionHandler: calloutPositionHandler('text'),
+    render: renderControl
+  });
 
   return group;
 };
@@ -2532,9 +2828,14 @@ const PageAnnotationLayer = memo(({
         // Find the textbox inside the group
         const textObj = group.getObjects().find(o => o.name === 'calloutText');
         if (textObj) {
-          group.enterEditing(textObj); // Enter group editing
-          textObj.enterEditing();      // Enter text editing
-          textObj.selectAll();         // Select default text
+          // Delay slightly to allow mouse event to settle and prevent focus theft
+          setTimeout(() => {
+            if (textObj.enterEditing) {
+              textObj.enterEditing();
+              textObj.selectAll();
+            }
+            canvas.requestRenderAll();
+          }, 50);
         }
 
         canvas.requestRenderAll();

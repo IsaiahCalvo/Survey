@@ -289,3 +289,5 @@
 {"location":"App.jsx:11710","message":"Starting panning on non-canvas click","data":{"clientX":638,"clientY":225,"targetTag":"CANVAS"},"timestamp":1766697525585,"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}
 {"location":"App.jsx:11710","message":"Starting panning on non-canvas click","data":{"clientX":591,"clientY":330,"targetTag":"CANVAS"},"timestamp":1766697528688,"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}
 {"location":"App.jsx:11710","message":"Starting panning on non-canvas click","data":{"clientX":655,"clientY":455,"targetTag":"CANVAS"},"timestamp":1766720087593,"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}
+{"location":"App.jsx:11710","message":"Starting panning on non-canvas click","data":{"clientX":886,"clientY":471,"targetTag":"CANVAS"},"timestamp":1766722256942,"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}
+{"location":"App.jsx:11723","message":"Panning active","data":{"scrollLeft":0,"scrollTop":1412,"clientX":886,"clientY":471},"timestamp":1766722257248,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}

@@ -14465,6 +14465,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               )}
             </div>
 
+            {/* Debug Logging Toggle */}
+            <button
+              onClick={() => {
+                const newState = !debugLogging;
+                setDebugLogging(newState);
+                setDebugEnabled(newState);
+              }}
+              className="btn btn-default btn-sm"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 8px',
+                background: debugLogging ? '#4CAF50' : 'transparent',
+                color: debugLogging ? '#fff' : '#888',
+                fontSize: '11px',
+                borderRadius: '4px'
+              }}
+              title={debugLogging ? 'Click to disable performance logging' : 'Click to enable performance logging'}
+            >
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: debugLogging ? '#fff' : '#666'
+              }} />
+              {debugLogging ? 'Debug' : 'Debug'}
+            </button>
+
             {/* View Mode Toggle */}
             <button
               onClick={toggleScrollMode}
@@ -14565,6 +14594,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           </span>
           {scrollMode === 'continuous' && (
             <span style={{
+              marginLeft: 'auto',
               color: '#aaa',
               fontFamily: FONT_FAMILY,
               fontWeight: '500'
@@ -14572,41 +14602,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               {renderedPages.size} of {numPages} pages rendered
             </span>
           )}
-
-          {/* Debug Logging Toggle */}
-          <button
-            onClick={() => {
-              const newState = !debugLogging;
-              setDebugLogging(newState);
-              setDebugEnabled(newState);
-            }}
-            style={{
-              marginLeft: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              background: debugLogging ? '#4CAF50' : '#555',
-              border: 'none',
-              borderRadius: '12px',
-              color: debugLogging ? '#fff' : '#999',
-              fontSize: '11px',
-              fontFamily: FONT_FAMILY,
-              fontWeight: '500',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-            title={debugLogging ? 'Click to disable performance logging' : 'Click to enable performance logging'}
-          >
-            <span style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: debugLogging ? '#fff' : '#777',
-              boxShadow: debugLogging ? '0 0 6px rgba(255,255,255,0.5)' : 'none'
-            }} />
-            {debugLogging ? 'Debug ON' : 'Debug OFF'}
-          </button>
         </div>
 
         {/* Space Selection Modal */}
