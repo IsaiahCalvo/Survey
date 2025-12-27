@@ -1,185 +1,1069 @@
-chunk-F2KOVKPX.js?v=1fe7512a:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-MSGraphContext.jsx:236 Unrecognized feature: 'local-network-access'.
+SilentHandler.ts:259 Unrecognized feature: 'local-network-access'.
 createHiddenIframe @ SilentHandler.ts:259
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 createHiddenIframe @ SilentHandler.ts:260
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 createHiddenIframe @ SilentHandler.ts:260
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 22 more frames
+Show 1 more frame
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI1ZDhmLWJlZTktNzlhMi05MjI0LTMxNWMzMzdmZDc4NSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI1ZDhmLWJmMWUtN2ZmMy05YjAxLWZjMDMxODEzYTgzYyIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called Object
+PageAnnotationLayer.jsx:396 [Callout Debug] Moving TIP to Point
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections Object
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed Object
 AuthContext.jsx:102 Window focused, refetching subscription tier...
-App.jsx:11227 PDF load check: {size: 25716812, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
-App.jsx:11236 PDF Header Check: %PDF-
-MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-createHiddenIframe @ SilentHandler.ts:260
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 22 more frames
-Me.htm:1 true
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI1ZDgzLTJhMTYtN2ExZS1hNDMwLWNmYjYwOWM1ZjY4OSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+PageAnnotationLayer.jsx:2701 Uncaught TypeError: canvas.getActiveTransform is not a function
+    at klass.handleMouseDown (PageAnnotationLayer.jsx:2701:64)
+    at klass.fire (fabric.js:334:52)
+    at klass._handleEvent (fabric.js:13513:12)
+    at klass.__onMouseDown (fabric.js:13667:12)
+    at klass._onMouseDown (fabric.js:13274:12)
+handleMouseDown @ PageAnnotationLayer.jsx:2701
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseDown @ fabric.js:13667
+_onMouseDown @ fabric.js:13274
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called {type: 'textBL', localPoint: Point, headPos: {…}, textPos: {…}, linePos: {…}, …}
+PageAnnotationLayer.jsx:436 [Callout Debug] Text resize {type: 'textBL', localPoint: Point, textLeft: 105967.87911847449, textTop: 43573.21, textWidth: 100, …}
+PageAnnotationLayer.jsx:467 [Callout Debug] Bottom handle drag - Textbox height is auto-calculated
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections {pTip: {…}, pKnee: {…}, pText: {…}, lineLeft: -106251.62088152551, lineTop: -43598.29, …}
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed {newLeft: -107087.12088152551, newTop: -43941.29, newPoints: Array(3)}
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called {type: 'textBL', localPoint: Point, headPos: {…}, textPos: {…}, linePos: {…}, …}
+PageAnnotationLayer.jsx:436 [Callout Debug] Text resize {type: 'textBL', localPoint: Point, textLeft: 106378.62911470798, textTop: 43744.71, textWidth: 107, …}
+PageAnnotationLayer.jsx:467 [Callout Debug] Bottom handle drag - Textbox height is auto-calculated
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections {pTip: {…}, pKnee: {…}, pText: {…}, lineLeft: -106669.37088529202, lineTop: -43769.79, …}
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed {newLeft: -107504.87088529202, newTop: -44112.79, newPoints: Array(3)}
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called {type: 'textBL', localPoint: Point, headPos: {…}, textPos: {…}, linePos: {…}, …}
+PageAnnotationLayer.jsx:436 [Callout Debug] Text resize {type: 'textBL', localPoint: Point, textLeft: 106791.37911097087, textTop: 43916.21, textWidth: 112, …}
+PageAnnotationLayer.jsx:467 [Callout Debug] Bottom handle drag - Textbox height is auto-calculated
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections {pTip: {…}, pKnee: {…}, pText: {…}, lineLeft: -107087.12088902913, lineTop: -43941.29, …}
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed {newLeft: -107922.62088902913, newTop: -44284.29, newPoints: Array(3)}
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called {type: 'textBL', localPoint: Point, headPos: {…}, textPos: {…}, linePos: {…}, …}
+PageAnnotationLayer.jsx:436 [Callout Debug] Text resize {type: 'textBL', localPoint: Point, textLeft: 107082.12910726282, textTop: 44087.71, textWidth: 239, …}
+PageAnnotationLayer.jsx:467 [Callout Debug] Bottom handle drag - Textbox height is auto-calculated
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections {pTip: {…}, pKnee: {…}, pText: {…}, lineLeft: -107504.87089273718, lineTop: -44112.79, …}
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed {newLeft: -108340.37089273718, newTop: -44455.79, newPoints: Array(3)}
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called {type: 'textBL', localPoint: Point, headPos: {…}, textPos: {…}, linePos: {…}, …}
+PageAnnotationLayer.jsx:436 [Callout Debug] Text resize {type: 'textBL', localPoint: Point, textLeft: 107648.8791035835, textTop: 44259.21, textWidth: 90, …}
+PageAnnotationLayer.jsx:467 [Callout Debug] Bottom handle drag - Textbox height is auto-calculated
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections {pTip: {…}, pKnee: {…}, pText: {…}, lineLeft: -107922.6208964165, lineTop: -44284.29, …}
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed {newLeft: -108758.1208964165, newTop: -44627.29, newPoints: Array(3)}
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called {type: 'textBL', localPoint: Point, headPos: {…}, textPos: {…}, linePos: {…}, …}
+PageAnnotationLayer.jsx:436 [Callout Debug] Text resize {type: 'textBL', localPoint: Point, textLeft: 107986.62909993259, textTop: 44430.71, textWidth: 170, …}
+PageAnnotationLayer.jsx:467 [Callout Debug] Bottom handle drag - Textbox height is auto-calculated
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections {pTip: {…}, pKnee: {…}, pText: {…}, lineLeft: -108340.37090006741, lineTop: -44455.79, …}
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed {newLeft: -109175.87090006741, newTop: -44798.79, newPoints: Array(3)}
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called {type: 'textBL', localPoint: Point, headPos: {…}, textPos: {…}, linePos: {…}, …}
+PageAnnotationLayer.jsx:436 [Callout Debug] Text resize {type: 'textBL', localPoint: Point, textLeft: 108539.37909630973, textTop: 44602.21, textWidth: 39.109375, …}
+PageAnnotationLayer.jsx:467 [Callout Debug] Bottom handle drag - Textbox height is auto-calculated
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections {pTip: {…}, pKnee: {…}, pText: {…}, lineLeft: -108758.12090369027, lineTop: -44627.29, …}
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed {newLeft: -109593.62090369027, newTop: -44970.29, newPoints: Array(3)}
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called {type: 'textBL', localPoint: Point, headPos: {…}, textPos: {…}, linePos: {…}, …}
+PageAnnotationLayer.jsx:436 [Callout Debug] Text resize {type: 'textBL', localPoint: Point, textLeft: 108916.1290927146, textTop: 44773.71, textWidth: 80.109375, …}
+PageAnnotationLayer.jsx:467 [Callout Debug] Bottom handle drag - Textbox height is auto-calculated
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections {pTip: {…}, pKnee: {…}, pText: {…}, lineLeft: -109175.8709072854, lineTop: -44798.79, …}
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed {newLeft: -110011.3709072854, newTop: -45141.79, newPoints: Array(3)}
+PageAnnotationLayer.jsx:383 [Callout Debug] updateGeometry called {type: 'textBL', localPoint: Point, headPos: {…}, textPos: {…}, linePos: {…}, …}
+PageAnnotationLayer.jsx:436 [Callout Debug] Text resize {type: 'textBL', localPoint: Point, textLeft: 109333.87908914691, textTop: 44945.21, textWidth: 80.109375, …}
+PageAnnotationLayer.jsx:467 [Callout Debug] Bottom handle drag - Textbox height is auto-calculated
+PageAnnotationLayer.jsx:185 [Callout Debug] updateCalloutGroupConnections {pTip: {…}, pKnee: {…}, pText: {…}, lineLeft: -109593.62091085309, lineTop: -44970.29, …}
+PageAnnotationLayer.jsx:220 [Callout Debug] Line reconstructed {newLeft: -110429.12091085309, newTop: -45313.29, newPoints: Array(3)}
 AuthContext.jsx:102 Window focused, refetching subscription tier...
-PageAnnotationLayer.jsx:2604 Uncaught TypeError: canvas.getActiveTransform is not a function
-    at klass.handleMouseDown (PageAnnotationLayer.jsx:2604:64)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-handleMouseDown @ PageAnnotationLayer.jsx:2604
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 4 more frames
-PageAnnotationLayer.jsx:2604 Uncaught TypeError: canvas.getActiveTransform is not a function
-    at klass.handleMouseDown (PageAnnotationLayer.jsx:2604:64)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-handleMouseDown @ PageAnnotationLayer.jsx:2604
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 4 more frames
-PageAnnotationLayer.jsx:2604 Uncaught TypeError: canvas.getActiveTransform is not a function
-    at klass.handleMouseDown (PageAnnotationLayer.jsx:2604:64)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-handleMouseDown @ PageAnnotationLayer.jsx:2604
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 4 more frames
-PageAnnotationLayer.jsx:2604 Uncaught TypeError: canvas.getActiveTransform is not a function
-    at klass.handleMouseDown (PageAnnotationLayer.jsx:2604:64)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-handleMouseDown @ PageAnnotationLayer.jsx:2604
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 4 more frames
-PageAnnotationLayer.jsx:2604 Uncaught TypeError: canvas.getActiveTransform is not a function
-    at klass.handleMouseDown (PageAnnotationLayer.jsx:2604:64)
-    at klass.fire (fabric.js:334:52)
-    at klass._handleEvent (fabric.js:13513:12)
-    at klass.__onMouseDown (fabric.js:13667:12)
-    at klass._onMouseDown (fabric.js:13274:12)
-handleMouseDown @ PageAnnotationLayer.jsx:2604
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseDown @ fabric.js:13667
-_onMouseDown @ fabric.js:13274
-Show 4 more frames
+AuthContext.jsx:102 Window focused, refetching subscription tier...
+AuthContext.jsx:102 Window focused, refetching subscription tier...

@@ -121,20 +121,17 @@ const calloutPositionHandler = (type) => {
       // Let's stick to Text.left/top (which is top-left in our creation logic)
       localPoint = new fabricLib.Point(text.left, text.top);
     } else if (type === 'knee') {
-      // Robust Knee Position:
-      // Use the Line's own matrix to transform the specific point to canvas space.
-      // We must account for pathOffset because Polyline drawing shifts by -pathOffset.
-      const pts = line.points;
-      const matrix = line.calcTransformMatrix();
-
-      // Point relative to the object's origin (accounting for pathOffset)
-      const point = {
-        x: pts[1].x - line.pathOffset.x,
-        y: pts[1].y - line.pathOffset.y
-      };
-
-      // Transform directly to canvas space
-      return util.transformPoint(point, matrix);
+      // Read knee position from data.knee (stored absolutely in group coords)
+      // This avoids coordinate drift from Polyline normalization/pathOffset issues
+      if (group.data?.knee) {
+        localPoint = new fabricLib.Point(group.data.knee.x, group.data.knee.y);
+      } else {
+        // Fallback: compute midpoint between tip and text
+        localPoint = new fabricLib.Point(
+          (head.left + text.left) / 2,
+          text.top + text.height / 2
+        );
+      }
     }
     // Text Corner Handles
     else if (type.startsWith('text')) {
@@ -171,16 +168,22 @@ const updateCalloutGroupConnections = (group) => {
   const pTip = { x: head.left, y: head.top };
   const pText = { x: text.left, y: text.top + text.height / 2 };
 
-  const pts = line.points;
-  const kneeIdx = 1;
-
-  // Calculate Knee in Group Space using line.left/top
-  // Account for pathOffset which Fabric.js uses for polylines
-  const pathOffset = line.pathOffset || { x: 0, y: 0 };
-  const pKnee = {
-    x: line.left + pts[kneeIdx].x - pathOffset.x,
-    y: line.top + pts[kneeIdx].y - pathOffset.y
-  };
+  // Read knee from data.knee (stored absolutely) to avoid coordinate drift from Polyline normalization
+  // Fallback to computing from line if data.knee doesn't exist (shouldn't happen)
+  let pKnee;
+  if (group.data?.knee) {
+    pKnee = { x: group.data.knee.x, y: group.data.knee.y };
+  } else {
+    // Fallback: compute from midpoint between tip and text
+    pKnee = {
+      x: (pTip.x + pText.x) / 2,
+      y: pText.y
+    };
+    // Store it for future use
+    if (group.data) {
+      group.data.knee = { x: pKnee.x, y: pKnee.y };
+    }
+  }
 
   console.log('[Callout Debug] updateCalloutGroupConnections', {
     pTip,
@@ -188,8 +191,7 @@ const updateCalloutGroupConnections = (group) => {
     pText,
     lineLeft: line.left,
     lineTop: line.top,
-    pathOffset,
-    pts
+    dataKnee: group.data?.knee
   });
 
   // Update Arrow Angle
@@ -345,6 +347,21 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     data: { type: 'callout' }
   });
 
+  // After group creation, convert knee to group-relative coordinates
+  // Fabric.js converts all child positions to be relative to group center
+  const groupMatrix = group.calcTransformMatrix();
+  const invertedMatrix = fabric.util.invertTransform(groupMatrix);
+  const kneeInGroupCoords = fabric.util.transformPoint({ x: knee.x, y: knee.y }, invertedMatrix);
+  group.data.knee = { x: kneeInGroupCoords.x, y: kneeInGroupCoords.y };
+
+  console.log('[Callout Debug] Group created', {
+    groupCenter: { left: group.left, top: group.top },
+    kneeAbsolute: knee,
+    kneeGroupRelative: group.data.knee,
+    headPos: { left: head.left, top: head.top },
+    textPos: { left: text.left, top: text.top }
+  });
+
   // --- 3. Custom Controls ---
 
   // Clear default controls
@@ -410,6 +427,9 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
         oldLinePoints: line.points
       });
 
+      // Store knee position in data to avoid coordinate drift
+      target.data.knee = { x: newKnee.x, y: newKnee.y };
+
       // Reconstruct line with new knee position
       const allPts = [pTip, newKnee, pText];
       const minX = Math.min(pTip.x, newKnee.x, pText.x);
@@ -427,44 +447,48 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
         newPoints: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
       });
     }
-    // Text Resize Logic
+    // Text Resize Logic - Standard corner resize behavior
+    // Fabric.js Textbox height is auto-calculated from content, so we only resize width
+    // Each corner anchors the opposite corner and resizes toward the drag point
     else if (type.startsWith('text')) {
       const textBorder = target.getObjects().find(o => o.name === 'calloutTextBorder');
-      const minWidth = 20;
-      const minHeight = 20;
+      const minWidth = 40;
+
+      const currentLeft = text.left;
+      const currentTop = text.top;
+      const currentWidth = text.width;
+      const currentRight = currentLeft + currentWidth;
 
       console.log('[Callout Debug] Text resize', {
         type,
         localPoint,
-        textLeft: text.left,
-        textTop: text.top,
-        textWidth: text.width,
-        textHeight: text.height
+        currentLeft,
+        currentTop,
+        currentWidth,
+        currentRight
       });
 
-      // Horizontal resizing
-      if (type === 'textBR' || type === 'textTR') {
-        const newW = Math.max(minWidth, localPoint.x - text.left);
-        text.set({ width: newW });
+      // BR (Bottom-Right): Anchor TL, resize width to the right
+      if (type === 'textBR') {
+        const newWidth = Math.max(minWidth, localPoint.x - currentLeft);
+        text.set({ width: newWidth });
       }
-      if (type === 'textBL' || type === 'textTL') {
-        // Resizing from left: Shift Left and Increase Width
-        const rightEdge = text.left + text.width;
-        const newLeft = Math.min(rightEdge - minWidth, localPoint.x);
-        const newW = rightEdge - newLeft;
-        text.set({ left: newLeft, width: newW });
+      // TR (Top-Right): Anchor BL, resize width to the right
+      else if (type === 'textTR') {
+        const newWidth = Math.max(minWidth, localPoint.x - currentLeft);
+        text.set({ width: newWidth });
       }
-
-      // Vertical resizing - move top edge for top handles, adjust position for bottom handles
-      if (type === 'textTL' || type === 'textTR') {
-        // Move top edge - this moves the text box position
-        text.set({ top: localPoint.y });
+      // BL (Bottom-Left): Anchor TR, resize by moving left edge
+      else if (type === 'textBL') {
+        const newLeft = Math.min(currentRight - minWidth, localPoint.x);
+        const newWidth = currentRight - newLeft;
+        text.set({ left: newLeft, width: newWidth });
       }
-      if (type === 'textBL' || type === 'textBR') {
-        // For bottom handles, we can't change Textbox height directly (it auto-calculates)
-        // But we can change fontSize to adjust how much text fits
-        // For now, just log - Textbox height is content-dependent
-        console.log('[Callout Debug] Bottom handle drag - Textbox height is auto-calculated');
+      // TL (Top-Left): Anchor BR, resize by moving left edge
+      else if (type === 'textTL') {
+        const newLeft = Math.min(currentRight - minWidth, localPoint.x);
+        const newWidth = currentRight - newLeft;
+        text.set({ left: newLeft, width: newWidth });
       }
 
       // Update border to match text
@@ -2698,7 +2722,8 @@ const PageAnnotationLayer = memo(({
 
       // --- Callout Drag Handling ---
       const target = opt.target;
-      if (target && target.data?.type === 'callout' && !canvas.getActiveTransform()) {
+      // Use _currentTransform for Fabric.js v5 compatibility (getActiveTransform is v6+)
+      if (target && target.data?.type === 'callout' && !canvas._currentTransform) {
         const isOverHandle = isPointOnAnyHandle ? isPointOnAnyHandle(pointer, target) : false;
         const isCmdCtrlHeld = opt.e.metaKey || opt.e.ctrlKey; // Cmd on Mac, Ctrl on Windows
 
@@ -2713,19 +2738,24 @@ const PageAnnotationLayer = memo(({
 
         if (!isOverHandle) {
           const textObj = target.getObjects().find(o => o.name === 'calloutText');
+          const textBorder = target.getObjects().find(o => o.name === 'calloutTextBorder');
           if (textObj) {
             const groupMatrix = target.calcTransformMatrix();
             const invertedMatrix = fabric.util.invertTransform(groupMatrix);
             const localPointer = fabric.util.transformPoint(pointer, invertedMatrix);
 
-            const w = textObj.getScaledWidth();
-            const h = textObj.getScaledHeight();
+            // Use border bounds if available (slightly larger than text), otherwise use text bounds
+            const hitBox = textBorder || textObj;
+            const hitLeft = hitBox.left;
+            const hitTop = hitBox.top;
+            const hitWidth = hitBox.width || hitBox.getScaledWidth();
+            const hitHeight = hitBox.height || hitBox.getScaledHeight();
 
             if (
-              localPointer.x >= textObj.left &&
-              localPointer.x <= textObj.left + w &&
-              localPointer.y >= textObj.top &&
-              localPointer.y <= textObj.top + h
+              localPointer.x >= hitLeft &&
+              localPointer.x <= hitLeft + hitWidth &&
+              localPointer.y >= hitTop &&
+              localPointer.y <= hitTop + hitHeight
             ) {
               isDraggingCalloutTextRef.current = true;
               dragStartPointerRef.current = pointer;
@@ -2918,12 +2948,21 @@ const PageAnnotationLayer = memo(({
           const group = canvas.getActiveObject();
           if (group && group.data?.type === 'callout') {
             const text = group.getObjects().find(o => o.name === 'calloutText');
+            const textBorder = group.getObjects().find(o => o.name === 'calloutTextBorder');
             if (text) {
               // Update Text Position
               text.set({
                 left: text.left + deltaX,
                 top: text.top + deltaY
               });
+
+              // Update border to follow text
+              if (textBorder) {
+                textBorder.set({
+                  left: text.left - 2,
+                  top: text.top - 2
+                });
+              }
 
               // Reflow Line
               updateCalloutGroupConnections(group);
