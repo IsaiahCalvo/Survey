@@ -1654,14 +1654,20 @@ const PageAnnotationLayer = memo(({
         if (!layerVisible) {
           obj.set({ visible: false, selectable: false, evented: false });
         } else {
-          // Re-check other visibility conditions (space, module)
+          // Re-check other visibility conditions (space, module, survey panel)
           const objSpaceId = obj.spaceId || null;
           const objModuleId = obj.moduleId || null;
           const currentSpaceId = selectedSpaceIdRef.current;
           const currentModuleId = selectedModuleIdRef.current;
           const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
           const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
-          const isVisible = matchesSpace && matchesModule;
+
+          // Check if this is a survey highlight (has moduleId)
+          const isSurveyHighlight = objModuleId !== null;
+          // Survey highlights should only be visible when survey mode is active AND a module is selected
+          const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanelRef.current && currentModuleId !== null && objModuleId === currentModuleId);
+
+          const isVisible = matchesSpace && matchesModule && surveyHighlightVisible;
           obj.set({ visible: isVisible, selectable: isVisible, evented: isVisible });
         }
       });
@@ -1761,7 +1767,12 @@ const PageAnnotationLayer = memo(({
           const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
           const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
 
-          const isVisible = matchesSpace && matchesModule && layerVisible;
+          // Check if this is a survey highlight (has moduleId)
+          const isSurveyHighlight = objModuleId !== null;
+          // Survey highlights should only be visible when survey mode is active AND a module is selected
+          const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanelRef.current && currentModuleId !== null && objModuleId === currentModuleId);
+
+          const isVisible = matchesSpace && matchesModule && layerVisible && surveyHighlightVisible;
           obj.set({ visible: isVisible, selectable: isVisible, evented: isVisible });
 
           canvas.add(obj);
