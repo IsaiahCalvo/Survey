@@ -923,9 +923,6 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
 };
 
 const erasePathSegment_Deprecated = (pathObj, eraserPath, eraserRadius, canvas) => {
-  // #region agent log
-  const eraseStartTime = performance.now();
-  // #endregion
   console.log('[erasePathSegment] ClipPath mode');
 
   if (pathObj.type !== 'path') {
@@ -1156,9 +1153,6 @@ const ensureRgbaOpacity = (color, opacity = 0.2) => {
 const DEFAULT_SURVEY_HIGHLIGHT_OPACITY = 0.4;
 
 const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIGHT_OPACITY) => {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1158', message: 'normalizeHighlightColor entry', data: { color, fallbackOpacity, DEFAULT_OPACITY: DEFAULT_SURVEY_HIGHLIGHT_OPACITY }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-  // #endregion
   if (!color || typeof color !== 'string') {
     return null;
   }
@@ -1174,29 +1168,17 @@ const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIG
         ? Math.min(1, Math.max(0, parsedOpacity))
         : fallbackOpacity;
       const result = `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1173', message: 'normalizeHighlightColor rgba with opacity', data: { inputOpacity: opacityStr, parsedOpacity, clampedOpacity, result, fallbackOpacity }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-      // #endregion
       return result;
     }
     const result = `rgba(${r}, ${g}, ${b}, ${fallbackOpacity})`;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1175', message: 'normalizeHighlightColor rgba without opacity', data: { result, fallbackOpacity }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-    // #endregion
     return result;
   }
 
   if (trimmed.startsWith('#')) {
     const result = ensureRgbaOpacity(trimmed, fallbackOpacity);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1179', message: 'normalizeHighlightColor hex color', data: { hexColor: trimmed, result, fallbackOpacity }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-    // #endregion
     return result;
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1182', message: 'normalizeHighlightColor returning trimmed as-is', data: { trimmed }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-  // #endregion
   return trimmed;
 };
 
@@ -3877,17 +3859,10 @@ const PageAnnotationLayer = memo(({
 
   // Add highlights when newHighlights prop changes
   useEffect(() => {
-    // #region agent log
-    // console.log('[PageAnnotationLayer] useEffect newHighlights triggered', { hasCanvas: !!fabricRef.current, newHighlightsCount: newHighlights?.length, pageNumber });
-    // #endregion
     if (!fabricRef.current || !newHighlights || newHighlights.length === 0) return;
 
     const canvas = fabricRef.current;
     const currentZoom = canvas.getZoom();
-    // #region agent log
-    const initialRectCount = canvas.getObjects('rect').length;
-    // console.log('[PageAnnotationLayer] Before processing highlights', { newHighlightsCount: newHighlights.length, initialRectCount, currentZoom });
-    // #endregion
     let addedAny = false;
 
     newHighlights.forEach((highlight, index) => {
@@ -3933,15 +3908,9 @@ const PageAnnotationLayer = memo(({
             // For solid highlights, check color
             if (!needsBIC) {
               if (existingRect.fill === color) {
-                // #region agent log
-                // console.log('[PageAnnotationLayer] Skipping highlight - existing matches', { highlightId: highlight.highlightId, existingFill: existingRect.fill, newColor: color });
-                // #endregion
                 return; // Skip, already rendered correctly
               }
             } else {
-              // #region agent log
-              // console.log('[PageAnnotationLayer] Skipping BIC highlight - existing matches', { highlightId: highlight.highlightId });
-              // #endregion
               return; // Skip, already rendered correctly (BIC style is constant)
             }
           }
@@ -3970,7 +3939,6 @@ const PageAnnotationLayer = memo(({
 
       const matchingRects = canvas.getObjects('rect').filter(obj => {
         // Don't match the object we just verified as correct above (if any)
-        if (highlight.highlightId && obj.highlightId === highlight.highlightId) return false;
 
         // Check if this is a highlight rectangle (has fill with rgba or transparent with stroke)
         const isHighlight = (obj.fill && typeof obj.fill === 'string' &&
@@ -3991,11 +3959,6 @@ const PageAnnotationLayer = memo(({
       });
 
       // Remove matching highlights
-      // #region agent log
-      if (matchingRects.length > 0) {
-        // console.log('[PageAnnotationLayer] Removing matching highlights by bounds', { matchingRectsCount: matchingRects.length, highlightId: highlight.highlightId, highlightKey });
-      }
-      // #endregion
       matchingRects.forEach(rect => {
         // Remove the old highlight
         canvas.remove(rect);
@@ -4010,9 +3973,6 @@ const PageAnnotationLayer = memo(({
 
       // Check if we've already processed this highlight (by coordinates if no ID)
       const alreadyProcessed = processedHighlightsRef.current.has(highlightKey);
-      // #region agent log
-      // console.log('[PageAnnotationLayer] Checking if highlight already processed', { highlightKey, alreadyProcessed, highlightId: highlight.highlightId });
-      // #endregion
       if (!alreadyProcessed) {
         // Check if this highlight needs BIC assignment (transparent with dashed outline)
         if (highlight.needsBIC) {
@@ -4051,9 +4011,6 @@ const PageAnnotationLayer = memo(({
           }
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
-          // #region agent log
-          console.log('[PageAnnotationLayer] Added BIC highlight to canvas', { highlightId: highlight.highlightId });
-          // #endregion
         } else {
           // Use color from highlight data if provided, otherwise use default, and preserve stored opacity
           const rawColor = highlight.color || highlightColor;
@@ -4096,21 +4053,9 @@ const PageAnnotationLayer = memo(({
           canvas.add(rect);
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
-          // #region agent log
-          console.log('[PageAnnotationLayer] Added color highlight to canvas', { highlightId: highlight.highlightId, fillColor: color });
-          // #endregion
         }
-      } else {
-        // #region agent log
-        console.log('[PageAnnotationLayer] Skipped highlight - already processed', { highlightKey, highlightId: highlight.highlightId });
-        // #endregion
-      }
-    });
+      });
 
-    // #region agent log
-    const finalRectCount = canvas.getObjects('rect').length;
-    console.log('[PageAnnotationLayer] After processing highlights', { addedAny, initialRectCount, finalRectCount, rectsAdded: finalRectCount - initialRectCount });
-    // #endregion
     if (addedAny) {
       canvas.renderAll();
 
