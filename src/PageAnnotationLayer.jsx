@@ -329,22 +329,35 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     const text = target.getObjects().find(o => o.name === 'calloutText');
     if (!line || !head || !text) return false;
 
-    // Current Points (we need to be careful about Line normalization)
-    // Actually, since we are inside a Group, it's easier to just:
-    // 1. Update the 'leading' objects (Head, Text, or Knee coord).
-    // 2. Re-create or Re-set the Line points based on these positions.
+    console.log('[Callout Debug] updateGeometry called', {
+      type,
+      localPoint,
+      headPos: { left: head.left, top: head.top },
+      textPos: { left: text.left, top: text.top, width: text.width, height: text.height },
+      linePos: { left: line.left, top: line.top },
+      linePoints: line.points,
+      textStroke: text.stroke,
+      textStrokeWidth: text.strokeWidth,
+      textBackgroundColor: text.backgroundColor
+    });
 
     if (type === 'tip') {
+      console.log('[Callout Debug] Moving TIP to', localPoint);
       head.set({ left: localPoint.x, top: localPoint.y });
     } else if (type === 'knee') {
       // Update the knee position (point index 1 of the polyline)
-      // localPoint is in group coordinates
-      const pts = line.points;
-
-      // Current point positions in group space
-      const pTip = { x: line.left + pts[0].x, y: line.top + pts[0].y };
-      const pText = { x: line.left + pts[2].x, y: line.top + pts[2].y };
+      // IMPORTANT: Use actual head/text positions, not line internal points
+      // because line points are normalized and may drift
+      const pTip = { x: head.left, y: head.top };
+      const pText = { x: text.left, y: text.top + text.height / 2 };
       const newKnee = { x: localPoint.x, y: localPoint.y };
+
+      console.log('[Callout Debug] Moving KNEE', {
+        pTip,
+        pText,
+        newKnee,
+        oldLinePoints: line.points
+      });
 
       // Reconstruct line with new knee position
       const allPts = [pTip, newKnee, pText];
@@ -355,6 +368,12 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
         left: minX,
         top: minY,
         points: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
+      });
+
+      console.log('[Callout Debug] Line updated', {
+        newLineLeft: minX,
+        newLineTop: minY,
+        newPoints: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
       });
     }
     // Text Resize Logic
