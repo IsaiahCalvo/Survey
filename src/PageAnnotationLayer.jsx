@@ -4014,11 +4014,7 @@ const PageAnnotationLayer = memo(({
         } else {
           // Use color from highlight data if provided, otherwise use default, and preserve stored opacity
           const rawColor = highlight.color || highlightColor;
-          // #region agent log
-          // #endregion
           const color = normalizeHighlightColor(rawColor) || highlightColor;
-          // #region agent log
-          // #endregion
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
@@ -4036,8 +4032,6 @@ const PageAnnotationLayer = memo(({
             uniformScaling: false,
             lockUniScaling: false   // Allow free scaling on corner handles
           });
-          // #region agent log
-          // #endregion
           // Store the highlightId if available
           if (highlight.highlightId) {
             rect.set({ highlightId: highlight.highlightId });
@@ -4054,7 +4048,8 @@ const PageAnnotationLayer = memo(({
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
         }
-      });
+      }
+    });
 
     if (addedAny) {
       canvas.renderAll();

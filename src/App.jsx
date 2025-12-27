@@ -11224,16 +11224,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
 
         // console.log('ArrayBuffer created, size:', arrayBuffer.byteLength);
-        console.log('PDF load check:', {
-          size: arrayBuffer.byteLength,
-          version: pdfjsLib.version,
-          workerSrc: pdfjsLib.GlobalWorkerOptions.workerSrc
-        });
 
         try {
           const checkHeader = new Uint8Array(arrayBuffer.slice(0, 5));
           const headerStr = String.fromCharCode(...checkHeader);
-          console.log('PDF Header Check:', headerStr);
           if (headerStr.indexOf('%PDF-') !== 0) {
             console.error('CRITICAL: File does not start with %PDF-');
           }
@@ -12009,9 +12003,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         target.closest('.page-container') !== null;
 
       if (isOnAnnotationCanvas) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:1194', message: 'Canvas click detected in pan tool', data: { clientX: e.clientX, clientY: e.clientY, canPan: canPan, activeTool: activeTool }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-        // #endregion
         // Track canvas mouse down - we'll start panning in handleMouseMove if mouse moves
         // (indicating empty space drag, not annotation interaction)
         canvasMouseDownRef.current = {
@@ -12027,9 +12018,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
 
       // Click is on empty space or PDF background - allow container panning
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11710', message: 'Starting panning on non-canvas click', data: { clientX: e.clientX, clientY: e.clientY, targetTag: e.target.tagName }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' }) }).catch(() => { });
-      // #endregion
       setIsPanning(true);
       setPanStart({
         x: e.clientX + containerRef.current.scrollLeft,
@@ -12046,9 +12034,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         container.scrollLeft = panStart.x - e.clientX;
         container.scrollTop = panStart.y - e.clientY;
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11723', message: 'Panning active', data: { scrollLeft: container?.scrollLeft, scrollTop: container?.scrollTop, clientX: e.clientX, clientY: e.clientY }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
-      // #endregion
     } else if (activeTool === 'pan' && !showRegionSelection && canPan && canvasMouseDownRef.current) {
       // Check if mouse has moved enough to start panning (empty space drag on canvas)
       const start = canvasMouseDownRef.current;
@@ -12057,9 +12042,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         Math.pow(e.clientY - start.clientY, 2)
       );
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11729', message: 'Canvas drag detected, checking distance', data: { moveDistance: moveDistance.toFixed(2), threshold: 5, willStartPanning: moveDistance > 5, clientX: e.clientX, clientY: e.clientY }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
-      // #endregion
 
       // Start panning if mouse moved more than 5px (same threshold as annotation selection)
       if (moveDistance > 5) {
@@ -12069,9 +12051,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           y: start.y
         });
         canvasMouseDownRef.current = null; // Clear after starting pan
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11736', message: 'Starting panning from canvas drag', data: { panStartX: start.x, panStartY: start.y }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
-        // #endregion
       }
     }
   }, [isPanning, panStart, activeTool, showRegionSelection, canPan]);
@@ -13150,9 +13129,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           const highlightColor = highlight.ballInCourtColor
             ? (normalizeHighlightColor(highlight.ballInCourtColor) || highlight.ballInCourtColor)
             : null;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13150',message:'Rebuilding highlight from highlightAnnotations',data:{highlightId,ballInCourtColor:highlight.ballInCourtColor,highlightColor,needsBIC},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
 
           // Add highlight to the page array
           const highlightData = {
@@ -13165,9 +13141,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             ...(needsBIC && { needsBIC: true }),
             ...(highlightColor && { color: highlightColor })
           };
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13163',message:'Adding highlight to highlightsByPage',data:{highlightData,hasColor:!!highlightData.color},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           highlightsByPage[pageNumber].push(highlightData);
         });
       }

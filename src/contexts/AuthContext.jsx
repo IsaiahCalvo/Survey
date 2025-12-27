@@ -99,7 +99,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const handleFocus = () => {
       if (user?.id) {
-        console.log('Window focused, refetching subscription tier...');
+
         fetchSubscriptionTier(user.id);
       }
     };
