@@ -11224,10 +11224,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
 
         // console.log('ArrayBuffer created, size:', arrayBuffer.byteLength);
+        console.log('PDF load check:', {
+          size: arrayBuffer.byteLength,
+          version: pdfjsLib.version,
+          workerSrc: pdfjsLib.GlobalWorkerOptions.workerSrc
+        });
 
         try {
           const checkHeader = new Uint8Array(arrayBuffer.slice(0, 5));
           const headerStr = String.fromCharCode(...checkHeader);
+          console.log('PDF Header Check:', headerStr);
           if (headerStr.indexOf('%PDF-') !== 0) {
             console.error('CRITICAL: File does not start with %PDF-');
           }

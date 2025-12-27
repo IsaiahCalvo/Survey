@@ -3887,10 +3887,10 @@ const PageAnnotationLayer = memo(({
           const currentWidth = existingRect.width;
           const currentHeight = existingRect.height;
 
-          const targetLeft = highlight.x * renderScale;
-          const targetTop = highlight.y * renderScale;
-          const targetWidth = highlight.width * renderScale;
-          const targetHeight = highlight.height * renderScale;
+          const targetLeft = highlight.x;
+          const targetTop = highlight.y;
+          const targetWidth = highlight.width;
+          const targetHeight = highlight.height;
 
           const tolerance = 1.0;
           const boundsMatch =
@@ -3932,10 +3932,10 @@ const PageAnnotationLayer = memo(({
       // Convert PDF coordinates to canvas coordinates for comparison
       // Use actual canvas zoom for consistency
       const renderScale = currentZoom || scale;
-      const highlightCanvasX = highlight.x * renderScale;
-      const highlightCanvasY = highlight.y * renderScale;
-      const highlightCanvasWidth = highlight.width * renderScale;
-      const highlightCanvasHeight = highlight.height * renderScale;
+      const highlightCanvasX = highlight.x;
+      const highlightCanvasY = highlight.y;
+      const highlightCanvasWidth = highlight.width;
+      const highlightCanvasHeight = highlight.height;
 
       const matchingRects = canvas.getObjects('rect').filter(obj => {
         // Don't match the object we just verified as correct above (if any)
@@ -3980,10 +3980,10 @@ const PageAnnotationLayer = memo(({
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
-            left: highlight.x * renderScale,
-            top: highlight.y * renderScale,
-            width: highlight.width * renderScale,
-            height: highlight.height * renderScale,
+            left: highlight.x,
+            top: highlight.y,
+            width: highlight.width,
+            height: highlight.height,
             fill: 'transparent',
             stroke: '#4A90E2',
             strokeWidth: 2,
@@ -4018,10 +4018,10 @@ const PageAnnotationLayer = memo(({
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
-            left: highlight.x * renderScale,
-            top: highlight.y * renderScale,
-            width: highlight.width * renderScale,
-            height: highlight.height * renderScale,
+            left: highlight.x,
+            top: highlight.y,
+            width: highlight.width,
+            height: highlight.height,
             fill: color,
             stroke: 'transparent',
             selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
