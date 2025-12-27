@@ -3198,10 +3198,10 @@ const PageAnnotationLayer = memo(({
           // Need to divide by currentZoom to convert to PDF coordinates
           // This matches the rendering logic which multiplies by renderScale (lines 667-670)
           onHighlightCreatedRef.current(pageNumber, {
-            x: rectLeft / currentZoom,
-            y: rectTop / currentZoom,
-            width: rectWidth / currentZoom,
-            height: rectHeight / currentZoom
+            x: rectLeft,
+            y: rectTop,
+            width: rectWidth,
+            height: rectHeight
           });
         }
       } else if (currentTool === 'arrow' && ds.tempObj.type === 'line') {

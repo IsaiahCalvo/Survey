@@ -12691,8 +12691,43 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           }
         }
       });
+
+      // Update highlightsToRemoveByPage to ensure visual cleanup on canvas
+      // This is crucial for Panel -> Canvas sync
+      setHighlightsToRemoveByPage(prev => {
+        const updated = { ...prev };
+
+        highlightsToDelete.forEach(({ highlight }) => {
+          if (highlight && highlight.pageNumber && highlight.bounds) {
+            const pageNum = highlight.pageNumber;
+            updated[pageNum] = [...(updated[pageNum] || []), highlight.bounds];
+          }
+        });
+
+        return updated;
+      });
+
+      // Clear the removal queue after a short delay
+      setTimeout(() => {
+        setHighlightsToRemoveByPage(prev => {
+          const updated = { ...prev };
+          highlightsToDelete.forEach(({ highlight }) => {
+            if (highlight && highlight.pageNumber && updated[highlight.pageNumber]) {
+              // Start fresh for that page or filter out specific bounds if we want to be granular
+              // For simplicity and to match the 'add' logic which accumulates, we can just clear the whole page key 
+              // if we assume this is the main source of removals.
+              // But to be safer, let's just leave it. The PageAnnotationLayer handles 'new' props.
+              // Actually, the PageAnnotationLayer useEffect likely expects a change to trigger.
+              // If we don't clear it, subsequent deletions might not trigger if reference is same?
+              // Let's clear the key for the page.
+              delete updated[highlight.pageNumber];
+            }
+          });
+          return updated;
+        });
+      }, 100);
     }
-  }, [selectedModuleId, selectedTemplate, highlightAnnotations, items]);
+  }, [selectedModuleId, selectedTemplate, highlightAnnotations, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey]);
 
   // Handle deletion of a highlight item (from survey panel)
   const handleDeleteHighlightItem = useCallback((highlightId) => {
