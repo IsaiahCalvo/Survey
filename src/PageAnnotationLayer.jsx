@@ -241,12 +241,15 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     left: end.x,
     top: end.y,
     fontSize: 16,
-    fill: strokeColor,
+    fill: strokeColor,           // Text color
+    stroke: strokeColor,         // Border color (matches line)
+    strokeWidth: strokeWidth,    // Border thickness
     width: 100,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.9)',  // White fill (default)
     name: 'calloutText',
     originX: 'left',
-    originY: 'top'
+    originY: 'top',
+    fontFamily: 'Arial'          // Default font
   });
 
   // Polyline
@@ -332,7 +335,25 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     if (type === 'tip') {
       head.set({ left: localPoint.x, top: localPoint.y });
     } else if (type === 'knee') {
-      // Virtual knee point changed. We just track it for the line update.
+      // Update the knee position (point index 1 of the polyline)
+      // localPoint is in group coordinates
+      const pts = line.points;
+
+      // Current point positions in group space
+      const pTip = { x: line.left + pts[0].x, y: line.top + pts[0].y };
+      const pText = { x: line.left + pts[2].x, y: line.top + pts[2].y };
+      const newKnee = { x: localPoint.x, y: localPoint.y };
+
+      // Reconstruct line with new knee position
+      const allPts = [pTip, newKnee, pText];
+      const minX = Math.min(pTip.x, newKnee.x, pText.x);
+      const minY = Math.min(pTip.y, newKnee.y, pText.y);
+
+      line.set({
+        left: minX,
+        top: minY,
+        points: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
+      });
     }
     // Text Resize Logic
     else if (type.startsWith('text')) {

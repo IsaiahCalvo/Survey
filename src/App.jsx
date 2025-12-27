@@ -8072,7 +8072,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       try {
         localStorage.setItem('lastShapeTool', activeTool);
       } catch (e) { }
-    } else if (['text', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
+    } else if (['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
       setLastReviewTool(activeTool);
       try {
         localStorage.setItem('lastReviewTool', activeTool);
