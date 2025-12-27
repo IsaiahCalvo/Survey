@@ -33,12 +33,9 @@ configureFabricOverrides();
 
 const getLocalPoint = (transform, x, y) => {
   const target = transform.target;
-  // Simple conversion: canvas coords - group position = local coords
-  // This matches the position handler logic
-  return {
-    x: x - target.left,
-    y: y - target.top
-  };
+  // Use Fabric's inverse transform for accurate conversion
+  const invMat = util.invertTransform(target.calcTransformMatrix());
+  return util.transformPoint({ x, y }, invMat);
 };
 
 // Position Handler: Places the control at a specific relative point of the group
@@ -137,13 +134,23 @@ const calloutPositionHandler = (type) => {
       localPoint = { x: px, y: py };
     }
 
-    // Transform from group-local to canvas coordinates
-    // Group origin is center by default, so local (0,0) = group center
-    // Canvas position = group.left + localPoint.x, group.top + localPoint.y
-    return {
-      x: group.left + localPoint.x,
-      y: group.top + localPoint.y
-    };
+    // Use Fabric's transform matrix for accurate positioning
+    const matrix = group.calcTransformMatrix();
+    const canvasPoint = util.transformPoint(localPoint, matrix);
+
+    // Always log for debugging
+    console.log('[Position Debug]', {
+      type,
+      localPoint,
+      groupLeft: group.left,
+      groupTop: group.top,
+      groupWidth: group.width,
+      groupHeight: group.height,
+      canvasPoint,
+      matrix: matrix.slice(0, 6)
+    });
+
+    return canvasPoint;
   };
 };
 
@@ -180,19 +187,27 @@ const updateCalloutGroupConnections = (group) => {
   const angle = Math.atan2(pKnee.y - pTip.y, pKnee.x - pTip.x) * 180 / Math.PI;
   head.set({ angle: angle + 270 });
 
-  // Update line as a Path using absolute group-relative coordinates
+  // Update line as a Path using group-relative coordinates
   // Path format: M x1,y1 L x2,y2 L x3,y3
   const pathString = `M ${pTip.x},${pTip.y} L ${pKnee.x},${pKnee.y} L ${pText.x},${pText.y}`;
 
-  // Set path data - this updates the line to connect the points directly
-  line.set({
-    path: fabric.util.parsePath(pathString),
-    left: 0,
-    top: 0,
-    pathOffset: { x: 0, y: 0 }
-  });
+  // Parse and set the path
+  const newPath = fabric.util.parsePath(pathString);
+  line.set({ path: newPath });
+
+  // Recalculate the path's internal dimensions
+  if (line._setPositionDimensions) {
+    line._setPositionDimensions({});
+  }
   line.setCoords();
   line.dirty = true;
+
+  console.log('[Line Update]', {
+    pathString,
+    lineLeft: line.left,
+    lineTop: line.top,
+    linePathOffset: line.pathOffset
+  });
 
   // Update text border position and size to match text
   if (textBorder) {
@@ -289,13 +304,9 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     textBorderPos: { left: end.x - 2, top: end.y - 2 }
   });
 
-  // Polyline
-  // Points are absolute initally, Group will normalize them.
-  // Use Path instead of Polyline to avoid coordinate normalization issues
-  // Path coordinates are specified directly and don't get auto-normalized
-  const pathString = `M ${start.x},${start.y} L ${knee.x},${knee.y} L ${end.x},${end.y + 10}`;
-
-  const line = new Path(pathString, {
+  // Create line as a simple Path - we'll set its path data after group creation
+  // when all positions have been converted to group-relative coordinates
+  const line = new Path('M 0,0 L 1,1', {
     stroke: strokeColor,
     strokeWidth: strokeWidth,
     fill: null,
@@ -303,8 +314,8 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     strokeLineJoin: 'round',
     objectCaching: false,
     name: 'calloutLine',
-    originX: 'left',
-    originY: 'top'
+    originX: 'center',
+    originY: 'center'
   });
 
   const group = new Group([line, head, textBorder, text], {
@@ -321,16 +332,21 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     data: { type: 'callout' }
   });
 
-  // After group creation, convert knee to group-relative coordinates
-  // Fabric.js converts all child positions to be relative to group center
-  const groupMatrix = group.calcTransformMatrix();
-  const invertedMatrix = fabric.util.invertTransform(groupMatrix);
-  const kneeInGroupCoords = fabric.util.transformPoint({ x: knee.x, y: knee.y }, invertedMatrix);
-  group.data.knee = { x: kneeInGroupCoords.x, y: kneeInGroupCoords.y };
+  // After group creation, Fabric.js has converted all positions to group-relative
+  // Calculate knee in group coords based on head/text positions (which are now group-relative)
+  // The knee should be midway horizontally between head and text, at text's vertical center
+  group.data.knee = {
+    x: (head.left + text.left) / 2,
+    y: text.top + text.height / 2
+  };
+
+  // Now update the line path to connect the points in group-relative coordinates
+  updateCalloutGroupConnections(group);
 
   console.log('[Callout Debug] Group created', {
     groupCenter: { left: group.left, top: group.top },
-    kneeAbsolute: knee,
+    groupWidth: group.width,
+    groupHeight: group.height,
     kneeGroupRelative: group.data.knee,
     headPos: { left: head.left, top: head.top },
     textPos: { left: text.left, top: text.top }
