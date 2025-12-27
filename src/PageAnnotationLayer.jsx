@@ -33,9 +33,12 @@ configureFabricOverrides();
 
 const getLocalPoint = (transform, x, y) => {
   const target = transform.target;
-  const invMat = util.invertTransform(target.calcTransformMatrix());
-  const point = util.transformPoint({ x, y }, invMat);
-  return point;
+  // Simple conversion: canvas coords - group position = local coords
+  // This matches the position handler logic
+  return {
+    x: x - target.left,
+    y: y - target.top
+  };
 };
 
 // Position Handler: Places the control at a specific relative point of the group
@@ -104,39 +107,24 @@ const calloutControlPositionHandler = (pointIndex, object, lineName) => {
 const calloutPositionHandler = (type) => {
   return function (dim, finalMatrix, fabricObject) {
     const group = fabricObject;
-    const line = group.getObjects().find(o => o.name === 'calloutLine');
     const head = group.getObjects().find(o => o.name === 'calloutHead');
     const text = group.getObjects().find(o => o.name === 'calloutText');
 
     let localPoint;
 
     if (type === 'tip') {
-      // Use Head position (center)
-      localPoint = new fabricLib.Point(head.left, head.top);
-    } else if (type === 'text') {
-      // Use Text position (top-left usually, or center depending on logic)
-      // We set originX/Y to center for group children usually? No we set left/top.
-      // We'll use Text center for the handle to be intuitive?
-      // Or top-left seems safer for text flow. 
-      // Let's stick to Text.left/top (which is top-left in our creation logic)
-      localPoint = new fabricLib.Point(text.left, text.top);
+      localPoint = { x: head.left, y: head.top };
     } else if (type === 'knee') {
-      // Read knee position from data.knee (stored absolutely in group coords)
-      // This avoids coordinate drift from Polyline normalization/pathOffset issues
       if (group.data?.knee) {
-        localPoint = new fabricLib.Point(group.data.knee.x, group.data.knee.y);
+        localPoint = { x: group.data.knee.x, y: group.data.knee.y };
       } else {
-        // Fallback: compute midpoint between tip and text
-        localPoint = new fabricLib.Point(
-          (head.left + text.left) / 2,
-          text.top + text.height / 2
-        );
+        localPoint = {
+          x: (head.left + text.left) / 2,
+          y: text.top + text.height / 2
+        };
       }
-    }
-    // Text Corner Handles
-    else if (type.startsWith('text')) {
-      // Calculate corner based on Textbox dimensions
-      // Text origin is 'left', 'top'
+    } else if (type.startsWith('text')) {
+      // Text corner handles
       const w = text.getScaledWidth();
       const h = text.getScaledHeight();
 
@@ -149,9 +137,13 @@ const calloutPositionHandler = (type) => {
       localPoint = { x: px, y: py };
     }
 
-    // Transform Local (Group) Point to Canvas Point (for tip/text)
-    const matrix = group.calcTransformMatrix();
-    return util.transformPoint(localPoint, matrix);
+    // Transform from group-local to canvas coordinates
+    // Group origin is center by default, so local (0,0) = group center
+    // Canvas position = group.left + localPoint.x, group.top + localPoint.y
+    return {
+      x: group.left + localPoint.x,
+      y: group.top + localPoint.y
+    };
   };
 };
 
@@ -213,7 +205,9 @@ const updateCalloutGroupConnections = (group) => {
     textBorder.setCoords();
   }
 
-  // Do NOT call group.addWithUpdate() as it causes coordinate drift
+  // Update group's coordinate cache without recalculating bounds
+  // This ensures control positions are updated correctly
+  group.setCoords();
   group.dirty = true;
 };
 
