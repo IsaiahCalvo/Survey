@@ -1156,6 +1156,9 @@ const ensureRgbaOpacity = (color, opacity = 0.2) => {
 const DEFAULT_SURVEY_HIGHLIGHT_OPACITY = 0.4;
 
 const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIGHT_OPACITY) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1158',message:'normalizeHighlightColor entry',data:{color,fallbackOpacity,DEFAULT_OPACITY:DEFAULT_SURVEY_HIGHLIGHT_OPACITY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   if (!color || typeof color !== 'string') {
     return null;
   }
@@ -1170,15 +1173,30 @@ const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIG
       const clampedOpacity = Number.isFinite(parsedOpacity)
         ? Math.min(1, Math.max(0, parsedOpacity))
         : fallbackOpacity;
-      return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`;
+      const result = `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1173',message:'normalizeHighlightColor rgba with opacity',data:{inputOpacity:opacityStr,parsedOpacity,clampedOpacity,result,fallbackOpacity},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      return result;
     }
-    return `rgba(${r}, ${g}, ${b}, ${fallbackOpacity})`;
+    const result = `rgba(${r}, ${g}, ${b}, ${fallbackOpacity})`;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1175',message:'normalizeHighlightColor rgba without opacity',data:{result,fallbackOpacity},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    return result;
   }
 
   if (trimmed.startsWith('#')) {
-    return ensureRgbaOpacity(trimmed, fallbackOpacity);
+    const result = ensureRgbaOpacity(trimmed, fallbackOpacity);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1179',message:'normalizeHighlightColor hex color',data:{hexColor:trimmed,result,fallbackOpacity},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    return result;
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1182',message:'normalizeHighlightColor returning trimmed as-is',data:{trimmed},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   return trimmed;
 };
 
@@ -3859,10 +3877,17 @@ const PageAnnotationLayer = memo(({
 
   // Add highlights when newHighlights prop changes
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3879',message:'useEffect newHighlights triggered',data:{hasCanvas:!!fabricRef.current,newHighlightsCount:newHighlights?.length,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     if (!fabricRef.current || !newHighlights || newHighlights.length === 0) return;
 
     const canvas = fabricRef.current;
     const currentZoom = canvas.getZoom();
+    // #region agent log
+    const initialRectCount = canvas.getObjects('rect').length;
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3883',message:'Before processing highlights',data:{newHighlightsCount:newHighlights.length,initialRectCount,renderedHighlightsCount:renderedHighlightsRef.current.size,processedHighlightsCount:processedHighlightsRef.current.size,currentZoom},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     let addedAny = false;
 
     newHighlights.forEach((highlight, index) => {
@@ -3908,9 +3933,15 @@ const PageAnnotationLayer = memo(({
             // For solid highlights, check color
             if (!needsBIC) {
               if (existingRect.fill === color) {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3929',message:'Skipping highlight - existing matches',data:{highlightId:highlight.highlightId,existingFill:existingRect.fill,newColor:color},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                // #endregion
                 return; // Skip, already rendered correctly
               }
             } else {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3932',message:'Skipping BIC highlight - existing matches',data:{highlightId:highlight.highlightId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              // #endregion
               return; // Skip, already rendered correctly (BIC style is constant)
             }
           }
@@ -3960,6 +3991,11 @@ const PageAnnotationLayer = memo(({
       });
 
       // Remove matching highlights
+      // #region agent log
+      if (matchingRects.length > 0) {
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3981',message:'Removing matching highlights by bounds',data:{matchingRectsCount:matchingRects.length,highlightId:highlight.highlightId,highlightKey},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      }
+      // #endregion
       matchingRects.forEach(rect => {
         // Remove the old highlight
         canvas.remove(rect);
@@ -3973,7 +4009,11 @@ const PageAnnotationLayer = memo(({
       });
 
       // Check if we've already processed this highlight (by coordinates if no ID)
-      if (!processedHighlightsRef.current.has(highlightKey)) {
+      const alreadyProcessed = processedHighlightsRef.current.has(highlightKey);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3994',message:'Checking if highlight already processed',data:{highlightKey,alreadyProcessed,highlightId:highlight.highlightId,hasInRendered:highlight.highlightId?renderedHighlightsRef.current.has(highlight.highlightId):false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      if (!alreadyProcessed) {
         // Check if this highlight needs BIC assignment (transparent with dashed outline)
         if (highlight.needsBIC) {
           // Render as transparent with dashed outline (indicating it needs BIC)
@@ -4011,10 +4051,19 @@ const PageAnnotationLayer = memo(({
           }
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4026',message:'Added BIC highlight to canvas',data:{highlightId:highlight.highlightId,highlightKey,canvasRectCount:canvas.getObjects('rect').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
         } else {
           // Use color from highlight data if provided, otherwise use default, and preserve stored opacity
           const rawColor = highlight.color || highlightColor;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4016',message:'Before normalizeHighlightColor',data:{rawColor,highlightColor,highlightId:highlight.highlightId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
           const color = normalizeHighlightColor(rawColor) || highlightColor;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4019',message:'After normalizeHighlightColor',data:{rawColor,normalizedColor:color,highlightId:highlight.highlightId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
@@ -4032,6 +4081,9 @@ const PageAnnotationLayer = memo(({
             uniformScaling: false,
             lockUniScaling: false   // Allow free scaling on corner handles
           });
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4025',message:'Rect created with fill',data:{fillColor:color,rectFill:rect.fill,rectOpacity:rect.opacity,globalCompositeOperation:rect.globalCompositeOperation,highlightId:highlight.highlightId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
           // Store the highlightId if available
           if (highlight.highlightId) {
             rect.set({ highlightId: highlight.highlightId });
@@ -4047,10 +4099,21 @@ const PageAnnotationLayer = memo(({
           canvas.add(rect);
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4070',message:'Added color highlight to canvas',data:{highlightId:highlight.highlightId,highlightKey,fillColor:color,canvasRectCount:canvas.getObjects('rect').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+        } else {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4073',message:'Skipped highlight - already processed',data:{highlightKey,highlightId:highlight.highlightId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
         }
       }
     });
 
+    // #region agent log
+    const finalRectCount = canvas.getObjects('rect').length;
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4075',message:'After processing all highlights',data:{addedAny,initialRectCount,finalRectCount,rectsAdded:finalRectCount-initialRectCount,renderedHighlightsCount:renderedHighlightsRef.current.size,processedHighlightsCount:processedHighlightsRef.current.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     if (addedAny) {
       canvas.renderAll();
 

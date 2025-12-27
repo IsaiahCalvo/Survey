@@ -13150,9 +13150,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           const highlightColor = highlight.ballInCourtColor
             ? (normalizeHighlightColor(highlight.ballInCourtColor) || highlight.ballInCourtColor)
             : null;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13150',message:'Rebuilding highlight from highlightAnnotations',data:{highlightId,ballInCourtColor:highlight.ballInCourtColor,highlightColor,needsBIC},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
 
           // Add highlight to the page array
-          highlightsByPage[pageNumber].push({
+          const highlightData = {
             x: highlight.bounds.x,
             y: highlight.bounds.y,
             width: highlight.bounds.width,
@@ -13161,7 +13164,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             moduleId: highlightModuleId,
             ...(needsBIC && { needsBIC: true }),
             ...(highlightColor && { color: highlightColor })
-          });
+          };
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13163',message:'Adding highlight to highlightsByPage',data:{highlightData,hasColor:!!highlightData.color},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          highlightsByPage[pageNumber].push(highlightData);
         });
       }
 
