@@ -157,6 +157,7 @@ const calloutPositionHandler = (type) => {
 
 
 // Helper to re-calculate callout line connections
+// Uses Path instead of Polyline to avoid coordinate normalization issues
 const updateCalloutGroupConnections = (group) => {
   const line = group.getObjects().find(o => o.name === 'calloutLine');
   const head = group.getObjects().find(o => o.name === 'calloutHead');
@@ -168,8 +169,7 @@ const updateCalloutGroupConnections = (group) => {
   const pTip = { x: head.left, y: head.top };
   const pText = { x: text.left, y: text.top + text.height / 2 };
 
-  // Read knee from data.knee (stored absolutely) to avoid coordinate drift from Polyline normalization
-  // Fallback to computing from line if data.knee doesn't exist (shouldn't happen)
+  // Read knee from data.knee (stored in group-relative coords)
   let pKnee;
   if (group.data?.knee) {
     pKnee = { x: group.data.knee.x, y: group.data.knee.y };
@@ -179,35 +179,28 @@ const updateCalloutGroupConnections = (group) => {
       x: (pTip.x + pText.x) / 2,
       y: pText.y
     };
-    // Store it for future use
     if (group.data) {
       group.data.knee = { x: pKnee.x, y: pKnee.y };
     }
   }
 
-  console.log('[Callout Debug] updateCalloutGroupConnections', {
-    pTip,
-    pKnee,
-    pText,
-    lineLeft: line.left,
-    lineTop: line.top,
-    dataKnee: group.data?.knee
-  });
-
-  // Update Arrow Angle
+  // Update Arrow Angle to point from tip toward knee
   const angle = Math.atan2(pKnee.y - pTip.y, pKnee.x - pTip.x) * 180 / Math.PI;
   head.set({ angle: angle + 270 });
 
-  // Re-construct line points (un-normalized)
-  const allPts = [pTip, pKnee, pText];
-  const minX = Math.min(pTip.x, pKnee.x, pText.x);
-  const minY = Math.min(pTip.y, pKnee.y, pText.y);
+  // Update line as a Path using absolute group-relative coordinates
+  // Path format: M x1,y1 L x2,y2 L x3,y3
+  const pathString = `M ${pTip.x},${pTip.y} L ${pKnee.x},${pKnee.y} L ${pText.x},${pText.y}`;
 
+  // Set path data - this updates the line to connect the points directly
   line.set({
-    left: minX,
-    top: minY,
-    points: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
+    path: fabric.util.parsePath(pathString),
+    left: 0,
+    top: 0,
+    pathOffset: { x: 0, y: 0 }
   });
+  line.setCoords();
+  line.dirty = true;
 
   // Update text border position and size to match text
   if (textBorder) {
@@ -217,15 +210,11 @@ const updateCalloutGroupConnections = (group) => {
       width: text.width + 4,
       height: text.height + 4
     });
+    textBorder.setCoords();
   }
 
-  console.log('[Callout Debug] Line reconstructed', {
-    newLeft: minX,
-    newTop: minY,
-    newPoints: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
-  });
-
-  group.addWithUpdate();
+  // Do NOT call group.addWithUpdate() as it causes coordinate drift
+  group.dirty = true;
 };
 
 
@@ -281,7 +270,8 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     fontFamily: 'Arial',         // Default font
     // Note: Textbox stroke applies to text characters, not box border
     // We'll use a separate rect for the border
-    padding: 5
+    padding: 5,
+    styles: {}  // Initialize styles to prevent serialization error
   });
 
   // Create a border rect for the text box
@@ -307,21 +297,11 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
 
   // Polyline
   // Points are absolute initally, Group will normalize them.
-  // NOTE: When passing points to Polyline in a Group, Fabric subtracts the minX/minY 
-  // to create a bounding box, then positions the object.
-  // This shifts the points! This makes "knee" handling hard.
+  // Use Path instead of Polyline to avoid coordinate normalization issues
+  // Path coordinates are specified directly and don't get auto-normalized
+  const pathString = `M ${start.x},${start.y} L ${knee.x},${knee.y} L ${end.x},${end.y + 10}`;
 
-  // BETTTER APPROACH: Use a simple Line from Tip to Knee, and another Line from Knee to Text?
-  // Or just 1 Polyline but be careful about its position.
-
-  // Let's use Polyline but we must be aware that `line.points` will be normalized (0,0 based).
-  // AND `line.left/top` will be set.
-
-  const line = new Polyline([
-    { x: start.x, y: start.y },
-    { x: knee.x, y: knee.y },
-    { x: end.x, y: end.y + 10 } // Connect to roughly middle of text
-  ], {
+  const line = new Path(pathString, {
     stroke: strokeColor,
     strokeWidth: strokeWidth,
     fill: null,
@@ -412,40 +392,12 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     if (type === 'tip') {
       console.log('[Callout Debug] Moving TIP to', localPoint);
       head.set({ left: localPoint.x, top: localPoint.y });
+      // Line will be updated by updateCalloutGroupConnections at the end
     } else if (type === 'knee') {
-      // Update the knee position (point index 1 of the polyline)
-      // IMPORTANT: Use actual head/text positions, not line internal points
-      // because line points are normalized and may drift
-      const pTip = { x: head.left, y: head.top };
-      const pText = { x: text.left, y: text.top + text.height / 2 };
+      // Just update the stored knee position - line will be updated by updateCalloutGroupConnections
       const newKnee = { x: localPoint.x, y: localPoint.y };
-
-      console.log('[Callout Debug] Moving KNEE', {
-        pTip,
-        pText,
-        newKnee,
-        oldLinePoints: line.points
-      });
-
-      // Store knee position in data to avoid coordinate drift
+      console.log('[Callout Debug] Moving KNEE to', newKnee);
       target.data.knee = { x: newKnee.x, y: newKnee.y };
-
-      // Reconstruct line with new knee position
-      const allPts = [pTip, newKnee, pText];
-      const minX = Math.min(pTip.x, newKnee.x, pText.x);
-      const minY = Math.min(pTip.y, newKnee.y, pText.y);
-
-      line.set({
-        left: minX,
-        top: minY,
-        points: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
-      });
-
-      console.log('[Callout Debug] Line updated', {
-        newLineLeft: minX,
-        newLineTop: minY,
-        newPoints: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
-      });
     }
     // Text Resize Logic - Standard corner resize behavior
     // Fabric.js Textbox height is auto-calculated from content, so we only resize width
@@ -1899,51 +1851,73 @@ const PageAnnotationLayer = memo(({
 
     // Event listener for finishing text editing (Callout workflow)
     const handleTextEditingExited = (e) => {
-      if (justCreatedCalloutRef.current && toolRef.current === 'callout') {
-        // If we just finished typing in a new callout, switch to select
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      // If we were in callout tool mode and finished editing, switch to select
+      if (justCreatedCalloutRef.current || toolRef.current === 'callout') {
         onToolChange('select');
         justCreatedCalloutRef.current = false;
         // Force proper deselection to clear focus
-        const canvas = fabricRef.current;
-        if (canvas) {
-          canvas.discardActiveObject();
-          canvas.requestRenderAll();
-        }
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
       }
     };
 
     // Event listener for selection cleared (clicking outside)
     const handleSelectionCleared = (e) => {
-      if (justCreatedCalloutRef.current && toolRef.current === 'callout') {
-        // If we deselected the new callout (clicked outside), switch to select
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      // Force deep cleanup of editing state for ALL callouts
+      // Note: activeObject is likely null due to 'selection:cleared', but the IText might still be in edit mode internally
+      canvas.getObjects().forEach(obj => {
+        if (obj.data?.type === 'callout') {
+          const textObj = obj.getObjects().find(o => o.name === 'calloutText');
+          if (textObj && textObj.isEditing) {
+            textObj.exitEditing();
+          }
+        }
+      });
+
+      // If we were in callout tool mode, switch to select
+      if (justCreatedCalloutRef.current || toolRef.current === 'callout') {
         onToolChange('select');
         justCreatedCalloutRef.current = false;
-
-        // Force deep cleanup of editing state
-        const canvas = fabricRef.current;
-        if (canvas) {
-          // 1. Find any object currently in editing mode and stop it
-          // Note: activeObject is likely null due to 'selection:cleared', but the IText might still be in edit mode internally
-          canvas.getObjects().forEach(obj => {
-            if (obj.data?.type === 'callout') {
-              const textObj = obj.getObjects().find(o => o.name === 'calloutText');
-              if (textObj && textObj.isEditing) {
-                textObj.exitEditing();
-              }
-            }
-          });
-
-          // 2. Discard active object again to be sure
-          canvas.discardActiveObject();
-          canvas.requestRenderAll();
-        }
       }
+
+      canvas.requestRenderAll();
     };
 
     // Global Keydown
     const handleKeyDown = (e) => {
       // Escape Key
       if (e.key === 'Escape') {
+        const canvas = fabricRef.current;
+        if (!canvas) return;
+
+        // Exit any active text editing in callouts
+        const activeObj = canvas.getActiveObject();
+        if (activeObj?.data?.type === 'callout') {
+          const textObj = activeObj.getObjects().find(o => o.name === 'calloutText');
+          if (textObj?.isEditing) {
+            textObj.exitEditing();
+          }
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+        }
+
+        // Also check all callouts on canvas for editing state
+        canvas.getObjects().forEach(obj => {
+          if (obj.data?.type === 'callout') {
+            const textObj = obj.getObjects().find(o => o.name === 'calloutText');
+            if (textObj?.isEditing) {
+              textObj.exitEditing();
+            }
+          }
+        });
+
+        // Switch to select tool
         if (toolRef.current === 'callout') {
           onToolChange('select');
           justCreatedCalloutRef.current = false;
