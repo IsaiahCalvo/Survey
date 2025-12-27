@@ -13341,6 +13341,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setShowSurveyPanel(false);
                 setSelectedTemplate(null);
                 setSelectedModuleId(null);
+                setActiveTool('select');
               }
             }}
             className={`btn btn-md ${showSurveyPanel ? 'btn-active' : 'btn-default'}`}
@@ -15331,6 +15332,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         setShowSurveyPanel(false);
                         setSelectedTemplate(null);
                         setSelectedModuleId(null);
+                        setActiveTool('select');
                         onRequestCreateTemplate?.();
                       }}
                       className="btn btn-primary btn-md"
@@ -15381,6 +15383,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         setShowSurveyPanel(false);
                         setSelectedTemplate(null);
                         setSelectedModuleId(null);
+                        setActiveTool('select');
                         onRequestCreateTemplate?.();
                       }}
                       className="btn btn-primary btn-md"
@@ -15576,6 +15579,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           setSelectedTemplate(null);
                           setSelectedSpaceId(null);
                           setSelectedCategoryId(null);
+                          setActiveTool('select');
                         }
                       }}
                       className="btn btn-icon btn-icon-sm"
@@ -16408,8 +16412,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                                                 // Set selected category
                                                 setSelectedCategoryId(category.id);
-                                                // Hide survey panel
-                                                setShowSurveyPanel(false);
+                                                // Minimize survey panel
+                                                setIsSurveyPanelCollapsed(true);
                                                 // Switch to highlight tool
                                                 setActiveTool('highlight');
                                               }}

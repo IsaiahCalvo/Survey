@@ -138,18 +138,6 @@ const calloutPositionHandler = (type) => {
     const matrix = group.calcTransformMatrix();
     const canvasPoint = util.transformPoint(localPoint, matrix);
 
-    // Always log for debugging
-    console.log('[Position Debug]', {
-      type,
-      localPoint,
-      groupLeft: group.left,
-      groupTop: group.top,
-      groupWidth: group.width,
-      groupHeight: group.height,
-      canvasPoint,
-      matrix: matrix.slice(0, 6)
-    });
-
     return canvasPoint;
   };
 };
@@ -201,13 +189,6 @@ const updateCalloutGroupConnections = (group) => {
   }
   line.setCoords();
   line.dirty = true;
-
-  console.log('[Line Update]', {
-    pathString,
-    lineLeft: line.left,
-    lineTop: line.top,
-    linePathOffset: line.pathOffset
-  });
 
   // Update text border position and size to match text
   if (textBorder) {
@@ -297,13 +278,6 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     originY: 'top'
   });
 
-  console.log('[Callout Debug] Creating callout', {
-    strokeColor,
-    strokeWidth,
-    textPos: { left: end.x, top: end.y },
-    textBorderPos: { left: end.x - 2, top: end.y - 2 }
-  });
-
   // Create line as a simple Path - we'll set its path data after group creation
   // when all positions have been converted to group-relative coordinates
   const line = new Path('M 0,0 L 1,1', {
@@ -343,15 +317,6 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
   // Now update the line path to connect the points in group-relative coordinates
   updateCalloutGroupConnections(group);
 
-  console.log('[Callout Debug] Group created', {
-    groupCenter: { left: group.left, top: group.top },
-    groupWidth: group.width,
-    groupHeight: group.height,
-    kneeGroupRelative: group.data.knee,
-    headPos: { left: head.left, top: head.top },
-    textPos: { left: text.left, top: text.top }
-  });
-
   // --- 3. Custom Controls ---
 
   // Clear default controls
@@ -387,27 +352,12 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     const text = target.getObjects().find(o => o.name === 'calloutText');
     if (!line || !head || !text) return false;
 
-    console.log('[Callout Debug] updateGeometry called', {
-      type,
-      localPoint,
-      headPos: { left: head.left, top: head.top },
-      textPos: { left: text.left, top: text.top, width: text.width, height: text.height },
-      linePos: { left: line.left, top: line.top },
-      linePoints: line.points,
-      textStroke: text.stroke,
-      textStrokeWidth: text.strokeWidth,
-      textBackgroundColor: text.backgroundColor
-    });
-
     if (type === 'tip') {
-      console.log('[Callout Debug] Moving TIP to', localPoint);
       head.set({ left: localPoint.x, top: localPoint.y });
       // Line will be updated by updateCalloutGroupConnections at the end
     } else if (type === 'knee') {
       // Just update the stored knee position - line will be updated by updateCalloutGroupConnections
-      const newKnee = { x: localPoint.x, y: localPoint.y };
-      console.log('[Callout Debug] Moving KNEE to', newKnee);
-      target.data.knee = { x: newKnee.x, y: newKnee.y };
+      target.data.knee = { x: localPoint.x, y: localPoint.y };
     }
     // Text Resize Logic - Standard corner resize behavior
     // Fabric.js Textbox height is auto-calculated from content, so we only resize width
@@ -417,18 +367,8 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
       const minWidth = 40;
 
       const currentLeft = text.left;
-      const currentTop = text.top;
       const currentWidth = text.width;
       const currentRight = currentLeft + currentWidth;
-
-      console.log('[Callout Debug] Text resize', {
-        type,
-        localPoint,
-        currentLeft,
-        currentTop,
-        currentWidth,
-        currentRight
-      });
 
       // BR (Bottom-Right): Anchor TL, resize width to the right
       if (type === 'textBR') {
@@ -1945,15 +1885,6 @@ const PageAnnotationLayer = memo(({
         if (!canvas) return;
         const activeObj = canvas.getActiveObject();
 
-        if (activeObj) {
-          console.log('[Callout Debug] Delete Pressed', {
-            activeObjType: activeObj.type,
-            dataType: activeObj.data?.type,
-            hasCustomData: !!activeObj.data,
-            objects: activeObj.getObjects ? activeObj.getObjects().length : 0
-          });
-        }
-
         // Check for Callout (Checking data.type OR internal structure as fallback)
         const isCallout = (activeObj?.data?.type === 'callout') ||
           (activeObj?.type === 'group' && activeObj.getObjects().some(o => o.name === 'calloutText'));
@@ -1967,8 +1898,6 @@ const PageAnnotationLayer = memo(({
             canvas.requestRenderAll();
             triggerSave();
             e.preventDefault();
-          } else {
-            console.log('[Callout Debug] Deletion blocked: text is editing');
           }
         }
       }
