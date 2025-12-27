@@ -164,6 +164,7 @@ const updateCalloutGroupConnections = (group) => {
   const line = group.getObjects().find(o => o.name === 'calloutLine');
   const head = group.getObjects().find(o => o.name === 'calloutHead');
   const text = group.getObjects().find(o => o.name === 'calloutText');
+  const textBorder = group.getObjects().find(o => o.name === 'calloutTextBorder');
 
   if (!line || !head || !text) return;
 
@@ -174,10 +175,22 @@ const updateCalloutGroupConnections = (group) => {
   const kneeIdx = 1;
 
   // Calculate Knee in Group Space using line.left/top
+  // Account for pathOffset which Fabric.js uses for polylines
+  const pathOffset = line.pathOffset || { x: 0, y: 0 };
   const pKnee = {
-    x: line.left + pts[kneeIdx].x,
-    y: line.top + pts[kneeIdx].y
+    x: line.left + pts[kneeIdx].x - pathOffset.x,
+    y: line.top + pts[kneeIdx].y - pathOffset.y
   };
+
+  console.log('[Callout Debug] updateCalloutGroupConnections', {
+    pTip,
+    pKnee,
+    pText,
+    lineLeft: line.left,
+    lineTop: line.top,
+    pathOffset,
+    pts
+  });
 
   // Update Arrow Angle
   const angle = Math.atan2(pKnee.y - pTip.y, pKnee.x - pTip.x) * 180 / Math.PI;
@@ -192,6 +205,22 @@ const updateCalloutGroupConnections = (group) => {
     left: minX,
     top: minY,
     points: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
+  });
+
+  // Update text border position and size to match text
+  if (textBorder) {
+    textBorder.set({
+      left: text.left - 2,
+      top: text.top - 2,
+      width: text.width + 4,
+      height: text.height + 4
+    });
+  }
+
+  console.log('[Callout Debug] Line reconstructed', {
+    newLeft: minX,
+    newTop: minY,
+    newPoints: allPts.map(p => ({ x: p.x - minX, y: p.y - minY }))
   });
 
   group.addWithUpdate();
@@ -242,14 +271,36 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     top: end.y,
     fontSize: 16,
     fill: strokeColor,           // Text color
-    stroke: strokeColor,         // Border color (matches line)
-    strokeWidth: strokeWidth,    // Border thickness
     width: 100,
     backgroundColor: 'rgba(255,255,255,0.9)',  // White fill (default)
     name: 'calloutText',
     originX: 'left',
     originY: 'top',
-    fontFamily: 'Arial'          // Default font
+    fontFamily: 'Arial',         // Default font
+    // Note: Textbox stroke applies to text characters, not box border
+    // We'll use a separate rect for the border
+    padding: 5
+  });
+
+  // Create a border rect for the text box
+  const textBorder = new Rect({
+    left: end.x - 2,
+    top: end.y - 2,
+    width: text.width + 4,
+    height: 24, // Will be updated dynamically
+    fill: 'transparent',
+    stroke: strokeColor,
+    strokeWidth: strokeWidth,
+    name: 'calloutTextBorder',
+    originX: 'left',
+    originY: 'top'
+  });
+
+  console.log('[Callout Debug] Creating callout', {
+    strokeColor,
+    strokeWidth,
+    textPos: { left: end.x, top: end.y },
+    textBorderPos: { left: end.x - 2, top: end.y - 2 }
   });
 
   // Polyline
@@ -280,7 +331,7 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     originY: 'top'
   });
 
-  const group = new Group([line, head, text], {
+  const group = new Group([line, head, textBorder, text], {
     subTargetCheck: false, // Force group selection always (prevents individual object selection)
     objectCaching: false,
     hasControls: true,
@@ -378,10 +429,20 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     }
     // Text Resize Logic
     else if (type.startsWith('text')) {
-      // We only adjust width for Textbox (it auto-wraps height)
-      // And position if dragging left/top
+      const textBorder = target.getObjects().find(o => o.name === 'calloutTextBorder');
       const minWidth = 20;
+      const minHeight = 20;
 
+      console.log('[Callout Debug] Text resize', {
+        type,
+        localPoint,
+        textLeft: text.left,
+        textTop: text.top,
+        textWidth: text.width,
+        textHeight: text.height
+      });
+
+      // Horizontal resizing
       if (type === 'textBR' || type === 'textTR') {
         const newW = Math.max(minWidth, localPoint.x - text.left);
         text.set({ width: newW });
@@ -394,17 +455,26 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
         text.set({ left: newLeft, width: newW });
       }
 
-      // Vertical movement for handling Top handles?
-      // Start strictly with width resizing.
-      // User usually wants to just resize the box width to reflow text.
-      // Allow moving Top/Bottom?
+      // Vertical resizing - move top edge for top handles, adjust position for bottom handles
       if (type === 'textTL' || type === 'textTR') {
+        // Move top edge - this moves the text box position
         text.set({ top: localPoint.y });
       }
       if (type === 'textBL' || type === 'textBR') {
-        // If we drag bottom, we usually expect height change?
-        // Textbox height is auto. 
-        // Maybe we shouldn't change top/left based on bottom handles.
+        // For bottom handles, we can't change Textbox height directly (it auto-calculates)
+        // But we can change fontSize to adjust how much text fits
+        // For now, just log - Textbox height is content-dependent
+        console.log('[Callout Debug] Bottom handle drag - Textbox height is auto-calculated');
+      }
+
+      // Update border to match text
+      if (textBorder) {
+        textBorder.set({
+          left: text.left - 2,
+          top: text.top - 2,
+          width: text.width + 4,
+          height: text.height + 4
+        });
       }
     }
 
@@ -1453,6 +1523,7 @@ const PageAnnotationLayer = memo(({
         const line = obj.getObjects().find(o => o.name === 'calloutLine');
         const head = obj.getObjects().find(o => o.name === 'calloutHead');
         const text = obj.getObjects().find(o => o.name === 'calloutText');
+        const textBorder = obj.getObjects().find(o => o.name === 'calloutTextBorder');
 
         if (line) {
           line.set({ stroke: editValues.stroke, strokeWidth: parseInt(editValues.strokeWidth, 10) });
@@ -1468,7 +1539,11 @@ const PageAnnotationLayer = memo(({
             fontStyle: editValues.fontStyle,
             textAlign: editValues.textAlign,
             fontFamily: editValues.fontFamily || 'Arial',
-            backgroundColor: editValues.fillColor === 'transparent' ? '' : (editValues.fillColor || 'rgba(255,255,255,0.9)'),
+            backgroundColor: editValues.fillColor === 'transparent' ? '' : (editValues.fillColor || 'rgba(255,255,255,0.9)')
+          });
+        }
+        if (textBorder) {
+          textBorder.set({
             stroke: editValues.stroke,        // Border matches line color
             strokeWidth: parseInt(editValues.strokeWidth, 10)
           });
@@ -1507,6 +1582,7 @@ const PageAnnotationLayer = memo(({
           const line = obj.getObjects().find(o => o.name === 'calloutLine');
           const head = obj.getObjects().find(o => o.name === 'calloutHead');
           const text = obj.getObjects().find(o => o.name === 'calloutText');
+          const textBorder = obj.getObjects().find(o => o.name === 'calloutTextBorder');
           if (line) line.set({ stroke: editValues.stroke, strokeWidth: parseInt(editValues.strokeWidth, 10) });
           if (head) head.set({ fill: editValues.stroke });
           if (text) text.set({
@@ -1516,7 +1592,9 @@ const PageAnnotationLayer = memo(({
             fontStyle: editValues.fontStyle,
             textAlign: editValues.textAlign,
             fontFamily: editValues.fontFamily || 'Arial',
-            backgroundColor: editValues.fillColor === 'transparent' ? '' : (editValues.fillColor || 'rgba(255,255,255,0.9)'),
+            backgroundColor: editValues.fillColor === 'transparent' ? '' : (editValues.fillColor || 'rgba(255,255,255,0.9)')
+          });
+          if (textBorder) textBorder.set({
             stroke: editValues.stroke,
             strokeWidth: parseInt(editValues.strokeWidth, 10)
           });
