@@ -144,7 +144,7 @@ const calloutPositionHandler = (type) => {
 
 
 // Helper to re-calculate callout line connections
-// Uses Path instead of Polyline to avoid coordinate normalization issues
+// Uses Polyline for simpler coordinate handling inside groups
 const updateCalloutGroupConnections = (group) => {
   const line = group.getObjects().find(o => o.name === 'calloutLine');
   const head = group.getObjects().find(o => o.name === 'calloutHead');
@@ -175,18 +175,19 @@ const updateCalloutGroupConnections = (group) => {
   const angle = Math.atan2(pKnee.y - pTip.y, pKnee.x - pTip.x) * 180 / Math.PI;
   head.set({ angle: angle + 270 });
 
-  // Update line as a Path using group-relative coordinates
-  // Path format: M x1,y1 L x2,y2 L x3,y3
-  const pathString = `M ${pTip.x},${pTip.y} L ${pKnee.x},${pKnee.y} L ${pText.x},${pText.y}`;
+  // Update line points - use group-relative coordinates directly
+  // Let Fabric.js calculate position/dimensions via _setPositionDimensions
+  line.points = [
+    { x: pTip.x, y: pTip.y },
+    { x: pKnee.x, y: pKnee.y },
+    { x: pText.x, y: pText.y }
+  ];
 
-  // Parse and set the path
-  const newPath = fabric.util.parsePath(pathString);
-  line.set({ path: newPath });
-
-  // Recalculate the path's internal dimensions
+  // Let Fabric recalculate left, top, width, height, pathOffset from points
   if (line._setPositionDimensions) {
     line._setPositionDimensions({});
   }
+
   line.setCoords();
   line.dirty = true;
 
@@ -278,18 +279,17 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     originY: 'top'
   });
 
-  // Create line as a simple Path - we'll set its path data after group creation
+  // Create line as a Polyline - we'll update its points after group creation
   // when all positions have been converted to group-relative coordinates
-  const line = new Path('M 0,0 L 1,1', {
+  // Don't set originX/originY - let Fabric use default 'center' for proper positioning
+  const line = new Polyline([{ x: 0, y: 0 }, { x: 1, y: 1 }], {
     stroke: strokeColor,
     strokeWidth: strokeWidth,
     fill: null,
     strokeLineCap: 'round',
     strokeLineJoin: 'round',
     objectCaching: false,
-    name: 'calloutLine',
-    originX: 'center',
-    originY: 'center'
+    name: 'calloutLine'
   });
 
   const group = new Group([line, head, textBorder, text], {
@@ -3761,7 +3761,15 @@ const PageAnnotationLayer = memo(({
       const objModuleId = obj.moduleId || null;
       const matchesSpace = selectedSpaceIdRef.current === null || objSpaceId === selectedSpaceIdRef.current;
       const matchesModule = selectedModuleIdRef.current === null || objModuleId === selectedModuleIdRef.current;
-      const isVisible = matchesSpace && matchesModule;
+      
+      // Check if this is a survey highlight (has moduleId)
+      const isSurveyHighlight = objModuleId !== null;
+      
+      // Survey highlights should only be visible when survey mode is active AND a module is selected
+      // Survey highlights require: survey panel open AND matching module selected
+      const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
+      
+      const isVisible = matchesSpace && matchesModule && surveyHighlightVisible;
 
       if (isVisible) {
         // Only make visible objects interactive based on tool
@@ -3781,7 +3789,7 @@ const PageAnnotationLayer = memo(({
       }
     });
     canvas.renderAll();
-  }, [tool, strokeColor, strokeWidth, selectedModuleId, selectedSpaceId]);
+  }, [tool, strokeColor, strokeWidth, selectedModuleId, selectedSpaceId, showSurveyPanel]);
 
   // Track rendered highlight objects by highlightId for updates
   const renderedHighlightsRef = useRef(new Map()); // Map<highlightId, fabric.Rect>
@@ -4093,8 +4101,8 @@ const PageAnnotationLayer = memo(({
       const matchesModule = selectedModuleId === null || objModuleId === selectedModuleId;
 
       // Survey highlights should only be visible when survey mode is active AND a module is selected
-      // Also keep them visible if a category is selected (even if panel is hidden)
-      const surveyHighlightVisible = !isSurveyHighlight || ((showSurveyPanel || selectedCategoryId !== null) && selectedModuleId !== null);
+      // Survey highlights require: survey panel open AND matching module selected
+      const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanel && selectedModuleId !== null && objModuleId === selectedModuleId);
 
       let withinRegions = true;
       if (regions) {
