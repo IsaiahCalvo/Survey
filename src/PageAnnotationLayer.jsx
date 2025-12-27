@@ -284,11 +284,13 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     subTargetCheck: false, // Force group selection always (prevents individual object selection)
     objectCaching: false,
     hasControls: true,
-    hasBorders: true, // Enable borders for visual feedback
+    hasBorders: false, // No bounding box - use Cmd/Ctrl+drag to move entire callout
     selectable: true,
-    lockScalingX: true, // We will hide handles anyway
+    lockScalingX: true,
     lockScalingY: true,
     lockRotation: true,
+    lockMovementX: true, // Prevent normal drag - require Cmd/Ctrl to move entire callout
+    lockMovementY: true,
     data: { type: 'callout' }
   });
 
@@ -1188,6 +1190,7 @@ const PageAnnotationLayer = memo(({
   // Callout Text Drag State
   const isDraggingCalloutTextRef = useRef(false);
   const dragStartPointerRef = useRef(null);
+  const isMovingEntireCalloutRef = useRef(false); // Track Cmd/Ctrl+drag for moving entire callout
 
   // Helper to re-calculate callout line connections
   const updateCalloutConnections = useCallback((group) => {
@@ -1393,7 +1396,9 @@ const PageAnnotationLayer = memo(({
         fontSize: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontSize || 16) : 16,
         fontWeight: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontWeight || 'normal') : 'normal',
         fontStyle: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontStyle || 'normal') : 'normal',
-        textAlign: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.textAlign || 'left') : 'left'
+        textAlign: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.textAlign || 'left') : 'left',
+        fontFamily: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontFamily || 'Arial') : 'Arial',
+        fillColor: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.backgroundColor || 'rgba(255,255,255,0.9)') : '#ffffff'
       });
 
       // Capture initial state for revert
@@ -1442,7 +1447,11 @@ const PageAnnotationLayer = memo(({
             fontSize: parseInt(editValues.fontSize, 10),
             fontWeight: editValues.fontWeight,
             fontStyle: editValues.fontStyle,
-            textAlign: editValues.textAlign
+            textAlign: editValues.textAlign,
+            fontFamily: editValues.fontFamily || 'Arial',
+            backgroundColor: editValues.fillColor === 'transparent' ? '' : (editValues.fillColor || 'rgba(255,255,255,0.9)'),
+            stroke: editValues.stroke,        // Border matches line color
+            strokeWidth: parseInt(editValues.strokeWidth, 10)
           });
         }
         obj.set({ opacity: parseFloat(editValues.opacity) });
@@ -1486,7 +1495,11 @@ const PageAnnotationLayer = memo(({
             fontSize: parseInt(editValues.fontSize, 10),
             fontWeight: editValues.fontWeight,
             fontStyle: editValues.fontStyle,
-            textAlign: editValues.textAlign
+            textAlign: editValues.textAlign,
+            fontFamily: editValues.fontFamily || 'Arial',
+            backgroundColor: editValues.fillColor === 'transparent' ? '' : (editValues.fillColor || 'rgba(255,255,255,0.9)'),
+            stroke: editValues.stroke,
+            strokeWidth: parseInt(editValues.strokeWidth, 10)
           });
           obj.set({ opacity: parseFloat(editValues.opacity) });
         } else {
@@ -1653,7 +1666,8 @@ const PageAnnotationLayer = memo(({
 
     // Update cursors
     // Set cursor based on tool (Using 'none' for eraser to hide native cursor)
-    canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
+    const shapeTools = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'highlight', 'squiggly'];
+    canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (shapeTools.includes(tool) ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
     canvas.hoverCursor = tool === 'eraser' ? 'none' : (tool === 'select' ? 'move' : (tool === 'pan' ? 'grab' : 'move'));
     canvas.moveCursor = tool === 'eraser' ? 'none' : 'move';
     canvas.hoverCursor = canvas.defaultCursor;
@@ -2585,10 +2599,20 @@ const PageAnnotationLayer = memo(({
       const { x, y } = canvas.getPointer(opt.e);
       const pointer = { x, y }; // Ensure pointer object exists
 
-      // --- Callout Text Direct Drag Handling ---
+      // --- Callout Drag Handling ---
       const target = opt.target;
       if (target && target.data?.type === 'callout' && !canvas.getActiveTransform()) {
         const isOverHandle = isPointOnAnyHandle ? isPointOnAnyHandle(pointer, target) : false;
+        const isCmdCtrlHeld = opt.e.metaKey || opt.e.ctrlKey; // Cmd on Mac, Ctrl on Windows
+
+        // If Cmd/Ctrl is held, allow moving the entire callout
+        if (isCmdCtrlHeld && !isOverHandle) {
+          isMovingEntireCalloutRef.current = true;
+          target.lockMovementX = false;
+          target.lockMovementY = false;
+          canvas.setActiveObject(target);
+          return; // Let Fabric handle the drag
+        }
 
         if (!isOverHandle) {
           const textObj = target.getObjects().find(o => o.name === 'calloutText');
@@ -2873,6 +2897,20 @@ const PageAnnotationLayer = memo(({
     };
 
     const handleMouseUp = (opt) => {
+      // --- Callout Entire Movement End (Cmd/Ctrl+drag) ---
+      if (isMovingEntireCalloutRef.current) {
+        isMovingEntireCalloutRef.current = false;
+        const group = canvas.getActiveObject();
+        if (group && group.data?.type === 'callout') {
+          // Re-lock movement - require Cmd/Ctrl for next move
+          group.lockMovementX = true;
+          group.lockMovementY = true;
+          group.setCoords();
+          triggerSave();
+        }
+        return;
+      }
+
       // --- Callout Text Drag End ---
       if (isDraggingCalloutTextRef.current) {
         isDraggingCalloutTextRef.current = false;
@@ -2880,14 +2918,9 @@ const PageAnnotationLayer = memo(({
 
         const group = canvas.getActiveObject();
         if (group && group.data?.type === 'callout') {
-          // Unlock group movement
-          group.lockMovementX = true; // Wait, we set it to true to BLOCK. 
-          // Correction: We must allow it again. But previously defined as lockScalingX: true etc.
-          // Standard callout creation: lockScalingX: true, lockRotation: true.
-          // Movement was NOT locked.
-          group.lockMovementX = false;
-          group.lockMovementY = false;
-
+          // Keep movement locked - require Cmd/Ctrl to move entire callout
+          group.lockMovementX = true;
+          group.lockMovementY = true;
           group.addWithUpdate();
           triggerSave();
         }
@@ -3652,7 +3685,8 @@ const PageAnnotationLayer = memo(({
     // Prevent Fabric.js from finding targets for eraser tool - we handle it ourselves with geometry checks
     canvas.skipTargetFind = tool === 'eraser';
     // Set cursor based on tool (Using 'none' for eraser to hide native cursor)
-    canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (tool === 'highlight' ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
+    const shapeToolsForCursor = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'highlight', 'squiggly'];
+    canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (shapeToolsForCursor.includes(tool) ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
     canvas.hoverCursor = tool === 'eraser' ? 'none' : (tool === 'select' ? 'move' : (tool === 'pan' ? 'grab' : 'move'));
     canvas.moveCursor = tool === 'eraser' ? 'none' : 'move';
     canvas.freeDrawingCursor = tool === 'eraser' ? 'none' : 'crosshair';
@@ -4336,7 +4370,7 @@ const PageAnnotationLayer = memo(({
             <>
               <div style={{ marginBottom: '12px' }}>
                 <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Text Style</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                   {/* Text Color */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <input
@@ -4347,6 +4381,21 @@ const PageAnnotationLayer = memo(({
                       title="Text Color"
                     />
                   </div>
+
+                  {/* Font Family */}
+                  <select
+                    value={editValues.fontFamily || 'Arial'}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, fontFamily: e.target.value }))}
+                    style={{ height: '24px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px', cursor: 'pointer' }}
+                    title="Font Family"
+                  >
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Verdana">Verdana</option>
+                  </select>
 
                   {/* Font Size */}
                   <input
@@ -4395,6 +4444,48 @@ const PageAnnotationLayer = memo(({
                       {align}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Fill Color (Background) */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Fill Color</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="color"
+                    value={editValues.fillColor === 'transparent' || !editValues.fillColor ? '#ffffff' : editValues.fillColor}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, fillColor: e.target.value }))}
+                    style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
+                    disabled={editValues.fillColor === 'transparent'}
+                  />
+                  <input
+                    type="text"
+                    value={editValues.fillColor === 'transparent' ? 'No Fill' : (editValues.fillColor || '#ffffff')}
+                    onChange={(e) => {
+                      if (e.target.value.toLowerCase() === 'no fill') {
+                        setEditValues(prev => ({ ...prev, fillColor: 'transparent' }));
+                      } else {
+                        setEditValues(prev => ({ ...prev, fillColor: e.target.value }));
+                      }
+                    }}
+                    style={{
+                      width: '80px',
+                      height: '30px',
+                      borderRadius: '4px',
+                      border: '1px solid #ddd',
+                      padding: '0 8px',
+                      fontSize: '12px',
+                      fontFamily: 'monospace'
+                    }}
+                  />
+                  <button
+                    onClick={() => setEditValues(prev => ({ ...prev, fillColor: 'transparent' }))}
+                    style={{
+                      padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd',
+                      background: editValues.fillColor === 'transparent' ? '#e6f7ff' : 'white',
+                      cursor: 'pointer', fontSize: '11px'
+                    }}
+                  >No Fill</button>
                 </div>
               </div>
             </>

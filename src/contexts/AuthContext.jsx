@@ -262,10 +262,10 @@ export const AuthProvider = ({ children }) => {
     plan: subscriptionTier,
     tier: subscriptionTier,
     features: {
-      cloudSync: ['pro', 'enterprise'].includes(subscriptionTier),
-      advancedSurvey: ['pro', 'enterprise'].includes(subscriptionTier),
-      excelExport: ['pro', 'enterprise'].includes(subscriptionTier),
-      sso: subscriptionTier === 'enterprise',
+      cloudSync: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
+      advancedSurvey: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
+      excelExport: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
+      sso: ['enterprise', 'developer'].includes(subscriptionTier),
     }
   };
 

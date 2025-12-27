@@ -92,7 +92,7 @@ const UsageIndicator = () => {
         <span style={{
           fontSize: '11px',
           fontWeight: 600,
-          color: tier === 'pro' ? '#8b5cf6' : tier === 'enterprise' ? '#3b82f6' : 'rgba(255, 255, 255, 0.5)',
+          color: tier === 'developer' ? '#10b981' : tier === 'pro' ? '#8b5cf6' : tier === 'enterprise' ? '#3b82f6' : 'rgba(255, 255, 255, 0.5)',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
           backgroundColor: 'rgba(255, 255, 255, 0.1)',
