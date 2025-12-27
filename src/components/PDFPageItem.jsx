@@ -17,7 +17,9 @@ const PDFPageItem = ({
     debugLayout,
     regions,
     onTextSelected,
-    onFinishRender
+    onFinishRender,
+    highlightsToRemove,
+    onHighlightDeleted
 }) => {
     if (!isMounted) return null;
 
@@ -54,6 +56,8 @@ const PDFPageItem = ({
                     width={width}
                     height={height}
                     regions={regions}
+                    highlightsToRemove={highlightsToRemove}
+                    onHighlightDeleted={onHighlightDeleted}
                 />
             )}
         </div>

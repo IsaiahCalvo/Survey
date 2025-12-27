@@ -12738,106 +12738,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
-    // 1. Remove from canvas
-    if (highlight.pageNumber && highlight.bounds) {
-      setHighlightsToRemoveByPage(prev => ({
-        ...prev,
-        [highlight.pageNumber]: [...(prev[highlight.pageNumber] || []), highlight.bounds]
-      }));
-    }
+    // Use shared handler for consistency
+    handleHighlightDeleted(highlight.pageNumber, highlight.bounds, highlightId);
 
-    // 2. Delete from highlightAnnotations
-    setHighlightAnnotations(prev => {
-      const updated = { ...prev };
-      delete updated[highlightId];
-      return updated;
-    });
-
-    // 2.5. Remove from newHighlightsByPage to prevent re-adding to canvas
-    setNewHighlightsByPage(prev => {
-      if (!highlight.pageNumber) return prev;
-
-      const updated = { ...prev };
-      const pageHighlights = updated[highlight.pageNumber] || [];
-
-      // Remove highlight by highlightId or by bounds match
-      const filtered = pageHighlights.filter(h => {
-        if (h.highlightId === highlightId) return false;
-        if (highlight.bounds && h.x !== undefined && h.y !== undefined) {
-          return !boundsMatch(
-            { x: h.x, y: h.y, width: h.width, height: h.height },
-            highlight.bounds
-          );
-        }
-        return true;
-      });
-
-      if (filtered.length === 0) {
-        delete updated[highlight.pageNumber];
-      } else {
-        updated[highlight.pageNumber] = filtered;
-      }
-
-      return updated;
-    });
-
-    // 3. Delete associated items and annotations (reusing logic from handleHighlightDeleted would be ideal, but for now duplicating for safety/clarity)
-    if (selectedTemplate) {
-      const highlightModuleId = highlight.moduleId || highlight.spaceId;
-      const categoryName = getCategoryName(selectedTemplate, highlightModuleId, highlight.categoryId);
-      const matchingItem = Object.values(items).find(item =>
-        item.name === highlight.name &&
-        item.itemType === categoryName
-      );
-
-      if (matchingItem) {
-        // Delete annotations
-        setAnnotations(prev => {
-          const updated = { ...prev };
-          Object.values(updated).forEach(ann => {
-            if (ann.itemId === matchingItem.itemId && (ann.spaceId === highlightModuleId || ann.moduleId === highlightModuleId)) {
-              if (ann.pdfCoordinates && highlight.bounds && boundsMatch(ann.pdfCoordinates, highlight.bounds)) {
-                delete updated[ann.annotationId];
-              }
-            }
-          });
-          return updated;
-        });
-
-        // Update/Delete Item
-        const moduleName = getModuleName(selectedTemplate, highlightModuleId);
-        const dataKey = getModuleDataKey(moduleName);
-        const item = items[matchingItem.itemId];
-
-        if (item) {
-          const updatedItem = { ...item };
-          delete updatedItem[dataKey];
-
-          const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
-          const hasOtherModuleData = allModules.some(module => {
-            const moduleId = module.id;
-            if (moduleId === highlightModuleId) return false;
-            const otherModuleName = getModuleName(selectedTemplate, moduleId);
-            const otherDataKey = getModuleDataKey(otherModuleName);
-            return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
-          });
-
-          if (hasOtherModuleData) {
-            setItems(prev => ({
-              ...prev,
-              [matchingItem.itemId]: updatedItem
-            }));
-          } else {
-            setItems(prev => {
-              const updated = { ...prev };
-              delete updated[matchingItem.itemId];
-              return updated;
-            });
-          }
-        }
-      }
-    }
-  }, [highlightAnnotations, selectedTemplate, items]);
+  }, [highlightAnnotations, handleHighlightDeleted]);
 
   // Handle highlight creation from annotation tool
   const handleHighlightCreated = useCallback((pageNumber, bounds) => {

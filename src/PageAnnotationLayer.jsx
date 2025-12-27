@@ -4082,11 +4082,12 @@ const PageAnnotationLayer = memo(({
       }
 
       // Find and remove all rectangles matching these bounds
-      // Convert PDF coordinates to canvas coordinates for comparison
-      const boundsCanvasX = boundsToRemove.x * scale;
-      const boundsCanvasY = boundsToRemove.y * scale;
-      const boundsCanvasWidth = boundsToRemove.width * scale;
-      const boundsCanvasHeight = boundsToRemove.height * scale;
+      // Compare canvas coordinates (obj is in canvas coords, boundsToRemove converted to canvas coords)
+      // NOTE: Objects are stored in PDF coordinates (logical), so we match directly without scaling
+      const boundsCanvasX = boundsToRemove.x;
+      const boundsCanvasY = boundsToRemove.y;
+      const boundsCanvasWidth = boundsToRemove.width;
+      const boundsCanvasHeight = boundsToRemove.height;
       const objectsToRemove = [];
       canvas.getObjects('rect').forEach(obj => {
         // Check if this is a highlight rectangle (has fill with rgba)
