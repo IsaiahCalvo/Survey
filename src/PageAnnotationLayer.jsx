@@ -3735,6 +3735,10 @@ const PageAnnotationLayer = memo(({
     toolRef.current = tool;
     strokeColorRef.current = strokeColor;
     strokeWidthRef.current = strokeWidth;
+    // Ensure survey panel ref is current when this effect runs
+    showSurveyPanelRef.current = showSurveyPanel;
+    selectedModuleIdRef.current = selectedModuleId;
+    selectedSpaceIdRef.current = selectedSpaceId;
 
     if (!fabricRef.current) return;
     const canvas = fabricRef.current;
@@ -3950,9 +3954,14 @@ const PageAnnotationLayer = memo(({
           if (selectedSpaceIdRef.current) {
             rect.set({ spaceId: selectedSpaceIdRef.current });
           }
-          if (highlight.moduleId || selectedModuleIdRef.current) {
-            rect.set({ moduleId: highlight.moduleId || selectedModuleIdRef.current });
+          const objModuleId = highlight.moduleId || selectedModuleIdRef.current;
+          if (objModuleId) {
+            rect.set({ moduleId: objModuleId });
           }
+          // Set proper visibility - survey highlights should only be visible when survey panel is open
+          const isSurveyHighlight = objModuleId !== null;
+          const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
+          rect.set({ visible: surveyHighlightVisible });
           canvas.add(rect);
           if (highlight.highlightId) {
             renderedHighlightsRef.current.set(highlight.highlightId, rect);
@@ -3989,9 +3998,14 @@ const PageAnnotationLayer = memo(({
           if (selectedSpaceIdRef.current) {
             rect.set({ spaceId: selectedSpaceIdRef.current });
           }
-          if (highlight.moduleId || selectedModuleIdRef.current) {
-            rect.set({ moduleId: highlight.moduleId || selectedModuleIdRef.current });
+          const objModuleId = highlight.moduleId || selectedModuleIdRef.current;
+          if (objModuleId) {
+            rect.set({ moduleId: objModuleId });
           }
+          // Set proper visibility - survey highlights should only be visible when survey panel is open
+          const isSurveyHighlight = objModuleId !== null;
+          const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
+          rect.set({ visible: surveyHighlightVisible });
           canvas.add(rect);
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
