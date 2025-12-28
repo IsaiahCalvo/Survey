@@ -1639,10 +1639,25 @@ const PageAnnotationLayer = memo(({
       // Get initial values from first object if selection
       const target = activeObject.type === 'activeSelection' ? activeObject.getObjects()[0] : activeObject;
 
+      // Get stroke values from the line within a group if applicable
+      let strokeVal = target.stroke || '#000000';
+      let strokeWidthVal = target.strokeWidth || 1;
+
+      // For arrow groups, get stroke from the line object
+      if (target.data?.type === 'arrow' && target.type === 'group') {
+        const lineObj = target.getObjects().find(o => o.type === 'line');
+        if (lineObj) {
+          strokeVal = lineObj.stroke || strokeVal;
+          strokeWidthVal = lineObj.strokeWidth || strokeWidthVal;
+        }
+      }
+
       setEditValues({
-        stroke: target.stroke || '#000000',
-        strokeWidth: target.strokeWidth || 1,
+        stroke: strokeVal,
+        strokeWidth: strokeWidthVal,
         opacity: target.opacity !== undefined ? target.opacity : 1,
+        // Arrow specific props
+        arrowheadStyle: target.data?.type === 'arrow' ? (target.data?.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE) : ARROWHEAD_STYLES.SOLID_TRIANGLE,
         // Callout specific props
         fill: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fill || '#000000') : (target.fill || 'transparent'),
         fontSize: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontSize || 16) : 16,
@@ -1712,6 +1727,64 @@ const PageAnnotationLayer = memo(({
           });
         }
         obj.set({ opacity: parseFloat(editValues.opacity) });
+      } else if (obj.data?.type === 'arrow') {
+        // Handle arrow objects - need to recreate arrowhead if style changed
+        const lineObj = obj.getObjects().find(o => o.type === 'line');
+        const oldHead = obj.getObjects().find(o => o.name === 'arrowHead' || o.type === 'triangle');
+        const currentStyle = obj.data?.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE;
+        const newStyle = editValues.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE;
+
+        if (lineObj) {
+          // Update line properties
+          lineObj.set({
+            stroke: editValues.stroke,
+            strokeWidth: parseInt(editValues.strokeWidth, 10)
+          });
+
+          // If arrowhead style changed, recreate the arrowhead
+          if (currentStyle !== newStyle) {
+            // Get line endpoints in group-local coordinates
+            const { x1, y1, x2, y2 } = lineObj;
+            const groupMatrix = obj.calcTransformMatrix();
+            const invMatrix = util.invertTransform(groupMatrix);
+
+            // Calculate angle from line endpoints
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+
+            // Remove old arrowhead if exists
+            if (oldHead) {
+              obj.remove(oldHead);
+            }
+
+            // Create new arrowhead
+            const newHead = createArrowhead(
+              x2, y2, angle,
+              editValues.stroke,
+              parseInt(editValues.strokeWidth, 10),
+              newStyle
+            );
+
+            if (newHead) {
+              obj.add(newHead);
+            }
+
+            // Update stored arrowhead style
+            obj.set({
+              data: { ...obj.data, arrowheadStyle: newStyle }
+            });
+          } else if (oldHead) {
+            // Just update arrowhead color/size if style didn't change
+            const isFilled = newStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE;
+            oldHead.set({
+              stroke: editValues.stroke,
+              fill: isFilled ? editValues.stroke : 'transparent',
+              strokeWidth: isFilled ? 0 : Math.max(2, parseInt(editValues.strokeWidth, 10))
+            });
+          }
+        }
+        obj.set({ opacity: parseFloat(editValues.opacity) });
+        // Recalculate group bounds
+        obj.setCoords();
       } else {
         obj.set({
           stroke: editValues.stroke,
@@ -1761,6 +1834,26 @@ const PageAnnotationLayer = memo(({
             stroke: editValues.stroke,
             strokeWidth: parseInt(editValues.strokeWidth, 10)
           });
+          obj.set({ opacity: parseFloat(editValues.opacity) });
+        } else if (obj.data?.type === 'arrow') {
+          // Arrow object: update line and arrowhead colors
+          const lineObj = obj.getObjects().find(o => o.type === 'line');
+          const headObj = obj.getObjects().find(o => o.name === 'arrowHead' || o.type === 'triangle');
+          if (lineObj) {
+            lineObj.set({
+              stroke: editValues.stroke,
+              strokeWidth: parseInt(editValues.strokeWidth, 10)
+            });
+          }
+          if (headObj) {
+            const currentStyle = obj.data?.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE;
+            const isFilled = currentStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE;
+            headObj.set({
+              stroke: editValues.stroke,
+              fill: isFilled ? editValues.stroke : 'transparent',
+              strokeWidth: isFilled ? 0 : Math.max(2, parseInt(editValues.strokeWidth, 10))
+            });
+          }
           obj.set({ opacity: parseFloat(editValues.opacity) });
         } else {
           obj.set({
@@ -4953,6 +5046,31 @@ const PageAnnotationLayer = memo(({
               <span style={{ fontSize: '12px', color: '#666' }}>px</span>
             </div>
           </div>
+
+          {/* Arrowhead Style - only show for arrow objects */}
+          {editModal.object.data?.type === 'arrow' && (
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Arrowhead Style</label>
+              <select
+                value={editValues.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE}
+                onChange={(e) => setEditValues(prev => ({ ...prev, arrowheadStyle: e.target.value }))}
+                style={{
+                  width: '100%',
+                  height: '32px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  padding: '0 8px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  backgroundColor: 'white'
+                }}
+              >
+                {Object.entries(ARROWHEAD_STYLE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {editModal.object.data?.type === 'callout' && (
             <>
