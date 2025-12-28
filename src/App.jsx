@@ -961,6 +961,31 @@ const loadHighlightAnnotations = (pdfId) => {
   }
 };
 
+// Save callouts to localStorage
+const saveCallouts = (pdfId, callouts) => {
+  if (!pdfId) return;
+  try {
+    const key = `callouts_${pdfId}`;
+    const data = JSON.stringify(callouts);
+    localStorage.setItem(key, data);
+  } catch (e) {
+    console.error('Error saving callouts:', e);
+  }
+};
+
+// Load callouts from localStorage
+const loadCallouts = (pdfId) => {
+  if (!pdfId) return [];
+  try {
+    const data = localStorage.getItem(`callouts_${pdfId}`);
+    if (!data) return [];
+    return JSON.parse(data);
+  } catch (e) {
+    console.error('Error loading callouts:', e);
+    return [];
+  }
+};
+
 // ==========================================
 // ITEM AND ANNOTATION HELPER FUNCTIONS
 // ==========================================
@@ -10937,6 +10962,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const loadedAnnotationsByPage = loadAnnotationsByPage(id);
     setAnnotationsByPage(loadedAnnotationsByPage);
     savedAnnotationsByPageRef.current = loadedAnnotationsByPage; // Track as saved
+    // Load callouts from localStorage
+    const loadedCallouts = loadCallouts(id);
+    setCallouts(loadedCallouts);
     setHasUnsavedAnnotations(false); // Reset unsaved flag
   }, [pdfFile]);
 
@@ -10982,6 +11010,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange]);
 
+  // Save callouts to localStorage when they change
+  useEffect(() => {
+    if (!pdfId) return;
+    saveCallouts(pdfId, callouts);
+  }, [pdfId, callouts]);
+
   // Save survey data to Supabase Storage
   const saveSurveyDataToSupabase = useCallback(async (currentAnnotations, currentSpaces, currentTemplate) => {
     if (!pdfFile || !pdfFile.projectId || !pdfId) {
@@ -10996,6 +11030,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         pdfId,
         annotations: currentAnnotations, // highlightAnnotations
         annotationsByPage: annotationsByPage,
+        callouts: callouts, // Callout annotations
         spaces: currentSpaces,
         ballInCourtEntities: ballInCourtEntities,
         templateId: currentTemplate?.id || null,
@@ -11022,7 +11057,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       console.error('Error saving survey data to Supabase:', error);
       // Don't alert here to avoid interrupting the user flow, just log
     }
-  }, [pdfFile, pdfId, annotationsByPage, ballInCourtEntities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
+  }, [pdfFile, pdfId, annotationsByPage, callouts, ballInCourtEntities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
 
   // Load survey data from Supabase Storage
   const loadSurveyDataFromSupabase = useCallback(async (doc) => {
@@ -11052,6 +11087,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setAnnotationsByPage(data.annotationsByPage);
         savedAnnotationsByPageRef.current = data.annotationsByPage;
       }
+      if (data.callouts) setCallouts(data.callouts);
       if (data.spaces) setSpaces(data.spaces);
       if (data.ballInCourtEntities) setBallInCourtEntities(data.ballInCourtEntities);
 
