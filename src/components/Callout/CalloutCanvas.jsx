@@ -2,37 +2,6 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import CalloutComponent from './CalloutComponent';
 import { createCallout, hexToRgba } from './types';
 
-// Debug logging system - stores logs globally for easy access
-if (!window.__CALLOUT_DEBUG_LOGS__) {
-  window.__CALLOUT_DEBUG_LOGS__ = [];
-}
-
-const debugLog = (category, message, data = {}) => {
-  const entry = {
-    timestamp: new Date().toISOString(),
-    category,
-    message,
-    data
-  };
-  window.__CALLOUT_DEBUG_LOGS__.push(entry);
-  // Keep only last 100 entries
-  if (window.__CALLOUT_DEBUG_LOGS__.length > 100) {
-    window.__CALLOUT_DEBUG_LOGS__.shift();
-  }
-  console.log(`[Callout ${category}]`, message, data);
-};
-
-// Expose helper to get logs
-window.getCalloutLogs = () => {
-  console.table(window.__CALLOUT_DEBUG_LOGS__);
-  return window.__CALLOUT_DEBUG_LOGS__;
-};
-
-window.clearCalloutLogs = () => {
-  window.__CALLOUT_DEBUG_LOGS__ = [];
-  console.log('Callout logs cleared');
-};
-
 /**
  * CalloutCanvas - Manages callout creation and drag interactions
  * Renders on top of the PDF page
@@ -54,15 +23,12 @@ const CalloutCanvas = ({
   selectedCalloutId,
   setSelectedCalloutId,
   isCalloutToolActive,
-  activeTool,
   pageNumber,
   pageWidth,
   pageHeight,
   defaultStyle,
-  selectionRect, // { left, top, right, bottom, isWindowSelection } for drag selection
 }) => {
   const canvasRef = useRef(null);
-  const calloutsContainerRef = useRef(null);
   const [creationState, setCreationState] = useState({
     isCreating: false,
     arrowTip: null,
@@ -99,12 +65,6 @@ const CalloutCanvas = ({
   }, []);
 
   const handleMouseDown = useCallback((e) => {
-    // Only start callout creation when clicking directly on the canvas background
-    // When clicking on existing callouts, their handlers will handle selection/dragging
-    if (e.target !== canvasRef.current) {
-      return;
-    }
-
     const pos = getMousePosition(e);
 
     // If callout tool is active and clicking on empty space, start creation
@@ -373,261 +333,86 @@ const CalloutCanvas = ({
     }
   }, [newCalloutId]);
 
-  // Handle clicking outside callouts to deselect (for select/pan tools)
-  useEffect(() => {
-    if (!selectedCalloutId) return;
-    if (activeTool !== 'select' && activeTool !== 'pan' && activeTool !== 'callout') return;
-
-    const handleDocumentClick = (e) => {
-      // Don't deselect if clicking inside the callouts container on a callout element
-      const calloutsContainer = calloutsContainerRef.current;
-      if (!calloutsContainer) return;
-
-      // Check if click is on any callout element (they have pointerEvents: auto)
-      // We can check if the target or any ancestor is inside our callouts container
-      // and has data attributes or specific classes
-      const target = e.target;
-
-      // If click is inside a callout element, don't deselect
-      // Callout elements are inside calloutsContainer and have pointer events
-      if (calloutsContainer.contains(target)) {
-        // Check if the target is actually a callout element (not the container itself)
-        if (target !== calloutsContainer) {
-          return; // Click was on a callout, don't deselect
-        }
-      }
-
-      // Click was outside callouts, deselect
-      setSelectedCalloutId(null);
-      setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
-    };
-
-    // Use capture phase to get the event before it bubbles
-    document.addEventListener('mousedown', handleDocumentClick, true);
-    return () => document.removeEventListener('mousedown', handleDocumentClick, true);
-  }, [selectedCalloutId, activeTool, setSelectedCalloutId, setCallouts]);
-
-  // Handle drag selection rectangle from PageAnnotationLayer
-  useEffect(() => {
-    if (!selectionRect) return;
-
-    const { left, top, right, bottom, isWindowSelection } = selectionRect;
-
-    debugLog('SELECTION', `Selection rect received - ${isWindowSelection ? 'WINDOW (L→R)' : 'CROSSING (R→L)'} - rect:[${left.toFixed(0)},${top.toFixed(0)} → ${right.toFixed(0)},${bottom.toFixed(0)}] page:${pageWidth}x${pageHeight}`, {});
-
-    // Find callouts that match the selection criteria
-    const pageCalloutsLocal = callouts.filter(c => c.pageNumber === pageNumber);
-
-    debugLog('SELECTION', `Found ${pageCalloutsLocal.length} callouts on page ${pageNumber}`, {});
-
-    const selectedIds = [];
-
-    pageCalloutsLocal.forEach(callout => {
-      // Get text box bounds in pixels (primary selection target)
-      const textBoxLeft = callout.textBoxPosition.x * pageWidth;
-      const textBoxTop = callout.textBoxPosition.y * pageHeight;
-      const textBoxRight = textBoxLeft + (callout.textBoxWidth * pageWidth);
-      const textBoxBottom = textBoxTop + (callout.textBoxHeight * pageHeight);
-
-      // Also get arrow tip and knee positions for crossing selection
-      const arrowX = callout.arrowTip.x * pageWidth;
-      const arrowY = callout.arrowTip.y * pageHeight;
-      const kneeX = callout.knee.x * pageWidth;
-      const kneeY = callout.knee.y * pageHeight;
-
-      // Full bounds including all parts (for crossing selection)
-      const fullBoundsLeft = Math.min(textBoxLeft, arrowX, kneeX);
-      const fullBoundsTop = Math.min(textBoxTop, arrowY, kneeY);
-      const fullBoundsRight = Math.max(textBoxRight, arrowX, kneeX);
-      const fullBoundsBottom = Math.max(textBoxBottom, arrowY, kneeY);
-
-      debugLog('SELECTION', `Callout ${callout.id.slice(-8)} textBox:[${textBoxLeft.toFixed(0)},${textBoxTop.toFixed(0)} → ${textBoxRight.toFixed(0)},${textBoxBottom.toFixed(0)}]`, {});
-
-      if (isWindowSelection) {
-        // Window selection (L→R): Text box must be FULLY contained
-        const checks = {
-          leftCheck: textBoxLeft >= left,
-          topCheck: textBoxTop >= top,
-          rightCheck: textBoxRight <= right,
-          bottomCheck: textBoxBottom <= bottom
-        };
-        const isTextBoxContained = checks.leftCheck && checks.topCheck && checks.rightCheck && checks.bottomCheck;
-
-        debugLog('SELECTION', `WINDOW check ${callout.id.slice(-8)}: L:${textBoxLeft.toFixed(0)}>=${left.toFixed(0)}?${checks.leftCheck} T:${textBoxTop.toFixed(0)}>=${top.toFixed(0)}?${checks.topCheck} R:${textBoxRight.toFixed(0)}<=${right.toFixed(0)}?${checks.rightCheck} B:${textBoxBottom.toFixed(0)}<=${bottom.toFixed(0)}?${checks.bottomCheck} => ${isTextBoxContained}`, {});
-
-        if (isTextBoxContained) {
-          selectedIds.push(callout.id);
-        }
-      } else {
-        // Crossing selection (R→L): Any part of callout needs to intersect
-        const intersects = !(
-          fullBoundsRight < left ||
-          fullBoundsLeft > right ||
-          fullBoundsBottom < top ||
-          fullBoundsTop > bottom
-        );
-
-        debugLog('SELECTION', `CROSSING check ${callout.id.slice(-8)}: intersects=${intersects}`, {});
-
-        if (intersects) {
-          selectedIds.push(callout.id);
-        }
-      }
-    });
-
-    debugLog('SELECTION', `Result: ${selectedIds.length} selected out of ${pageCalloutsLocal.length}`, {});
-
-    // Select the first matching callout (for now, single selection)
-    // TODO: Support multi-selection if needed
-    if (selectedIds.length > 0) {
-      setSelectedCalloutId(selectedIds[0]);
-      setCallouts(prev => prev.map(c => ({ ...c, isSelected: selectedIds.includes(c.id) })));
-    }
-  }, [selectionRect, callouts, pageNumber, pageWidth, pageHeight, setSelectedCalloutId, setCallouts]);
-
   // Filter callouts for this page
   const pageCallouts = callouts.filter(c => c.pageNumber === pageNumber);
 
-  // Determine if callouts should be interactive based on active tool
-  // - callout: Full interactivity (create, select, drag)
-  // - select, pan: Can select and drag callouts
-  // - eraser: Can click to delete callouts
-  // - All other tools (pen, highlighter, etc.): No pointer events
-  const interactiveTools = ['callout', 'select', 'pan', 'eraser'];
-  const calloutsInteractive = interactiveTools.includes(activeTool);
-
   return (
-    <>
-      {/* Canvas for callout creation (only active when callout tool selected) */}
-      <div
-        ref={canvasRef}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          width: '100%',
-          height: '100%',
-          cursor: isCalloutToolActive ? 'crosshair' : 'default',
-          pointerEvents: isCalloutToolActive ? 'auto' : 'none',
-        }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onClick={handleCanvasClick}
-      >
-        {/* Creation preview line */}
-        {creationState.isCreating && creationState.arrowTip && creationState.currentMouse && (
-          <svg
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              width: '100%',
-              height: '100%',
-              pointerEvents: 'none',
-            }}
-          >
-            <defs>
-              <marker
-                id="arrowhead-preview"
-                markerWidth="10"
-                markerHeight="7"
-                refX="9"
-                refY="3.5"
-                orient="auto"
-              >
-                <polygon
-                  points="0 0, 10 3.5, 0 7"
-                  fill="#1e293b"
-                  opacity={0.6}
-                />
-              </marker>
-            </defs>
-            <polyline
-              points={`${creationState.currentMouse.x},${creationState.currentMouse.y} ${(creationState.arrowTip.x + creationState.currentMouse.x) / 2},${creationState.arrowTip.y - 40} ${creationState.arrowTip.x},${creationState.arrowTip.y}`}
-              fill="none"
-              stroke="#1e293b"
-              strokeWidth={2}
-              strokeDasharray="5,5"
-              opacity={0.6}
-              markerEnd="url(#arrowhead-preview)"
-            />
-          </svg>
-        )}
-      </div>
-
-      {/* Callouts container - separate from creation canvas for proper event handling */}
-      <div
-        ref={calloutsContainerRef}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: 'none', // Container passes through, children can capture
-          zIndex: 10, // Ensure callouts are above the Fabric canvas
-        }}
-      >
-        {pageCallouts.map(callout => (
-          <CalloutComponent
-            key={callout.id}
-            callout={callout}
-            isSelected={callout.id === selectedCalloutId}
-            onSelect={() => selectCallout(callout.id)}
-            onStartDrag={startDrag}
-            onUpdate={(updates) => updateCallout(callout.id, updates)}
-            onDelete={() => deleteCallout(callout.id)}
-            shouldFocus={callout.id === newCalloutId}
-            pageWidth={pageWidth}
-            pageHeight={pageHeight}
-            activeTool={activeTool}
-            isInteractive={calloutsInteractive}
+    <div
+      ref={canvasRef}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100%',
+        height: '100%',
+        cursor: isCalloutToolActive ? 'crosshair' : 'default',
+        pointerEvents: isCalloutToolActive || pageCallouts.length > 0 ? 'auto' : 'none',
+      }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onClick={handleCanvasClick}
+    >
+      {/* Creation preview line */}
+      {creationState.isCreating && creationState.arrowTip && creationState.currentMouse && (
+        <svg
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100%',
+            height: '100%',
+            pointerEvents: 'none',
+          }}
+        >
+          <defs>
+            <marker
+              id="arrowhead-preview"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon
+                points="0 0, 10 3.5, 0 7"
+                fill="#1e293b"
+                opacity={0.6}
+              />
+            </marker>
+          </defs>
+          <polyline
+            points={`${creationState.currentMouse.x},${creationState.currentMouse.y} ${(creationState.arrowTip.x + creationState.currentMouse.x) / 2},${creationState.arrowTip.y - 40} ${creationState.arrowTip.x},${creationState.arrowTip.y}`}
+            fill="none"
+            stroke="#1e293b"
+            strokeWidth={2}
+            strokeDasharray="5,5"
+            opacity={0.6}
+            markerEnd="url(#arrowhead-preview)"
           />
-        ))}
-      </div>
+        </svg>
+      )}
 
-      {/* DEBUG: Visual overlay showing calculated textbox bounds (red dashed rectangles) */}
-      <svg
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: 'none',
-          zIndex: 9999,
-        }}
-      >
-        {pageCallouts.map(callout => {
-          const textBoxLeft = callout.textBoxPosition.x * pageWidth;
-          const textBoxTop = callout.textBoxPosition.y * pageHeight;
-          const textBoxW = callout.textBoxWidth * pageWidth;
-          const textBoxH = callout.textBoxHeight * pageHeight;
-          return (
-            <rect
-              key={`debug-${callout.id}`}
-              x={textBoxLeft}
-              y={textBoxTop}
-              width={textBoxW}
-              height={textBoxH}
-              fill="none"
-              stroke="red"
-              strokeWidth={2}
-              strokeDasharray="4,4"
-              opacity={0.8}
-            />
-          );
-        })}
-      </svg>
-
-    </>
+      {/* Render callouts */}
+      {pageCallouts.map(callout => (
+        <CalloutComponent
+          key={callout.id}
+          callout={callout}
+          isSelected={callout.id === selectedCalloutId}
+          onSelect={() => selectCallout(callout.id)}
+          onStartDrag={startDrag}
+          onUpdate={(updates) => updateCallout(callout.id, updates)}
+          onDelete={() => deleteCallout(callout.id)}
+          shouldFocus={callout.id === newCalloutId}
+          pageWidth={pageWidth}
+          pageHeight={pageHeight}
+        />
+      ))}
+    </div>
   );
 };
 
