@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, memo, useState, useCallback } from 'react';
+import CalloutOverlay from './components/Callout';
 
 // Globally patch getContext BEFORE importing Fabric.js to prevent willReadFrequently warnings
 // This must happen before any canvas contexts are created by Fabric
@@ -1146,7 +1147,12 @@ const PageAnnotationLayer = memo(({
   eraserMode = 'partial', // 'partial' | 'entire'
   eraserSize = 20, // Eraser radius in pixels
   showSurveyPanel = false, // Whether survey mode is active
-  layerVisibility = { 'native': true, 'pdf-annotations': true } // Layer visibility toggles
+  layerVisibility = { 'native': true, 'pdf-annotations': true }, // Layer visibility toggles
+  // Callout overlay props
+  callouts = [], // Array of all callout objects
+  setCallouts = () => {}, // Update callouts callback
+  selectedCalloutId = null, // Currently selected callout ID
+  setSelectedCalloutId = () => {}, // Set selected callout callback
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
@@ -2814,9 +2820,9 @@ const PageAnnotationLayer = memo(({
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'arrow') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
-      } else if (currentTool === 'callout') {
-        // Use a temporary Line for visual feedback during drag (same as arrow)
-        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
+      // Callout tool is now handled by the CalloutOverlay component
+      // } else if (currentTool === 'callout') {
+      //   temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'squiggly') {
         temp = new Polyline([[x, y]], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'note') {
@@ -3167,49 +3173,9 @@ const PageAnnotationLayer = memo(({
         }
         canvas.add(group);
         canvas.remove(ds.tempObj);
-      } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
-        const { x1, y1, x2, y2 } = ds.tempObj;
-
-        // Remove temp line
-        canvas.remove(ds.tempObj);
-
-        // Create the complex Callout Group
-        const group = createCalloutGroup(
-          { x: x1, y: y1 },
-          { x: x2, y: y2 },
-          currentStrokeColor,
-          strokeWidthRef.current,
-          canvas
-        );
-
-        // Store current selectedSpaceId on the group
-        if (selectedSpaceIdRef.current) {
-          group.set({ spaceId: selectedSpaceIdRef.current });
-        }
-        if (selectedModuleIdRef.current) {
-          group.set({ moduleId: selectedModuleIdRef.current });
-        }
-
-        canvas.add(group);
-        canvas.setActiveObject(group);
-
-        // Auto-focus the textbox
-        // Find the textbox inside the group
-        const textObj = group.getObjects().find(o => o.name === 'calloutText');
-        if (textObj) {
-          // Delay slightly to allow mouse event to settle and prevent focus theft
-          setTimeout(() => {
-            if (textObj.enterEditing) {
-              textObj.enterEditing();
-              textObj.selectAll();
-              // Flag that we are in the post-creation phase
-              justCreatedCalloutRef.current = true;
-            }
-            canvas.requestRenderAll();
-          }, 50);
-        }
-
-        canvas.requestRenderAll();
+      // Callout tool is now handled by the CalloutOverlay component
+      // } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
+      //   ... old Fabric.js callout creation code removed ...
       }
       ds.isDrawingShape = false;
       ds.tempObj = null;
@@ -4279,6 +4245,23 @@ const PageAnnotationLayer = memo(({
         }}
       />
 
+      {/* Callout Overlay - rendered on top of Fabric canvas */}
+      <CalloutOverlay
+        callouts={callouts}
+        setCallouts={setCallouts}
+        selectedCalloutId={selectedCalloutId}
+        setSelectedCalloutId={setSelectedCalloutId}
+        isCalloutToolActive={tool === 'callout'}
+        pageNumber={pageNumber}
+        pageWidth={width}
+        pageHeight={height}
+        defaultStyle={{
+          borderColor: strokeColor,
+          lineThickness: strokeWidth,
+        }}
+        onSave={onSaveAnnotations}
+      />
+
       {/* Context Menu */}
       {contextMenu && contextMenu.visible && (
         <div
@@ -4645,7 +4628,9 @@ const PageAnnotationLayer = memo(({
     prevProps.highlightsToRemove === nextProps.highlightsToRemove &&
     prevProps.onHighlightCreated === nextProps.onHighlightCreated &&
     prevProps.selectedSpaceId === nextProps.selectedSpaceId &&
-    prevProps.activeRegions === nextProps.activeRegions
+    prevProps.activeRegions === nextProps.activeRegions &&
+    prevProps.callouts === nextProps.callouts &&
+    prevProps.selectedCalloutId === nextProps.selectedCalloutId
   );
 });
 

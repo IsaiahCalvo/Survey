@@ -7983,6 +7983,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [fillColor, setFillColor] = useState('#ff0000');
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
+
+  // Callout overlay state
+  const [callouts, setCallouts] = useState([]);
+  const [selectedCalloutId, setSelectedCalloutId] = useState(null);
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
   const [unsupportedAnnotationTypes, setUnsupportedAnnotationTypes] = useState([]); // PDF annotation types we can't edit
   const [showUnsupportedNotice, setShowUnsupportedNotice] = useState(false); // Show notification about unsupported annotations
@@ -13622,6 +13626,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   eraserSize={eraserSize}
                                   showSurveyPanel={showSurveyPanel}
                                   layerVisibility={annotationLayerVisibility}
+                                  callouts={callouts}
+                                  setCallouts={setCallouts}
+                                  selectedCalloutId={selectedCalloutId}
+                                  setSelectedCalloutId={setSelectedCalloutId}
                                 />
                               )}
                               {/* Space Region Dimming Overlay */}
@@ -13756,6 +13764,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               eraserSize={eraserSize}
                               showSurveyPanel={showSurveyPanel}
                               layerVisibility={annotationLayerVisibility}
+                              callouts={callouts}
+                              setCallouts={setCallouts}
+                              selectedCalloutId={selectedCalloutId}
+                              setSelectedCalloutId={setSelectedCalloutId}
                             />
                           )}
                         </div>
