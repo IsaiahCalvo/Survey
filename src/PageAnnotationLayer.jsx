@@ -1698,6 +1698,15 @@ const PageAnnotationLayer = memo(({
     // Also disable for Select tool.
     canvas.selection = false;
 
+    // Deselect active object when switching away from select tool to prevent interference
+    if (tool !== 'select') {
+      const activeObject = canvas.getActiveObject();
+      if (activeObject) {
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+      }
+    }
+
     // Prevent Fabric.js from finding targets for eraser tool
     canvas.skipTargetFind = tool === 'eraser';
 
@@ -2651,6 +2660,10 @@ const PageAnnotationLayer = memo(({
       const currentEraserMode = eraserModeRef.current;
       const { x, y } = canvas.getPointer(opt.e);
       const pointer = { x, y }; // Ensure pointer object exists
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2647',message:'PageAnnotationLayer handleMouseDown called',data:{currentTool,x,y,hasTarget:!!opt.target,targetType:opt.target?.type,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
 
       // Early return for select tool to avoid interfering with selection handlers
       if (currentTool === 'select') {
@@ -3792,10 +3805,13 @@ const PageAnnotationLayer = memo(({
       if (isVisible) {
         // Only make visible objects interactive based on tool
         const isSelectable = tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight';
+        // Callouts should only be evented when using select tool to prevent blocking other annotation tools
+        const isCallout = obj.data?.type === 'callout';
+        const shouldBeEvented = isSelectable && (!isCallout || tool === 'select');
         obj.set({
           visible: true,
           selectable: isSelectable,
-          evented: isSelectable,
+          evented: shouldBeEvented,
           // Enable pixel-perfect hit detection for selection (our findTarget override handles the logic)
           // This ensures we can detect actual annotation content, not just bounding box
           perPixelTargetFind: true,
@@ -3961,10 +3977,10 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
-          // Set proper visibility - survey highlights should only be visible when survey panel is open
-          const isSurveyHighlight = objModuleId !== null;
-          const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
-          rect.set({ visible: surveyHighlightVisible });
+          // Set proper visibility - survey annotations should only be visible when survey panel is open
+          const isSurveyAnnotation = objModuleId !== null;
+          const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
+          rect.set({ visible: surveyAnnotationVisible });
           canvas.add(rect);
           if (highlight.highlightId) {
             renderedHighlightsRef.current.set(highlight.highlightId, rect);
@@ -4005,10 +4021,10 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
-          // Set proper visibility - survey highlights should only be visible when survey panel is open
-          const isSurveyHighlight = objModuleId !== null;
-          const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
-          rect.set({ visible: surveyHighlightVisible });
+          // Set proper visibility - survey annotations should only be visible when survey panel is open
+          const isSurveyAnnotation = objModuleId !== null;
+          const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
+          rect.set({ visible: surveyAnnotationVisible });
           canvas.add(rect);
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
@@ -4119,8 +4135,8 @@ const PageAnnotationLayer = memo(({
       const objSpaceId = obj.spaceId || null;
       const objModuleId = obj.moduleId || null;
 
-      // Check if this is a survey highlight (has moduleId)
-      const isSurveyHighlight = objModuleId !== null;
+      // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
+      const isSurveyAnnotation = objModuleId !== null;
 
       // Filter by space: if selectedSpaceId is set, object must match
       const matchesSpace = selectedSpaceId === null || objSpaceId === selectedSpaceId;
@@ -4128,9 +4144,9 @@ const PageAnnotationLayer = memo(({
       // Filter by module: if selectedModuleId is set, object must match
       const matchesModule = selectedModuleId === null || objModuleId === selectedModuleId;
 
-      // Survey highlights should only be visible when survey mode is active AND a module is selected
-      // Survey highlights require: survey panel open AND matching module selected
-      const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanel && selectedModuleId !== null && objModuleId === selectedModuleId);
+      // Survey annotations (highlights, callouts, etc.) should only be visible when survey mode is active AND a module is selected
+      // Survey annotations require: survey panel open AND matching module selected
+      const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanel && selectedModuleId !== null && objModuleId === selectedModuleId);
 
       let withinRegions = true;
       if (regions) {
@@ -4141,8 +4157,8 @@ const PageAnnotationLayer = memo(({
       }
 
       // Object is visible only if it matches BOTH space and module filters (and regions if applicable)
-      // AND survey highlights are only visible when survey mode is active with a module selected
-      const isVisible = matchesSpace && matchesModule && withinRegions && surveyHighlightVisible;
+      // AND survey annotations are only visible when survey mode is active with a module selected
+      const isVisible = matchesSpace && matchesModule && withinRegions && surveyAnnotationVisible;
       const isInteractive = isVisible && (selectedSpaceId === null || objSpaceId === selectedSpaceId) && (selectedModuleId === null || objModuleId === selectedModuleId);
 
       obj.set({
