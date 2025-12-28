@@ -444,8 +444,8 @@ const CalloutComponent = ({
       // If line is very short, just use the tip
       return arrowTip;
     }
-    // Stop 32px before the arrow tip (to clear the larger 3x triangle hit area)
-    const stopDistance = 32;
+    // Stop 35px before the arrow tip (to clear the larger 3x triangle hit area)
+    const stopDistance = 35;
     const ratio = (length - stopDistance) / length;
     return {
       x: knee.x + dx * ratio,
@@ -594,7 +594,12 @@ const CalloutComponent = ({
           points={arrowHeadHitAreaPointsString}
           fill="transparent"
           style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
-          onMouseDown={handleLineMouseDown}
+          onMouseDown={(e) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:597',message:'Hit area polygon mousedown',data:{clientX:e.clientX,clientY:e.clientY,points:arrowHeadHitAreaPointsString},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
+            handleLineMouseDown(e);
+          }}
           onClick={handleLineClick}
         />
 
