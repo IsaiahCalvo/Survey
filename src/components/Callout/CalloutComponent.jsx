@@ -435,17 +435,17 @@ const CalloutComponent = ({
   const line2End = arrowTip;
   
   // Calculate line 2 hit area end point (stop before arrow tip to allow triangle clicks)
-  // The triangle is about 10px wide, so stop the hit area about 12px before the tip
+  // The triangle is now 15px wide, so stop the hit area about 18px before the tip
   const line2HitAreaEnd = (() => {
     const dx = arrowTip.x - knee.x;
     const dy = arrowTip.y - knee.y;
     const length = Math.sqrt(dx * dx + dy * dy);
-    if (length < 15) {
+    if (length < 20) {
       // If line is very short, just use the tip
       return arrowTip;
     }
-    // Stop 12px before the arrow tip
-    const stopDistance = 12;
+    // Stop 18px before the arrow tip (to clear the larger triangle)
+    const stopDistance = 18;
     const ratio = (length - stopDistance) / length;
     return {
       x: knee.x + dx * ratio,
@@ -465,9 +465,9 @@ const CalloutComponent = ({
     fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:443',message:'Arrow head calculation inputs',data:{arrowTipX:arrowTip.x,arrowTipY:arrowTip.y,kneeX:knee.x,kneeY:knee.y,dx,dy,angle:angle*180/Math.PI},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
     // #endregion
     
-    // Triangle dimensions (matching the marker)
-    const width = 10;
-    const height = 7;
+    // Triangle dimensions (larger than marker for better clickability)
+    const width = 15;  // Increased from 10 to 15 for better clickability
+    const height = 10; // Increased from 7 to 10 for better clickability
     
     // Base triangle points (pointing right, with tip at origin)
     // Base points form a triangle: left base, tip, right base
@@ -574,7 +574,12 @@ const CalloutComponent = ({
           stroke="transparent"
           strokeWidth={16}
           style={{ pointerEvents: 'stroke', cursor: isInteractive ? 'pointer' : 'default' }}
-          onMouseDown={handleLineMouseDown}
+          onMouseDown={(e) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:577',message:'Line 2 hit area mousedown',data:{clientX:e.clientX,clientY:e.clientY,line2StartX:line2Start.x,line2StartY:line2Start.y,line2HitAreaEndX:line2HitAreaEnd.x,line2HitAreaEndY:line2HitAreaEnd.y,arrowTipX:arrowTip.x,arrowTipY:arrowTip.y},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+            handleLineMouseDown(e);
+          }}
           onClick={handleLineClick}
         />
 
@@ -591,35 +596,31 @@ const CalloutComponent = ({
         />
 
         {/* Hit area for arrowhead - invisible circle for easier clicking */}
+        {/* Disabled pointer events - polygon now handles triangle clicks */}
         <circle
           cx={arrowTip.x}
           cy={arrowTip.y}
           r={12}
           fill="transparent"
-          style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
-          onMouseDown={(e) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:576',message:'Circle hit area mousedown',data:{clientX:e.clientX,clientY:e.clientY,circleX:arrowTip.x,circleY:arrowTip.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
-            handleLineMouseDown(e);
-          }}
-          onClick={handleLineClick}
+          style={{ pointerEvents: 'none', cursor: isInteractive ? 'pointer' : 'default' }}
         />
 
         {/* Clickable arrow head triangle */}
         <polygon
           points={arrowHeadPointsString}
           fill={hexToRgba(style.borderColor, style.borderOpacity)}
+          stroke={hexToRgba(style.borderColor, style.borderOpacity)}
+          strokeWidth={1}
           style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={(e) => {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:567',message:'Polygon mousedown event',data:{clientX:e.clientX,clientY:e.clientY,target:e.target.tagName,currentTarget:e.currentTarget.tagName,pointerEvents:window.getComputedStyle(e.currentTarget).pointerEvents},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:610',message:'Polygon mousedown event',data:{clientX:e.clientX,clientY:e.clientY,target:e.target.tagName,currentTarget:e.currentTarget.tagName,pointerEvents:window.getComputedStyle(e.currentTarget).pointerEvents},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
             // #endregion
             handleLineMouseDown(e);
           }}
           onClick={(e) => {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:572',message:'Polygon click event',data:{clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:616',message:'Polygon click event',data:{clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
             // #endregion
             handleLineClick(e);
           }}
@@ -628,7 +629,7 @@ const CalloutComponent = ({
               // #region agent log
               const computedStyle = window.getComputedStyle(el);
               const svgStyle = window.getComputedStyle(el.closest('svg'));
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:580',message:'Polygon ref callback',data:{polygonPointerEvents:computedStyle.pointerEvents,svgPointerEvents:svgStyle.pointerEvents,points:el.getAttribute('points'),zIndex:computedStyle.zIndex,display:computedStyle.display,visibility:computedStyle.visibility},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:623',message:'Polygon ref callback post-fix',data:{polygonPointerEvents:computedStyle.pointerEvents,svgPointerEvents:svgStyle.pointerEvents,points:el.getAttribute('points'),zIndex:computedStyle.zIndex,display:computedStyle.display,visibility:computedStyle.visibility},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
               // #endregion
             }
           }}

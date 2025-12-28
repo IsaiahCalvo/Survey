@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import CalloutComponent from './CalloutComponent';
 import { createCallout, hexToRgba } from './types';
 
@@ -68,28 +68,110 @@ const CalloutCanvas = ({
     };
   }, []);
 
+  // Filter callouts for this page and by survey mode if needed
+  // Compute this early so it's available in callbacks
+  const pageCallouts = useMemo(() => callouts.filter(c => 
+    c.pageNumber === pageNumber &&
+    (selectedSpaceId === null || c.spaceId === selectedSpaceId) &&
+    (selectedModuleId === null || c.moduleId === selectedModuleId || !c.moduleId) && // If callout has no moduleId, it's always visible
+    (!c.moduleId || (showSurveyPanel && selectedModuleId !== null && c.moduleId === selectedModuleId)) // Survey mode filtering
+  ), [callouts, pageNumber, selectedSpaceId, selectedModuleId, showSurveyPanel]);
+
+  // Helper function to calculate distance from a point to a line segment
+  const distanceToLineSegment = useCallback((point, lineStart, lineEnd) => {
+    const A = point.x - lineStart.x;
+    const B = point.y - lineStart.y;
+    const C = lineEnd.x - lineStart.x;
+    const D = lineEnd.y - lineStart.y;
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+
+    if (lenSq !== 0) param = dot / lenSq;
+
+    let xx, yy;
+    if (param < 0) {
+      xx = lineStart.x;
+      yy = lineStart.y;
+    } else if (param > 1) {
+      xx = lineEnd.x;
+      yy = lineEnd.y;
+    } else {
+      xx = lineStart.x + param * C;
+      yy = lineStart.y + param * D;
+    }
+
+    const dx = point.x - xx;
+    const dy = point.y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }, []);
+
   const handleMouseDown = useCallback((e) => {
     const pos = getMousePosition(e);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutCanvas.jsx:67',message:'CalloutCanvas handleMouseDown called',data:{isCalloutToolActive,dragTargetType:dragTarget.type,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
-
     // If select or pan tool is active and a callout is selected, check if clicking on empty space
     if ((activeTool === 'select' || activeTool === 'pan') && selectedCalloutId) {
-      // Check if click is on a callout element
-      // Callout elements have pointerEvents: 'auto', so clicks on them should be captured by callout components
-      // If click reaches here, it's likely on empty space, but double-check
-      const isClickOnCallout = e.target !== canvasRef.current && e.target.closest && (
-        e.target.closest('.callout-text-box') !== null ||
-        e.target.tagName === 'TEXTAREA' ||
-        (e.target.tagName === 'svg' && canvasRef.current && canvasRef.current.contains(e.target)) ||
-        (e.target.tagName === 'line' || e.target.tagName === 'circle' || e.target.tagName === 'polygon' || e.target.tagName === 'polyline')
-      );
       
-      // If clicking on empty space (target is the canvas div itself), deselect
-      // Don't deselect if clicking on a callout element (shouldn't happen, but safety check)
-      if (e.target === canvasRef.current && !isClickOnCallout) {
+      // Check if click position is within any callout's bounds
+      // Convert click position to percentage coordinates
+      const clickPercent = toPercent(pos);
+      let isClickOnAnyCallout = false;
+      
+      for (const callout of pageCallouts) {
+        // Check if click is within text box bounds
+        const textBoxLeft = callout.textBoxPosition.x;
+        const textBoxTop = callout.textBoxPosition.y;
+        const textBoxRight = textBoxLeft + callout.textBoxWidth;
+        const textBoxBottom = textBoxTop + callout.textBoxHeight;
+        
+        if (clickPercent.x >= textBoxLeft && clickPercent.x <= textBoxRight &&
+            clickPercent.y >= textBoxTop && clickPercent.y <= textBoxBottom) {
+          isClickOnAnyCallout = true;
+          break;
+        }
+        
+        // Check if click is near arrow tip (within 20px radius)
+        const arrowTipPixels = toPixels(callout.arrowTip);
+        const distance = Math.sqrt(
+          Math.pow(pos.x - arrowTipPixels.x, 2) + Math.pow(pos.y - arrowTipPixels.y, 2)
+        );
+        if (distance < 20) {
+          isClickOnAnyCallout = true;
+          break;
+        }
+        
+        // Check if click is near knee (within 20px radius)
+        const kneePixels = toPixels(callout.knee);
+        const kneeDistance = Math.sqrt(
+          Math.pow(pos.x - kneePixels.x, 2) + Math.pow(pos.y - kneePixels.y, 2)
+        );
+        if (kneeDistance < 20) {
+          isClickOnAnyCallout = true;
+          break;
+        }
+        
+        // Check if click is near the line (within 10px of the line segments)
+        // Line from text box center to knee to arrow tip
+        const textBoxCenter = {
+          x: textBoxLeft + callout.textBoxWidth / 2,
+          y: textBoxTop + callout.textBoxHeight / 2
+        };
+        const textBoxCenterPixels = toPixels(textBoxCenter);
+        
+        // Distance to line segment from text center to knee
+        const distToLine1 = distanceToLineSegment(pos, textBoxCenterPixels, kneePixels);
+        // Distance to line segment from knee to arrow tip
+        const distToLine2 = distanceToLineSegment(pos, kneePixels, arrowTipPixels);
+        
+        if (distToLine1 < 10 || distToLine2 < 10) {
+          isClickOnAnyCallout = true;
+          break;
+        }
+      }
+      
+      // If clicking on empty space (not within any callout bounds), deselect
+      if (!isClickOnAnyCallout) {
         setSelectedCalloutId(null);
         setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
         // Don't return - let the event continue to Fabric canvas for pan/select behavior
@@ -111,7 +193,7 @@ const CalloutCanvas = ({
       });
       setSelectedCalloutId(null);
     }
-  }, [isCalloutToolActive, dragTarget, getMousePosition, setSelectedCalloutId, pageNumber, activeTool, selectedCalloutId, setCallouts]);
+  }, [isCalloutToolActive, dragTarget, getMousePosition, setSelectedCalloutId, pageNumber, activeTool, selectedCalloutId, setCallouts, toPercent, toPixels, distanceToLineSegment, pageCallouts]);
 
   const handleMouseMove = useCallback((e) => {
     const pos = getMousePosition(e);
@@ -323,6 +405,8 @@ const CalloutCanvas = ({
   }, [creationState, getMousePosition, setCallouts, setSelectedCalloutId, toPercent, pageNumber, pageWidth, pageHeight, defaultStyle]);
 
   const handleCanvasClick = useCallback((e) => {
+    const pos = getMousePosition(e);
+    
     // Skip if we just created a callout (click fires after mouseup)
     if (justCreatedRef.current) {
       justCreatedRef.current = false;
@@ -334,18 +418,58 @@ const CalloutCanvas = ({
       return;
     }
     
-    // Check if click is on a callout element
-    const isClickOnCallout = e.target !== canvasRef.current && e.target.closest && (
-      e.target.closest('.callout-text-box') !== null ||
-      e.target.tagName === 'TEXTAREA' ||
-      (e.target.tagName === 'svg' && canvasRef.current && canvasRef.current.contains(e.target)) ||
-      (e.target.tagName === 'line' || e.target.tagName === 'circle' || e.target.tagName === 'polygon' || e.target.tagName === 'polyline')
-    );
-    
-    // If select or pan tool is active and a callout is selected, deselect on empty space click
+    // If select or pan tool is active and a callout is selected, check if clicking on empty space
     if ((activeTool === 'select' || activeTool === 'pan') && selectedCalloutId) {
-      // If clicking on empty space (target is the canvas div itself), deselect
-      if (e.target === canvasRef.current && !isClickOnCallout) {
+      // Check if click position is within any callout's bounds (same logic as handleMouseDown)
+      const clickPercent = toPercent(pos);
+      let isClickOnAnyCallout = false;
+      
+      for (const callout of pageCallouts) {
+        const textBoxLeft = callout.textBoxPosition.x;
+        const textBoxTop = callout.textBoxPosition.y;
+        const textBoxRight = textBoxLeft + callout.textBoxWidth;
+        const textBoxBottom = textBoxTop + callout.textBoxHeight;
+        
+        if (clickPercent.x >= textBoxLeft && clickPercent.x <= textBoxRight &&
+            clickPercent.y >= textBoxTop && clickPercent.y <= textBoxBottom) {
+          isClickOnAnyCallout = true;
+          break;
+        }
+        
+        const arrowTipPixels = toPixels(callout.arrowTip);
+        const distance = Math.sqrt(
+          Math.pow(pos.x - arrowTipPixels.x, 2) + Math.pow(pos.y - arrowTipPixels.y, 2)
+        );
+        if (distance < 20) {
+          isClickOnAnyCallout = true;
+          break;
+        }
+        
+        const kneePixels = toPixels(callout.knee);
+        const kneeDistance = Math.sqrt(
+          Math.pow(pos.x - kneePixels.x, 2) + Math.pow(pos.y - kneePixels.y, 2)
+        );
+        if (kneeDistance < 20) {
+          isClickOnAnyCallout = true;
+          break;
+        }
+        
+        const textBoxCenter = {
+          x: textBoxLeft + callout.textBoxWidth / 2,
+          y: textBoxTop + callout.textBoxHeight / 2
+        };
+        const textBoxCenterPixels = toPixels(textBoxCenter);
+        const distToLine1 = distanceToLineSegment(pos, textBoxCenterPixels, kneePixels);
+        const distToLine2 = distanceToLineSegment(pos, kneePixels, arrowTipPixels);
+        
+        if (distToLine1 < 10 || distToLine2 < 10) {
+          isClickOnAnyCallout = true;
+          break;
+        }
+      }
+      
+      // If clicking on empty space (not within any callout bounds), deselect
+      if (!isClickOnAnyCallout) {
         setSelectedCalloutId(null);
         setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
         return;
@@ -357,7 +481,7 @@ const CalloutCanvas = ({
       setSelectedCalloutId(null);
       setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
     }
-  }, [setSelectedCalloutId, setCallouts, activeTool, selectedCalloutId]);
+  }, [setSelectedCalloutId, setCallouts, activeTool, selectedCalloutId, getMousePosition, toPercent, toPixels, distanceToLineSegment, pageCallouts]);
 
   const startDrag = useCallback((target, offset) => {
     setDragTarget(target);
@@ -415,23 +539,12 @@ const CalloutCanvas = ({
     }
   }, [newCalloutId]);
 
-  // Filter callouts for this page and by survey mode if needed
-  const pageCallouts = callouts.filter(c => 
-    c.pageNumber === pageNumber &&
-    (selectedSpaceId === null || c.spaceId === selectedSpaceId) &&
-    (selectedModuleId === null || c.moduleId === selectedModuleId || !c.moduleId) && // If callout has no moduleId, it's always visible
-    (!c.moduleId || (showSurveyPanel && selectedModuleId !== null && c.moduleId === selectedModuleId)) // Survey mode filtering
-  );
-
-  // #region agent log
   // Block pointer events if callout tool is active OR if there are callouts on this page
   // This prevents eraser/selection tools from passing through callouts to Fabric objects below
   // When callout tool is active, use 'auto' to enable callout creation/editing
   // When callouts exist, use 'auto' to block events from passing through (callouts should block other tools)
   // Only use 'none' when no callouts exist and callout tool is not active
   const pointerEventsValue = (isCalloutToolActive || pageCallouts.length > 0) ? 'auto' : 'none';
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutCanvas.jsx:362',message:'CalloutCanvas pointerEvents check',data:{isCalloutToolActive,pageCalloutsCount:pageCallouts.length,pointerEventsValue,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run8',hypothesisId:'P'})}).catch(()=>{});
-  // #endregion
 
   return (
     <div
