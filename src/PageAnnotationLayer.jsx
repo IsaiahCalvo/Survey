@@ -3550,17 +3550,19 @@ const PageAnnotationLayer = memo(({
       } else if (currentTool === 'arrow' && ds.tempObj.type === 'line') {
         const { x1, y1, x2, y2 } = ds.tempObj;
         const angle = Math.atan2(y2 - y1, x2 - x1);
-        const head = new Triangle({
-          left: x2,
-          top: y2,
-          originX: 'center',
-          originY: 'center',
-          width: 12,
-          height: 12,
-          fill: currentStrokeColor,
-          angle: (angle * 180) / Math.PI + 90
+        // Default arrowhead style for new arrows
+        const defaultArrowheadStyle = ARROWHEAD_STYLES.SOLID_TRIANGLE;
+        const head = createArrowhead(x2, y2, angle, currentStrokeColor, currentStrokeWidth, defaultArrowheadStyle);
+
+        // Create group with line and arrowhead (if not NONE style)
+        const groupObjects = head ? [ds.tempObj, head] : [ds.tempObj];
+        const group = new Group(groupObjects, { selectable: true });
+
+        // Store arrowhead style and mark as arrow type on the group
+        group.set({
+          data: { type: 'arrow', arrowheadStyle: defaultArrowheadStyle }
         });
-        const group = new Group([ds.tempObj, head], { selectable: true });
+
         // Store current selectedSpaceId on the arrow group
         if (selectedSpaceIdRef.current) {
           group.set({ spaceId: selectedSpaceIdRef.current });
