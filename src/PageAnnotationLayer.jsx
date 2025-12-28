@@ -2050,6 +2050,18 @@ const PageAnnotationLayer = memo(({
           }
         });
 
+        // Cancel any active drawing
+        const ds = drawingStateRef.current;
+        if (ds.isDrawingShape && ds.tempObj) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2055',message:'Escape pressed - canceling drawing',data:{tool:toolRef.current,isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj,tempObjType:ds.tempObj?.type,isPreview:ds.tempObj?.isPreview},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
+          canvas.remove(ds.tempObj);
+          ds.isDrawingShape = false;
+          ds.tempObj = null;
+          canvas.requestRenderAll();
+        }
+        
         // Switch to select tool
         if (toolRef.current === 'callout') {
           onToolChange('select');
@@ -2987,7 +2999,28 @@ const PageAnnotationLayer = memo(({
       } else if (currentTool === 'arrow') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'callout') {
-        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2993',message:'Callout tool mouseDown - creating preview group',data:{tool:currentTool,x,y,strokeColor:currentStrokeColor,strokeWidth:currentStrokeWidth},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        // Create callout preview group immediately for visual feedback during drag
+        const calloutStyle = {
+          ...defaultCalloutStyle,
+          borderColor: currentStrokeColor || defaultCalloutStyle.borderColor,
+          lineThickness: currentStrokeWidth || defaultCalloutStyle.lineThickness,
+        };
+        temp = createCalloutGroup(
+          { x, y },
+          { x, y },
+          currentStrokeColor,
+          currentStrokeWidth,
+          canvas,
+          calloutStyle
+        );
+        // Mark as temporary preview (will be finalized on mouseUp)
+        temp.set({ isPreview: true });
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3007',message:'Callout preview group created',data:{tempType:temp.type,hasData:!!temp.data,dataType:temp.data?.type,isPreview:temp.isPreview},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
       } else if (currentTool === 'squiggly') {
         temp = new Polyline([[x, y]], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'note') {
@@ -3113,12 +3146,48 @@ const PageAnnotationLayer = memo(({
       const { x, y } = canvas.getPointer(opt.e);
       const sx = ds.startX;
       const sy = ds.startY;
+      // #region agent log
+      const currentToolMove = toolRef.current;
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3122',message:'MouseMove during shape drawing',data:{tool:currentToolMove,tempObjType:ds.tempObj.type,isDrawingShape:ds.isDrawingShape,x,y,startX:sx,startY:sy,isPreview:ds.tempObj.isPreview},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       if (ds.tempObj.type === 'rect') {
         ds.tempObj.set({ left: Math.min(sx, x), top: Math.min(sy, y), width: Math.abs(x - sx), height: Math.abs(y - sy) });
       } else if (ds.tempObj.type === 'circle') {
         ds.tempObj.set({ left: Math.min(sx, x), top: Math.min(sy, y), radius: Math.max(Math.abs(x - sx), Math.abs(y - sy)) / 2 });
       } else if (ds.tempObj.type === 'line') {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3134',message:'Updating line tempObj during drag',data:{tool:currentToolMove,tempObjType:ds.tempObj.type,x2:x,y2:y},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         ds.tempObj.set({ x2: x, y2: y });
+      } else if (ds.tempObj.data?.type === 'callout' && ds.tempObj.isPreview) {
+        // Update callout preview group during drag
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3141',message:'Updating callout preview during drag',data:{tool:currentToolMove,tempObjType:ds.tempObj.type,startX:sx,startY:sy,endX:x,endY:y},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        // Update head position (start point) and text position (end point)
+        const head = ds.tempObj.getObjects().find(o => o.name === 'calloutHead');
+        const text = ds.tempObj.getObjects().find(o => o.name === 'calloutText');
+        const textBorder = ds.tempObj.getObjects().find(o => o.name === 'calloutTextBorder');
+        
+        if (head) {
+          head.set({ left: sx, top: sy });
+        }
+        if (text) {
+          text.set({ left: x, top: y });
+        }
+        if (textBorder) {
+          const style = ds.tempObj.data?.style || defaultCalloutStyle;
+          const borderThickness = style.lineThickness || 2;
+          textBorder.set({
+            left: x - borderThickness,
+            top: y - borderThickness
+          });
+        }
+        
+        // Update callout group connections
+        updateCalloutGroupConnections(ds.tempObj);
+        canvas.requestRenderAll();
+        return;
       } else if (ds.tempObj.type === 'polyline') {
         const points = ds.tempObj.get('points') || [];
         points.push({ x, y });
@@ -3338,22 +3407,14 @@ const PageAnnotationLayer = memo(({
         }
         canvas.add(group);
         canvas.remove(ds.tempObj);
-      } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
-        const { x1, y1, x2, y2 } = ds.tempObj;
-        // Create callout with default style, using current stroke color/width as border defaults
-        const calloutStyle = {
-          ...defaultCalloutStyle,
-          borderColor: currentStrokeColor || defaultCalloutStyle.borderColor,
-          lineThickness: currentStrokeWidth || defaultCalloutStyle.lineThickness,
-        };
-        const calloutGroup = createCalloutGroup(
-          { x: x1, y: y1 },
-          { x: x2, y: y2 },
-          currentStrokeColor,
-          currentStrokeWidth,
-          canvas,
-          calloutStyle
-        );
+      } else if (currentTool === 'callout' && ds.tempObj.data?.type === 'callout' && ds.tempObj.isPreview) {
+        // Finalize the callout preview group
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3381',message:'Callout mouseUp - finalizing preview group',data:{tool:currentTool,tempObjType:ds.tempObj.type,hasData:!!ds.tempObj.data,dataType:ds.tempObj.data?.type,isPreview:ds.tempObj.isPreview},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        const calloutGroup = ds.tempObj;
+        // Remove preview flag - this is now a permanent callout
+        calloutGroup.set({ isPreview: false });
         // Store current selectedSpaceId on the callout group
         if (selectedSpaceIdRef.current) {
           calloutGroup.set({ spaceId: selectedSpaceIdRef.current });
@@ -3361,8 +3422,6 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           calloutGroup.set({ moduleId: selectedModuleIdRef.current });
         }
-        canvas.add(calloutGroup);
-        canvas.remove(ds.tempObj);
         canvas.setActiveObject(calloutGroup);
         // Enter text editing mode
         const textObj = calloutGroup.getObjects().find(o => o.name === 'calloutText');
@@ -3371,6 +3430,9 @@ const PageAnnotationLayer = memo(({
           textObj.selectAll();
         }
         canvas.requestRenderAll();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3400',message:'Callout finalized',data:{calloutGroupType:calloutGroup.type,hasData:!!calloutGroup.data,dataType:calloutGroup.data?.type,isPreview:calloutGroup.isPreview},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
       }
       ds.isDrawingShape = false;
       ds.tempObj = null;
@@ -4845,6 +4907,7 @@ const PageAnnotationLayer = memo(({
                     </button>
                   ))}
                 </div>
+              </div>
               </div>
             </>
           ) : (
