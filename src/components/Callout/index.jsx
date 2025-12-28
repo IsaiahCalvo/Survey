@@ -32,6 +32,7 @@ const CalloutOverlay = ({
   pageHeight,
   defaultStyle,
   onSave,
+  selectionRect,
 }) => {
   const selectedCallout = callouts.find(c => c.id === selectedCalloutId) || null;
 
@@ -111,6 +112,7 @@ const CalloutOverlay = ({
         pageWidth={pageWidth}
         pageHeight={pageHeight}
         defaultStyle={defaultStyle}
+        selectionRect={selectionRect}
       />
 
       {/* Properties Panel - slides in from right when callout selected */}

@@ -1203,6 +1203,8 @@ const PageAnnotationLayer = memo(({
   const clipboardRef = useRef(null);
   // Edit Modal State
   const [editModal, setEditModal] = useState(null); // { x, y, object }
+  // Callout selection rect for drag selection
+  const [calloutSelectionRect, setCalloutSelectionRect] = useState(null);
   const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1 });
   const editModalRef = useRef(null);
 
@@ -3408,6 +3410,7 @@ const PageAnnotationLayer = memo(({
         });
         canvas.renderAll();
       }
+
     };
 
     // Track mouse up to perform AutoCAD-style selection based on drag direction
@@ -3564,6 +3567,17 @@ const PageAnnotationLayer = memo(({
           canvas.setActiveObject(activeSelection);
         }
         canvas.requestRenderAll();
+
+        // Also update callout selection rect for CalloutOverlay to handle
+        setCalloutSelectionRect({
+          left: selLeft,
+          top: selTop,
+          right: selRight,
+          bottom: selBottom,
+          isWindowSelection
+        });
+        // Clear callout selection rect after a tick so the effect can process it
+        setTimeout(() => setCalloutSelectionRect(null), 0);
       }
 
       // Clear selection rect and remove visual rectangle
@@ -4261,6 +4275,7 @@ const PageAnnotationLayer = memo(({
           lineThickness: strokeWidth,
         }}
         onSave={onSaveAnnotations}
+        selectionRect={calloutSelectionRect}
       />
 
       {/* Context Menu */}

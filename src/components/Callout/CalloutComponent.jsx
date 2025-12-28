@@ -429,8 +429,8 @@ const CalloutComponent = ({
           position: 'absolute',
           left: textBoxPosition.x,
           top: textBoxPosition.y,
-          cursor: isEditing ? 'text' : 'move',
-          pointerEvents: 'auto',
+          cursor: isInteractive ? (isEditing ? 'text' : 'move') : 'default',
+          pointerEvents: isInteractive ? 'auto' : 'none',
         }}
         onMouseDown={handleTextBoxMouseDown}
         onMouseUp={handleTextBoxMouseUp}
@@ -474,7 +474,7 @@ const CalloutComponent = ({
         />
 
         {/* Resize handles for text box corners */}
-        {isSelected && (
+        {isSelected && isInteractive && (
           <>
             <div
               style={{
@@ -549,7 +549,7 @@ const CalloutComponent = ({
       </div>
 
       {/* Knee handle */}
-      {isSelected && (
+      {isSelected && isInteractive && (
         <div
           style={{
             position: 'absolute',
@@ -571,7 +571,7 @@ const CalloutComponent = ({
       )}
 
       {/* Arrow tip handle */}
-      {isSelected && (
+      {isSelected && isInteractive && (
         <div
           style={{
             position: 'absolute',
