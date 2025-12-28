@@ -75,8 +75,9 @@ export const CalloutComponent: React.FC<CalloutComponentProps> = ({
   }, [callout.text, callout.textBoxWidth]);
 
   const handleTextBoxMouseDown = useCallback((e: React.MouseEvent) => {
+    console.log('[CalloutComponent] handleTextBoxMouseDown', { calloutId: callout.id, isSelected, isEditing });
     e.stopPropagation();
-    
+
     // If not editing, start drag for moving
     if (!isEditing) {
       // Reset drag tracking for this interaction
@@ -202,40 +203,47 @@ export const CalloutComponent: React.FC<CalloutComponentProps> = ({
   }, [callout.id, onSelect, onStartDrag]);
 
   const handleHandleMouseDown = useCallback((e: React.MouseEvent, targetType: 'arrowTip' | 'knee') => {
+    console.log('[CalloutComponent] handleHandleMouseDown', { calloutId: callout.id, targetType, isSelected });
     e.stopPropagation();
     onSelect();
     onStartDrag({ type: targetType, calloutId: callout.id }, { x: 0, y: 0 });
-  }, [callout.id, onSelect, onStartDrag]);
+  }, [callout.id, isSelected, onSelect, onStartDrag]);
 
   const handleLineMouseDown = useCallback((e: React.MouseEvent) => {
+    console.log('[CalloutComponent] handleLineMouseDown', { calloutId: callout.id, isSelected });
     e.stopPropagation();
     onSelect();
-  }, [onSelect]);
+  }, [callout.id, isSelected, onSelect]);
 
   const handleLineClick = useCallback((e: React.MouseEvent) => {
+    console.log('[CalloutComponent] handleLineClick', { calloutId: callout.id, isSelected });
     e.stopPropagation();
     onSelect();
-  }, [onSelect]);
+  }, [callout.id, isSelected, onSelect]);
 
   const handleArrowAreaMouseDown = useCallback((e: React.MouseEvent) => {
+    console.log('[CalloutComponent] handleArrowAreaMouseDown', { calloutId: callout.id, isSelected });
     e.stopPropagation();
     onSelect();
-  }, [onSelect]);
+  }, [callout.id, isSelected, onSelect]);
 
   const handleArrowAreaClick = useCallback((e: React.MouseEvent) => {
+    console.log('[CalloutComponent] handleArrowAreaClick', { calloutId: callout.id, isSelected });
     e.stopPropagation();
     onSelect();
-  }, [onSelect]);
+  }, [callout.id, isSelected, onSelect]);
 
   const handleKneeAreaMouseDown = useCallback((e: React.MouseEvent) => {
+    console.log('[CalloutComponent] handleKneeAreaMouseDown', { calloutId: callout.id, isSelected });
     e.stopPropagation();
     onSelect();
-  }, [onSelect]);
+  }, [callout.id, isSelected, onSelect]);
 
   const handleKneeAreaClick = useCallback((e: React.MouseEvent) => {
+    console.log('[CalloutComponent] handleKneeAreaClick', { calloutId: callout.id, isSelected });
     e.stopPropagation();
     onSelect();
-  }, [onSelect]);
+  }, [callout.id, isSelected, onSelect]);
 
   const { arrowTip, knee, textBoxPosition, textBoxWidth, textBoxHeight, text, style } = callout;
 

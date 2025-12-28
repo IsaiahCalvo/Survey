@@ -47,14 +47,28 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    console.log('[PDFCanvas] handleMouseDown', {
+      target: e.target,
+      currentTarget: e.currentTarget,
+      isCanvas: e.target === canvasRef.current,
+      targetTagName: (e.target as HTMLElement).tagName,
+      targetClassName: (e.target as HTMLElement).className,
+      activeTool,
+      dragTargetType: dragTarget.type,
+    });
+
     // Only start callout creation when clicking directly on the canvas background
     // When clicking on existing callouts, their handlers will handle selection/dragging
-    if (e.target !== canvasRef.current) return;
+    if (e.target !== canvasRef.current) {
+      console.log('[PDFCanvas] Returning early - click was not on canvas background');
+      return;
+    }
 
     const pos = getMousePosition(e);
 
     // If callout tool is active and clicking on empty space, start creation
     if (activeTool === 'callout' && dragTarget.type === 'none') {
+      console.log('[PDFCanvas] Starting callout creation', { pos, activeTool });
       setCreationState({
         isCreating: true,
         arrowTip: pos,
@@ -279,8 +293,14 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
   }, [creationState, getMousePosition, setCallouts, setSelectedCalloutId]);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
+    console.log('[PDFCanvas] handleCanvasClick', {
+      target: e.target,
+      isCanvas: e.target === canvasRef.current,
+      targetTagName: (e.target as HTMLElement).tagName,
+    });
     // Deselect if clicking on empty space
     if (e.target === canvasRef.current) {
+      console.log('[PDFCanvas] Deselecting all callouts');
       setSelectedCalloutId(null);
       setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
     }
@@ -314,9 +334,10 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
   }, [callouts]);
 
   const selectCallout = useCallback((id: string) => {
+    console.log('[PDFCanvas] selectCallout called', { id, currentSelectedId: selectedCalloutId });
     setSelectedCalloutId(id);
     setCallouts(prev => prev.map(c => ({ ...c, isSelected: c.id === id })));
-  }, [setSelectedCalloutId, setCallouts]);
+  }, [selectedCalloutId, setSelectedCalloutId, setCallouts]);
 
   const updateCallout = useCallback((id: string, updates: Partial<Callout>) => {
     setCallouts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
