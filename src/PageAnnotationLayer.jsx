@@ -2808,14 +2808,18 @@ const PageAnnotationLayer = memo(({
         // We defer the actual erasure or splitting to mouseUp to allow the user to see the stroke
         const eraserRadius = eraserSizeRef.current || 20;
         isErasingRef.current = true;
+        // Use getPointer with false to get viewport-transformed coordinates (matches canvas object coordinates)
+        // This ensures eraser points are in the same coordinate space as callout positions
+        const pointer = canvas.getPointer(opt.e, false);
         eraserPathRef.current = {
-          startX: x,
-          startY: y,
-          points: [{ x, y }]
+          startX: pointer.x,
+          startY: pointer.y,
+          points: [{ x: pointer.x, y: pointer.y }]
         };
 
         // Create visual eraser stroke overlay
-        const eraserStroke = new Polyline([[x, y]], {
+        // Use the same pointer coordinates for the visual stroke
+        const eraserStroke = new Polyline([[pointer.x, pointer.y]], {
           stroke: 'rgba(74, 144, 226, 0.3)', // Light blue, semi-translucent
           strokeWidth: eraserRadius * 2,
           fill: 'transparent',
@@ -2997,13 +3001,16 @@ const PageAnnotationLayer = memo(({
           }
         }
 
-        // Add point
-        eraserPath.points.push({ x, y });
+        // Add point - use getPointer with false to get viewport-transformed coordinates
+        // This ensures eraser points are in the same coordinate space as callout positions
+        const pointer = canvas.getPointer(opt.e, false);
+        eraserPath.points.push({ x: pointer.x, y: pointer.y });
 
         // Update visual eraser stroke overlay
         if (eraserStrokeVisualRef.current) {
           const points = eraserStrokeVisualRef.current.get('points') || [];
-          points.push([x, y]);
+          // Use the same pointer coordinates for the visual stroke
+          points.push([pointer.x, pointer.y]);
           eraserStrokeVisualRef.current.set({ points });
           // Ensure eraser stroke stays on top
           canvas.bringToFront(eraserStrokeVisualRef.current);
@@ -3169,18 +3176,20 @@ const PageAnnotationLayer = memo(({
           // Handle React callouts (not Fabric objects)
           // Check if eraser path intersects with any callout on this page
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3128',message:'Eraser checking callouts',data:{hasCalloutsRef:!!calloutsRef.current,calloutsCount:calloutsRef.current?.length||0,hasSetCallouts:!!setCalloutsRef.current,pageNumber,eraserPointsCount:eraserPath?.points?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3128',message:'Eraser checking callouts',data:{hasCalloutsRef:!!calloutsRef.current,calloutsCount:calloutsRef.current?.length||0,hasSetCallouts:!!setCalloutsRef.current,pageNumber,eraserPointsCount:eraserPath?.points?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'J'})}).catch(()=>{});
           // #endregion
           if (calloutsRef.current && calloutsRef.current.length > 0 && setCalloutsRef.current) {
-            const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
+            // Get canvas zoom/scale - eraser points are in canvas coordinates which may include zoom
+            const canvasZoom = canvas.getZoom ? canvas.getZoom() : 1;
             const pageCallouts = calloutsRef.current.filter(c => c.pageNumber === pageNumber);
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3133',message:'Page callouts found',data:{pageCalloutsCount:pageCallouts.length,width,height,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3135',message:'Page callouts found',data:{pageCalloutsCount:pageCallouts.length,width,height,canvasZoom,scale,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'J'})}).catch(()=>{});
             // #endregion
             const calloutsToDelete = [];
 
             for (const callout of pageCallouts) {
               // Convert callout positions from percentages to canvas pixels
+              // Note: width/height are the page dimensions at current scale, so this should match canvas coordinates
               const arrowTipPx = {
                 x: callout.arrowTip.x * width,
                 y: callout.arrowTip.y * height
@@ -3621,6 +3630,9 @@ const PageAnnotationLayer = memo(({
 
       // Handle single-click object selection (no drag)
       if (!selectionRectRef.current) {
+        // Ensure canvas.selection is enabled for single-click selection
+        canvas.selection = true;
+        
         // Use geometry-based hit testing for single-click selection
         const pointer = canvas.getPointer(e.e);
         const allObjects = canvas.getObjects();
@@ -3755,7 +3767,8 @@ const PageAnnotationLayer = memo(({
         });
 
         // Apply our custom selection
-        // Enable canvas.selection to show selection handles/outline for selected objects
+        // Re-enable canvas.selection to show selection handles/outline for selected objects
+        // This was disabled during drag selection to prevent interference
         canvas.selection = true;
 
         canvas.discardActiveObject();
