@@ -30,6 +30,183 @@ import { configureFabricOverrides } from './utils/fabricCustomization';
 // Apply custom Drawboard-style controls and selection visuals
 configureFabricOverrides();
 
+// --- Arrowhead Style Constants ---
+export const ARROWHEAD_STYLES = {
+  NONE: 'none',
+  SOLID_TRIANGLE: 'solidTriangle',
+  V_SHAPE: 'vShape',
+  OPEN_CIRCLE: 'openCircle',
+  OPEN_TRIANGLE: 'openTriangle',
+  HORIZONTAL_LINE: 'horizontalLine'
+};
+
+export const ARROWHEAD_STYLE_LABELS = {
+  [ARROWHEAD_STYLES.NONE]: 'None',
+  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'Solid Triangle',
+  [ARROWHEAD_STYLES.V_SHAPE]: 'V-Shape',
+  [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Open Circle',
+  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Open Triangle',
+  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal Line'
+};
+
+/**
+ * Creates an arrowhead shape based on the specified style
+ * @param {number} x - X position of the arrow tip
+ * @param {number} y - Y position of the arrow tip
+ * @param {number} angle - Angle in radians from line start to end
+ * @param {string} color - Stroke/fill color
+ * @param {number} strokeWidth - Line stroke width
+ * @param {string} style - One of ARROWHEAD_STYLES
+ * @returns {fabric.Object|null} The arrowhead object or null for NONE style
+ */
+const createArrowhead = (x, y, angle, color, strokeWidth, style = ARROWHEAD_STYLES.SOLID_TRIANGLE) => {
+  // Scale arrowhead size based on stroke width
+  const baseSize = Math.max(12, strokeWidth * 3);
+  const angleDeg = (angle * 180) / Math.PI;
+
+  switch (style) {
+    case ARROWHEAD_STYLES.NONE:
+      return null;
+
+    case ARROWHEAD_STYLES.SOLID_TRIANGLE:
+      return new Triangle({
+        left: x,
+        top: y,
+        originX: 'center',
+        originY: 'center',
+        width: baseSize,
+        height: baseSize,
+        fill: color,
+        stroke: color,
+        strokeWidth: 0,
+        angle: angleDeg + 90,
+        name: 'arrowHead',
+        selectable: false,
+        evented: false
+      });
+
+    case ARROWHEAD_STYLES.V_SHAPE: {
+      // V-shape: two lines forming a V pointing in the arrow direction
+      const armLength = baseSize;
+      const armAngle = Math.PI / 6; // 30 degrees spread
+
+      // Calculate the two arm endpoints
+      const arm1X = x - armLength * Math.cos(angle - armAngle);
+      const arm1Y = y - armLength * Math.sin(angle - armAngle);
+      const arm2X = x - armLength * Math.cos(angle + armAngle);
+      const arm2Y = y - armLength * Math.sin(angle + armAngle);
+
+      // Create a polyline for the V shape
+      return new Polyline([
+        { x: arm1X, y: arm1Y },
+        { x: x, y: y },
+        { x: arm2X, y: arm2Y }
+      ], {
+        fill: 'transparent',
+        stroke: color,
+        strokeWidth: Math.max(2, strokeWidth),
+        strokeLineCap: 'round',
+        strokeLineJoin: 'round',
+        originX: 'center',
+        originY: 'center',
+        name: 'arrowHead',
+        selectable: false,
+        evented: false
+      });
+    }
+
+    case ARROWHEAD_STYLES.OPEN_CIRCLE: {
+      const radius = baseSize / 2;
+      return new Circle({
+        left: x,
+        top: y,
+        originX: 'center',
+        originY: 'center',
+        radius: radius,
+        fill: 'transparent',
+        stroke: color,
+        strokeWidth: Math.max(2, strokeWidth),
+        name: 'arrowHead',
+        selectable: false,
+        evented: false
+      });
+    }
+
+    case ARROWHEAD_STYLES.OPEN_TRIANGLE:
+      return new Triangle({
+        left: x,
+        top: y,
+        originX: 'center',
+        originY: 'center',
+        width: baseSize,
+        height: baseSize,
+        fill: 'transparent',
+        stroke: color,
+        strokeWidth: Math.max(2, strokeWidth),
+        angle: angleDeg + 90,
+        name: 'arrowHead',
+        selectable: false,
+        evented: false
+      });
+
+    case ARROWHEAD_STYLES.HORIZONTAL_LINE: {
+      // Perpendicular line at the end of the arrow
+      const halfLength = baseSize / 2;
+      const perpAngle = angle + Math.PI / 2; // Perpendicular to arrow direction
+
+      const lineX1 = x + halfLength * Math.cos(perpAngle);
+      const lineY1 = y + halfLength * Math.sin(perpAngle);
+      const lineX2 = x - halfLength * Math.cos(perpAngle);
+      const lineY2 = y - halfLength * Math.sin(perpAngle);
+
+      return new Line([lineX1, lineY1, lineX2, lineY2], {
+        stroke: color,
+        strokeWidth: Math.max(2, strokeWidth),
+        strokeLineCap: 'round',
+        originX: 'center',
+        originY: 'center',
+        name: 'arrowHead',
+        selectable: false,
+        evented: false
+      });
+    }
+
+    default:
+      // Default to solid triangle
+      return new Triangle({
+        left: x,
+        top: y,
+        originX: 'center',
+        originY: 'center',
+        width: baseSize,
+        height: baseSize,
+        fill: color,
+        stroke: color,
+        strokeWidth: 0,
+        angle: angleDeg + 90,
+        name: 'arrowHead',
+        selectable: false,
+        evented: false
+      });
+  }
+};
+
+/**
+ * Check if an object is an arrow (Line + arrowhead group, not a callout)
+ * @param {fabric.Object} obj
+ * @returns {boolean}
+ */
+const isArrowObject = (obj) => {
+  if (obj.type !== 'group') return false;
+  if (obj.data?.type === 'callout') return false;
+
+  const objects = obj.getObjects();
+  const hasLine = objects.some(o => o.type === 'line');
+  const hasArrowHead = objects.some(o => o.name === 'arrowHead' || o.type === 'triangle');
+
+  return hasLine && (hasArrowHead || objects.length === 1);
+};
+
 // --- Callout Control Helpers ---
 
 const getLocalPoint = (transform, x, y) => {
@@ -1257,7 +1434,7 @@ const PageAnnotationLayer = memo(({
   const [editModal, setEditModal] = useState(null); // { x, y, object }
   // Callout selection rect for drag selection
   const [calloutSelectionRect, setCalloutSelectionRect] = useState(null);
-  const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1 });
+  const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1, arrowheadStyle: ARROWHEAD_STYLES.SOLID_TRIANGLE });
   const editModalRef = useRef(null);
 
 

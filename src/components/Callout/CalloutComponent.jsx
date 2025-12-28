@@ -360,12 +360,6 @@ const CalloutComponent = ({
 
   const { style } = callout;
 
-  // Calculate text box center for line connection
-  const textBoxCenter = {
-    x: textBoxPosition.x + textBoxWidth / 2,
-    y: textBoxPosition.y + textBoxHeight / 2,
-  };
-
   // Find the closest point on the text box border to the knee
   const getClosestBorderPoint = () => {
     const halfW = textBoxWidth / 2;
@@ -426,26 +420,46 @@ const CalloutComponent = ({
 
   const lineEndPoint = getClosestBorderPoint();
 
-  // Line 1: textbox border → knee
-  const line1Start = lineEndPoint;
-  const line1End = knee;
+  // Connector geometry: textbox border → knee → arrow base
+  // We use a single continuous SVG path with stroke-linejoin for smooth corners at the knee
+  const connectorStart = lineEndPoint;
+  const connectorKnee = knee;
 
-  // Line 2: knee → arrow tip
-  const line2Start = knee;
-  const line2End = arrowTip;
-  
-  // Calculate line 2 hit area end point (stop before arrow tip to allow triangle clicks)
-  // The hit area triangle is 30px wide (3x scale), so stop about 32px before the tip
-  const line2HitAreaEnd = (() => {
+  // Arrow dimensions scale with line thickness for proper proportions
+  // Arrow width is 3x the line thickness, height is 2x
+  const arrowWidth = style.lineThickness * 3;
+  const arrowHeight = style.lineThickness * 2;
+
+  // Calculate arrow base point (where the stroke should end, not at the tip)
+  // to prevent the stroke from bleeding through the arrowhead
+  const arrowBasePoint = (() => {
     const dx = arrowTip.x - knee.x;
     const dy = arrowTip.y - knee.y;
     const length = Math.sqrt(dx * dx + dy * dy);
-    if (length < 35) {
-      // If line is very short, just use the tip
-      return arrowTip;
+    if (length === 0) return arrowTip;
+
+    // End the stroke at the arrow base (arrowWidth back from tip)
+    const ratio = Math.max(0, (length - arrowWidth) / length);
+    return {
+      x: knee.x + dx * ratio,
+      y: knee.y + dy * ratio,
+    };
+  })();
+
+  // Build the SVG path: M (move to start) L (line to knee) L (line to arrow base)
+  const connectorPathD = `M ${connectorStart.x} ${connectorStart.y} L ${connectorKnee.x} ${connectorKnee.y} L ${arrowBasePoint.x} ${arrowBasePoint.y}`;
+
+  // Calculate hit area path end point (stop before arrow tip to allow triangle clicks)
+  // The hit area triangle is 3x the arrow size, plus account for stroke width
+  const hitAreaEndPoint = (() => {
+    const dx = arrowTip.x - knee.x;
+    const dy = arrowTip.y - knee.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    // Stop distance = hit area arrow width (3x) + some margin
+    const stopDistance = arrowWidth * 3 + 10;
+    if (length < stopDistance + 20) {
+      return arrowBasePoint; // Use arrow base for short lines
     }
-    // Stop 35px before the arrow tip (to clear the larger 3x triangle hit area)
-    const stopDistance = 35;
     const ratio = (length - stopDistance) / length;
     return {
       x: knee.x + dx * ratio,
@@ -453,17 +467,20 @@ const CalloutComponent = ({
     };
   })();
 
+  // Hit area path for click detection (single continuous path)
+  const hitAreaPathD = `M ${connectorStart.x} ${connectorStart.y} L ${connectorKnee.x} ${connectorKnee.y} L ${hitAreaEndPoint.x} ${hitAreaEndPoint.y}`;
+
   // Calculate arrow head triangle points
   // Create a triangle pointing from knee to arrow tip
-  // scale parameter: 1 = original size (10x7), larger = bigger hit area
+  // scale parameter: 1 = visible arrow, larger = bigger hit area
   const calculateArrowHeadPoints = (scale = 1) => {
     const dx = arrowTip.x - knee.x;
     const dy = arrowTip.y - knee.y;
     const angle = Math.atan2(dy, dx);
 
-    // Base triangle dimensions: 10px wide, 7px tall (matching the marker)
-    const width = 10 * scale;
-    const height = 7 * scale;
+    // Arrow dimensions scale with line thickness (already calculated above)
+    const width = arrowWidth * scale;
+    const height = arrowHeight * scale;
 
     // Base triangle points (pointing right, with tip at origin)
     const basePoints = [
@@ -482,17 +499,13 @@ const CalloutComponent = ({
     }));
   };
 
-  // Visible triangle (original size, matches the SVG marker)
+  // Visible triangle (scaled to line thickness)
   const arrowHeadPoints = calculateArrowHeadPoints(1);
   const arrowHeadPointsString = arrowHeadPoints.map(p => `${p.x},${p.y}`).join(' ');
 
   // Larger invisible hit area triangle (3x bigger for easier clicking)
   const arrowHeadHitAreaPoints = calculateArrowHeadPoints(3);
   const arrowHeadHitAreaPointsString = arrowHeadHitAreaPoints.map(p => `${p.x},${p.y}`).join(' ');
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:470',message:'Arrow head points string',data:{pointsString:arrowHeadPointsString,isInteractive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-  // #endregion
 
   return (
     <>
@@ -509,105 +522,52 @@ const CalloutComponent = ({
           overflow: 'visible',
           pointerEvents: 'auto', // Always block events to prevent tools from passing through callouts
         }}
-        ref={(el) => {
-          if (el) {
-            // #region agent log
-            const svgStyle = window.getComputedStyle(el);
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:495',message:'SVG element ref',data:{svgPointerEvents:svgStyle.pointerEvents,childrenCount:el.children.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
-          }
-        }}
       >
-        <defs>
-          <marker
-            id={`arrowhead-${callout.id}`}
-            markerWidth="10"
-            markerHeight="7"
-            refX="9"
-            refY="3.5"
-            orient="auto"
-          >
-            <polygon
-              points="0 0, 10 3.5, 0 7"
-              fill={hexToRgba(style.borderColor, style.borderOpacity)}
-            />
-          </marker>
-        </defs>
-
-        {/* Hit area for Line 1 - invisible wider stroke for easier clicking */}
-        <line
-          x1={line1Start.x}
-          y1={line1Start.y}
-          x2={line1End.x}
-          y2={line1End.y}
+        {/* Hit area for connector path - invisible wider stroke for easier clicking */}
+        <path
+          d={hitAreaPathD}
           stroke="transparent"
           strokeWidth={16}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          fill="none"
           style={{ pointerEvents: 'stroke', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
 
-        {/* Line 1: Textbox to knee */}
-        <line
-          x1={line1Start.x}
-          y1={line1Start.y}
-          x2={line1End.x}
-          y2={line1End.y}
+        {/* Connector path: Textbox border → Knee → Arrow base */}
+        {/* Single continuous path with stroke-linejoin for smooth corners at the knee */}
+        <path
+          d={connectorPathD}
           stroke={hexToRgba(style.borderColor, style.borderOpacity)}
           strokeWidth={style.lineThickness}
-          style={{ pointerEvents: 'none' }}
-        />
-
-        {/* Hit area for Line 2 - invisible wider stroke for easier clicking */}
-        {/* Stop before arrow tip to allow triangle polygon to be clickable */}
-        <line
-          x1={line2Start.x}
-          y1={line2Start.y}
-          x2={line2HitAreaEnd.x}
-          y2={line2HitAreaEnd.y}
-          stroke="transparent"
-          strokeWidth={16}
-          style={{ pointerEvents: 'stroke', cursor: isInteractive ? 'pointer' : 'default' }}
-          onMouseDown={(e) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:577',message:'Line 2 hit area mousedown',data:{clientX:e.clientX,clientY:e.clientY,line2StartX:line2Start.x,line2StartY:line2Start.y,line2HitAreaEndX:line2HitAreaEnd.x,line2HitAreaEndY:line2HitAreaEnd.y,arrowTipX:arrowTip.x,arrowTipY:arrowTip.y},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
-            handleLineMouseDown(e);
-          }}
-          onClick={handleLineClick}
-        />
-
-        {/* Line 2: Knee to arrow tip */}
-        <line
-          x1={line2Start.x}
-          y1={line2Start.y}
-          x2={line2End.x}
-          y2={line2End.y}
-          stroke={hexToRgba(style.borderColor, style.borderOpacity)}
-          strokeWidth={style.lineThickness}
-          markerEnd={`url(#arrowhead-${callout.id})`}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          fill="none"
           style={{ pointerEvents: 'none' }}
         />
 
         {/* Invisible larger hit area triangle (3x size) for easier clicking */}
+        {/* Render AFTER line hit area so it gets pointer events first (SVG processes later elements first) */}
         <polygon
           points={arrowHeadHitAreaPointsString}
           fill="transparent"
           style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
-          onMouseDown={(e) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:597',message:'Hit area polygon mousedown',data:{clientX:e.clientX,clientY:e.clientY,points:arrowHeadHitAreaPointsString},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
-            handleLineMouseDown(e);
-          }}
+          onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
 
         {/* Visible arrow head triangle (original size) */}
+        {/* Also clickable - users expect to click on the visible triangle */}
         <polygon
           points={arrowHeadPointsString}
           fill={hexToRgba(style.borderColor, style.borderOpacity)}
-          style={{ pointerEvents: 'none' }}
+          stroke={hexToRgba(style.borderColor, style.borderOpacity)}
+          strokeWidth={1}
+          style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
+          onMouseDown={handleLineMouseDown}
+          onClick={handleLineClick}
         />
 
         {/* Hit area for knee - invisible circle for easier clicking */}
