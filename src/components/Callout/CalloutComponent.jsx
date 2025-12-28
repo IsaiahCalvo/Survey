@@ -331,7 +331,7 @@ const CalloutComponent = ({
           width: '100%',
           height: '100%',
           overflow: 'visible',
-          pointerEvents: 'none', // Let events pass through except for hit areas
+          pointerEvents: 'auto', // Always block events to prevent tools from passing through callouts
         }}
       >
         <defs>
@@ -358,7 +358,7 @@ const CalloutComponent = ({
           y2={line1End.y}
           stroke="transparent"
           strokeWidth={16}
-          style={{ pointerEvents: isInteractive ? 'stroke' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+          style={{ pointerEvents: 'stroke', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
@@ -382,7 +382,7 @@ const CalloutComponent = ({
           y2={line2End.y}
           stroke="transparent"
           strokeWidth={16}
-          style={{ pointerEvents: isInteractive ? 'stroke' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+          style={{ pointerEvents: 'stroke', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
