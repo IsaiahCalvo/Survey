@@ -207,12 +207,27 @@ export const CalloutComponent: React.FC<CalloutComponentProps> = ({
     onStartDrag({ type: targetType, calloutId: callout.id }, { x: 0, y: 0 });
   }, [callout.id, onSelect, onStartDrag]);
 
+  const handleLineMouseDown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSelect();
+  }, [onSelect]);
+
   const handleLineClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onSelect();
   }, [onSelect]);
 
+  const handleArrowAreaMouseDown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSelect();
+  }, [onSelect]);
+
   const handleArrowAreaClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSelect();
+  }, [onSelect]);
+
+  const handleKneeAreaMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onSelect();
   }, [onSelect]);
@@ -345,9 +360,10 @@ export const CalloutComponent: React.FC<CalloutComponentProps> = ({
           stroke={hexToRgba(style.borderColor, style.borderOpacity)}
           strokeWidth={style.lineThickness}
           style={{ pointerEvents: 'stroke' }}
+          onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
-        
+
         {/* Line 2: Knee to arrow tip - always connected */}
         <line
           x1={line2Start.x}
@@ -358,6 +374,7 @@ export const CalloutComponent: React.FC<CalloutComponentProps> = ({
           strokeWidth={style.lineThickness}
           markerEnd={`url(#arrowhead-${callout.id})`}
           style={{ pointerEvents: 'stroke' }}
+          onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
       </svg>
@@ -373,6 +390,7 @@ export const CalloutComponent: React.FC<CalloutComponentProps> = ({
             height: 24,
             zIndex: 1,
           }}
+          onMouseDown={handleArrowAreaMouseDown}
           onClick={handleArrowAreaClick}
         />
       )}
@@ -388,6 +406,7 @@ export const CalloutComponent: React.FC<CalloutComponentProps> = ({
             height: 24,
             zIndex: 1,
           }}
+          onMouseDown={handleKneeAreaMouseDown}
           onClick={handleKneeAreaClick}
         />
       )}

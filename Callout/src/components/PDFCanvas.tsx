@@ -47,8 +47,12 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only start callout creation when clicking directly on the canvas background
+    // When clicking on existing callouts, their handlers will handle selection/dragging
+    if (e.target !== canvasRef.current) return;
+
     const pos = getMousePosition(e);
-    
+
     // If callout tool is active and clicking on empty space, start creation
     if (activeTool === 'callout' && dragTarget.type === 'none') {
       setCreationState({
