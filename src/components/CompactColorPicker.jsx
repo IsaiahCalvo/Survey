@@ -8,7 +8,41 @@ const PRESET_COLORS = [
     '#FFFFFF', '#C0C0C0', '#808080', '#000000', // Greys
 ];
 
-const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
+// Preset colors for border/line (darker colors)
+const PRESET_BORDER_COLORS = [
+    '#1e293b', // slate-800
+    '#dc2626', // red-600
+    '#16a34a', // green-600
+    '#2563eb', // blue-600
+    '#9333ea', // purple-600
+    '#ea580c', // orange-600
+    '#0891b2', // cyan-600
+    '#000000', // black
+];
+
+// Preset colors for fill (lighter colors)
+const PRESET_FILL_COLORS = [
+    '#fef3c7', // amber-100
+    '#fee2e2', // red-100
+    '#dcfce7', // green-100
+    '#dbeafe', // blue-100
+    '#f3e8ff', // purple-100
+    '#ffedd5', // orange-100
+    '#cffafe', // cyan-100
+    '#ffffff', // white
+    'transparent',
+];
+
+const CompactColorPicker = ({ 
+    color, 
+    opacity = 1, 
+    onChange, 
+    onClose,
+    // New props for border/fill mode
+    showBorderFillToggle = false,
+    colorMode = 'border', // 'border' or 'fill'
+    onColorModeChange = null
+}) => {
     const [mode, setMode] = useState('grid'); // 'grid' or 'spectrum'
     const [localHex, setLocalHex] = useState(color || '#000000');
     const [localOpacity, setLocalOpacity] = useState(opacity * 100);
@@ -45,6 +79,16 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
         // or just rely on manual updates. For now, let's just sync hex.
         setLocalHex(color);
     }, [color]);
+
+    // Get the appropriate preset colors based on mode
+    const getPresetColors = () => {
+        if (showBorderFillToggle) {
+            return colorMode === 'border' ? PRESET_BORDER_COLORS : PRESET_FILL_COLORS;
+        }
+        return PRESET_COLORS;
+    };
+
+    const presetColors = getPresetColors();
 
     // Handle Hue Change
     const handleHueChange = (e) => {
@@ -136,9 +180,45 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
         }}
             onClick={(e) => e.stopPropagation()}
         >
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ color: '#eee', fontSize: '13px', fontWeight: 600 }}>Color</span>
+            {/* Header with Border/Fill Toggle */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                    <label style={{ fontSize: 10, fontWeight: 500, color: '#888', textTransform: 'uppercase' }}>
+                        COLOR
+                    </label>
+                    {showBorderFillToggle && onColorModeChange && (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                            <button
+                                onClick={() => onColorModeChange('border')}
+                                style={{
+                                    padding: '4px 8px',
+                                    fontSize: 10,
+                                    border: colorMode === 'border' ? '1px solid #4a90e2' : '1px solid #555',
+                                    background: colorMode === 'border' ? '#4a90e2' : 'transparent',
+                                    color: colorMode === 'border' ? 'white' : '#ccc',
+                                    borderRadius: 4,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                Border
+                            </button>
+                            <button
+                                onClick={() => onColorModeChange('fill')}
+                                style={{
+                                    padding: '4px 8px',
+                                    fontSize: 10,
+                                    border: colorMode === 'fill' ? '1px solid #4a90e2' : '1px solid #555',
+                                    background: colorMode === 'fill' ? '#4a90e2' : 'transparent',
+                                    color: colorMode === 'fill' ? 'white' : '#ccc',
+                                    borderRadius: 4,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                Fill
+                            </button>
+                        </div>
+                    )}
+                </div>
                 <div style={{ display: 'flex', gap: '4px', background: '#333', padding: '2px', borderRadius: '4px' }}>
                     <button
                         onClick={() => setMode('grid')}
@@ -181,8 +261,8 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
             </div>
 
             {mode === 'grid' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '6px' }}>
-                    {PRESET_COLORS.map(c => (
+                <div style={{ display: 'grid', gridTemplateColumns: showBorderFillToggle && colorMode === 'fill' ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)', gap: '6px' }}>
+                    {presetColors.map(c => (
                         <button
                             key={c}
                             onClick={() => {
@@ -193,7 +273,11 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
                                 width: '100%',
                                 aspectRatio: '1',
                                 borderRadius: '4px',
-                                background: c,
+                                background: c === 'transparent'
+                                    ? 'linear-gradient(45deg, #555 25%, transparent 25%), linear-gradient(-45deg, #555 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #555 75%), linear-gradient(-45deg, transparent 75%, #555 75%)'
+                                    : c,
+                                backgroundSize: c === 'transparent' ? '8px 8px' : 'auto',
+                                backgroundPosition: c === 'transparent' ? '0 0, 0 4px, 4px -4px, -4px 0px' : 'auto',
                                 border: localHex === c ? '2px solid white' : '1px solid #444',
                                 cursor: 'pointer'
                             }}

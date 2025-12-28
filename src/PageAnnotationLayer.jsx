@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, memo, useState, useCallback } from 'react';
+import CalloutOverlay from './components/Callout';
 
 // Globally patch getContext BEFORE importing Fabric.js to prevent willReadFrequently warnings
 // This must happen before any canvas contexts are created by Fabric
@@ -28,35 +29,6 @@ import { configureFabricOverrides } from './utils/fabricCustomization';
 
 // Apply custom Drawboard-style controls and selection visuals
 configureFabricOverrides();
-
-// --- Callout Helper Functions ---
-
-// Convert hex color to rgba string
-const hexToRgba = (hex, opacity) => {
-  if (hex === 'transparent') return 'transparent';
-  if (!hex || !hex.startsWith('#')) return hex;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-};
-
-// Default callout style
-const defaultCalloutStyle = {
-  borderColor: '#1e293b',
-  borderOpacity: 1,
-  lineThickness: 2,
-  fillColor: '#ffffff',
-  fillOpacity: 1,
-  fontFamily: 'Inter, Arial, sans-serif',
-  fontSize: 14,
-  fontColor: '#1e293b',
-  bold: false,
-  italic: false,
-  underline: false,
-  strikethrough: false,
-  textAlign: 'left',
-};
 
 // --- Callout Control Helpers ---
 
@@ -222,14 +194,11 @@ const updateCalloutGroupConnections = (group) => {
 
   // Update text border position and size to match text
   if (textBorder) {
-    // Get style from group data to determine border thickness
-    const style = group.data?.style || defaultCalloutStyle;
-    const borderThickness = style.lineThickness || 2;
     textBorder.set({
-      left: text.left - borderThickness,
-      top: text.top - borderThickness,
-      width: text.width + (borderThickness * 2),
-      height: text.height + (borderThickness * 2)
+      left: text.left - 2,
+      top: text.top - 2,
+      width: text.width + 4,
+      height: text.height + 4
     });
     textBorder.setCoords();
   }
@@ -241,35 +210,7 @@ const updateCalloutGroupConnections = (group) => {
 };
 
 
-const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas, styleOptions = {}) => {
-  // Merge provided style with defaults
-  const style = { ...defaultCalloutStyle, ...styleOptions };
-  
-  // Use style values, falling back to parameters if style not provided
-  const borderColor = style.borderColor || strokeColor || defaultCalloutStyle.borderColor;
-  const borderOpacity = style.borderOpacity !== undefined ? style.borderOpacity : defaultCalloutStyle.borderOpacity;
-  const lineThickness = style.lineThickness || strokeWidth || defaultCalloutStyle.lineThickness;
-  const fillColor = style.fillColor || defaultCalloutStyle.fillColor;
-  const fillOpacity = style.fillOpacity !== undefined ? style.fillOpacity : defaultCalloutStyle.fillOpacity;
-  const fontFamily = style.fontFamily || defaultCalloutStyle.fontFamily;
-  const fontSize = style.fontSize || defaultCalloutStyle.fontSize;
-  const fontColor = style.fontColor || defaultCalloutStyle.fontColor;
-  const textAlign = style.textAlign || defaultCalloutStyle.textAlign;
-  
-  // Build text decoration
-  const textDecoration = [];
-  if (style.underline) textDecoration.push('underline');
-  if (style.strikethrough) textDecoration.push('line-through');
-  const textDecorationStr = textDecoration.length > 0 ? textDecoration.join(' ') : 'none';
-  
-  // Build font weight and style
-  const fontWeight = style.bold ? 'bold' : 'normal';
-  const fontStyle = style.italic ? 'italic' : 'normal';
-  
-  // Convert colors to rgba
-  const borderColorRgba = hexToRgba(borderColor, borderOpacity);
-  const fillColorRgba = fillColor === 'transparent' ? 'transparent' : hexToRgba(fillColor, fillOpacity);
-  
+const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
   // --- 1. L-Shape Logic ---
   // Default Knee: Horizontal from text, Vertical from Tip? or Horizontal from Tip?
   // User image usually implies: Tip -> Line -> Horizontal Segment -> Text.
@@ -281,7 +222,7 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas, styleO
   // Let's set Knee to mimic the Text's connection point (middle-left).
 
   // Let's try: Knee X is half-way. Knee Y is same as Text Y (middle).
-  const textHeight = fontSize + 10; // Approximate based on font size
+  const textHeight = 24; // approx
   const knee = {
     x: (start.x + end.x) / 2,
     y: end.y + textHeight / 2
@@ -299,9 +240,9 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas, styleO
   const head = new Triangle({
     left: start.x,
     top: start.y,
-    width: 12 + lineThickness,
-    height: 12 + lineThickness,
-    fill: borderColorRgba,
+    width: 12 + strokeWidth,
+    height: 12 + strokeWidth,
+    fill: strokeColor,
     originX: 'center',
     originY: 'center',
     angle: angle + 270,
@@ -311,18 +252,14 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas, styleO
   const text = new Textbox('Text', {
     left: end.x,
     top: end.y,
-    fontSize: fontSize,
-    fill: fontColor,
+    fontSize: 16,
+    fill: strokeColor,           // Text color
     width: 100,
-    backgroundColor: fillColorRgba,
+    backgroundColor: 'rgba(255,255,255,0.9)',  // White fill (default)
     name: 'calloutText',
     originX: 'left',
     originY: 'top',
-    fontFamily: fontFamily,
-    fontWeight: fontWeight,
-    fontStyle: fontStyle,
-    textDecoration: textDecorationStr,
-    textAlign: textAlign,
+    fontFamily: 'Arial',         // Default font
     // Note: Textbox stroke applies to text characters, not box border
     // We'll use a separate rect for the border
     padding: 5,
@@ -334,10 +271,10 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas, styleO
     left: end.x - 2,
     top: end.y - 2,
     width: text.width + 4,
-    height: textHeight, // Will be updated dynamically
+    height: 24, // Will be updated dynamically
     fill: 'transparent',
-    stroke: borderColorRgba,
-    strokeWidth: lineThickness,
+    stroke: strokeColor,
+    strokeWidth: strokeWidth,
     name: 'calloutTextBorder',
     originX: 'left',
     originY: 'top'
@@ -347,8 +284,8 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas, styleO
   // when all positions have been converted to group-relative coordinates
   // Don't set originX/originY - let Fabric use default 'center' for proper positioning
   const line = new Polyline([{ x: 0, y: 0 }, { x: 1, y: 1 }], {
-    stroke: borderColorRgba,
-    strokeWidth: lineThickness,
+    stroke: strokeColor,
+    strokeWidth: strokeWidth,
     fill: null,
     strokeLineCap: 'round',
     strokeLineJoin: 'round',
@@ -367,10 +304,7 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas, styleO
     lockRotation: true,
     lockMovementX: true, // Prevent normal drag - require Cmd/Ctrl to move entire callout
     lockMovementY: true,
-    data: { 
-      type: 'callout',
-      style: style // Store full style for persistence and editing
-    }
+    data: { type: 'callout' }
   });
 
   // After group creation, Fabric.js has converted all positions to group-relative
@@ -462,13 +396,11 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas, styleO
 
       // Update border to match text
       if (textBorder) {
-        const style = target.data?.style || defaultCalloutStyle;
-        const borderThickness = style.lineThickness || 2;
         textBorder.set({
-          left: text.left - borderThickness,
-          top: text.top - borderThickness,
-          width: text.width + (borderThickness * 2),
-          height: text.height + (borderThickness * 2)
+          left: text.left - 2,
+          top: text.top - 2,
+          width: text.width + 4,
+          height: text.height + 4
         });
       }
     }
@@ -1216,6 +1148,11 @@ const PageAnnotationLayer = memo(({
   eraserSize = 20, // Eraser radius in pixels
   showSurveyPanel = false, // Whether survey mode is active
   layerVisibility = { 'native': true, 'pdf-annotations': true }, // Layer visibility toggles
+  // Callout overlay props
+  callouts = [], // Array of all callout objects
+  setCallouts = () => {}, // Update callouts callback
+  selectedCalloutId = null, // Currently selected callout ID
+  setSelectedCalloutId = () => {}, // Set selected callout callback
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
@@ -1266,6 +1203,8 @@ const PageAnnotationLayer = memo(({
   const clipboardRef = useRef(null);
   // Edit Modal State
   const [editModal, setEditModal] = useState(null); // { x, y, object }
+  // Callout selection rect for drag selection
+  const [calloutSelectionRect, setCalloutSelectionRect] = useState(null);
   const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1 });
   const editModalRef = useRef(null);
 
@@ -1471,66 +1410,19 @@ const PageAnnotationLayer = memo(({
       // Get initial values from first object if selection
       const target = activeObject.type === 'activeSelection' ? activeObject.getObjects()[0] : activeObject;
 
-      if (target.data?.type === 'callout') {
-        // Extract style from callout group
-        const style = target.data.style || defaultCalloutStyle;
-        const text = target.getObjects().find(o => o.name === 'calloutText');
-        const line = target.getObjects().find(o => o.name === 'calloutLine');
-        
-        // Parse rgba colors back to hex if needed
-        const parseColorFromRgba = (rgba) => {
-          if (!rgba || rgba === 'transparent') return rgba;
-          if (rgba.startsWith('#')) return rgba;
-          const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-          if (match) {
-            const r = parseInt(match[1]).toString(16).padStart(2, '0');
-            const g = parseInt(match[2]).toString(16).padStart(2, '0');
-            const b = parseInt(match[3]).toString(16).padStart(2, '0');
-            return `#${r}${g}${b}`;
-          }
-          return rgba;
-        };
-
-        setEditValues({
-          // Border/Line properties
-          borderColor: style.borderColor || parseColorFromRgba(line?.stroke) || defaultCalloutStyle.borderColor,
-          borderOpacity: style.borderOpacity !== undefined ? style.borderOpacity : (target.opacity !== undefined ? target.opacity : 1),
-          lineThickness: style.lineThickness || line?.strokeWidth || defaultCalloutStyle.lineThickness,
-          // Fill properties
-          fillColor: style.fillColor || parseColorFromRgba(text?.backgroundColor) || defaultCalloutStyle.fillColor,
-          fillOpacity: style.fillOpacity !== undefined ? style.fillOpacity : 1,
-          // Text properties
-          fontColor: style.fontColor || parseColorFromRgba(text?.fill) || defaultCalloutStyle.fontColor,
-          fontFamily: style.fontFamily || text?.fontFamily || defaultCalloutStyle.fontFamily,
-          fontSize: style.fontSize || text?.fontSize || defaultCalloutStyle.fontSize,
-          bold: style.bold || (text?.fontWeight === 'bold'),
-          italic: style.italic || (text?.fontStyle === 'italic'),
-          underline: style.underline || (text?.textDecoration?.includes('underline')),
-          strikethrough: style.strikethrough || (text?.textDecoration?.includes('line-through')),
-          textAlign: style.textAlign || text?.textAlign || defaultCalloutStyle.textAlign,
-          // Legacy props for compatibility
-          stroke: style.borderColor || parseColorFromRgba(line?.stroke) || defaultCalloutStyle.borderColor,
-          strokeWidth: style.lineThickness || line?.strokeWidth || defaultCalloutStyle.lineThickness,
-          opacity: target.opacity !== undefined ? target.opacity : 1,
-          fill: style.fontColor || parseColorFromRgba(text?.fill) || defaultCalloutStyle.fontColor,
-          fontWeight: style.bold ? 'bold' : 'normal',
-          fontStyle: style.italic ? 'italic' : 'normal',
-        });
-      } else {
-        // Regular annotation
-        setEditValues({
-          stroke: target.stroke || '#000000',
-          strokeWidth: target.strokeWidth || 1,
-          opacity: target.opacity !== undefined ? target.opacity : 1,
-          fill: target.fill || 'transparent',
-          fontSize: 16,
-          fontWeight: 'normal',
-          fontStyle: 'normal',
-          textAlign: 'left',
-          fontFamily: 'Arial',
-          fillColor: '#ffffff'
-        });
-      }
+      setEditValues({
+        stroke: target.stroke || '#000000',
+        strokeWidth: target.strokeWidth || 1,
+        opacity: target.opacity !== undefined ? target.opacity : 1,
+        // Callout specific props
+        fill: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fill || '#000000') : (target.fill || 'transparent'),
+        fontSize: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontSize || 16) : 16,
+        fontWeight: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontWeight || 'normal') : 'normal',
+        fontStyle: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontStyle || 'normal') : 'normal',
+        textAlign: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.textAlign || 'left') : 'left',
+        fontFamily: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontFamily || 'Arial') : 'Arial',
+        fillColor: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.backgroundColor || 'rgba(255,255,255,0.9)') : '#ffffff'
+      });
 
       // Capture initial state for revert
       const objects = activeObject.type === 'activeSelection' ? activeObject.getObjects() : [activeObject];
@@ -1561,37 +1453,6 @@ const PageAnnotationLayer = memo(({
 
     objects.forEach(obj => {
       if (obj.data?.type === 'callout') {
-        // Build updated style object
-        const updatedStyle = {
-          borderColor: editValues.borderColor || editValues.stroke || defaultCalloutStyle.borderColor,
-          borderOpacity: editValues.borderOpacity !== undefined ? editValues.borderOpacity : (editValues.opacity !== undefined ? editValues.opacity : 1),
-          lineThickness: editValues.lineThickness || editValues.strokeWidth || defaultCalloutStyle.lineThickness,
-          fillColor: editValues.fillColor || defaultCalloutStyle.fillColor,
-          fillOpacity: editValues.fillOpacity !== undefined ? editValues.fillOpacity : 1,
-          fontColor: editValues.fontColor || editValues.fill || defaultCalloutStyle.fontColor,
-          fontFamily: editValues.fontFamily || defaultCalloutStyle.fontFamily,
-          fontSize: editValues.fontSize || defaultCalloutStyle.fontSize,
-          bold: editValues.bold !== undefined ? editValues.bold : (editValues.fontWeight === 'bold'),
-          italic: editValues.italic !== undefined ? editValues.italic : (editValues.fontStyle === 'italic'),
-          underline: editValues.underline || false,
-          strikethrough: editValues.strikethrough || false,
-          textAlign: editValues.textAlign || defaultCalloutStyle.textAlign,
-        };
-        
-        // Store updated style in group data
-        if (!obj.data) obj.data = {};
-        obj.data.style = updatedStyle;
-        
-        // Convert colors to rgba
-        const borderColorRgba = hexToRgba(updatedStyle.borderColor, updatedStyle.borderOpacity);
-        const fillColorRgba = updatedStyle.fillColor === 'transparent' ? 'transparent' : hexToRgba(updatedStyle.fillColor, updatedStyle.fillOpacity);
-        
-        // Build text decoration
-        const textDecoration = [];
-        if (updatedStyle.underline) textDecoration.push('underline');
-        if (updatedStyle.strikethrough) textDecoration.push('line-through');
-        const textDecorationStr = textDecoration.length > 0 ? textDecoration.join(' ') : 'none';
-        
         // Apply to Callout parts
         const line = obj.getObjects().find(o => o.name === 'calloutLine');
         const head = obj.getObjects().find(o => o.name === 'calloutHead');
@@ -1599,32 +1460,29 @@ const PageAnnotationLayer = memo(({
         const textBorder = obj.getObjects().find(o => o.name === 'calloutTextBorder');
 
         if (line) {
-          line.set({ stroke: borderColorRgba, strokeWidth: updatedStyle.lineThickness });
+          line.set({ stroke: editValues.stroke, strokeWidth: parseInt(editValues.strokeWidth, 10) });
         }
         if (head) {
-          head.set({ fill: borderColorRgba });
+          head.set({ fill: editValues.stroke }); // Arrow head matches line color
         }
         if (text) {
           text.set({
-            fill: updatedStyle.fontColor,
-            fontSize: updatedStyle.fontSize,
-            fontWeight: updatedStyle.bold ? 'bold' : 'normal',
-            fontStyle: updatedStyle.italic ? 'italic' : 'normal',
-            textDecoration: textDecorationStr,
-            textAlign: updatedStyle.textAlign,
-            fontFamily: updatedStyle.fontFamily,
-            backgroundColor: fillColorRgba
+            fill: editValues.fill, // Text color
+            fontSize: parseInt(editValues.fontSize, 10),
+            fontWeight: editValues.fontWeight,
+            fontStyle: editValues.fontStyle,
+            textAlign: editValues.textAlign,
+            fontFamily: editValues.fontFamily || 'Arial',
+            backgroundColor: editValues.fillColor === 'transparent' ? '' : (editValues.fillColor || 'rgba(255,255,255,0.9)')
           });
         }
         if (textBorder) {
           textBorder.set({
-            stroke: borderColorRgba,
-            strokeWidth: updatedStyle.lineThickness
+            stroke: editValues.stroke,        // Border matches line color
+            strokeWidth: parseInt(editValues.strokeWidth, 10)
           });
         }
-        
-        // Update connections to reflect style changes
-        updateCalloutGroupConnections(obj);
+        obj.set({ opacity: parseFloat(editValues.opacity) });
       } else {
         obj.set({
           stroke: editValues.stroke,
@@ -1655,48 +1513,26 @@ const PageAnnotationLayer = memo(({
       // Don't modify if values are not valid numbers
       if (editValues.opacity >= 0 && editValues.opacity <= 1) {
         if (obj.data?.type === 'callout') {
-          // Build style from edit values
-          const borderColor = editValues.borderColor || editValues.stroke || defaultCalloutStyle.borderColor;
-          const borderOpacity = editValues.borderOpacity !== undefined ? editValues.borderOpacity : (editValues.opacity !== undefined ? editValues.opacity : 1);
-          const lineThickness = editValues.lineThickness || editValues.strokeWidth || defaultCalloutStyle.lineThickness;
-          const fillColor = editValues.fillColor || defaultCalloutStyle.fillColor;
-          const fillOpacity = editValues.fillOpacity !== undefined ? editValues.fillOpacity : 1;
-          const fontColor = editValues.fontColor || editValues.fill || defaultCalloutStyle.fontColor;
-          
-          const borderColorRgba = hexToRgba(borderColor, borderOpacity);
-          const fillColorRgba = fillColor === 'transparent' ? 'transparent' : hexToRgba(fillColor, fillOpacity);
-          
-          // Build text decoration
-          const textDecoration = [];
-          if (editValues.underline) textDecoration.push('underline');
-          if (editValues.strikethrough) textDecoration.push('line-through');
-          const textDecorationStr = textDecoration.length > 0 ? textDecoration.join(' ') : 'none';
-          
           const line = obj.getObjects().find(o => o.name === 'calloutLine');
           const head = obj.getObjects().find(o => o.name === 'calloutHead');
           const text = obj.getObjects().find(o => o.name === 'calloutText');
           const textBorder = obj.getObjects().find(o => o.name === 'calloutTextBorder');
-          
-          if (line) line.set({ stroke: borderColorRgba, strokeWidth: lineThickness });
-          if (head) head.set({ fill: borderColorRgba });
+          if (line) line.set({ stroke: editValues.stroke, strokeWidth: parseInt(editValues.strokeWidth, 10) });
+          if (head) head.set({ fill: editValues.stroke });
           if (text) text.set({
-            fill: fontColor,
-            fontSize: editValues.fontSize || defaultCalloutStyle.fontSize,
-            fontWeight: (editValues.bold || editValues.fontWeight === 'bold') ? 'bold' : 'normal',
-            fontStyle: (editValues.italic || editValues.fontStyle === 'italic') ? 'italic' : 'normal',
-            textDecoration: textDecorationStr,
-            textAlign: editValues.textAlign || defaultCalloutStyle.textAlign,
-            fontFamily: editValues.fontFamily || defaultCalloutStyle.fontFamily,
-            backgroundColor: fillColorRgba
+            fill: editValues.fill,
+            fontSize: parseInt(editValues.fontSize, 10),
+            fontWeight: editValues.fontWeight,
+            fontStyle: editValues.fontStyle,
+            textAlign: editValues.textAlign,
+            fontFamily: editValues.fontFamily || 'Arial',
+            backgroundColor: editValues.fillColor === 'transparent' ? '' : (editValues.fillColor || 'rgba(255,255,255,0.9)')
           });
           if (textBorder) textBorder.set({
-            stroke: borderColorRgba,
-            strokeWidth: lineThickness
+            stroke: editValues.stroke,
+            strokeWidth: parseInt(editValues.strokeWidth, 10)
           });
           obj.set({ opacity: parseFloat(editValues.opacity) });
-          
-          // Update connections
-          updateCalloutGroupConnections(obj);
         } else {
           obj.set({
             stroke: editValues.stroke,
@@ -2050,18 +1886,6 @@ const PageAnnotationLayer = memo(({
           }
         });
 
-        // Cancel any active drawing
-        const ds = drawingStateRef.current;
-        if (ds.isDrawingShape && ds.tempObj) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2055',message:'Escape pressed - canceling drawing',data:{tool:toolRef.current,isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj,tempObjType:ds.tempObj?.type,isPreview:ds.tempObj?.isPreview},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
-          canvas.remove(ds.tempObj);
-          ds.isDrawingShape = false;
-          ds.tempObj = null;
-          canvas.requestRenderAll();
-        }
-        
         // Switch to select tool
         if (toolRef.current === 'callout') {
           onToolChange('select');
@@ -2999,28 +2823,7 @@ const PageAnnotationLayer = memo(({
       } else if (currentTool === 'arrow') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'callout') {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2993',message:'Callout tool mouseDown - creating preview group',data:{tool:currentTool,x,y,strokeColor:currentStrokeColor,strokeWidth:currentStrokeWidth},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        // Create callout preview group immediately for visual feedback during drag
-        const calloutStyle = {
-          ...defaultCalloutStyle,
-          borderColor: currentStrokeColor || defaultCalloutStyle.borderColor,
-          lineThickness: currentStrokeWidth || defaultCalloutStyle.lineThickness,
-        };
-        temp = createCalloutGroup(
-          { x, y },
-          { x, y },
-          currentStrokeColor,
-          currentStrokeWidth,
-          canvas,
-          calloutStyle
-        );
-        // Mark as temporary preview (will be finalized on mouseUp)
-        temp.set({ isPreview: true });
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3007',message:'Callout preview group created',data:{tempType:temp.type,hasData:!!temp.data,dataType:temp.data?.type,isPreview:temp.isPreview},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
+        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'squiggly') {
         temp = new Polyline([[x, y]], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'note') {
@@ -3146,48 +2949,12 @@ const PageAnnotationLayer = memo(({
       const { x, y } = canvas.getPointer(opt.e);
       const sx = ds.startX;
       const sy = ds.startY;
-      // #region agent log
-      const currentToolMove = toolRef.current;
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3122',message:'MouseMove during shape drawing',data:{tool:currentToolMove,tempObjType:ds.tempObj.type,isDrawingShape:ds.isDrawingShape,x,y,startX:sx,startY:sy,isPreview:ds.tempObj.isPreview},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       if (ds.tempObj.type === 'rect') {
         ds.tempObj.set({ left: Math.min(sx, x), top: Math.min(sy, y), width: Math.abs(x - sx), height: Math.abs(y - sy) });
       } else if (ds.tempObj.type === 'circle') {
         ds.tempObj.set({ left: Math.min(sx, x), top: Math.min(sy, y), radius: Math.max(Math.abs(x - sx), Math.abs(y - sy)) / 2 });
       } else if (ds.tempObj.type === 'line') {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3134',message:'Updating line tempObj during drag',data:{tool:currentToolMove,tempObjType:ds.tempObj.type,x2:x,y2:y},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         ds.tempObj.set({ x2: x, y2: y });
-      } else if (ds.tempObj.data?.type === 'callout' && ds.tempObj.isPreview) {
-        // Update callout preview group during drag
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3141',message:'Updating callout preview during drag',data:{tool:currentToolMove,tempObjType:ds.tempObj.type,startX:sx,startY:sy,endX:x,endY:y},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        // Update head position (start point) and text position (end point)
-        const head = ds.tempObj.getObjects().find(o => o.name === 'calloutHead');
-        const text = ds.tempObj.getObjects().find(o => o.name === 'calloutText');
-        const textBorder = ds.tempObj.getObjects().find(o => o.name === 'calloutTextBorder');
-        
-        if (head) {
-          head.set({ left: sx, top: sy });
-        }
-        if (text) {
-          text.set({ left: x, top: y });
-        }
-        if (textBorder) {
-          const style = ds.tempObj.data?.style || defaultCalloutStyle;
-          const borderThickness = style.lineThickness || 2;
-          textBorder.set({
-            left: x - borderThickness,
-            top: y - borderThickness
-          });
-        }
-        
-        // Update callout group connections
-        updateCalloutGroupConnections(ds.tempObj);
-        canvas.requestRenderAll();
-        return;
       } else if (ds.tempObj.type === 'polyline') {
         const points = ds.tempObj.get('points') || [];
         points.push({ x, y });
@@ -3407,14 +3174,15 @@ const PageAnnotationLayer = memo(({
         }
         canvas.add(group);
         canvas.remove(ds.tempObj);
-      } else if (currentTool === 'callout' && ds.tempObj.data?.type === 'callout' && ds.tempObj.isPreview) {
-        // Finalize the callout preview group
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3381',message:'Callout mouseUp - finalizing preview group',data:{tool:currentTool,tempObjType:ds.tempObj.type,hasData:!!ds.tempObj.data,dataType:ds.tempObj.data?.type,isPreview:ds.tempObj.isPreview},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-        const calloutGroup = ds.tempObj;
-        // Remove preview flag - this is now a permanent callout
-        calloutGroup.set({ isPreview: false });
+      } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
+        const { x1, y1, x2, y2 } = ds.tempObj;
+        const calloutGroup = createCalloutGroup(
+          { x: x1, y: y1 },
+          { x: x2, y: y2 },
+          currentStrokeColor,
+          currentStrokeWidth,
+          canvas
+        );
         // Store current selectedSpaceId on the callout group
         if (selectedSpaceIdRef.current) {
           calloutGroup.set({ spaceId: selectedSpaceIdRef.current });
@@ -3422,6 +3190,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           calloutGroup.set({ moduleId: selectedModuleIdRef.current });
         }
+        canvas.add(calloutGroup);
+        canvas.remove(ds.tempObj);
         canvas.setActiveObject(calloutGroup);
         // Enter text editing mode
         const textObj = calloutGroup.getObjects().find(o => o.name === 'calloutText');
@@ -3430,9 +3200,6 @@ const PageAnnotationLayer = memo(({
           textObj.selectAll();
         }
         canvas.requestRenderAll();
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3400',message:'Callout finalized',data:{calloutGroupType:calloutGroup.type,hasData:!!calloutGroup.data,dataType:calloutGroup.data?.type,isPreview:calloutGroup.isPreview},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
       }
       ds.isDrawingShape = false;
       ds.tempObj = null;
@@ -4514,6 +4281,25 @@ const PageAnnotationLayer = memo(({
         }}
       />
 
+      {/* Callout Overlay - rendered on top of Fabric canvas */}
+      <CalloutOverlay
+        callouts={callouts}
+        setCallouts={setCallouts}
+        selectedCalloutId={selectedCalloutId}
+        setSelectedCalloutId={setSelectedCalloutId}
+        isCalloutToolActive={tool === 'callout'}
+        activeTool={tool}
+        pageNumber={pageNumber}
+        pageWidth={width}
+        pageHeight={height}
+        defaultStyle={{
+          borderColor: strokeColor,
+          lineThickness: strokeWidth,
+        }}
+        onSave={onSaveAnnotations}
+        selectionRect={calloutSelectionRect}
+      />
+
       {/* Context Menu */}
       {contextMenu && contextMenu.visible && (
         <div
@@ -4626,279 +4412,135 @@ const PageAnnotationLayer = memo(({
         >
           <div style={{ marginBottom: '12px', fontSize: '14px', fontWeight: '500', color: '#333' }}>Edit Property</div>
 
-          {editModal.object.data?.type === 'callout' ? (
+          <div style={{ marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Color</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="color"
+                value={editValues.stroke}
+                onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
+                style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
+              />
+              <input
+                type="text"
+                value={editValues.stroke}
+                onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
+                style={{
+                  width: '80px',
+                  height: '30px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  padding: '0 8px',
+                  fontSize: '12px',
+                  fontFamily: 'monospace'
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Line Weight</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="range"
+                min="1"
+                max="50"
+                step="1"
+                value={editValues.strokeWidth}
+                onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
+                style={{ flex: 1, cursor: 'pointer' }}
+              />
+              <input
+                type="number"
+                min="1"
+                max="50"
+                value={editValues.strokeWidth}
+                onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
+                style={{
+                  width: '50px',
+                  height: '30px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  padding: '0 4px',
+                  fontSize: '12px',
+                  textAlign: 'center'
+                }}
+              />
+              <span style={{ fontSize: '12px', color: '#666' }}>px</span>
+            </div>
+          </div>
+
+          {editModal.object.data?.type === 'callout' && (
             <>
-              {/* Callout-specific styling */}
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px', fontWeight: '500' }}>Border/Line</label>
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Color</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Text Style</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                  {/* Text Color */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <input
                       type="color"
-                      value={editValues.borderColor || editValues.stroke || '#1e293b'}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, borderColor: e.target.value, stroke: e.target.value }))}
-                      style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
-                    />
-                    <input
-                      type="text"
-                      value={editValues.borderColor || editValues.stroke || '#1e293b'}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, borderColor: e.target.value, stroke: e.target.value }))}
-                      style={{
-                        width: '80px',
-                        height: '30px',
-                        borderRadius: '4px',
-                        border: '1px solid #ddd',
-                        padding: '0 8px',
-                        fontSize: '12px',
-                        fontFamily: 'monospace'
-                      }}
+                      value={editValues.fill || '#000000'}
+                      onChange={(e) => setEditValues(prev => ({ ...prev, fill: e.target.value }))}
+                      style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
+                      title="Text Color"
                     />
                   </div>
-                </div>
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Opacity</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="5"
-                      value={Math.round((editValues.borderOpacity !== undefined ? editValues.borderOpacity : editValues.opacity || 1) * 100)}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, borderOpacity: parseInt(e.target.value, 10) / 100, opacity: parseInt(e.target.value, 10) / 100 }))}
-                      style={{ flex: 1, cursor: 'pointer' }}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={Math.round((editValues.borderOpacity !== undefined ? editValues.borderOpacity : editValues.opacity || 1) * 100)}
-                      onChange={(e) => {
-                        const val = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)) / 100;
-                        setEditValues(prev => ({ ...prev, borderOpacity: val, opacity: val }));
-                      }}
-                      style={{
-                        width: '50px',
-                        height: '30px',
-                        borderRadius: '4px',
-                        border: '1px solid #ddd',
-                        padding: '0 4px',
-                        fontSize: '12px',
-                        textAlign: 'center'
-                      }}
-                    />
-                    <span style={{ fontSize: '12px', color: '#666' }}>%</span>
-                  </div>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Thickness</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="range"
-                      min="1"
-                      max="6"
-                      step="1"
-                      value={editValues.lineThickness || editValues.strokeWidth || 2}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, lineThickness: parseInt(e.target.value, 10), strokeWidth: parseInt(e.target.value, 10) }))}
-                      style={{ flex: 1, cursor: 'pointer' }}
-                    />
-                    <input
-                      type="number"
-                      min="1"
-                      max="6"
-                      value={editValues.lineThickness || editValues.strokeWidth || 2}
-                      onChange={(e) => {
-                        const val = Math.max(1, Math.min(6, parseInt(e.target.value, 10) || 1));
-                        setEditValues(prev => ({ ...prev, lineThickness: val, strokeWidth: val }));
-                      }}
-                      style={{
-                        width: '50px',
-                        height: '30px',
-                        borderRadius: '4px',
-                        border: '1px solid #ddd',
-                        padding: '0 4px',
-                        fontSize: '12px',
-                        textAlign: 'center'
-                      }}
-                    />
-                    <span style={{ fontSize: '12px', color: '#666' }}>px</span>
-                  </div>
-                </div>
-              </div>
 
-              <div style={{ marginBottom: '12px', paddingTop: '8px', borderTop: '1px solid #eee' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px', fontWeight: '500' }}>Fill</label>
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Color</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="color"
-                      value={editValues.fillColor === 'transparent' ? '#ffffff' : (editValues.fillColor || '#ffffff')}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, fillColor: e.target.value }))}
-                      style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
-                    />
-                    <input
-                      type="text"
-                      value={editValues.fillColor || '#ffffff'}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, fillColor: e.target.value }))}
-                      style={{
-                        width: '80px',
-                        height: '30px',
-                        borderRadius: '4px',
-                        border: '1px solid #ddd',
-                        padding: '0 8px',
-                        fontSize: '12px',
-                        fontFamily: 'monospace'
-                      }}
-                    />
-                    <button
-                      onClick={() => setEditValues(prev => ({ ...prev, fillColor: prev.fillColor === 'transparent' ? '#ffffff' : 'transparent' }))}
-                      style={{
-                        padding: '4px 8px',
-                        fontSize: '11px',
-                        borderRadius: '4px',
-                        border: '1px solid #ddd',
-                        background: editValues.fillColor === 'transparent' ? '#e6f7ff' : 'white',
-                        cursor: 'pointer'
-                      }}
-                    >Transparent</button>
-                  </div>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Opacity</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="5"
-                      value={Math.round((editValues.fillOpacity !== undefined ? editValues.fillOpacity : 1) * 100)}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, fillOpacity: parseInt(e.target.value, 10) / 100 }))}
-                      style={{ flex: 1, cursor: 'pointer' }}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={Math.round((editValues.fillOpacity !== undefined ? editValues.fillOpacity : 1) * 100)}
-                      onChange={(e) => {
-                        const val = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)) / 100;
-                        setEditValues(prev => ({ ...prev, fillOpacity: val }));
-                      }}
-                      style={{
-                        width: '50px',
-                        height: '30px',
-                        borderRadius: '4px',
-                        border: '1px solid #ddd',
-                        padding: '0 4px',
-                        fontSize: '12px',
-                        textAlign: 'center'
-                      }}
-                    />
-                    <span style={{ fontSize: '12px', color: '#666' }}>%</span>
-                  </div>
-                </div>
-              </div>
+                  {/* Font Family */}
+                  <select
+                    value={editValues.fontFamily || 'Arial'}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, fontFamily: e.target.value }))}
+                    style={{ height: '24px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px', cursor: 'pointer' }}
+                    title="Font Family"
+                  >
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Verdana">Verdana</option>
+                  </select>
 
-              <div style={{ marginBottom: '12px', paddingTop: '8px', borderTop: '1px solid #eee' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px', fontWeight: '500' }}>Text</label>
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Color</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="color"
-                      value={editValues.fontColor || editValues.fill || '#1e293b'}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, fontColor: e.target.value, fill: e.target.value }))}
-                      style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
-                    />
-                    <input
-                      type="text"
-                      value={editValues.fontColor || editValues.fill || '#1e293b'}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, fontColor: e.target.value, fill: e.target.value }))}
-                      style={{
-                        width: '80px',
-                        height: '30px',
-                        borderRadius: '4px',
-                        border: '1px solid #ddd',
-                        padding: '0 8px',
-                        fontSize: '12px',
-                        fontFamily: 'monospace'
-                      }}
-                    />
-                  </div>
+                  {/* Font Size */}
+                  <input
+                    type="number"
+                    min="8"
+                    max="72"
+                    value={editValues.fontSize || 16}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, fontSize: parseInt(e.target.value, 10) }))}
+                    style={{ width: '50px', height: '24px', borderRadius: '4px', border: '1px solid #ddd', padding: '0 4px', fontSize: '12px' }}
+                    title="Font Size"
+                  />
+
+                  {/* Bold */}
+                  <button
+                    onClick={() => setEditValues(prev => ({ ...prev, fontWeight: prev.fontWeight === 'bold' ? 'normal' : 'bold' }))}
+                    style={{
+                      padding: '2px 8px', borderRadius: '4px', border: '1px solid #ddd',
+                      background: editValues.fontWeight === 'bold' ? '#e6f7ff' : 'white',
+                      fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
+                    }}
+                  >B</button>
+
+                  {/* Italic */}
+                  <button
+                    onClick={() => setEditValues(prev => ({ ...prev, fontStyle: prev.fontStyle === 'italic' ? 'normal' : 'italic' }))}
+                    style={{
+                      padding: '2px 8px', borderRadius: '4px', border: '1px solid #ddd',
+                      background: editValues.fontStyle === 'italic' ? '#e6f7ff' : 'white',
+                      fontStyle: 'italic', cursor: 'pointer', fontSize: '12px'
+                    }}
+                  >I</button>
                 </div>
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Font</label>
-                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <select
-                      value={editValues.fontFamily || 'Inter, Arial, sans-serif'}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, fontFamily: e.target.value }))}
-                      style={{ height: '24px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '11px', cursor: 'pointer', flex: 1, minWidth: '100px' }}
-                    >
-                      <option value="Inter, Arial, sans-serif">Inter</option>
-                      <option value="Arial, sans-serif">Arial</option>
-                      <option value="Georgia, serif">Georgia</option>
-                      <option value="Times New Roman, serif">Times New Roman</option>
-                      <option value="Courier New, monospace">Courier New</option>
-                      <option value="Verdana, sans-serif">Verdana</option>
-                    </select>
-                    <input
-                      type="number"
-                      min="8"
-                      max="72"
-                      value={editValues.fontSize || 14}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, fontSize: parseInt(e.target.value, 10) || 14 }))}
-                      style={{ width: '50px', height: '24px', borderRadius: '4px', border: '1px solid #ddd', padding: '0 4px', fontSize: '11px' }}
-                      title="Font Size"
-                    />
-                  </div>
-                </div>
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Style</label>
-                  <div style={{ display: 'flex', gap: '4px' }}>
+
+                {/* Alignment */}
+                <div style={{ marginTop: '8px', display: 'flex', gap: '4px' }}>
+                  {['left', 'center', 'right'].map(align => (
                     <button
-                      onClick={() => setEditValues(prev => ({ ...prev, bold: !prev.bold, fontWeight: prev.bold ? 'normal' : 'bold' }))}
+                      key={align}
+                      onClick={() => setEditValues(prev => ({ ...prev, textAlign: align }))}
                       style={{
-                        padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd',
-                        background: (editValues.bold || editValues.fontWeight === 'bold') ? '#e6f7ff' : 'white',
-                        fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
-                      }}
-                    >B</button>
-                    <button
-                      onClick={() => setEditValues(prev => ({ ...prev, italic: !prev.italic, fontStyle: prev.italic ? 'normal' : 'italic' }))}
-                      style={{
-                        padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd',
-                        background: (editValues.italic || editValues.fontStyle === 'italic') ? '#e6f7ff' : 'white',
-                        fontStyle: 'italic', cursor: 'pointer', fontSize: '12px'
-                      }}
-                    >I</button>
-                    <button
-                      onClick={() => setEditValues(prev => ({ ...prev, underline: !prev.underline }))}
-                      style={{
-                        padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd',
-                        background: editValues.underline ? '#e6f7ff' : 'white',
-                        textDecoration: 'underline', cursor: 'pointer', fontSize: '12px'
-                      }}
-                    >U</button>
-                    <button
-                      onClick={() => setEditValues(prev => ({ ...prev, strikethrough: !prev.strikethrough }))}
-                      style={{
-                        padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd',
-                        background: editValues.strikethrough ? '#e6f7ff' : 'white',
-                        textDecoration: 'line-through', cursor: 'pointer', fontSize: '12px'
-                      }}
-                    >S</button>
-                  </div>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Alignment</label>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {['left', 'center', 'right'].map(align => (
-                      <button
-                        key={align}
-                        onClick={() => setEditValues(prev => ({ ...prev, textAlign: align }))}
-                        style={{
-                          flex: 1, padding: '4px', borderRadius: '4px', border: '1px solid #ddd',
+                        flex: 1, padding: '4px', borderRadius: '4px', border: '1px solid #ddd',
                         background: editValues.textAlign === align ? '#e6f7ff' : 'white',
                         cursor: 'pointer', fontSize: '10px', textTransform: 'capitalize'
                       }}
@@ -4908,24 +4550,28 @@ const PageAnnotationLayer = memo(({
                   ))}
                 </div>
               </div>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Regular annotation editing */}
-              <div style={{ marginBottom: '8px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Color</label>
+
+              {/* Fill Color (Background) */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Fill Color</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input
                     type="color"
-                    value={editValues.stroke}
-                    onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
+                    value={editValues.fillColor === 'transparent' || !editValues.fillColor ? '#ffffff' : editValues.fillColor}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, fillColor: e.target.value }))}
                     style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
+                    disabled={editValues.fillColor === 'transparent'}
                   />
                   <input
                     type="text"
-                    value={editValues.stroke}
-                    onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
+                    value={editValues.fillColor === 'transparent' ? 'No Fill' : (editValues.fillColor || '#ffffff')}
+                    onChange={(e) => {
+                      if (e.target.value.toLowerCase() === 'no fill') {
+                        setEditValues(prev => ({ ...prev, fillColor: 'transparent' }));
+                      } else {
+                        setEditValues(prev => ({ ...prev, fillColor: e.target.value }));
+                      }
+                    }}
                     style={{
                       width: '80px',
                       height: '30px',
@@ -4936,79 +4582,55 @@ const PageAnnotationLayer = memo(({
                       fontFamily: 'monospace'
                     }}
                   />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Line Weight</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="range"
-                    min="1"
-                    max="50"
-                    step="1"
-                    value={editValues.strokeWidth}
-                    onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
-                    style={{ flex: 1, cursor: 'pointer' }}
-                  />
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={editValues.strokeWidth}
-                    onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
+                  <button
+                    onClick={() => setEditValues(prev => ({ ...prev, fillColor: 'transparent' }))}
                     style={{
-                      width: '50px',
-                      height: '30px',
-                      borderRadius: '4px',
-                      border: '1px solid #ddd',
-                      padding: '0 4px',
-                      fontSize: '12px',
-                      textAlign: 'center'
+                      padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd',
+                      background: editValues.fillColor === 'transparent' ? '#e6f7ff' : 'white',
+                      cursor: 'pointer', fontSize: '11px'
                     }}
-                  />
-                  <span style={{ fontSize: '12px', color: '#666' }}>px</span>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Opacity</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={Math.round((editValues.opacity !== undefined ? editValues.opacity : 1) * 100)}
-                    onChange={(e) => setEditValues(prev => ({ ...prev, opacity: parseFloat(e.target.value) / 100 }))}
-                    style={{ flex: 1, cursor: 'pointer' }}
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={Math.round((editValues.opacity !== undefined ? editValues.opacity : 1) * 100)}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val)) {
-                        setEditValues(prev => ({ ...prev, opacity: Math.min(100, Math.max(0, val)) / 100 }));
-                      }
-                    }}
-                    style={{
-                      width: '50px',
-                      height: '30px',
-                      borderRadius: '4px',
-                      border: '1px solid #ddd',
-                      padding: '0 4px',
-                      fontSize: '12px',
-                      textAlign: 'center'
-                    }}
-                  />
-                  <span style={{ fontSize: '12px', color: '#666' }}>%</span>
+                  >No Fill</button>
                 </div>
               </div>
             </>
           )}
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Opacity</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={Math.round((editValues.opacity !== undefined ? editValues.opacity : 1) * 100)}
+                onChange={(e) => setEditValues(prev => ({ ...prev, opacity: parseFloat(e.target.value) / 100 }))}
+                style={{ flex: 1, cursor: 'pointer' }}
+              />
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={Math.round((editValues.opacity !== undefined ? editValues.opacity : 1) * 100)}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  if (!isNaN(val)) {
+                    setEditValues(prev => ({ ...prev, opacity: Math.min(100, Math.max(0, val)) / 100 }));
+                  }
+                }}
+                style={{
+                  width: '50px',
+                  height: '30px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  padding: '0 4px',
+                  fontSize: '12px',
+                  textAlign: 'center'
+                }}
+              />
+              <span style={{ fontSize: '12px', color: '#666' }}>%</span>
+            </div>
+          </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
             <button
@@ -5044,7 +4666,9 @@ const PageAnnotationLayer = memo(({
     prevProps.highlightsToRemove === nextProps.highlightsToRemove &&
     prevProps.onHighlightCreated === nextProps.onHighlightCreated &&
     prevProps.selectedSpaceId === nextProps.selectedSpaceId &&
-    prevProps.activeRegions === nextProps.activeRegions
+    prevProps.activeRegions === nextProps.activeRegions &&
+    prevProps.callouts === nextProps.callouts &&
+    prevProps.selectedCalloutId === nextProps.selectedCalloutId
   );
 });
 
