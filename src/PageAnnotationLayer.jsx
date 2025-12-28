@@ -1670,12 +1670,12 @@ const PageAnnotationLayer = memo(({
           const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
           const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
 
-          // Check if this is a survey highlight (has moduleId)
-          const isSurveyHighlight = objModuleId !== null;
-          // Survey highlights should only be visible when survey mode is active AND a module is selected
-          const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanelRef.current && currentModuleId !== null && objModuleId === currentModuleId);
+          // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
+          const isSurveyAnnotation = objModuleId !== null;
+          // Survey annotations (highlights, callouts, etc.) should only be visible when survey mode is active AND a module is selected
+          const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && currentModuleId !== null && objModuleId === currentModuleId);
 
-          const isVisible = matchesSpace && matchesModule && surveyHighlightVisible;
+          const isVisible = matchesSpace && matchesModule && surveyAnnotationVisible;
           obj.set({ visible: isVisible, selectable: isVisible, evented: isVisible });
         }
       });
@@ -1775,12 +1775,12 @@ const PageAnnotationLayer = memo(({
           const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
           const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
 
-          // Check if this is a survey highlight (has moduleId)
-          const isSurveyHighlight = objModuleId !== null;
-          // Survey highlights should only be visible when survey mode is active AND a module is selected
-          const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanelRef.current && currentModuleId !== null && objModuleId === currentModuleId);
+          // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
+          const isSurveyAnnotation = objModuleId !== null;
+          // Survey annotations (highlights, callouts, etc.) should only be visible when survey mode is active AND a module is selected
+          const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && currentModuleId !== null && objModuleId === currentModuleId);
 
-          const isVisible = matchesSpace && matchesModule && layerVisible && surveyHighlightVisible;
+          const isVisible = matchesSpace && matchesModule && layerVisible && surveyAnnotationVisible;
           obj.set({ visible: isVisible, selectable: isVisible, evented: isVisible });
 
           canvas.add(obj);
@@ -2652,56 +2652,57 @@ const PageAnnotationLayer = memo(({
       const { x, y } = canvas.getPointer(opt.e);
       const pointer = { x, y }; // Ensure pointer object exists
 
-      // --- Callout Drag Handling ---
-      const target = opt.target;
-      // Use _currentTransform for Fabric.js v5 compatibility (getActiveTransform is v6+)
-      if (target && target.data?.type === 'callout' && !canvas._currentTransform) {
-        const isOverHandle = isPointOnAnyHandle ? isPointOnAnyHandle(pointer, target) : false;
-        const isCmdCtrlHeld = opt.e.metaKey || opt.e.ctrlKey; // Cmd on Mac, Ctrl on Windows
+      // Early return for select tool to avoid interfering with selection handlers
+      if (currentTool === 'select') {
+        // Only handle callout drag when select tool is active (to allow moving/editing callouts)
+        const target = opt.target;
+        if (target && target.data?.type === 'callout' && !canvas._currentTransform) {
+          const isOverHandle = isPointOnAnyHandle ? isPointOnAnyHandle(pointer, target) : false;
+          const isCmdCtrlHeld = opt.e.metaKey || opt.e.ctrlKey; // Cmd on Mac, Ctrl on Windows
 
-        // If Cmd/Ctrl is held, allow moving the entire callout
-        if (isCmdCtrlHeld && !isOverHandle) {
-          isMovingEntireCalloutRef.current = true;
-          target.lockMovementX = false;
-          target.lockMovementY = false;
-          canvas.setActiveObject(target);
-          return; // Let Fabric handle the drag
-        }
+          // If Cmd/Ctrl is held, allow moving the entire callout
+          if (isCmdCtrlHeld && !isOverHandle) {
+            isMovingEntireCalloutRef.current = true;
+            target.lockMovementX = false;
+            target.lockMovementY = false;
+            canvas.setActiveObject(target);
+            return; // Let Fabric handle the drag
+          }
 
-        if (!isOverHandle) {
-          const textObj = target.getObjects().find(o => o.name === 'calloutText');
-          const textBorder = target.getObjects().find(o => o.name === 'calloutTextBorder');
-          if (textObj) {
-            const groupMatrix = target.calcTransformMatrix();
-            const invertedMatrix = fabric.util.invertTransform(groupMatrix);
-            const localPointer = fabric.util.transformPoint(pointer, invertedMatrix);
+          if (!isOverHandle) {
+            const textObj = target.getObjects().find(o => o.name === 'calloutText');
+            const textBorder = target.getObjects().find(o => o.name === 'calloutTextBorder');
+            if (textObj) {
+              const groupMatrix = target.calcTransformMatrix();
+              const invertedMatrix = fabric.util.invertTransform(groupMatrix);
+              const localPointer = fabric.util.transformPoint(pointer, invertedMatrix);
 
-            // Use border bounds if available (slightly larger than text), otherwise use text bounds
-            const hitBox = textBorder || textObj;
-            const hitLeft = hitBox.left;
-            const hitTop = hitBox.top;
-            const hitWidth = hitBox.width || hitBox.getScaledWidth();
-            const hitHeight = hitBox.height || hitBox.getScaledHeight();
+              // Use border bounds if available (slightly larger than text), otherwise use text bounds
+              const hitBox = textBorder || textObj;
+              const hitLeft = hitBox.left;
+              const hitTop = hitBox.top;
+              const hitWidth = hitBox.width || hitBox.getScaledWidth();
+              const hitHeight = hitBox.height || hitBox.getScaledHeight();
 
-            if (
-              localPointer.x >= hitLeft &&
-              localPointer.x <= hitLeft + hitWidth &&
-              localPointer.y >= hitTop &&
-              localPointer.y <= hitTop + hitHeight
-            ) {
-              isDraggingCalloutTextRef.current = true;
-              dragStartPointerRef.current = pointer;
-              target.lockMovementX = true;
-              target.lockMovementY = true;
+              if (
+                localPointer.x >= hitLeft &&
+                localPointer.x <= hitLeft + hitWidth &&
+                localPointer.y >= hitTop &&
+                localPointer.y <= hitTop + hitHeight
+              ) {
+                isDraggingCalloutTextRef.current = true;
+                dragStartPointerRef.current = pointer;
+                target.lockMovementX = true;
+                target.lockMovementY = true;
+              }
             }
           }
         }
-      }
-
-      // Early return for select tool to avoid interfering with selection handlers
-      if (currentTool === 'select') {
         return;
       }
+
+      // For other tools, ignore callout clicks so they don't interfere with annotation tools
+      // Only process callout interactions when select tool is active (handled above)
 
       // Handle highlight clicks for reverse navigation (non-eraser tools)
       if (currentTool !== 'eraser' && currentTool !== 'highlight') {
@@ -3779,14 +3780,14 @@ const PageAnnotationLayer = memo(({
       const matchesSpace = selectedSpaceIdRef.current === null || objSpaceId === selectedSpaceIdRef.current;
       const matchesModule = selectedModuleIdRef.current === null || objModuleId === selectedModuleIdRef.current;
       
-      // Check if this is a survey highlight (has moduleId)
-      const isSurveyHighlight = objModuleId !== null;
+      // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
+      const isSurveyAnnotation = objModuleId !== null;
       
-      // Survey highlights should only be visible when survey mode is active AND a module is selected
-      // Survey highlights require: survey panel open AND matching module selected
-      const surveyHighlightVisible = !isSurveyHighlight || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
+      // Survey annotations (highlights, callouts, etc.) should only be visible when survey mode is active AND a module is selected
+      // Survey annotations require: survey panel open AND matching module selected
+      const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
       
-      const isVisible = matchesSpace && matchesModule && surveyHighlightVisible;
+      const isVisible = matchesSpace && matchesModule && surveyAnnotationVisible;
 
       if (isVisible) {
         // Only make visible objects interactive based on tool

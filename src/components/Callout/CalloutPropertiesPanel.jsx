@@ -22,6 +22,7 @@ const CalloutPropertiesPanel = ({
     text: true,
   });
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showTextColorPicker, setShowTextColorPicker] = useState(false);
 
   if (!selectedCallout) {
     return null;
@@ -45,6 +46,11 @@ const CalloutPropertiesPanel = ({
     } else {
       onUpdateStyle({ fillColor: hex, fillOpacity: alpha });
     }
+  };
+
+  const handleTextColorChange = (hex, alpha) => {
+    // Text color doesn't use opacity, but we'll accept it for consistency
+    onUpdateStyle({ fontColor: hex });
   };
 
   return (
@@ -115,53 +121,87 @@ const CalloutPropertiesPanel = ({
 
           {expandedSections.visual && (
             <div style={{ paddingTop: 8 }}>
-              {/* Color Picker - Now using CompactColorPicker */}
-              <div style={{ marginBottom: 12, position: 'relative' }}>
-                <button
-                  onClick={() => setShowColorPicker(!showColorPicker)}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: 4,
-                    background: 'white',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <span style={{ fontSize: 12, color: '#374151' }}>
-                    {colorMode === 'border' ? 'Border' : 'Fill'} Color
-                  </span>
-                  <div
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 4,
-                      background: currentColor === 'transparent'
-                        ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)'
-                        : currentColor,
-                      backgroundSize: currentColor === 'transparent' ? '8px 8px' : 'auto',
-                      backgroundPosition: currentColor === 'transparent' ? '0 0, 0 4px, 4px -4px, -4px 0px' : 'auto',
-                      border: '1px solid #d1d5db',
-                    }}
-                  />
-                </button>
-                
-                {showColorPicker && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1001, marginTop: 4 }}>
-                    <CompactColorPicker
-                      color={currentColor}
-                      opacity={currentOpacity}
-                      onChange={handleColorChange}
-                      onClose={() => setShowColorPicker(false)}
-                      showBorderFillToggle={true}
-                      colorMode={colorMode}
-                      onColorModeChange={setColorMode}
-                    />
+              {/* Color Toggle */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase' }}>
+                    COLOR
+                  </label>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      onClick={() => setColorMode('border')}
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: 10,
+                        border: colorMode === 'border' ? '1px solid #3b82f6' : '1px solid #d1d5db',
+                        background: colorMode === 'border' ? '#3b82f6' : 'white',
+                        color: colorMode === 'border' ? 'white' : '#374151',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Border
+                    </button>
+                    <button
+                      onClick={() => setColorMode('fill')}
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: 10,
+                        border: colorMode === 'fill' ? '1px solid #3b82f6' : '1px solid #d1d5db',
+                        background: colorMode === 'fill' ? '#3b82f6' : 'white',
+                        color: colorMode === 'fill' ? 'white' : '#374151',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Fill
+                    </button>
                   </div>
-                )}
+                </div>
+
+                {/* Color Picker Button */}
+                <div style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => setShowColorPicker(!showColorPicker)}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 4,
+                      background: 'white',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: '#374151' }}>Select Color</span>
+                    <div
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 4,
+                        background: currentColor === 'transparent'
+                          ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)'
+                          : currentColor,
+                        backgroundSize: currentColor === 'transparent' ? '8px 8px' : 'auto',
+                        backgroundPosition: currentColor === 'transparent' ? '0 0, 0 4px, 4px -4px, -4px 0px' : 'auto',
+                        border: '1px solid #d1d5db',
+                      }}
+                    />
+                  </button>
+                  
+                  {showColorPicker && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1001, marginTop: 4 }}>
+                      <CompactColorPicker
+                        color={currentColor}
+                        opacity={currentOpacity}
+                        onChange={handleColorChange}
+                        onClose={() => setShowColorPicker(false)}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Opacity */}
@@ -439,27 +479,51 @@ const CalloutPropertiesPanel = ({
               </div>
 
               {/* Text Color */}
-              <div>
-                <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-                  TEXT COLOR
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-                  {presetBorderColors.map((color) => (
-                    <button
-                      key={color}
-                      onClick={() => onUpdateStyle({ fontColor: color })}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase' }}>
+                    TEXT COLOR
+                  </label>
+                </div>
+
+                {/* Text Color Picker Button */}
+                <div style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => setShowTextColorPicker(!showTextColorPicker)}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 4,
+                      background: 'white',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: '#374151' }}>Select Color</span>
+                    <div
                       style={{
                         width: 24,
                         height: 24,
                         borderRadius: 4,
-                        border: style.fontColor === color ? '2px solid #3b82f6' : '1px solid #d1d5db',
-                        background: color,
-                        cursor: 'pointer',
-                        transform: style.fontColor === color ? 'scale(1.1)' : 'scale(1)',
-                        transition: 'transform 0.1s',
+                        background: style.fontColor || '#000000',
+                        border: '1px solid #d1d5db',
                       }}
                     />
-                  ))}
+                  </button>
+                  
+                  {showTextColorPicker && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1001, marginTop: 4 }}>
+                      <CompactColorPicker
+                        color={style.fontColor || '#000000'}
+                        opacity={1}
+                        onChange={handleTextColorChange}
+                        onClose={() => setShowTextColorPicker(false)}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
