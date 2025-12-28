@@ -27,6 +27,9 @@ const CalloutCanvas = ({
   pageWidth,
   pageHeight,
   defaultStyle,
+  selectedSpaceId,
+  selectedModuleId,
+  showSurveyPanel,
 }) => {
   const canvasRef = useRef(null);
   const [creationState, setCreationState] = useState({
@@ -262,6 +265,14 @@ const CalloutCanvas = ({
         newCallout.style = { ...newCallout.style, ...defaultStyle };
       }
 
+      // Store spaceId/moduleId if provided (for survey mode filtering)
+      if (selectedSpaceId) {
+        newCallout.spaceId = selectedSpaceId;
+      }
+      if (selectedModuleId) {
+        newCallout.moduleId = selectedModuleId;
+      }
+
       setCallouts(prev => [...prev.map(c => ({ ...c, isSelected: false })), newCallout]);
       setSelectedCalloutId(newCallout.id);
       setNewCalloutId(newCallout.id);
@@ -343,15 +354,15 @@ const CalloutCanvas = ({
     }
   }, [newCalloutId]);
 
-  // Filter callouts for this page
+  // Filter callouts for this page and by survey mode if needed
   const pageCallouts = callouts.filter(c => c.pageNumber === pageNumber);
 
   // #region agent log
-  // Use 'none' on container so events pass through to Fabric canvas when not using callout tool
-  // Individual callout components will use pointerEvents: 'auto' on their interactive elements
-  // When callout tool is active, we need 'auto' to handle creation drag
+  // Use 'none' when callout tool is not active so events pass through to Fabric canvas below
+  // This allows other annotation tools to work after callouts are drawn
+  // When callout tool is active, use 'auto' to enable callout creation
   const pointerEventsValue = isCalloutToolActive ? 'auto' : 'none';
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutCanvas.jsx:337',message:'CalloutCanvas pointerEvents check',data:{isCalloutToolActive,pageCalloutsCount:pageCallouts.length,pointerEventsValue,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutCanvas.jsx:349',message:'CalloutCanvas pointerEvents check',data:{isCalloutToolActive,pageCalloutsCount:pageCallouts.length,pointerEventsValue,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
   // #endregion
 
   return (
@@ -368,10 +379,10 @@ const CalloutCanvas = ({
         cursor: isCalloutToolActive ? 'crosshair' : 'default',
         pointerEvents: pointerEventsValue,
       }}
-      onMouseDown={isCalloutToolActive ? handleMouseDown : undefined}
-      onMouseMove={isCalloutToolActive ? handleMouseMove : undefined}
-      onMouseUp={isCalloutToolActive ? handleMouseUp : undefined}
-      onClick={isCalloutToolActive ? handleCanvasClick : undefined}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onClick={handleCanvasClick}
     >
       {/* Creation preview line */}
       {creationState.isCreating && creationState.arrowTip && creationState.currentMouse && (
@@ -415,35 +426,20 @@ const CalloutCanvas = ({
         </svg>
       )}
 
-      {/* Render callouts - wrap each in a container with pointerEvents: 'auto' so they remain interactive even when parent has 'none' */}
+      {/* Render callouts */}
       {pageCallouts.map(callout => (
-        <div
+        <CalloutComponent
           key={callout.id}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            pointerEvents: 'auto',
-            // Make this container non-interactive itself, but allow children to be interactive
-            pointerEvents: 'none',
-          }}
-        >
-          <div style={{ pointerEvents: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-            <CalloutComponent
-              callout={callout}
-              isSelected={callout.id === selectedCalloutId}
-              onSelect={() => selectCallout(callout.id)}
-              onStartDrag={startDrag}
-              onUpdate={(updates) => updateCallout(callout.id, updates)}
-              onDelete={() => deleteCallout(callout.id)}
-              shouldFocus={callout.id === newCalloutId}
-              pageWidth={pageWidth}
-              pageHeight={pageHeight}
-            />
-          </div>
-        </div>
+          callout={callout}
+          isSelected={callout.id === selectedCalloutId}
+          onSelect={() => selectCallout(callout.id)}
+          onStartDrag={startDrag}
+          onUpdate={(updates) => updateCallout(callout.id, updates)}
+          onDelete={() => deleteCallout(callout.id)}
+          shouldFocus={callout.id === newCalloutId}
+          pageWidth={pageWidth}
+          pageHeight={pageHeight}
+        />
       ))}
     </div>
   );

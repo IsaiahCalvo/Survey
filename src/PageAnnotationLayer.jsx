@@ -1153,6 +1153,7 @@ const PageAnnotationLayer = memo(({
   setCallouts = () => {}, // Update callouts callback
   selectedCalloutId = null, // Currently selected callout ID
   setSelectedCalloutId = () => {}, // Set selected callout callback
+  // Note: selectedSpaceId, selectedModuleId, and showSurveyPanel are already defined above
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
@@ -1168,6 +1169,14 @@ const PageAnnotationLayer = memo(({
     strokeColorRef.current = strokeColor;
     strokeWidthRef.current = strokeWidth;
   }, [tool, strokeColor, strokeWidth]);
+
+  useEffect(() => {
+    calloutsRef.current = callouts;
+    setCalloutsRef.current = setCallouts;
+    selectedSpaceIdRef.current = selectedSpaceId;
+    selectedModuleIdRef.current = selectedModuleId;
+    showSurveyPanelRef.current = showSurveyPanel;
+  }, [callouts, setCallouts, selectedSpaceId, selectedModuleId, showSurveyPanel]);
   const strokeWidthRef = useRef(strokeWidth);
   const justCreatedCalloutRef = useRef(false);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
@@ -1176,6 +1185,8 @@ const PageAnnotationLayer = memo(({
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const selectedModuleIdRef = useRef(selectedModuleId);
   const showSurveyPanelRef = useRef(showSurveyPanel);
+  const calloutsRef = useRef(callouts);
+  const setCalloutsRef = useRef(setCallouts);
   const eraserModeRef = useRef(eraserMode);
   const eraserSizeRef = useRef(eraserSize);
   const lastPartialEraseTimeRef = useRef(0); // Throttle timestamp for partial erasing
@@ -2665,9 +2676,10 @@ const PageAnnotationLayer = memo(({
       fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2647',message:'PageAnnotationLayer handleMouseDown called',data:{currentTool,x,y,hasTarget:!!opt.target,targetType:opt.target?.type,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
       // #endregion
 
-      // Early return for select tool to avoid interfering with selection handlers
+      // Handle Fabric callout objects when select tool is active
+      // Note: React callouts (via CalloutOverlay) handle their own events separately
       if (currentTool === 'select') {
-        // Only handle callout drag when select tool is active (to allow moving/editing callouts)
+        // Only handle Fabric callout objects (if they exist)
         const target = opt.target;
         if (target && target.data?.type === 'callout' && !canvas._currentTransform) {
           const isOverHandle = isPointOnAnyHandle ? isPointOnAnyHandle(pointer, target) : false;
@@ -2707,11 +2719,13 @@ const PageAnnotationLayer = memo(({
                 dragStartPointerRef.current = pointer;
                 target.lockMovementX = true;
                 target.lockMovementY = true;
+                return; // Handled callout text drag, let Fabric continue
               }
             }
           }
         }
-        return;
+        // For select tool, don't return early - let Fabric handle selection normally
+        // This allows clicking/dragging to select Fabric objects
       }
 
       // For other tools, ignore callout clicks so they don't interfere with annotation tools
@@ -3105,6 +3119,70 @@ const PageAnnotationLayer = memo(({
                 canvas.remove(obj);
                 needsRenderAndSave = true;
               }
+            }
+          }
+
+          // Handle React callouts (not Fabric objects)
+          // Check if eraser path intersects with any callout on this page
+          if (calloutsRef.current && calloutsRef.current.length > 0 && setCalloutsRef.current) {
+            const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
+            const pageCallouts = calloutsRef.current.filter(c => c.pageNumber === pageNumber);
+            const calloutsToDelete = [];
+
+            for (const callout of pageCallouts) {
+              // Convert callout positions from percentages to canvas pixels
+              const arrowTipPx = {
+                x: callout.arrowTip.x * width,
+                y: callout.arrowTip.y * height
+              };
+              const kneePx = {
+                x: callout.knee.x * width,
+                y: callout.knee.y * height
+              };
+              const textBoxPx = {
+                x: callout.textBoxPosition.x * width,
+                y: callout.textBoxPosition.y * height
+              };
+              const textBoxWidthPx = callout.textBoxWidth * width;
+              const textBoxHeightPx = callout.textBoxHeight * height;
+
+              // Check if any eraser point is within eraser radius of:
+              // 1. Arrow tip
+              // 2. Knee point
+              // 3. Text box bounds
+              const isTouching = eraserPath.points.some(point => {
+                // Check arrow tip
+                const distToTip = Math.sqrt(
+                  Math.pow(point.x - arrowTipPx.x, 2) + Math.pow(point.y - arrowTipPx.y, 2)
+                );
+                if (distToTip < eraserRadius) return true;
+
+                // Check knee
+                const distToKnee = Math.sqrt(
+                  Math.pow(point.x - kneePx.x, 2) + Math.pow(point.y - kneePx.y, 2)
+                );
+                if (distToKnee < eraserRadius) return true;
+
+                // Check text box bounds
+                const inTextBox = 
+                  point.x >= textBoxPx.x - eraserRadius &&
+                  point.x <= textBoxPx.x + textBoxWidthPx + eraserRadius &&
+                  point.y >= textBoxPx.y - eraserRadius &&
+                  point.y <= textBoxPx.y + textBoxHeightPx + eraserRadius;
+                if (inTextBox) return true;
+
+                return false;
+              });
+
+              if (isTouching) {
+                calloutsToDelete.push(callout.id);
+              }
+            }
+
+            // Delete touched callouts
+            if (calloutsToDelete.length > 0) {
+              setCalloutsRef.current(prev => prev.filter(c => !calloutsToDelete.includes(c.id)));
+              needsRenderAndSave = true;
             }
           }
 
@@ -4315,6 +4393,9 @@ const PageAnnotationLayer = memo(({
         }}
         onSave={onSaveAnnotations}
         selectionRect={calloutSelectionRect}
+        selectedSpaceId={selectedSpaceId}
+        selectedModuleId={selectedModuleId}
+        showSurveyPanel={showSurveyPanel}
       />
 
       {/* Context Menu */}

@@ -33,6 +33,9 @@ const CalloutOverlay = ({
   defaultStyle,
   onSave,
   selectionRect,
+  selectedSpaceId,
+  selectedModuleId,
+  showSurveyPanel,
 }) => {
   const selectedCallout = callouts.find(c => c.id === selectedCalloutId) || null;
 
@@ -102,7 +105,18 @@ const CalloutOverlay = ({
     <>
       {/* Callout Canvas Overlay */}
       <CalloutCanvas
-        callouts={callouts}
+        callouts={callouts.filter(c => {
+          // Filter by survey mode: if survey mode is active, hide callouts that don't have matching moduleId
+          // Note: Callouts created via Fabric.js (old system) may have moduleId, but React callouts don't yet
+          // For React callouts, hide all when in survey mode (they'll need moduleId added in the future)
+          if (showSurveyPanel && selectedModuleId) {
+            // If callout has moduleId, only show if it matches selected module
+            // If callout doesn't have moduleId, hide it in survey mode (it was created outside survey mode)
+            return c.moduleId === selectedModuleId;
+          }
+          // When not in survey mode, show all callouts
+          return true;
+        })}
         setCallouts={setCallouts}
         selectedCalloutId={selectedCalloutId}
         setSelectedCalloutId={setSelectedCalloutId}
@@ -113,6 +127,9 @@ const CalloutOverlay = ({
         pageHeight={pageHeight}
         defaultStyle={defaultStyle}
         selectionRect={selectionRect}
+        selectedSpaceId={selectedSpaceId}
+        selectedModuleId={selectedModuleId}
+        showSurveyPanel={showSurveyPanel}
       />
 
       {/* Properties Panel - slides in from right when callout selected */}
