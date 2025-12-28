@@ -1741,11 +1741,14 @@ const PageAnnotationLayer = memo(({
     canvas.isDrawingMode = tool === 'pen' || tool === 'highlighter';
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1698',message:'Setting canvas selection properties',data:{tool:toolRef.current,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1744',message:'Setting canvas selection properties',data:{tool,willEnableSelection:tool==='select',pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'N'})}).catch(()=>{});
     // #endregion
     // Disable Fabric.js built-in selection for Pan tool (we want drag-to-pan)
     // Enable selection for Select tool (we have custom selection handler but need Fabric's selection enabled for it to work)
     canvas.selection = tool === 'select';
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1749',message:'Canvas selection set',data:{tool,canvasSelection:canvas.selection,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'N'})}).catch(()=>{});
+    // #endregion
 
     // Deselect active object when switching away from select tool to prevent interference
     if (tool !== 'select') {
@@ -3449,10 +3452,18 @@ const PageAnnotationLayer = memo(({
     // AutoCAD/Bluebeam-style: direction determines selection mode
     const handleMouseDownForSelection = (e) => {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3380',message:'handleMouseDownForSelection called',data:{tool:toolRef.current,hasTarget:!!e.target,targetType:e.target?.type,pageNumber,canvasSelection:canvas.selection},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'G'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3455',message:'handleMouseDownForSelection called',data:{tool:toolRef.current,hasTarget:!!e.target,targetType:e.target?.type,pageNumber,canvasSelection:canvas.selection},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'O'})}).catch(()=>{});
       // #endregion
       if (toolRef.current !== 'select') {
         return;
+      }
+      
+      // Ensure canvas.selection is enabled for select tool
+      if (!canvas.selection) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3463',message:'Enabling canvas.selection in handleMouseDownForSelection',data:{tool:toolRef.current,wasFalse:true,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'O'})}).catch(()=>{});
+        // #endregion
+        canvas.selection = true;
       }
 
       const pointer = canvas.getPointer(e.e);
@@ -3506,10 +3517,12 @@ const PageAnnotationLayer = memo(({
         return;
       }
 
-      // Note: We keep canvas.selection enabled for select tool to allow Fabric.js to handle selection
-      // The custom selection rectangle is for drag-selection only
-      // Temporarily disable canvas.selection only during drag selection to prevent interference
-      canvas.selection = false;
+      // For drag selection, initialize the selection rectangle
+      // Keep canvas.selection enabled so Fabric.js can still handle object clicks
+      // We'll only disable it during the actual drag (in mouseMove) if needed
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3509',message:'Initializing drag selection rectangle',data:{tool:toolRef.current,canvasSelection:canvas.selection,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run5',hypothesisId:'L'})}).catch(()=>{});
+      // #endregion
 
       // Get pointer coordinates - use viewport-transformed coordinates for visual rectangle
       // to match Fabric.js object coordinate system (same as other Rect objects in the codebase)
@@ -3555,6 +3568,9 @@ const PageAnnotationLayer = memo(({
     // Track mouse move to update selection rectangle and visual style based on direction
     const handleMouseMoveForSelection = (e) => {
       if (!selectionRectRef.current) return;
+      
+      // During drag selection, we keep canvas.selection enabled
+      // This allows Fabric.js to handle object interactions properly
 
       // Get viewport-transformed coordinates for visual rectangle (to match cursor position)
       const pointer = canvas.getPointer(e.e, false);
@@ -3631,7 +3647,13 @@ const PageAnnotationLayer = memo(({
       // Handle single-click object selection (no drag)
       if (!selectionRectRef.current) {
         // Ensure canvas.selection is enabled for single-click selection
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3628',message:'Handling single-click selection',data:{tool:toolRef.current,hasActiveObject:!!canvas.getActiveObject(),pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run5',hypothesisId:'M'})}).catch(()=>{});
+        // #endregion
         canvas.selection = true;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3633',message:'Canvas.selection enabled for single-click',data:{tool:toolRef.current,canvasSelection:canvas.selection,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run5',hypothesisId:'M'})}).catch(()=>{});
+        // #endregion
         
         // Use geometry-based hit testing for single-click selection
         const pointer = canvas.getPointer(e.e);
@@ -3698,6 +3720,23 @@ const PageAnnotationLayer = memo(({
       const selHeight = Math.abs(pointer.y - startY);
 
       // Only perform selection if there was meaningful drag (more than 5px in either direction)
+      // If there was no meaningful drag, treat it as a single click and handle accordingly
+      if (selWidth <= 5 && selHeight <= 5) {
+        // No meaningful drag - clear selection rectangle and handle as single click
+        selectionRectRef.current = null;
+        if (selectionRectObjRef.current) {
+          canvas.remove(selectionRectObjRef.current);
+          selectionRectObjRef.current = null;
+          canvas.renderAll();
+        }
+        
+        // Handle single-click deselection (clicked on empty space)
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+        return;
+      }
+      
+      // There was a meaningful drag - perform drag selection
       if (selWidth > 5 || selHeight > 5) {
         const selRight = selLeft + selWidth;
         const selBottom = selTop + selHeight;
@@ -3937,7 +3976,8 @@ const PageAnnotationLayer = memo(({
     canvas.isDrawingMode = tool === 'pen' || tool === 'highlighter';
     // Disable Fabric.js built-in selection for select tool - we use custom selection handlers
     // Only enable built-in selection for pan tool (for object manipulation)
-    canvas.selection = false;
+    // Set canvas.selection based on tool - enable for select tool, disable for others
+    canvas.selection = tool === 'select';
     // Prevent Fabric.js from finding targets for eraser tool - we handle it ourselves with geometry checks
     canvas.skipTargetFind = tool === 'eraser';
     // Set cursor based on tool (Using 'none' for eraser to hide native cursor)

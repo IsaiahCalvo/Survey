@@ -23,6 +23,7 @@ const CalloutCanvas = ({
   selectedCalloutId,
   setSelectedCalloutId,
   isCalloutToolActive,
+  activeTool,
   pageNumber,
   pageWidth,
   pageHeight,
@@ -355,14 +356,21 @@ const CalloutCanvas = ({
   }, [newCalloutId]);
 
   // Filter callouts for this page and by survey mode if needed
-  const pageCallouts = callouts.filter(c => c.pageNumber === pageNumber);
+  const pageCallouts = callouts.filter(c => 
+    c.pageNumber === pageNumber &&
+    (selectedSpaceId === null || c.spaceId === selectedSpaceId) &&
+    (selectedModuleId === null || c.moduleId === selectedModuleId || !c.moduleId) && // If callout has no moduleId, it's always visible
+    (!c.moduleId || (showSurveyPanel && selectedModuleId !== null && c.moduleId === selectedModuleId)) // Survey mode filtering
+  );
 
   // #region agent log
-  // Use 'none' when callout tool is not active so events pass through to Fabric canvas below
-  // This allows other annotation tools to work after callouts are drawn
-  // When callout tool is active, use 'auto' to enable callout creation
-  const pointerEventsValue = isCalloutToolActive ? 'auto' : 'none';
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutCanvas.jsx:349',message:'CalloutCanvas pointerEvents check',data:{isCalloutToolActive,pageCalloutsCount:pageCallouts.length,pointerEventsValue,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+  // Block pointer events if callout tool is active OR if there are callouts on this page
+  // This prevents eraser/selection tools from passing through callouts to Fabric objects below
+  // When callout tool is active, use 'auto' to enable callout creation/editing
+  // When callouts exist, use 'auto' to block events from passing through (callouts should block other tools)
+  // Only use 'none' when no callouts exist and callout tool is not active
+  const pointerEventsValue = (isCalloutToolActive || pageCallouts.length > 0) ? 'auto' : 'none';
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutCanvas.jsx:362',message:'CalloutCanvas pointerEvents check',data:{isCalloutToolActive,pageCalloutsCount:pageCallouts.length,pointerEventsValue,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run8',hypothesisId:'P'})}).catch(()=>{});
   // #endregion
 
   return (
@@ -439,6 +447,8 @@ const CalloutCanvas = ({
           shouldFocus={callout.id === newCalloutId}
           pageWidth={pageWidth}
           pageHeight={pageHeight}
+          activeTool={activeTool}
+          isInteractive={isCalloutToolActive}
         />
       ))}
     </div>

@@ -405,7 +405,7 @@ const CalloutComponent = ({
           cy={arrowTip.y}
           r={12}
           fill="transparent"
-          style={{ pointerEvents: isInteractive ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+          style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
@@ -416,7 +416,7 @@ const CalloutComponent = ({
           cy={knee.y}
           r={12}
           fill="transparent"
-          style={{ pointerEvents: isInteractive ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+          style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
@@ -430,7 +430,7 @@ const CalloutComponent = ({
           left: textBoxPosition.x,
           top: textBoxPosition.y,
           cursor: isInteractive ? (isEditing ? 'text' : 'move') : 'default',
-          pointerEvents: isInteractive ? 'auto' : 'none',
+          pointerEvents: 'auto', // Always block events to prevent tools from passing through, even when not interactive
         }}
         onMouseDown={handleTextBoxMouseDown}
         onMouseUp={handleTextBoxMouseUp}
