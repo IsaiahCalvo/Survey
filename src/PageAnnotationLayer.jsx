@@ -2822,9 +2822,8 @@ const PageAnnotationLayer = memo(({
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'arrow') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
-      // Callout tool is now handled by the CalloutOverlay component
-      // } else if (currentTool === 'callout') {
-      //   temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
+      } else if (currentTool === 'callout') {
+        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'squiggly') {
         temp = new Polyline([[x, y]], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'note') {
@@ -3175,9 +3174,32 @@ const PageAnnotationLayer = memo(({
         }
         canvas.add(group);
         canvas.remove(ds.tempObj);
-      // Callout tool is now handled by the CalloutOverlay component
-      // } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
-      //   ... old Fabric.js callout creation code removed ...
+      } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
+        const { x1, y1, x2, y2 } = ds.tempObj;
+        const calloutGroup = createCalloutGroup(
+          { x: x1, y: y1 },
+          { x: x2, y: y2 },
+          currentStrokeColor,
+          currentStrokeWidth,
+          canvas
+        );
+        // Store current selectedSpaceId on the callout group
+        if (selectedSpaceIdRef.current) {
+          calloutGroup.set({ spaceId: selectedSpaceIdRef.current });
+        }
+        if (selectedModuleIdRef.current) {
+          calloutGroup.set({ moduleId: selectedModuleIdRef.current });
+        }
+        canvas.add(calloutGroup);
+        canvas.remove(ds.tempObj);
+        canvas.setActiveObject(calloutGroup);
+        // Enter text editing mode
+        const textObj = calloutGroup.getObjects().find(o => o.name === 'calloutText');
+        if (textObj) {
+          textObj.enterEditing();
+          textObj.selectAll();
+        }
+        canvas.requestRenderAll();
       }
       ds.isDrawingShape = false;
       ds.tempObj = null;
