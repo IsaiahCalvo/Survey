@@ -462,6 +462,38 @@ const isPointNearEraserPath = (point, eraserPath, eraserRadius) => {
   });
 };
 
+// Helper function to calculate distance from a point to a line segment
+const distanceToLineSegment = (point, lineStart, lineEnd) => {
+  const A = point.x - lineStart.x;
+  const B = point.y - lineStart.y;
+  const C = lineEnd.x - lineStart.x;
+  const D = lineEnd.y - lineStart.y;
+
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  let param = -1;
+  if (lenSq !== 0) {
+    param = dot / lenSq;
+  }
+
+  let xx, yy;
+
+  if (param < 0) {
+    xx = lineStart.x;
+    yy = lineStart.y;
+  } else if (param > 1) {
+    xx = lineEnd.x;
+    yy = lineEnd.y;
+  } else {
+    xx = lineStart.x + param * C;
+    yy = lineStart.y + param * D;
+  }
+
+  const dx = point.x - xx;
+  const dy = point.y - yy;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
 // Helper function to check if a sample point is within the eraser zone (any point in eraser path)
 // Check if a path point (centerline) is erased, accounting for stroke width
 // The eraser overlaps if it's within (strokeWidth/2 + eraserRadius) of the centerline
@@ -1176,7 +1208,10 @@ const PageAnnotationLayer = memo(({
     selectedSpaceIdRef.current = selectedSpaceId;
     selectedModuleIdRef.current = selectedModuleId;
     showSurveyPanelRef.current = showSurveyPanel;
-  }, [callouts, setCallouts, selectedSpaceId, selectedModuleId, showSurveyPanel]);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1351',message:'Callouts ref updated',data:{calloutsCount:callouts.length,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
+  }, [callouts, setCallouts, selectedSpaceId, selectedModuleId, showSurveyPanel, pageNumber]);
   const strokeWidthRef = useRef(strokeWidth);
   const justCreatedCalloutRef = useRef(false);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
@@ -1705,9 +1740,12 @@ const PageAnnotationLayer = memo(({
 
     canvas.isDrawingMode = tool === 'pen' || tool === 'highlighter';
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1698',message:'Setting canvas selection properties',data:{tool:toolRef.current,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     // Disable Fabric.js built-in selection for Pan tool (we want drag-to-pan)
-    // Also disable for Select tool.
-    canvas.selection = false;
+    // Enable selection for Select tool (we have custom selection handler but need Fabric's selection enabled for it to work)
+    canvas.selection = tool === 'select';
 
     // Deselect active object when switching away from select tool to prevent interference
     if (tool !== 'select') {
@@ -2678,8 +2716,13 @@ const PageAnnotationLayer = memo(({
 
       // Handle Fabric callout objects when select tool is active
       // Note: React callouts (via CalloutOverlay) handle their own events separately
+      // IMPORTANT: For select tool, we should NOT return early here - let the custom selection handler work
+      // Only handle Fabric callout drag interactions if clicking on a Fabric callout object
       if (currentTool === 'select') {
-        // Only handle Fabric callout objects (if they exist)
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2670',message:'Select tool handleMouseDown',data:{hasTarget:!!opt.target,targetType:opt.target?.type,isFabricCallout:opt.target?.data?.type==='callout',pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'G'})}).catch(()=>{});
+        // #endregion
+        // Only handle Fabric callout objects (if they exist) for drag interactions
         const target = opt.target;
         if (target && target.data?.type === 'callout' && !canvas._currentTransform) {
           const isOverHandle = isPointOnAnyHandle ? isPointOnAnyHandle(pointer, target) : false;
@@ -2724,8 +2767,9 @@ const PageAnnotationLayer = memo(({
             }
           }
         }
-        // For select tool, don't return early - let Fabric handle selection normally
+        // For select tool, don't return early - let the custom selection handler (handleMouseDownForSelection) work
         // This allows clicking/dragging to select Fabric objects
+        // The custom handler is registered on 'mouse:down' event and will handle selection
       }
 
       // For other tools, ignore callout clicks so they don't interfere with annotation tools
@@ -3124,9 +3168,15 @@ const PageAnnotationLayer = memo(({
 
           // Handle React callouts (not Fabric objects)
           // Check if eraser path intersects with any callout on this page
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3128',message:'Eraser checking callouts',data:{hasCalloutsRef:!!calloutsRef.current,calloutsCount:calloutsRef.current?.length||0,hasSetCallouts:!!setCalloutsRef.current,pageNumber,eraserPointsCount:eraserPath?.points?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
+          // #endregion
           if (calloutsRef.current && calloutsRef.current.length > 0 && setCalloutsRef.current) {
             const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
             const pageCallouts = calloutsRef.current.filter(c => c.pageNumber === pageNumber);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3133',message:'Page callouts found',data:{pageCalloutsCount:pageCallouts.length,width,height,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
+            // #endregion
             const calloutsToDelete = [];
 
             for (const callout of pageCallouts) {
@@ -3146,10 +3196,15 @@ const PageAnnotationLayer = memo(({
               const textBoxWidthPx = callout.textBoxWidth * width;
               const textBoxHeightPx = callout.textBoxHeight * height;
 
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3145',message:'Checking callout for eraser',data:{calloutId:callout.id,arrowTipPx,kneePx,textBoxPx,textBoxWidthPx,textBoxHeightPx,width,height,firstEraserPoint:eraserPath.points[0],eraserRadius,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
+              // #endregion
+
               // Check if any eraser point is within eraser radius of:
               // 1. Arrow tip
               // 2. Knee point
               // 3. Text box bounds
+              // 4. Line segments (arrow tip -> knee -> text box)
               const isTouching = eraserPath.points.some(point => {
                 // Check arrow tip
                 const distToTip = Math.sqrt(
@@ -3163,7 +3218,7 @@ const PageAnnotationLayer = memo(({
                 );
                 if (distToKnee < eraserRadius) return true;
 
-                // Check text box bounds
+                // Check text box bounds (expand bounds by eraser radius)
                 const inTextBox = 
                   point.x >= textBoxPx.x - eraserRadius &&
                   point.x <= textBoxPx.x + textBoxWidthPx + eraserRadius &&
@@ -3171,17 +3226,41 @@ const PageAnnotationLayer = memo(({
                   point.y <= textBoxPx.y + textBoxHeightPx + eraserRadius;
                 if (inTextBox) return true;
 
+                // Check line segment from arrow tip to knee
+                const distToTipKneeLine = distanceToLineSegment(point, arrowTipPx, kneePx);
+                if (distToTipKneeLine < eraserRadius) return true;
+
+                // Check line segment from knee to text box center-left
+                const textBoxCenterLeft = {
+                  x: textBoxPx.x,
+                  y: textBoxPx.y + textBoxHeightPx / 2
+                };
+                const distToKneeTextLine = distanceToLineSegment(point, kneePx, textBoxCenterLeft);
+                if (distToKneeTextLine < eraserRadius) return true;
+
                 return false;
               });
 
               if (isTouching) {
                 calloutsToDelete.push(callout.id);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3178',message:'Callout touched by eraser',data:{calloutId:callout.id,arrowTip:callout.arrowTip,knee:callout.knee,textBoxPosition:callout.textBoxPosition,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
+                // #endregion
               }
             }
 
             // Delete touched callouts
             if (calloutsToDelete.length > 0) {
-              setCalloutsRef.current(prev => prev.filter(c => !calloutsToDelete.includes(c.id)));
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3204',message:'Deleting callouts',data:{calloutsToDeleteCount:calloutsToDelete.length,calloutIds:calloutsToDelete,pageNumber,beforeCount:calloutsRef.current.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H'})}).catch(()=>{});
+              // #endregion
+              setCalloutsRef.current(prev => {
+                const filtered = prev.filter(c => !calloutsToDelete.includes(c.id));
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3208',message:'Callouts after deletion',data:{afterCount:filtered.length,deletedIds:calloutsToDelete,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H'})}).catch(()=>{});
+                // #endregion
+                return filtered;
+              });
               needsRenderAndSave = true;
             }
           }
@@ -3360,6 +3439,9 @@ const PageAnnotationLayer = memo(({
     // Track mouse down for selection rectangle
     // AutoCAD/Bluebeam-style: direction determines selection mode
     const handleMouseDownForSelection = (e) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3380',message:'handleMouseDownForSelection called',data:{tool:toolRef.current,hasTarget:!!e.target,targetType:e.target?.type,pageNumber,canvasSelection:canvas.selection},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
       if (toolRef.current !== 'select') {
         return;
       }
@@ -3410,11 +3492,14 @@ const PageAnnotationLayer = memo(({
       if (isObjectClick) {
         // Don't initialize selection rect - allow single-click object selection to work normally
         // But also don't prevent the object from being selected
+        // Return early so Fabric.js can handle the object selection
+        // Keep canvas.selection enabled so Fabric.js can select the object
         return;
       }
 
-      // Disable canvas.selection to prevent Fabric.js from interfering with our custom drag selection
-      // We'll re-enable it after selection completes to show visual feedback
+      // Note: We keep canvas.selection enabled for select tool to allow Fabric.js to handle selection
+      // The custom selection rectangle is for drag-selection only
+      // Temporarily disable canvas.selection only during drag selection to prevent interference
       canvas.selection = false;
 
       // Get pointer coordinates - use viewport-transformed coordinates for visual rectangle
