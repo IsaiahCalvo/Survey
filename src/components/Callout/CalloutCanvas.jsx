@@ -304,6 +304,13 @@ const CalloutCanvas = ({
     setCallouts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   }, [setCallouts]);
 
+  const deleteCallout = useCallback((id) => {
+    setCallouts(prev => prev.filter(c => c.id !== id));
+    if (selectedCalloutId === id) {
+      setSelectedCalloutId(null);
+    }
+  }, [setCallouts, selectedCalloutId, setSelectedCalloutId]);
+
   // Clear newCalloutId after focus
   useEffect(() => {
     if (newCalloutId) {
@@ -385,6 +392,7 @@ const CalloutCanvas = ({
           onSelect={() => selectCallout(callout.id)}
           onStartDrag={startDrag}
           onUpdate={(updates) => updateCallout(callout.id, updates)}
+          onDelete={() => deleteCallout(callout.id)}
           shouldFocus={callout.id === newCalloutId}
           pageWidth={pageWidth}
           pageHeight={pageHeight}

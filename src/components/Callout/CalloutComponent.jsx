@@ -11,6 +11,7 @@ import { hexToRgba } from './types';
  * @param {Function} props.onSelect - Called when callout is selected
  * @param {Function} props.onStartDrag - Called to start a drag operation
  * @param {Function} props.onUpdate - Called to update callout properties
+ * @param {Function} props.onDelete - Called to delete the callout
  * @param {boolean} props.shouldFocus - Whether to focus textarea (for new callouts)
  * @param {number} props.pageWidth - Page width in pixels at current scale
  * @param {number} props.pageHeight - Page height in pixels at current scale
@@ -21,6 +22,7 @@ const CalloutComponent = ({
   onSelect,
   onStartDrag,
   onUpdate,
+  onDelete,
   shouldFocus,
   pageWidth,
   pageHeight,
@@ -182,6 +184,14 @@ const CalloutComponent = ({
     setIsEditing(true);
     textareaRef.current?.focus();
   }, []);
+
+  const handleTextareaBlur = useCallback(() => {
+    setIsEditing(false);
+    // Remove callout if text is empty
+    if (!callout.text || callout.text.trim() === '') {
+      onDelete();
+    }
+  }, [callout.text, onDelete]);
 
   const handleCornerMouseDown = useCallback((e, corner) => {
     e.stopPropagation();
@@ -392,6 +402,7 @@ const CalloutComponent = ({
           ref={textareaRef}
           value={callout.text}
           onChange={(e) => onUpdate({ text: e.target.value })}
+          onBlur={handleTextareaBlur}
           className="callout-text-box"
           style={{
             width: textBoxWidth,
@@ -425,23 +436,67 @@ const CalloutComponent = ({
         {isSelected && (
           <>
             <div
-              className="callout-handle"
-              style={{ top: -6, left: -6, cursor: 'nw-resize' }}
+              style={{
+                position: 'absolute',
+                top: -6,
+                left: -6,
+                width: 12,
+                height: 12,
+                borderRadius: 3,
+                backgroundColor: '#ffffff',
+                border: '2px solid #3b82f6',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+                cursor: 'nw-resize',
+                zIndex: 20,
+              }}
               onMouseDown={(e) => handleCornerMouseDown(e, 'nw')}
             />
             <div
-              className="callout-handle"
-              style={{ top: -6, right: -6, cursor: 'ne-resize' }}
+              style={{
+                position: 'absolute',
+                top: -6,
+                right: -6,
+                width: 12,
+                height: 12,
+                borderRadius: 3,
+                backgroundColor: '#ffffff',
+                border: '2px solid #3b82f6',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+                cursor: 'ne-resize',
+                zIndex: 20,
+              }}
               onMouseDown={(e) => handleCornerMouseDown(e, 'ne')}
             />
             <div
-              className="callout-handle"
-              style={{ bottom: -6, left: -6, cursor: 'sw-resize' }}
+              style={{
+                position: 'absolute',
+                bottom: -6,
+                left: -6,
+                width: 12,
+                height: 12,
+                borderRadius: 3,
+                backgroundColor: '#ffffff',
+                border: '2px solid #3b82f6',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+                cursor: 'sw-resize',
+                zIndex: 20,
+              }}
               onMouseDown={(e) => handleCornerMouseDown(e, 'sw')}
             />
             <div
-              className="callout-handle"
-              style={{ bottom: -6, right: -6, cursor: 'se-resize' }}
+              style={{
+                position: 'absolute',
+                bottom: -6,
+                right: -6,
+                width: 12,
+                height: 12,
+                borderRadius: 3,
+                backgroundColor: '#ffffff',
+                border: '2px solid #3b82f6',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+                cursor: 'se-resize',
+                zIndex: 20,
+              }}
               onMouseDown={(e) => handleCornerMouseDown(e, 'se')}
             />
           </>
@@ -451,12 +506,18 @@ const CalloutComponent = ({
       {/* Knee handle */}
       {isSelected && (
         <div
-          className="callout-handle"
           style={{
             position: 'absolute',
             left: knee.x - 6,
             top: knee.y - 6,
+            width: 12,
+            height: 12,
+            borderRadius: 3,
+            backgroundColor: '#ffffff',
+            border: '2px solid #3b82f6',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
             cursor: 'move',
+            zIndex: 20,
           }}
           onMouseDown={(e) => handleHandleMouseDown(e, 'knee')}
         />
@@ -465,12 +526,18 @@ const CalloutComponent = ({
       {/* Arrow tip handle */}
       {isSelected && (
         <div
-          className="callout-handle"
           style={{
             position: 'absolute',
             left: arrowTip.x - 6,
             top: arrowTip.y - 6,
+            width: 12,
+            height: 12,
+            borderRadius: 3,
+            backgroundColor: '#ffffff',
+            border: '2px solid #3b82f6',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
             cursor: 'move',
+            zIndex: 20,
           }}
           onMouseDown={(e) => handleHandleMouseDown(e, 'arrowTip')}
         />

@@ -94,7 +94,7 @@ export const defaultCalloutStyle = {
   borderColor: '#1e293b',
   borderOpacity: 1,
   lineThickness: 2,
-  fillColor: '#fef3c7',
+  fillColor: '#ffffff',
   fillOpacity: 1,
   fontFamily: 'Inter, Arial, sans-serif',
   fontSize: 14,
