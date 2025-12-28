@@ -1,4 +1,3 @@
-chunk-F2KOVKPX.js?v=1fe7512a:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
 MSGraphContext.jsx:236 Unrecognized feature: 'local-network-access'.
 createHiddenIframe @ SilentHandler.ts:259
 loadFrameSync @ SilentHandler.ts:235
@@ -24,75 +23,162 @@ commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
 commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
 flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
 flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25757
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+commitRootImpl @ chunk-DSUIPI7G.js:26321
+commitRoot @ chunk-DSUIPI7G.js:26166
+finishConcurrentRender @ chunk-DSUIPI7G.js:25694
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25607
 workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 22 more frames
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+Show 27 more frames
+MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+createHiddenIframe @ SilentHandler.ts:260
+loadFrameSync @ SilentHandler.ts:235
+(anonymous) @ FunctionWrappers.ts:43
+initiateCodeRequest @ SilentHandler.ts:62
+(anonymous) @ FunctionWrappers.ts:102
+silentTokenHelper @ SilentIframeClient.ts:430
+await in silentTokenHelper (async)
+(anonymous) @ FunctionWrappers.ts:102
+executeCodeFlow @ SilentIframeClient.ts:177
+await in executeCodeFlow (async)
+acquireToken @ SilentIframeClient.ts:139
+await in acquireToken (async)
+ssoSilent @ StandardController.ts:1067
+ssoSilent @ PublicClientApplication.ts:343
+initializeMsal @ MSGraphContext.jsx:236
+await in initializeMsal (async)
+(anonymous) @ MSGraphContext.jsx:274
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25757
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+commitRootImpl @ chunk-DSUIPI7G.js:26321
+commitRoot @ chunk-DSUIPI7G.js:26166
+finishConcurrentRender @ chunk-DSUIPI7G.js:25694
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25607
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 27 more frames
 Me.htm:1 true
-Me.htm:1 true
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI2NGU1LWQxNDgtNzM3ZS04MTdmLWY5ZDVlZjllNjVlMCIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 AuthContext.jsx:102 Window focused, refetching subscription tier...
-App.jsx:11267 PDF load check: {size: 25716812, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
-App.jsx:11276 PDF Header Check: %PDF-
-Me.htm:1 true
-AuthContext.jsx:102 Window focused, refetching subscription tier...
-CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: svg, currentTarget: div, isCanvas: false, targetTagName: 'svg', isCalloutToolActive: true, …}
-CalloutCanvas.jsx:80 [CalloutCanvas] Returning early - click was not on canvas background
-CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: svg, currentTarget: div, isCanvas: false, targetTagName: 'svg', isCalloutToolActive: true, …}
-CalloutCanvas.jsx:80 [CalloutCanvas] Returning early - click was not on canvas background
-CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: svg, currentTarget: div, isCanvas: false, targetTagName: 'svg', isCalloutToolActive: true, …}
-CalloutCanvas.jsx:80 [CalloutCanvas] Returning early - click was not on canvas background
-CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: svg, currentTarget: div, isCanvas: false, targetTagName: 'svg', isCalloutToolActive: true, …}
-CalloutCanvas.jsx:80 [CalloutCanvas] Returning early - click was not on canvas background
-CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: svg, currentTarget: div, isCanvas: false, targetTagName: 'svg', isCalloutToolActive: true, …}
-CalloutCanvas.jsx:80 [CalloutCanvas] Returning early - click was not on canvas background
-AuthContext.jsx:102 Window focused, refetching subscription tier...
-AuthContext.jsx:102 Window focused, refetching subscription tier...
-CalloutComponent.jsx:111 [CalloutComponent] handleTextBoxMouseDown {calloutId: 'callout-61dv03cxw-mjpmbu24', isSelected: false, isEditing: false}
-CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-jlthabxix-mjpmc0jm'}
-CalloutComponent.jsx:111 [CalloutComponent] handleTextBoxMouseDown {calloutId: 'callout-7l3ixwhtb-mjpmbrbz', isSelected: false, isEditing: false}
-CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-7l3ixwhtb-mjpmbrbz', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
-CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: div, currentTarget: div, isCanvas: true, targetTagName: 'DIV', isCalloutToolActive: true, …}
-CalloutCanvas.jsx:88 [CalloutCanvas] Starting callout creation {pos: {…}}
-CalloutComponent.jsx:111 [CalloutComponent] handleTextBoxMouseDown {calloutId: 'callout-7l3ixwhtb-mjpmbrbz', isSelected: false, isEditing: false}
-CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-7l3ixwhtb-mjpmbrbz', currentSelectedId: 'callout-758nrfwmx-mjpmmkzd'}
-CalloutComponent.jsx:111 [CalloutComponent] handleTextBoxMouseDown {calloutId: 'callout-61dv03cxw-mjpmbu24', isSelected: false, isEditing: false}
-CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-7l3ixwhtb-mjpmbrbz'}
-CalloutComponent.jsx:211 [CalloutComponent] handleHandleMouseDown {calloutId: 'callout-61dv03cxw-mjpmbu24', targetType: 'knee', isSelected: true}
-CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
-CalloutComponent.jsx:211 [CalloutComponent] handleHandleMouseDown {calloutId: 'callout-61dv03cxw-mjpmbu24', targetType: 'arrowTip', isSelected: true}
-CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
-CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
-CalloutCanvas.jsx:120 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
-printWarning @ chunk-DSUIPI7G.js:7410
-error @ chunk-DSUIPI7G.js:7394
-checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
-scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
-dispatchSetState @ chunk-DSUIPI7G.js:19292
-(anonymous) @ CalloutCanvas.jsx:120
-callCallback2 @ chunk-DSUIPI7G.js:10563
-invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
-invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
-invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
-executeDispatch @ chunk-DSUIPI7G.js:13903
-processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
-processDispatchQueue @ chunk-DSUIPI7G.js:13932
-dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
-(anonymous) @ chunk-DSUIPI7G.js:14063
-batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
-batchedUpdates @ chunk-DSUIPI7G.js:10468
-dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
-dispatchEvent @ chunk-DSUIPI7G.js:12361
-dispatchContinuousEvent @ chunk-DSUIPI7G.js:12350
-Show 20 more frames
-CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
-CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
-CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
+CalloutCanvas.jsx:22 [Callout SELECTION] Selection rect received - CROSSING (R→L) - rect:[521,260 → 586,284] page:1224x792 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Found 4 callouts on page 1 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmbrbz textBox:[335,225 → 455,265] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmbrbz: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmmkzd textBox:[318,400 → 438,440] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmmkzd: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpct4 textBox:[258,536 → 378,576] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmpct4: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpft5 textBox:[569,312 → 689,352] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmpft5: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Result: 0 selected out of 4 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Selection rect received - WINDOW (L→R) - rect:[387,206 → 590,316] page:1224x792 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Found 4 callouts on page 1 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmbrbz textBox:[335,225 → 455,265] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmbrbz: L:335>=387?false T:225>=206?true R:455<=590?true B:265<=316?true => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmmkzd textBox:[318,400 → 438,440] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmmkzd: L:318>=387?false T:400>=206?true R:438<=590?true B:440<=316?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpct4 textBox:[258,536 → 378,576] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmpct4: L:258>=387?false T:536>=206?true R:378<=590?true B:576<=316?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpft5 textBox:[569,312 → 689,352] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmpft5: L:569>=387?true T:312>=206?true R:689<=590?false B:352<=316?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Result: 0 selected out of 4 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Selection rect received - CROSSING (R→L) - rect:[259,447 → 328,469] page:1224x792 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Found 4 callouts on page 1 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmbrbz textBox:[335,225 → 455,265] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmbrbz: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmmkzd textBox:[318,400 → 438,440] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmmkzd: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpct4 textBox:[258,536 → 378,576] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmpct4: intersects=true {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpft5 textBox:[569,312 → 689,352] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmpft5: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Result: 1 selected out of 4 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Selection rect received - CROSSING (R→L) - rect:[326,330 → 415,356] page:1224x792 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Found 4 callouts on page 1 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmbrbz textBox:[335,225 → 455,265] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmbrbz: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmmkzd textBox:[318,400 → 438,440] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmmkzd: intersects=true {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpct4 textBox:[258,536 → 378,576] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmpct4: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpft5 textBox:[569,312 → 689,352] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmpft5: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Result: 1 selected out of 4 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Selection rect received - CROSSING (R→L) - rect:[334,195 → 427,209] page:1224x792 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Found 4 callouts on page 1 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmbrbz textBox:[335,225 → 455,265] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmbrbz: intersects=true {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmmkzd textBox:[318,400 → 438,440] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmmkzd: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpct4 textBox:[258,536 → 378,576] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmpct4: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpft5 textBox:[569,312 → 689,352] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmpft5: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Result: 1 selected out of 4 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Selection rect received - CROSSING (R→L) - rect:[508,261 → 605,285] page:1224x792 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Found 4 callouts on page 1 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmbrbz textBox:[335,225 → 455,265] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmbrbz: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmmkzd textBox:[318,400 → 438,440] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmmkzd: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpct4 textBox:[258,536 → 378,576] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmpct4: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpft5 textBox:[569,312 → 689,352] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] CROSSING check mjpmpft5: intersects=false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Result: 0 selected out of 4 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Selection rect received - WINDOW (L→R) - rect:[159,56 → 402,235] page:1224x792 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Found 4 callouts on page 1 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmbrbz textBox:[335,225 → 455,265] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmbrbz: L:335>=159?true T:225>=56?true R:455<=402?false B:265<=235?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmmkzd textBox:[318,400 → 438,440] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmmkzd: L:318>=159?true T:400>=56?true R:438<=402?false B:440<=235?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpct4 textBox:[258,536 → 378,576] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmpct4: L:258>=159?true T:536>=56?true R:378<=402?true B:576<=235?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpft5 textBox:[569,312 → 689,352] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmpft5: L:569>=159?true T:312>=56?true R:689<=402?false B:352<=235?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Result: 0 selected out of 4 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Selection rect received - WINDOW (L→R) - rect:[161,240 → 383,380] page:1224x792 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Found 4 callouts on page 1 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmbrbz textBox:[335,225 → 455,265] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmbrbz: L:335>=161?true T:225>=240?false R:455<=383?false B:265<=380?true => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmmkzd textBox:[318,400 → 438,440] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmmkzd: L:318>=161?true T:400>=240?true R:438<=383?false B:440<=380?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpct4 textBox:[258,536 → 378,576] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmpct4: L:258>=161?true T:536>=240?true R:378<=383?true B:576<=380?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpft5 textBox:[569,312 → 689,352] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmpft5: L:569>=161?true T:312>=240?true R:689<=383?false B:352<=380?true => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Result: 0 selected out of 4 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Selection rect received - WINDOW (L→R) - rect:[120,362 → 339,496] page:1224x792 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Found 4 callouts on page 1 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmbrbz textBox:[335,225 → 455,265] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmbrbz: L:335>=120?true T:225>=362?false R:455<=339?false B:265<=496?true => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmmkzd textBox:[318,400 → 438,440] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmmkzd: L:318>=120?true T:400>=362?true R:438<=339?false B:440<=496?true => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpct4 textBox:[258,536 → 378,576] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmpct4: L:258>=120?true T:536>=362?true R:378<=339?false B:576<=496?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpft5 textBox:[569,312 → 689,352] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmpft5: L:569>=120?true T:312>=362?false R:689<=339?false B:352<=496?true => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Result: 0 selected out of 4 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Selection rect received - WINDOW (L→R) - rect:[70,24 → 641,524] page:1224x792 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Found 4 callouts on page 1 {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmbrbz textBox:[335,225 → 455,265] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmbrbz: L:335>=70?true T:225>=24?true R:455<=641?true B:265<=524?true => true {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmmkzd textBox:[318,400 → 438,440] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmmkzd: L:318>=70?true T:400>=24?true R:438<=641?true B:440<=524?true => true {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpct4 textBox:[258,536 → 378,576] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmpct4: L:258>=70?true T:536>=24?true R:378<=641?true B:576<=524?false => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Callout mjpmpft5 textBox:[569,312 → 689,352] {}
+CalloutCanvas.jsx:22 [Callout SELECTION] WINDOW check mjpmpft5: L:569>=70?true T:312>=24?true R:689<=641?false B:352<=524?true => false {}
+CalloutCanvas.jsx:22 [Callout SELECTION] Result: 2 selected out of 4 {}
  Window focused, refetching subscription tier...

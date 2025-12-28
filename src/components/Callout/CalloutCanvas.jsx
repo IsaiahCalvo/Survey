@@ -2,6 +2,37 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import CalloutComponent from './CalloutComponent';
 import { createCallout, hexToRgba } from './types';
 
+// Debug logging system - stores logs globally for easy access
+if (!window.__CALLOUT_DEBUG_LOGS__) {
+  window.__CALLOUT_DEBUG_LOGS__ = [];
+}
+
+const debugLog = (category, message, data = {}) => {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    category,
+    message,
+    data
+  };
+  window.__CALLOUT_DEBUG_LOGS__.push(entry);
+  // Keep only last 100 entries
+  if (window.__CALLOUT_DEBUG_LOGS__.length > 100) {
+    window.__CALLOUT_DEBUG_LOGS__.shift();
+  }
+  console.log(`[Callout ${category}]`, message, data);
+};
+
+// Expose helper to get logs
+window.getCalloutLogs = () => {
+  console.table(window.__CALLOUT_DEBUG_LOGS__);
+  return window.__CALLOUT_DEBUG_LOGS__;
+};
+
+window.clearCalloutLogs = () => {
+  window.__CALLOUT_DEBUG_LOGS__ = [];
+  console.log('Callout logs cleared');
+};
+
 /**
  * CalloutCanvas - Manages callout creation and drag interactions
  * Renders on top of the PDF page
@@ -382,8 +413,13 @@ const CalloutCanvas = ({
 
     const { left, top, right, bottom, isWindowSelection } = selectionRect;
 
+    debugLog('SELECTION', `Selection rect received - ${isWindowSelection ? 'WINDOW (L→R)' : 'CROSSING (R→L)'} - rect:[${left.toFixed(0)},${top.toFixed(0)} → ${right.toFixed(0)},${bottom.toFixed(0)}] page:${pageWidth}x${pageHeight}`, {});
+
     // Find callouts that match the selection criteria
     const pageCalloutsLocal = callouts.filter(c => c.pageNumber === pageNumber);
+
+    debugLog('SELECTION', `Found ${pageCalloutsLocal.length} callouts on page ${pageNumber}`, {});
+
     const selectedIds = [];
 
     pageCalloutsLocal.forEach(callout => {
@@ -405,14 +441,19 @@ const CalloutCanvas = ({
       const fullBoundsRight = Math.max(textBoxRight, arrowX, kneeX);
       const fullBoundsBottom = Math.max(textBoxBottom, arrowY, kneeY);
 
+      debugLog('SELECTION', `Callout ${callout.id.slice(-8)} textBox:[${textBoxLeft.toFixed(0)},${textBoxTop.toFixed(0)} → ${textBoxRight.toFixed(0)},${textBoxBottom.toFixed(0)}]`, {});
+
       if (isWindowSelection) {
         // Window selection (L→R): Text box must be FULLY contained
-        // (Don't require arrow/knee to be contained - just the main text box)
-        const isTextBoxContained =
-          textBoxLeft >= left &&
-          textBoxTop >= top &&
-          textBoxRight <= right &&
-          textBoxBottom <= bottom;
+        const checks = {
+          leftCheck: textBoxLeft >= left,
+          topCheck: textBoxTop >= top,
+          rightCheck: textBoxRight <= right,
+          bottomCheck: textBoxBottom <= bottom
+        };
+        const isTextBoxContained = checks.leftCheck && checks.topCheck && checks.rightCheck && checks.bottomCheck;
+
+        debugLog('SELECTION', `WINDOW check ${callout.id.slice(-8)}: L:${textBoxLeft.toFixed(0)}>=${left.toFixed(0)}?${checks.leftCheck} T:${textBoxTop.toFixed(0)}>=${top.toFixed(0)}?${checks.topCheck} R:${textBoxRight.toFixed(0)}<=${right.toFixed(0)}?${checks.rightCheck} B:${textBoxBottom.toFixed(0)}<=${bottom.toFixed(0)}?${checks.bottomCheck} => ${isTextBoxContained}`, {});
 
         if (isTextBoxContained) {
           selectedIds.push(callout.id);
@@ -426,11 +467,15 @@ const CalloutCanvas = ({
           fullBoundsTop > bottom
         );
 
+        debugLog('SELECTION', `CROSSING check ${callout.id.slice(-8)}: intersects=${intersects}`, {});
+
         if (intersects) {
           selectedIds.push(callout.id);
         }
       }
     });
+
+    debugLog('SELECTION', `Result: ${selectedIds.length} selected out of ${pageCalloutsLocal.length}`, {});
 
     // Select the first matching callout (for now, single selection)
     // TODO: Support multi-selection if needed
