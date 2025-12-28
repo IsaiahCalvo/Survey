@@ -35,6 +35,7 @@ const CalloutComponent = ({
   const mouseDownPositionRef = useRef(null);
   const mouseMoveHandlerRef = useRef(null);
   const mouseUpHandlerRef = useRef(null);
+  const prevIsSelectedRef = useRef(isSelected);
 
   // Convert percentage positions to pixels
   const toPixels = useCallback((point) => ({
@@ -64,12 +65,20 @@ const CalloutComponent = ({
     }
   }, [isSelected]);
 
-  // Exit editing mode when deselected
+  // Exit editing mode when deselected, and remove if empty
   useEffect(() => {
+    // Check if we're transitioning from selected to deselected
+    const wasSelected = prevIsSelectedRef.current;
+    prevIsSelectedRef.current = isSelected;
+
     if (!isSelected) {
       setIsEditing(false);
+      // Only delete if we were previously selected (not on initial mount)
+      if (wasSelected && (!callout.text || callout.text.trim() === '')) {
+        onDelete();
+      }
     }
-  }, [isSelected]);
+  }, [isSelected, callout.text, onDelete]);
 
   // Auto-resize textarea height based on content
   useEffect(() => {
@@ -102,6 +111,7 @@ const CalloutComponent = ({
     e.stopPropagation();
 
     if (!isEditing) {
+      e.preventDefault(); // Prevent text selection during drag
       hasDraggedRef.current = false;
       mouseDownPositionRef.current = { x: e.clientX, y: e.clientY };
 
@@ -187,20 +197,18 @@ const CalloutComponent = ({
 
   const handleTextareaBlur = useCallback(() => {
     setIsEditing(false);
-    // Remove callout if text is empty
-    if (!callout.text || callout.text.trim() === '') {
-      onDelete();
-    }
-  }, [callout.text, onDelete]);
+  }, []);
 
   const handleCornerMouseDown = useCallback((e, corner) => {
     e.stopPropagation();
+    e.preventDefault(); // Prevent text selection during drag
     onSelect();
     onStartDrag({ type: 'textBoxCorner', calloutId: callout.id, corner }, { x: 0, y: 0 });
   }, [callout.id, onSelect, onStartDrag]);
 
   const handleHandleMouseDown = useCallback((e, targetType) => {
     e.stopPropagation();
+    e.preventDefault(); // Prevent text selection during drag
     onSelect();
     onStartDrag({ type: targetType, calloutId: callout.id }, { x: 0, y: 0 });
   }, [callout.id, onSelect, onStartDrag]);
@@ -424,6 +432,8 @@ const CalloutComponent = ({
             textAlign: style.textAlign || 'left',
             pointerEvents: isEditing ? 'auto' : 'none',
             cursor: isEditing ? 'text' : 'move',
+            userSelect: isEditing ? 'text' : 'none',
+            WebkitUserSelect: isEditing ? 'text' : 'none',
             padding: '4px 8px',
             borderRadius: '4px',
             outline: 'none',
@@ -451,6 +461,7 @@ const CalloutComponent = ({
                 zIndex: 20,
               }}
               onMouseDown={(e) => handleCornerMouseDown(e, 'nw')}
+              onClick={(e) => e.stopPropagation()}
             />
             <div
               style={{
@@ -467,6 +478,7 @@ const CalloutComponent = ({
                 zIndex: 20,
               }}
               onMouseDown={(e) => handleCornerMouseDown(e, 'ne')}
+              onClick={(e) => e.stopPropagation()}
             />
             <div
               style={{
@@ -483,6 +495,7 @@ const CalloutComponent = ({
                 zIndex: 20,
               }}
               onMouseDown={(e) => handleCornerMouseDown(e, 'sw')}
+              onClick={(e) => e.stopPropagation()}
             />
             <div
               style={{
@@ -499,6 +512,7 @@ const CalloutComponent = ({
                 zIndex: 20,
               }}
               onMouseDown={(e) => handleCornerMouseDown(e, 'se')}
+              onClick={(e) => e.stopPropagation()}
             />
           </>
         )}
@@ -521,6 +535,7 @@ const CalloutComponent = ({
             zIndex: 20,
           }}
           onMouseDown={(e) => handleHandleMouseDown(e, 'knee')}
+          onClick={(e) => e.stopPropagation()}
         />
       )}
 
@@ -541,6 +556,7 @@ const CalloutComponent = ({
             zIndex: 20,
           }}
           onMouseDown={(e) => handleHandleMouseDown(e, 'arrowTip')}
+          onClick={(e) => e.stopPropagation()}
         />
       )}
     </>

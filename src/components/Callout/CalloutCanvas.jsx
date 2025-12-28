@@ -40,6 +40,8 @@ const CalloutCanvas = ({
   const wholeMoveInitialPosRef = useRef(null);
   const wholeMoveInitialCalloutPosRef = useRef(null);
   const cornerResizeInitialStateRef = useRef(null);
+  const justCreatedRef = useRef(false);
+  const wasDraggingRef = useRef(false);
 
   // Convert pixel position to percentage of page
   const toPercent = useCallback((pixelPoint) => ({
@@ -253,6 +255,7 @@ const CalloutCanvas = ({
       setCallouts(prev => [...prev.map(c => ({ ...c, isSelected: false })), newCallout]);
       setSelectedCalloutId(newCallout.id);
       setNewCalloutId(newCallout.id);
+      justCreatedRef.current = true; // Prevent click handler from deselecting
 
       setCreationState({
         isCreating: false,
@@ -270,6 +273,16 @@ const CalloutCanvas = ({
   }, [creationState, getMousePosition, setCallouts, setSelectedCalloutId, toPercent, pageNumber, pageWidth, pageHeight, defaultStyle]);
 
   const handleCanvasClick = useCallback((e) => {
+    // Skip if we just created a callout (click fires after mouseup)
+    if (justCreatedRef.current) {
+      justCreatedRef.current = false;
+      return;
+    }
+    // Skip if we were just dragging (click fires after mouseup)
+    if (wasDraggingRef.current) {
+      wasDraggingRef.current = false;
+      return;
+    }
     // Deselect if clicking on empty space (not on a callout)
     if (e.target === canvasRef.current) {
       setSelectedCalloutId(null);
@@ -280,6 +293,7 @@ const CalloutCanvas = ({
   const startDrag = useCallback((target, offset) => {
     setDragTarget(target);
     setDragOffset(offset);
+    wasDraggingRef.current = true;
 
     // Capture initial state for corner resize
     if (target.type === 'textBoxCorner' && target.calloutId) {
