@@ -210,16 +210,6 @@ const CalloutComponent = ({
     onSelect();
   }, [onSelect]);
 
-  const handleArrowAreaClick = useCallback((e) => {
-    e.stopPropagation();
-    onSelect();
-  }, [onSelect]);
-
-  const handleKneeAreaClick = useCallback((e) => {
-    e.stopPropagation();
-    onSelect();
-  }, [onSelect]);
-
   const { style } = callout;
 
   // Calculate text box center for line connection
@@ -308,7 +298,7 @@ const CalloutComponent = ({
           bottom: 0,
           width: '100%',
           height: '100%',
-          pointerEvents: 'none',
+          overflow: 'visible',
         }}
       >
         <defs>
@@ -327,6 +317,18 @@ const CalloutComponent = ({
           </marker>
         </defs>
 
+        {/* Hit area for Line 1 - invisible wider stroke for easier clicking */}
+        <line
+          x1={line1Start.x}
+          y1={line1Start.y}
+          x2={line1End.x}
+          y2={line1End.y}
+          stroke="transparent"
+          strokeWidth={16}
+          style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+          onClick={handleLineClick}
+        />
+
         {/* Line 1: Textbox to knee */}
         <line
           x1={line1Start.x}
@@ -335,6 +337,17 @@ const CalloutComponent = ({
           y2={line1End.y}
           stroke={hexToRgba(style.borderColor, style.borderOpacity)}
           strokeWidth={style.lineThickness}
+          style={{ pointerEvents: 'none' }}
+        />
+
+        {/* Hit area for Line 2 - invisible wider stroke for easier clicking */}
+        <line
+          x1={line2Start.x}
+          y1={line2Start.y}
+          x2={line2End.x}
+          y2={line2End.y}
+          stroke="transparent"
+          strokeWidth={16}
           style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
           onClick={handleLineClick}
         />
@@ -348,42 +361,30 @@ const CalloutComponent = ({
           stroke={hexToRgba(style.borderColor, style.borderOpacity)}
           strokeWidth={style.lineThickness}
           markerEnd={`url(#arrowhead-${callout.id})`}
-          style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+          style={{ pointerEvents: 'none' }}
+        />
+
+        {/* Hit area for arrowhead - invisible circle for easier clicking */}
+        <circle
+          cx={arrowTip.x}
+          cy={arrowTip.y}
+          r={12}
+          fill="transparent"
+          style={{ cursor: 'pointer' }}
+          onClick={handleLineClick}
+        />
+
+        {/* Hit area for knee - invisible circle for easier clicking */}
+        <circle
+          cx={knee.x}
+          cy={knee.y}
+          r={12}
+          fill="transparent"
+          style={{ cursor: 'pointer' }}
           onClick={handleLineClick}
         />
       </svg>
 
-      {/* Clickable area around arrow tip for selection - only when not selected */}
-      {!isSelected && (
-        <div
-          style={{
-            position: 'absolute',
-            left: arrowTip.x - 12,
-            top: arrowTip.y - 12,
-            width: 24,
-            height: 24,
-            zIndex: 1,
-            cursor: 'pointer',
-          }}
-          onClick={handleArrowAreaClick}
-        />
-      )}
-
-      {/* Clickable area around knee for selection - only when not selected */}
-      {!isSelected && (
-        <div
-          style={{
-            position: 'absolute',
-            left: knee.x - 12,
-            top: knee.y - 12,
-            width: 24,
-            height: 24,
-            zIndex: 1,
-            cursor: 'pointer',
-          }}
-          onClick={handleKneeAreaClick}
-        />
-      )}
 
       {/* Text box */}
       <div
