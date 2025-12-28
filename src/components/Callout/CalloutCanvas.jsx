@@ -387,43 +387,43 @@ const CalloutCanvas = ({
     const selectedIds = [];
 
     pageCalloutsLocal.forEach(callout => {
-      // Get callout bounds in pixels
-      // Note: pageWidth and pageHeight represent the actual rendered dimensions
-      const calloutLeft = callout.textBoxPosition.x * pageWidth;
-      const calloutTop = callout.textBoxPosition.y * pageHeight;
-      const calloutRight = calloutLeft + (callout.textBoxWidth * pageWidth);
-      const calloutBottom = calloutTop + (callout.textBoxHeight * pageHeight);
+      // Get text box bounds in pixels (primary selection target)
+      const textBoxLeft = callout.textBoxPosition.x * pageWidth;
+      const textBoxTop = callout.textBoxPosition.y * pageHeight;
+      const textBoxRight = textBoxLeft + (callout.textBoxWidth * pageWidth);
+      const textBoxBottom = textBoxTop + (callout.textBoxHeight * pageHeight);
 
-      // Also include arrow tip and knee in bounds
+      // Also get arrow tip and knee positions for crossing selection
       const arrowX = callout.arrowTip.x * pageWidth;
       const arrowY = callout.arrowTip.y * pageHeight;
       const kneeX = callout.knee.x * pageWidth;
       const kneeY = callout.knee.y * pageHeight;
 
-      // Expand bounds to include all parts
-      const boundsLeft = Math.min(calloutLeft, arrowX, kneeX);
-      const boundsTop = Math.min(calloutTop, arrowY, kneeY);
-      const boundsRight = Math.max(calloutRight, arrowX, kneeX);
-      const boundsBottom = Math.max(calloutBottom, arrowY, kneeY);
+      // Full bounds including all parts (for crossing selection)
+      const fullBoundsLeft = Math.min(textBoxLeft, arrowX, kneeX);
+      const fullBoundsTop = Math.min(textBoxTop, arrowY, kneeY);
+      const fullBoundsRight = Math.max(textBoxRight, arrowX, kneeX);
+      const fullBoundsBottom = Math.max(textBoxBottom, arrowY, kneeY);
 
       if (isWindowSelection) {
-        // Window selection (L→R): Callout must be FULLY contained
-        const isFullyContained =
-          boundsLeft >= left &&
-          boundsTop >= top &&
-          boundsRight <= right &&
-          boundsBottom <= bottom;
+        // Window selection (L→R): Text box must be FULLY contained
+        // (Don't require arrow/knee to be contained - just the main text box)
+        const isTextBoxContained =
+          textBoxLeft >= left &&
+          textBoxTop >= top &&
+          textBoxRight <= right &&
+          textBoxBottom <= bottom;
 
-        if (isFullyContained) {
+        if (isTextBoxContained) {
           selectedIds.push(callout.id);
         }
       } else {
-        // Crossing selection (R→L): Callout just needs to intersect
+        // Crossing selection (R→L): Any part of callout needs to intersect
         const intersects = !(
-          boundsRight < left ||
-          boundsLeft > right ||
-          boundsBottom < top ||
-          boundsTop > bottom
+          fullBoundsRight < left ||
+          fullBoundsLeft > right ||
+          fullBoundsBottom < top ||
+          fullBoundsTop > bottom
         );
 
         if (intersects) {
@@ -527,6 +527,7 @@ const CalloutCanvas = ({
           width: '100%',
           height: '100%',
           pointerEvents: 'none', // Container passes through, children can capture
+          zIndex: 10, // Ensure callouts are above the Fabric canvas
         }}
       >
         {pageCallouts.map(callout => (
