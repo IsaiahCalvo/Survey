@@ -75,6 +75,27 @@ const CalloutCanvas = ({
     fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutCanvas.jsx:67',message:'CalloutCanvas handleMouseDown called',data:{isCalloutToolActive,dragTargetType:dragTarget.type,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
     // #endregion
 
+    // If select or pan tool is active and a callout is selected, check if clicking on empty space
+    if ((activeTool === 'select' || activeTool === 'pan') && selectedCalloutId) {
+      // Check if click is on a callout element
+      // Callout elements have pointerEvents: 'auto', so clicks on them should be captured by callout components
+      // If click reaches here, it's likely on empty space, but double-check
+      const isClickOnCallout = e.target !== canvasRef.current && e.target.closest && (
+        e.target.closest('.callout-text-box') !== null ||
+        e.target.tagName === 'TEXTAREA' ||
+        (e.target.tagName === 'svg' && canvasRef.current && canvasRef.current.contains(e.target)) ||
+        (e.target.tagName === 'line' || e.target.tagName === 'circle' || e.target.tagName === 'polygon' || e.target.tagName === 'polyline')
+      );
+      
+      // If clicking on empty space (target is the canvas div itself), deselect
+      // Don't deselect if clicking on a callout element (shouldn't happen, but safety check)
+      if (e.target === canvasRef.current && !isClickOnCallout) {
+        setSelectedCalloutId(null);
+        setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
+        // Don't return - let the event continue to Fabric canvas for pan/select behavior
+      }
+    }
+
     // Only handle mouse events when callout tool is active
     // When other tools are active, individual callout components handle their own events via pointerEvents: 'auto'
     if (!isCalloutToolActive) {
@@ -90,7 +111,7 @@ const CalloutCanvas = ({
       });
       setSelectedCalloutId(null);
     }
-  }, [isCalloutToolActive, dragTarget, getMousePosition, setSelectedCalloutId, pageNumber]);
+  }, [isCalloutToolActive, dragTarget, getMousePosition, setSelectedCalloutId, pageNumber, activeTool, selectedCalloutId, setCallouts]);
 
   const handleMouseMove = useCallback((e) => {
     const pos = getMousePosition(e);
@@ -119,13 +140,20 @@ const CalloutCanvas = ({
 
         if (dragTarget.type === 'whole' && dragTarget.calloutId === callout.id) {
           const refPos = wholeMoveInitialPosRef.current || dragOffset;
+          const refCalloutPos = wholeMoveInitialCalloutPosRef.current;
+          
+          if (!refCalloutPos) {
+            // Fallback if refs not initialized (shouldn't happen, but safety check)
+            return callout;
+          }
+          
           const dx = (pos.x - refPos.x) / pageWidth;
           const dy = (pos.y - refPos.y) / pageHeight;
           return {
             ...callout,
-            arrowTip: { x: callout.arrowTip.x + dx, y: callout.arrowTip.y + dy },
-            knee: { x: callout.knee.x + dx, y: callout.knee.y + dy },
-            textBoxPosition: { x: callout.textBoxPosition.x + dx, y: callout.textBoxPosition.y + dy },
+            arrowTip: { x: refCalloutPos.arrowTip.x + dx, y: refCalloutPos.arrowTip.y + dy },
+            knee: { x: refCalloutPos.knee.x + dx, y: refCalloutPos.knee.y + dy },
+            textBoxPosition: { x: refCalloutPos.textBoxPosition.x + dx, y: refCalloutPos.textBoxPosition.y + dy },
           };
         }
 
@@ -305,12 +333,31 @@ const CalloutCanvas = ({
       wasDraggingRef.current = false;
       return;
     }
-    // Deselect if clicking on empty space (not on a callout)
+    
+    // Check if click is on a callout element
+    const isClickOnCallout = e.target !== canvasRef.current && e.target.closest && (
+      e.target.closest('.callout-text-box') !== null ||
+      e.target.tagName === 'TEXTAREA' ||
+      (e.target.tagName === 'svg' && canvasRef.current && canvasRef.current.contains(e.target)) ||
+      (e.target.tagName === 'line' || e.target.tagName === 'circle' || e.target.tagName === 'polygon' || e.target.tagName === 'polyline')
+    );
+    
+    // If select or pan tool is active and a callout is selected, deselect on empty space click
+    if ((activeTool === 'select' || activeTool === 'pan') && selectedCalloutId) {
+      // If clicking on empty space (target is the canvas div itself), deselect
+      if (e.target === canvasRef.current && !isClickOnCallout) {
+        setSelectedCalloutId(null);
+        setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
+        return;
+      }
+    }
+    
+    // Deselect if clicking on empty space (not on a callout) - for callout tool
     if (e.target === canvasRef.current) {
       setSelectedCalloutId(null);
       setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
     }
-  }, [setSelectedCalloutId, setCallouts]);
+  }, [setSelectedCalloutId, setCallouts, activeTool, selectedCalloutId]);
 
   const startDrag = useCallback((target, offset) => {
     setDragTarget(target);
@@ -326,6 +373,19 @@ const CalloutCanvas = ({
           y: callout.textBoxPosition.y,
           width: callout.textBoxWidth,
           height: callout.textBoxHeight,
+        };
+      }
+    }
+
+    // Initialize whole move refs when starting a whole drag
+    if (target.type === 'whole' && target.calloutId) {
+      const callout = callouts.find(c => c.id === target.calloutId);
+      if (callout) {
+        wholeMoveInitialPosRef.current = offset;
+        wholeMoveInitialCalloutPosRef.current = {
+          arrowTip: { ...callout.arrowTip },
+          knee: { ...callout.knee },
+          textBoxPosition: { ...callout.textBoxPosition },
         };
       }
     }
@@ -376,6 +436,7 @@ const CalloutCanvas = ({
   return (
     <div
       ref={canvasRef}
+      data-callout-canvas="true"
       style={{
         position: 'absolute',
         top: 0,

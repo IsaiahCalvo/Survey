@@ -293,6 +293,12 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
     name: 'calloutLine'
   });
 
+  // Mark child objects as non-selectable to prevent individual selection
+  head.set({ selectable: false, evented: true }); // evented: true so clicks still register on the group
+  line.set({ selectable: false, evented: true });
+  text.set({ selectable: false, evented: true });
+  textBorder.set({ selectable: false, evented: true });
+
   const group = new Group([line, head, textBorder, text], {
     subTargetCheck: false, // Force group selection always (prevents individual object selection)
     objectCaching: false,
@@ -2057,6 +2063,36 @@ const PageAnnotationLayer = memo(({
     };
 
     canvas.on('selection:created', (e) => {
+      // If a child object of a callout group is selected, select the parent group instead
+      if (e.selected && e.selected.group && e.selected.group.data?.type === 'callout') {
+        // Deselect the child and select the parent group
+        const parentGroup = e.selected.group;
+        canvas.setActiveObject(parentGroup);
+        // Ensure controls are enabled for callout groups
+        // In Fabric.js, controls may require hasBorders to be true to render properly
+        if (parentGroup._originalHasBorders === undefined) {
+          parentGroup._originalHasBorders = parentGroup.hasBorders;
+        }
+        parentGroup.set({ hasControls: true, hasBorders: true });
+        parentGroup.setCoords();
+        canvas.requestRenderAll();
+        return;
+      }
+      
+      // Ensure callout groups have controls enabled when selected
+      if (e.selected && e.selected.data?.type === 'callout') {
+        // Enable controls and borders (borders may be needed for controls to render in Fabric.js)
+        if (e.selected._originalHasBorders === undefined) {
+          e.selected._originalHasBorders = e.selected.hasBorders;
+        }
+        e.selected.set({ hasControls: true, hasBorders: true });
+        e.selected.setCoords();
+        // Force a render to ensure controls are visible
+        setTimeout(() => {
+          canvas.requestRenderAll();
+        }, 0);
+      }
+      
       setPerPixelTargetFind(e.selected, false);
     });
 
@@ -2717,11 +2753,11 @@ const PageAnnotationLayer = memo(({
       fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2647',message:'PageAnnotationLayer handleMouseDown called',data:{currentTool,x,y,hasTarget:!!opt.target,targetType:opt.target?.type,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
       // #endregion
 
-      // Handle Fabric callout objects when select tool is active
+      // Handle Fabric callout objects when select, pan, or callout tool is active
       // Note: React callouts (via CalloutOverlay) handle their own events separately
       // IMPORTANT: For select tool, we should NOT return early here - let the custom selection handler work
       // Only handle Fabric callout drag interactions if clicking on a Fabric callout object
-      if (currentTool === 'select') {
+      if (currentTool === 'select' || currentTool === 'pan' || currentTool === 'callout') {
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2670',message:'Select tool handleMouseDown',data:{hasTarget:!!opt.target,targetType:opt.target?.type,isFabricCallout:opt.target?.data?.type==='callout',pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'G'})}).catch(()=>{});
         // #endregion
@@ -2776,7 +2812,7 @@ const PageAnnotationLayer = memo(({
       }
 
       // For other tools, ignore callout clicks so they don't interfere with annotation tools
-      // Only process callout interactions when select tool is active (handled above)
+      // Only process callout interactions when select, pan, or callout tool is active (handled above)
 
       // Handle highlight clicks for reverse navigation (non-eraser tools)
       if (currentTool !== 'eraser' && currentTool !== 'highlight') {
@@ -3451,18 +3487,12 @@ const PageAnnotationLayer = memo(({
     // Track mouse down for selection rectangle
     // AutoCAD/Bluebeam-style: direction determines selection mode
     const handleMouseDownForSelection = (e) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3455',message:'handleMouseDownForSelection called',data:{tool:toolRef.current,hasTarget:!!e.target,targetType:e.target?.type,pageNumber,canvasSelection:canvas.selection},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'O'})}).catch(()=>{});
-      // #endregion
       if (toolRef.current !== 'select') {
         return;
       }
       
       // Ensure canvas.selection is enabled for select tool
       if (!canvas.selection) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3463',message:'Enabling canvas.selection in handleMouseDownForSelection',data:{tool:toolRef.current,wasFalse:true,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'O'})}).catch(()=>{});
-        // #endregion
         canvas.selection = true;
       }
 
@@ -3510,6 +3540,34 @@ const PageAnnotationLayer = memo(({
       }
 
       if (isObjectClick) {
+        // If clicking on a child object of a callout group, select the parent group instead
+        if (e.target && e.target.group && e.target.group.data?.type === 'callout') {
+          // Select the parent group instead of the child
+          const parentGroup = e.target.group;
+          canvas.setActiveObject(parentGroup);
+          // Ensure controls are enabled - enable borders too
+          if (parentGroup._originalHasBorders === undefined) {
+            parentGroup._originalHasBorders = parentGroup.hasBorders;
+          }
+          parentGroup.set({ hasControls: true, hasBorders: true });
+          parentGroup.setCoords();
+          canvas.requestRenderAll();
+          return;
+        }
+        
+        // If clicking directly on a callout group, ensure controls are enabled
+        if (e.target && e.target.data?.type === 'callout') {
+          if (e.target._originalHasBorders === undefined) {
+            e.target._originalHasBorders = e.target.hasBorders;
+          }
+          e.target.set({ hasControls: true, hasBorders: true });
+          e.target.setCoords();
+          // Force a render after a brief delay to ensure controls are visible
+          setTimeout(() => {
+            canvas.requestRenderAll();
+          }, 0);
+        }
+        
         // Don't initialize selection rect - allow single-click object selection to work normally
         // But also don't prevent the object from being selected
         // Return early so Fabric.js can handle the object selection
@@ -3520,9 +3578,6 @@ const PageAnnotationLayer = memo(({
       // For drag selection, initialize the selection rectangle
       // Keep canvas.selection enabled so Fabric.js can still handle object clicks
       // We'll only disable it during the actual drag (in mouseMove) if needed
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3509',message:'Initializing drag selection rectangle',data:{tool:toolRef.current,canvasSelection:canvas.selection,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run5',hypothesisId:'L'})}).catch(()=>{});
-      // #endregion
 
       // Get pointer coordinates - use viewport-transformed coordinates for visual rectangle
       // to match Fabric.js object coordinate system (same as other Rect objects in the codebase)
@@ -3647,13 +3702,7 @@ const PageAnnotationLayer = memo(({
       // Handle single-click object selection (no drag)
       if (!selectionRectRef.current) {
         // Ensure canvas.selection is enabled for single-click selection
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3628',message:'Handling single-click selection',data:{tool:toolRef.current,hasActiveObject:!!canvas.getActiveObject(),pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run5',hypothesisId:'M'})}).catch(()=>{});
-        // #endregion
         canvas.selection = true;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3633',message:'Canvas.selection enabled for single-click',data:{tool:toolRef.current,canvasSelection:canvas.selection,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run5',hypothesisId:'M'})}).catch(()=>{});
-        // #endregion
         
         // Use geometry-based hit testing for single-click selection
         const pointer = canvas.getPointer(e.e);
@@ -3675,7 +3724,27 @@ const PageAnnotationLayer = memo(({
         }
 
         if (hitObject) {
-          canvas.setActiveObject(hitObject);
+          // If the hit object is a child of a callout group, select the parent group instead
+          if (hitObject.group && hitObject.group.data?.type === 'callout') {
+            const parentGroup = hitObject.group;
+            canvas.setActiveObject(parentGroup);
+            // Ensure controls are enabled and coordinates are updated - enable borders too
+            if (parentGroup._originalHasBorders === undefined) {
+              parentGroup._originalHasBorders = parentGroup.hasBorders;
+            }
+            parentGroup.set({ hasControls: true, hasBorders: true });
+            parentGroup.setCoords();
+          } else {
+            canvas.setActiveObject(hitObject);
+            // If it's a callout group, ensure controls are enabled
+            if (hitObject.data?.type === 'callout') {
+              if (hitObject._originalHasBorders === undefined) {
+                hitObject._originalHasBorders = hitObject.hasBorders;
+              }
+              hitObject.set({ hasControls: true, hasBorders: true });
+              hitObject.setCoords();
+            }
+          }
           canvas.requestRenderAll();
         } else {
           // FIX: Before deselecting, check if click is inside the bounding box of the currently selected object
@@ -4021,9 +4090,9 @@ const PageAnnotationLayer = memo(({
       if (isVisible) {
         // Only make visible objects interactive based on tool
         const isSelectable = tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight';
-        // Callouts should only be evented when using select tool to prevent blocking other annotation tools
+        // Callouts should only be evented when using select, pan, or callout tool to prevent blocking other annotation tools
         const isCallout = obj.data?.type === 'callout';
-        const shouldBeEvented = isSelectable && (!isCallout || tool === 'select');
+        const shouldBeEvented = isSelectable && (!isCallout || tool === 'select' || tool === 'pan' || tool === 'callout');
         obj.set({
           visible: true,
           selectable: isSelectable,

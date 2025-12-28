@@ -31,17 +31,21 @@ const CalloutComponent = ({
 }) => {
   // Callouts are interactive (selectable/movable) when:
   // - Callout tool is active, OR
-  // - Pan/selection tool is active ('pan'), OR
+  // - Pan/selection tool is active ('pan' or 'select'), OR
   // - No specific draw tool is active
   // But NOT when eraser is active (eraser should delete, not select)
   const isInteractive = activeTool !== 'eraser' && (
     isCalloutToolActive ||
     activeTool === 'pan' ||
+    activeTool === 'select' ||
     activeTool === 'text-select'
   );
 
-  // Only show resize handles (corners, knee, arrow tip) when callout tool is specifically active
-  const showResizeHandles = isCalloutToolActive && isSelected;
+  // Show resize handles (corners, knee, arrow tip) when:
+  // - Callout tool is active AND callout is selected, OR
+  // - Select tool is active AND callout is selected, OR
+  // - Pan tool is active AND callout is selected
+  const showResizeHandles = (isCalloutToolActive || activeTool === 'select' || activeTool === 'pan') && isSelected;
   const textareaRef = useRef(null);
   const [isEditing, setIsEditing] = useState(false);
   const wasSelectedBeforeClickRef = useRef(false);
@@ -137,6 +141,9 @@ const CalloutComponent = ({
       hasDraggedRef.current = false;
       mouseDownPositionRef.current = { x: e.clientX, y: e.clientY };
 
+      // Check if Control/Command is held to move the entire callout
+      const isWholeMove = e.ctrlKey || e.metaKey;
+
       const handleMouseMove = (moveEvent) => {
         if (mouseDownPositionRef.current && !hasDraggedRef.current) {
           const dx = Math.abs(moveEvent.clientX - mouseDownPositionRef.current.x);
@@ -175,14 +182,37 @@ const CalloutComponent = ({
       wasSelectedBeforeClickRef.current = isSelected;
       onSelect();
 
-      const rect = e.currentTarget.getBoundingClientRect();
-      const offset = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      };
-      onStartDrag({ type: 'textBox', calloutId: callout.id }, offset);
+      if (isWholeMove) {
+        // For whole callout movement, use mouse position relative to the canvas
+        const canvasElement = e.currentTarget.closest('[data-callout-canvas]');
+        let offset;
+        if (canvasElement) {
+          const canvasRect = canvasElement.getBoundingClientRect();
+          offset = {
+            x: e.clientX - canvasRect.left,
+            y: e.clientY - canvasRect.top,
+          };
+        } else {
+          // Fallback: calculate using text box position and page dimensions
+          // This should rarely happen, but provides a backup
+          const rect = e.currentTarget.getBoundingClientRect();
+          offset = {
+            x: textBoxPosition.x + (e.clientX - rect.left),
+            y: textBoxPosition.y + (e.clientY - rect.top),
+          };
+        }
+        onStartDrag({ type: 'whole', calloutId: callout.id }, offset);
+      } else {
+        // For text box only movement, use offset relative to text box
+        const rect = e.currentTarget.getBoundingClientRect();
+        const offset = {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+        };
+        onStartDrag({ type: 'textBox', calloutId: callout.id }, offset);
+      }
     }
-  }, [activeTool, callout.id, isEditing, isSelected, onDelete, onSelect, onStartDrag]);
+  }, [activeTool, callout.id, isEditing, isSelected, onDelete, onSelect, onStartDrag, textBoxPosition]);
 
   const handleTextBoxMouseUp = useCallback(() => {
     if (mouseMoveHandlerRef.current) {
@@ -205,10 +235,13 @@ const CalloutComponent = ({
     mouseDownPositionRef.current = null;
 
     // Only enter editing if it was already selected and no drag occurred
+    // This means: first click selects, second click enters edit mode
     if (wasSelectedBeforeClickRef.current && !didDrag) {
       setIsEditing(true);
       textareaRef.current?.focus();
     }
+    // If not already selected, the callout was just selected by handleTextBoxMouseDown
+    // Don't enter edit mode - just select (which is already done)
   }, []);
 
   const handleTextBoxDoubleClick = useCallback((e) => {
@@ -231,9 +264,47 @@ const CalloutComponent = ({
   const handleHandleMouseDown = useCallback((e, targetType) => {
     e.stopPropagation();
     e.preventDefault();
+    
+    // Check if Control/Command is held to move the entire callout
+    const isWholeMove = e.ctrlKey || e.metaKey;
+    
     onSelect();
-    onStartDrag({ type: targetType, calloutId: callout.id }, { x: 0, y: 0 });
-  }, [callout.id, onSelect, onStartDrag]);
+    
+    if (isWholeMove) {
+      // For whole callout movement, use mouse position relative to the canvas
+      // Try closest() first, then traverse manually if needed
+      let canvasElement = e.currentTarget.closest && e.currentTarget.closest('[data-callout-canvas]');
+      if (!canvasElement) {
+        // Fallback: traverse up manually
+        canvasElement = e.currentTarget;
+        while (canvasElement && canvasElement !== document.body) {
+          if (canvasElement.getAttribute && canvasElement.getAttribute('data-callout-canvas') === 'true') {
+            break;
+          }
+          canvasElement = canvasElement.parentElement || canvasElement.parentNode;
+        }
+      }
+      
+      let offset;
+      if (canvasElement && canvasElement !== document.body && canvasElement.getBoundingClientRect) {
+        const canvasRect = canvasElement.getBoundingClientRect();
+        offset = {
+          x: e.clientX - canvasRect.left,
+          y: e.clientY - canvasRect.top,
+        };
+      } else {
+        // Fallback: use the handle position (arrowTip or knee) as offset
+        const handlePos = targetType === 'arrowTip' ? arrowTip : knee;
+        offset = {
+          x: handlePos.x,
+          y: handlePos.y,
+        };
+      }
+      onStartDrag({ type: 'whole', calloutId: callout.id }, offset);
+    } else {
+      onStartDrag({ type: targetType, calloutId: callout.id }, { x: 0, y: 0 });
+    }
+  }, [callout.id, onSelect, onStartDrag, arrowTip, knee]);
 
   const handleLineMouseDown = useCallback((e) => {
     e.stopPropagation();
@@ -243,8 +314,40 @@ const CalloutComponent = ({
       onDelete();
       return;
     }
+    
+    // Check if Control/Command is held to move the entire callout
+    const isWholeMove = e.ctrlKey || e.metaKey;
+    
     onSelect();
-  }, [activeTool, onDelete, onSelect]);
+    
+    if (isWholeMove) {
+      // For whole callout movement, use mouse position relative to the canvas
+      // SVG elements might not support closest(), so traverse up manually
+      let canvasElement = e.currentTarget;
+      while (canvasElement && canvasElement !== document.body) {
+        if (canvasElement.getAttribute && canvasElement.getAttribute('data-callout-canvas') === 'true') {
+          break;
+        }
+        canvasElement = canvasElement.parentElement || canvasElement.parentNode;
+      }
+      
+      let offset;
+      if (canvasElement && canvasElement !== document.body && canvasElement.getBoundingClientRect) {
+        const canvasRect = canvasElement.getBoundingClientRect();
+        offset = {
+          x: e.clientX - canvasRect.left,
+          y: e.clientY - canvasRect.top,
+        };
+      } else {
+        // Fallback: use arrow tip position as offset
+        offset = {
+          x: arrowTip.x,
+          y: arrowTip.y,
+        };
+      }
+      onStartDrag({ type: 'whole', calloutId: callout.id }, offset);
+    }
+  }, [activeTool, callout.id, onDelete, onSelect, onStartDrag, arrowTip]);
 
   const handleLineClick = useCallback((e) => {
     e.stopPropagation();
@@ -330,6 +433,72 @@ const CalloutComponent = ({
   // Line 2: knee → arrow tip
   const line2Start = knee;
   const line2End = arrowTip;
+  
+  // Calculate line 2 hit area end point (stop before arrow tip to allow triangle clicks)
+  // The triangle is about 10px wide, so stop the hit area about 12px before the tip
+  const line2HitAreaEnd = (() => {
+    const dx = arrowTip.x - knee.x;
+    const dy = arrowTip.y - knee.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length < 15) {
+      // If line is very short, just use the tip
+      return arrowTip;
+    }
+    // Stop 12px before the arrow tip
+    const stopDistance = 12;
+    const ratio = (length - stopDistance) / length;
+    return {
+      x: knee.x + dx * ratio,
+      y: knee.y + dy * ratio,
+    };
+  })();
+
+  // Calculate arrow head triangle points
+  // Create a triangle pointing from knee to arrow tip
+  // Triangle dimensions: 10px wide, 7px tall (matching the marker)
+  const calculateArrowHeadPoints = () => {
+    const dx = arrowTip.x - knee.x;
+    const dy = arrowTip.y - knee.y;
+    const angle = Math.atan2(dy, dx);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:443',message:'Arrow head calculation inputs',data:{arrowTipX:arrowTip.x,arrowTipY:arrowTip.y,kneeX:knee.x,kneeY:knee.y,dx,dy,angle:angle*180/Math.PI},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
+    // Triangle dimensions (matching the marker)
+    const width = 10;
+    const height = 7;
+    
+    // Base triangle points (pointing right, with tip at origin)
+    // Base points form a triangle: left base, tip, right base
+    const basePoints = [
+      { x: -width, y: -height / 2 },  // Left base point
+      { x: 0, y: 0 },                  // Tip (at origin)
+      { x: -width, y: height / 2 },    // Right base point
+    ];
+    
+    // Rotate and translate to arrow tip position
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    
+    const result = basePoints.map(point => ({
+      x: arrowTip.x + (point.x * cos - point.y * sin),
+      y: arrowTip.y + (point.x * sin + point.y * cos),
+    }));
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:465',message:'Arrow head calculated points',data:{points:result,hasNaN:result.some(p=>isNaN(p.x)||isNaN(p.y)),hasUndefined:result.some(p=>p.x===undefined||p.y===undefined)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
+    return result;
+  };
+
+  const arrowHeadPoints = calculateArrowHeadPoints();
+  const arrowHeadPointsString = arrowHeadPoints.map(p => `${p.x},${p.y}`).join(' ');
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:470',message:'Arrow head points string',data:{pointsString:arrowHeadPointsString,isInteractive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
 
   return (
     <>
@@ -345,6 +514,14 @@ const CalloutComponent = ({
           height: '100%',
           overflow: 'visible',
           pointerEvents: 'auto', // Always block events to prevent tools from passing through callouts
+        }}
+        ref={(el) => {
+          if (el) {
+            // #region agent log
+            const svgStyle = window.getComputedStyle(el);
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:495',message:'SVG element ref',data:{svgPointerEvents:svgStyle.pointerEvents,childrenCount:el.children.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+          }
         }}
       >
         <defs>
@@ -388,11 +565,12 @@ const CalloutComponent = ({
         />
 
         {/* Hit area for Line 2 - invisible wider stroke for easier clicking */}
+        {/* Stop before arrow tip to allow triangle polygon to be clickable */}
         <line
           x1={line2Start.x}
           y1={line2Start.y}
-          x2={line2End.x}
-          y2={line2End.y}
+          x2={line2HitAreaEnd.x}
+          y2={line2HitAreaEnd.y}
           stroke="transparent"
           strokeWidth={16}
           style={{ pointerEvents: 'stroke', cursor: isInteractive ? 'pointer' : 'default' }}
@@ -419,8 +597,41 @@ const CalloutComponent = ({
           r={12}
           fill="transparent"
           style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
-          onMouseDown={handleLineMouseDown}
+          onMouseDown={(e) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:576',message:'Circle hit area mousedown',data:{clientX:e.clientX,clientY:e.clientY,circleX:arrowTip.x,circleY:arrowTip.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+            handleLineMouseDown(e);
+          }}
           onClick={handleLineClick}
+        />
+
+        {/* Clickable arrow head triangle */}
+        <polygon
+          points={arrowHeadPointsString}
+          fill={hexToRgba(style.borderColor, style.borderOpacity)}
+          style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
+          onMouseDown={(e) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:567',message:'Polygon mousedown event',data:{clientX:e.clientX,clientY:e.clientY,target:e.target.tagName,currentTarget:e.currentTarget.tagName,pointerEvents:window.getComputedStyle(e.currentTarget).pointerEvents},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
+            handleLineMouseDown(e);
+          }}
+          onClick={(e) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:572',message:'Polygon click event',data:{clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
+            handleLineClick(e);
+          }}
+          ref={(el) => {
+            if (el) {
+              // #region agent log
+              const computedStyle = window.getComputedStyle(el);
+              const svgStyle = window.getComputedStyle(el.closest('svg'));
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:580',message:'Polygon ref callback',data:{polygonPointerEvents:computedStyle.pointerEvents,svgPointerEvents:svgStyle.pointerEvents,points:el.getAttribute('points'),zIndex:computedStyle.zIndex,display:computedStyle.display,visibility:computedStyle.visibility},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+              // #endregion
+            }
+          }}
         />
 
         {/* Hit area for knee - invisible circle for easier clicking */}
