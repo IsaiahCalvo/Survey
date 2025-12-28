@@ -435,17 +435,17 @@ const CalloutComponent = ({
   const line2End = arrowTip;
   
   // Calculate line 2 hit area end point (stop before arrow tip to allow triangle clicks)
-  // The triangle is now 15px wide, so stop the hit area about 18px before the tip
+  // The hit area triangle is 30px wide (3x scale), so stop about 32px before the tip
   const line2HitAreaEnd = (() => {
     const dx = arrowTip.x - knee.x;
     const dy = arrowTip.y - knee.y;
     const length = Math.sqrt(dx * dx + dy * dy);
-    if (length < 20) {
+    if (length < 35) {
       // If line is very short, just use the tip
       return arrowTip;
     }
-    // Stop 18px before the arrow tip (to clear the larger triangle)
-    const stopDistance = 18;
+    // Stop 32px before the arrow tip (to clear the larger 3x triangle hit area)
+    const stopDistance = 32;
     const ratio = (length - stopDistance) / length;
     return {
       x: knee.x + dx * ratio,
@@ -455,46 +455,40 @@ const CalloutComponent = ({
 
   // Calculate arrow head triangle points
   // Create a triangle pointing from knee to arrow tip
-  // Triangle dimensions: 10px wide, 7px tall (matching the marker)
-  const calculateArrowHeadPoints = () => {
+  // scale parameter: 1 = original size (10x7), larger = bigger hit area
+  const calculateArrowHeadPoints = (scale = 1) => {
     const dx = arrowTip.x - knee.x;
     const dy = arrowTip.y - knee.y;
     const angle = Math.atan2(dy, dx);
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:443',message:'Arrow head calculation inputs',data:{arrowTipX:arrowTip.x,arrowTipY:arrowTip.y,kneeX:knee.x,kneeY:knee.y,dx,dy,angle:angle*180/Math.PI},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-    
-    // Triangle dimensions (larger than marker for better clickability)
-    const width = 15;  // Increased from 10 to 15 for better clickability
-    const height = 10; // Increased from 7 to 10 for better clickability
-    
+
+    // Base triangle dimensions: 10px wide, 7px tall (matching the marker)
+    const width = 10 * scale;
+    const height = 7 * scale;
+
     // Base triangle points (pointing right, with tip at origin)
-    // Base points form a triangle: left base, tip, right base
     const basePoints = [
       { x: -width, y: -height / 2 },  // Left base point
       { x: 0, y: 0 },                  // Tip (at origin)
       { x: -width, y: height / 2 },    // Right base point
     ];
-    
+
     // Rotate and translate to arrow tip position
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    
-    const result = basePoints.map(point => ({
+
+    return basePoints.map(point => ({
       x: arrowTip.x + (point.x * cos - point.y * sin),
       y: arrowTip.y + (point.x * sin + point.y * cos),
     }));
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:465',message:'Arrow head calculated points',data:{points:result,hasNaN:result.some(p=>isNaN(p.x)||isNaN(p.y)),hasUndefined:result.some(p=>p.x===undefined||p.y===undefined)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-    
-    return result;
   };
 
-  const arrowHeadPoints = calculateArrowHeadPoints();
+  // Visible triangle (original size, matches the SVG marker)
+  const arrowHeadPoints = calculateArrowHeadPoints(1);
   const arrowHeadPointsString = arrowHeadPoints.map(p => `${p.x},${p.y}`).join(' ');
+
+  // Larger invisible hit area triangle (3x bigger for easier clicking)
+  const arrowHeadHitAreaPoints = calculateArrowHeadPoints(3);
+  const arrowHeadHitAreaPointsString = arrowHeadHitAreaPoints.map(p => `${p.x},${p.y}`).join(' ');
   
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:470',message:'Arrow head points string',data:{pointsString:arrowHeadPointsString,isInteractive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
@@ -595,44 +589,20 @@ const CalloutComponent = ({
           style={{ pointerEvents: 'none' }}
         />
 
-        {/* Hit area for arrowhead - invisible circle for easier clicking */}
-        {/* Disabled pointer events - polygon now handles triangle clicks */}
-        <circle
-          cx={arrowTip.x}
-          cy={arrowTip.y}
-          r={12}
+        {/* Invisible larger hit area triangle (3x size) for easier clicking */}
+        <polygon
+          points={arrowHeadHitAreaPointsString}
           fill="transparent"
-          style={{ pointerEvents: 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+          style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
+          onMouseDown={handleLineMouseDown}
+          onClick={handleLineClick}
         />
 
-        {/* Clickable arrow head triangle */}
+        {/* Visible arrow head triangle (original size) */}
         <polygon
           points={arrowHeadPointsString}
           fill={hexToRgba(style.borderColor, style.borderOpacity)}
-          stroke={hexToRgba(style.borderColor, style.borderOpacity)}
-          strokeWidth={1}
-          style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
-          onMouseDown={(e) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:610',message:'Polygon mousedown event',data:{clientX:e.clientX,clientY:e.clientY,target:e.target.tagName,currentTarget:e.currentTarget.tagName,pointerEvents:window.getComputedStyle(e.currentTarget).pointerEvents},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
-            handleLineMouseDown(e);
-          }}
-          onClick={(e) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:616',message:'Polygon click event',data:{clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
-            handleLineClick(e);
-          }}
-          ref={(el) => {
-            if (el) {
-              // #region agent log
-              const computedStyle = window.getComputedStyle(el);
-              const svgStyle = window.getComputedStyle(el.closest('svg'));
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:623',message:'Polygon ref callback post-fix',data:{polygonPointerEvents:computedStyle.pointerEvents,svgPointerEvents:svgStyle.pointerEvents,points:el.getAttribute('points'),zIndex:computedStyle.zIndex,display:computedStyle.display,visibility:computedStyle.visibility},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-              // #endregion
-            }
-          }}
+          style={{ pointerEvents: 'none' }}
         />
 
         {/* Hit area for knee - invisible circle for easier clicking */}
