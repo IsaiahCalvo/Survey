@@ -593,6 +593,40 @@ const CalloutCanvas = ({
         ))}
       </div>
 
+      {/* DEBUG: Visual overlay showing calculated textbox bounds (red dashed rectangles) */}
+      <svg
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          zIndex: 9999,
+        }}
+      >
+        {pageCallouts.map(callout => {
+          const textBoxLeft = callout.textBoxPosition.x * pageWidth;
+          const textBoxTop = callout.textBoxPosition.y * pageHeight;
+          const textBoxW = callout.textBoxWidth * pageWidth;
+          const textBoxH = callout.textBoxHeight * pageHeight;
+          return (
+            <rect
+              key={`debug-${callout.id}`}
+              x={textBoxLeft}
+              y={textBoxTop}
+              width={textBoxW}
+              height={textBoxH}
+              fill="none"
+              stroke="red"
+              strokeWidth={2}
+              strokeDasharray="4,4"
+              opacity={0.8}
+            />
+          );
+        })}
+      </svg>
+
     </>
   );
 };
