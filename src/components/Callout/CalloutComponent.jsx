@@ -208,10 +208,16 @@ const CalloutComponent = ({
 
   const handleHandleMouseDown = useCallback((e, targetType) => {
     e.stopPropagation();
-    e.preventDefault(); // Prevent text selection during drag
+    e.preventDefault();
     onSelect();
     onStartDrag({ type: targetType, calloutId: callout.id }, { x: 0, y: 0 });
   }, [callout.id, onSelect, onStartDrag]);
+
+  const handleLineMouseDown = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect();
+  }, [onSelect]);
 
   const handleLineClick = useCallback((e) => {
     e.stopPropagation();
@@ -307,6 +313,7 @@ const CalloutComponent = ({
           width: '100%',
           height: '100%',
           overflow: 'visible',
+          pointerEvents: 'none', // Let events pass through except for hit areas
         }}
       >
         <defs>
@@ -334,6 +341,7 @@ const CalloutComponent = ({
           stroke="transparent"
           strokeWidth={16}
           style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+          onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
 
@@ -357,6 +365,7 @@ const CalloutComponent = ({
           stroke="transparent"
           strokeWidth={16}
           style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+          onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
 
@@ -378,7 +387,8 @@ const CalloutComponent = ({
           cy={arrowTip.y}
           r={12}
           fill="transparent"
-          style={{ cursor: 'pointer' }}
+          style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+          onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
 
@@ -388,7 +398,8 @@ const CalloutComponent = ({
           cy={knee.y}
           r={12}
           fill="transparent"
-          style={{ cursor: 'pointer' }}
+          style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+          onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
       </svg>
@@ -401,6 +412,7 @@ const CalloutComponent = ({
           left: textBoxPosition.x,
           top: textBoxPosition.y,
           cursor: isEditing ? 'text' : 'move',
+          pointerEvents: 'auto',
         }}
         onMouseDown={handleTextBoxMouseDown}
         onMouseUp={handleTextBoxMouseUp}
@@ -533,6 +545,7 @@ const CalloutComponent = ({
             boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
             cursor: 'move',
             zIndex: 20,
+            pointerEvents: 'auto',
           }}
           onMouseDown={(e) => handleHandleMouseDown(e, 'knee')}
           onClick={(e) => e.stopPropagation()}
@@ -554,6 +567,7 @@ const CalloutComponent = ({
             boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
             cursor: 'move',
             zIndex: 20,
+            pointerEvents: 'auto',
           }}
           onMouseDown={(e) => handleHandleMouseDown(e, 'arrowTip')}
           onClick={(e) => e.stopPropagation()}

@@ -28,73 +28,71 @@ flushPassiveEffects @ chunk-DSUIPI7G.js:26336
 workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-createHiddenIframe @ SilentHandler.ts:260
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-createHiddenIframe @ SilentHandler.ts:260
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 22 more frames
-login.live.com/Me.htm?v=3:1 true
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI1ZTI4LTdjN2ItN2RjOS05MDk0LWM3ZGYxOTVkYTk5NiIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-login.live.com/Me.htm?v=3:1 true
-App.jsx:11227 PDF load check: {size: 25716812, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
-App.jsx:11236 PDF Header Check: %PDF-
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI1ZTI4LTdjYmEtNzY5My1iMjc4LWM5NDY4ZDY3OWRjYSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-App.jsx:12734 [App] handleDeleteHighlightItem called {highlightId: 'highlight-1766811287090-g7pxgve8a'}
-App.jsx:12549 [App] handleHighlightDeleted called {pageNumber: 1, bounds: {…}, highlightId: 'highlight-1766811287090-g7pxgve8a', selectedModuleId: 'module-1763727070665-0.5714253201980415', selectedTemplate: {…}}
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+Me.htm:1 true
+Me.htm:1 true
 AuthContext.jsx:102 Window focused, refetching subscription tier...
+App.jsx:11267 PDF load check: {size: 25716812, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
+App.jsx:11276 PDF Header Check: %PDF-
+Me.htm:1 true
+AuthContext.jsx:102 Window focused, refetching subscription tier...
+CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: svg, currentTarget: div, isCanvas: false, targetTagName: 'svg', isCalloutToolActive: true, …}
+CalloutCanvas.jsx:80 [CalloutCanvas] Returning early - click was not on canvas background
+CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: svg, currentTarget: div, isCanvas: false, targetTagName: 'svg', isCalloutToolActive: true, …}
+CalloutCanvas.jsx:80 [CalloutCanvas] Returning early - click was not on canvas background
+CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: svg, currentTarget: div, isCanvas: false, targetTagName: 'svg', isCalloutToolActive: true, …}
+CalloutCanvas.jsx:80 [CalloutCanvas] Returning early - click was not on canvas background
+CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: svg, currentTarget: div, isCanvas: false, targetTagName: 'svg', isCalloutToolActive: true, …}
+CalloutCanvas.jsx:80 [CalloutCanvas] Returning early - click was not on canvas background
+CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: svg, currentTarget: div, isCanvas: false, targetTagName: 'svg', isCalloutToolActive: true, …}
+CalloutCanvas.jsx:80 [CalloutCanvas] Returning early - click was not on canvas background
+AuthContext.jsx:102 Window focused, refetching subscription tier...
+AuthContext.jsx:102 Window focused, refetching subscription tier...
+CalloutComponent.jsx:111 [CalloutComponent] handleTextBoxMouseDown {calloutId: 'callout-61dv03cxw-mjpmbu24', isSelected: false, isEditing: false}
+CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-jlthabxix-mjpmc0jm'}
+CalloutComponent.jsx:111 [CalloutComponent] handleTextBoxMouseDown {calloutId: 'callout-7l3ixwhtb-mjpmbrbz', isSelected: false, isEditing: false}
+CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-7l3ixwhtb-mjpmbrbz', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
+CalloutCanvas.jsx:68 [CalloutCanvas] handleMouseDown {target: div, currentTarget: div, isCanvas: true, targetTagName: 'DIV', isCalloutToolActive: true, …}
+CalloutCanvas.jsx:88 [CalloutCanvas] Starting callout creation {pos: {…}}
+CalloutComponent.jsx:111 [CalloutComponent] handleTextBoxMouseDown {calloutId: 'callout-7l3ixwhtb-mjpmbrbz', isSelected: false, isEditing: false}
+CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-7l3ixwhtb-mjpmbrbz', currentSelectedId: 'callout-758nrfwmx-mjpmmkzd'}
+CalloutComponent.jsx:111 [CalloutComponent] handleTextBoxMouseDown {calloutId: 'callout-61dv03cxw-mjpmbu24', isSelected: false, isEditing: false}
+CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-7l3ixwhtb-mjpmbrbz'}
+CalloutComponent.jsx:211 [CalloutComponent] handleHandleMouseDown {calloutId: 'callout-61dv03cxw-mjpmbu24', targetType: 'knee', isSelected: true}
+CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
+CalloutComponent.jsx:211 [CalloutComponent] handleHandleMouseDown {calloutId: 'callout-61dv03cxw-mjpmbu24', targetType: 'arrowTip', isSelected: true}
+CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
+CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
+CalloutCanvas.jsx:120 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+printWarning @ chunk-DSUIPI7G.js:7410
+error @ chunk-DSUIPI7G.js:7394
+checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
+scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
+dispatchSetState @ chunk-DSUIPI7G.js:19292
+(anonymous) @ CalloutCanvas.jsx:120
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchContinuousEvent @ chunk-DSUIPI7G.js:12350
+Show 20 more frames
+CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
+CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
+CalloutCanvas.jsx:330 [CalloutCanvas] selectCallout called {id: 'callout-61dv03cxw-mjpmbu24', currentSelectedId: 'callout-61dv03cxw-mjpmbu24'}
+ Window focused, refetching subscription tier...

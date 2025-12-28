@@ -65,6 +65,12 @@ const CalloutCanvas = ({
   }, []);
 
   const handleMouseDown = useCallback((e) => {
+    // Only start callout creation when clicking directly on the canvas background
+    // When clicking on existing callouts, their handlers will handle selection/dragging
+    if (e.target !== canvasRef.current) {
+      return;
+    }
+
     const pos = getMousePosition(e);
 
     // If callout tool is active and clicking on empty space, start creation
@@ -348,7 +354,7 @@ const CalloutCanvas = ({
         width: '100%',
         height: '100%',
         cursor: isCalloutToolActive ? 'crosshair' : 'default',
-        pointerEvents: isCalloutToolActive || pageCallouts.length > 0 ? 'auto' : 'none',
+        pointerEvents: isCalloutToolActive ? 'auto' : 'none',
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
