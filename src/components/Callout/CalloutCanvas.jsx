@@ -448,7 +448,7 @@ const CalloutCanvas = ({
           pageWidth={pageWidth}
           pageHeight={pageHeight}
           activeTool={activeTool}
-          isInteractive={isCalloutToolActive}
+          isCalloutToolActive={isCalloutToolActive}
         />
       ))}
     </div>

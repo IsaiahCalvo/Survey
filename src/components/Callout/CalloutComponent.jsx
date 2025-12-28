@@ -27,8 +27,21 @@ const CalloutComponent = ({
   pageWidth,
   pageHeight,
   activeTool,
-  isInteractive,
+  isCalloutToolActive,
 }) => {
+  // Callouts are interactive (selectable/movable) when:
+  // - Callout tool is active, OR
+  // - Pan/selection tool is active ('pan'), OR
+  // - No specific draw tool is active
+  // But NOT when eraser is active (eraser should delete, not select)
+  const isInteractive = activeTool !== 'eraser' && (
+    isCalloutToolActive ||
+    activeTool === 'pan' ||
+    activeTool === 'text-select'
+  );
+
+  // Only show resize handles (corners, knee, arrow tip) when callout tool is specifically active
+  const showResizeHandles = isCalloutToolActive && isSelected;
   const textareaRef = useRef(null);
   const [isEditing, setIsEditing] = useState(false);
   const wasSelectedBeforeClickRef = useRef(false);
@@ -474,7 +487,7 @@ const CalloutComponent = ({
         />
 
         {/* Resize handles for text box corners */}
-        {isSelected && isInteractive && (
+        {showResizeHandles && (
           <>
             <div
               style={{
@@ -549,7 +562,7 @@ const CalloutComponent = ({
       </div>
 
       {/* Knee handle */}
-      {isSelected && isInteractive && (
+      {showResizeHandles && (
         <div
           style={{
             position: 'absolute',
@@ -571,7 +584,7 @@ const CalloutComponent = ({
       )}
 
       {/* Arrow tip handle */}
-      {isSelected && isInteractive && (
+      {showResizeHandles && (
         <div
           style={{
             position: 'absolute',
