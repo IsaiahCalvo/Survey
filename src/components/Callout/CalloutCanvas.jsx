@@ -23,6 +23,7 @@ const CalloutCanvas = ({
   selectedCalloutId,
   setSelectedCalloutId,
   isCalloutToolActive,
+  activeTool,
   pageNumber,
   pageWidth,
   pageHeight,
@@ -342,6 +343,15 @@ const CalloutCanvas = ({
   // Filter callouts for this page
   const pageCallouts = callouts.filter(c => c.pageNumber === pageNumber);
 
+  // Determine if callouts should be interactive based on active tool
+  // - callout: Full interactivity (create, select, drag)
+  // - select, pan: Can select and drag callouts
+  // - eraser: Can click to delete callouts
+  // - All other tools (pen, highlighter, etc.): No pointer events
+  const interactiveTools = ['callout', 'select', 'pan', 'eraser'];
+  const canvasInteractive = isCalloutToolActive; // Only callout tool can interact with canvas background
+  const calloutsInteractive = interactiveTools.includes(activeTool);
+
   return (
     <div
       ref={canvasRef}
@@ -354,7 +364,7 @@ const CalloutCanvas = ({
         width: '100%',
         height: '100%',
         cursor: isCalloutToolActive ? 'crosshair' : 'default',
-        pointerEvents: isCalloutToolActive ? 'auto' : 'none',
+        pointerEvents: canvasInteractive ? 'auto' : 'none',
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -416,6 +426,8 @@ const CalloutCanvas = ({
           shouldFocus={callout.id === newCalloutId}
           pageWidth={pageWidth}
           pageHeight={pageHeight}
+          activeTool={activeTool}
+          isInteractive={calloutsInteractive}
         />
       ))}
     </div>

@@ -26,6 +26,8 @@ const CalloutComponent = ({
   shouldFocus,
   pageWidth,
   pageHeight,
+  activeTool,
+  isInteractive,
 }) => {
   const textareaRef = useRef(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -110,6 +112,13 @@ const CalloutComponent = ({
   const handleTextBoxMouseDown = useCallback((e) => {
     e.stopPropagation();
 
+    // If eraser tool is active, delete the callout
+    if (activeTool === 'eraser') {
+      e.preventDefault();
+      onDelete();
+      return;
+    }
+
     if (!isEditing) {
       e.preventDefault(); // Prevent text selection during drag
       hasDraggedRef.current = false;
@@ -160,7 +169,7 @@ const CalloutComponent = ({
       };
       onStartDrag({ type: 'textBox', calloutId: callout.id }, offset);
     }
-  }, [callout.id, isEditing, isSelected, onSelect, onStartDrag]);
+  }, [activeTool, callout.id, isEditing, isSelected, onDelete, onSelect, onStartDrag]);
 
   const handleTextBoxMouseUp = useCallback(() => {
     if (mouseMoveHandlerRef.current) {
@@ -216,13 +225,22 @@ const CalloutComponent = ({
   const handleLineMouseDown = useCallback((e) => {
     e.stopPropagation();
     e.preventDefault();
+    // If eraser tool is active, delete the callout
+    if (activeTool === 'eraser') {
+      onDelete();
+      return;
+    }
     onSelect();
-  }, [onSelect]);
+  }, [activeTool, onDelete, onSelect]);
 
   const handleLineClick = useCallback((e) => {
     e.stopPropagation();
+    // If eraser tool, don't select (already handled in mouseDown)
+    if (activeTool === 'eraser') {
+      return;
+    }
     onSelect();
-  }, [onSelect]);
+  }, [activeTool, onSelect]);
 
   const { style } = callout;
 
@@ -340,7 +358,7 @@ const CalloutComponent = ({
           y2={line1End.y}
           stroke="transparent"
           strokeWidth={16}
-          style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+          style={{ pointerEvents: isInteractive ? 'stroke' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
@@ -364,7 +382,7 @@ const CalloutComponent = ({
           y2={line2End.y}
           stroke="transparent"
           strokeWidth={16}
-          style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+          style={{ pointerEvents: isInteractive ? 'stroke' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
@@ -387,7 +405,7 @@ const CalloutComponent = ({
           cy={arrowTip.y}
           r={12}
           fill="transparent"
-          style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+          style={{ pointerEvents: isInteractive ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
@@ -398,7 +416,7 @@ const CalloutComponent = ({
           cy={knee.y}
           r={12}
           fill="transparent"
-          style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+          style={{ pointerEvents: isInteractive ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />

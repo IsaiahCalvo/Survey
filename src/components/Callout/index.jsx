@@ -26,6 +26,7 @@ const CalloutOverlay = ({
   selectedCalloutId,
   setSelectedCalloutId,
   isCalloutToolActive,
+  activeTool,
   pageNumber,
   pageWidth,
   pageHeight,
@@ -105,6 +106,7 @@ const CalloutOverlay = ({
         selectedCalloutId={selectedCalloutId}
         setSelectedCalloutId={setSelectedCalloutId}
         isCalloutToolActive={isCalloutToolActive}
+        activeTool={activeTool}
         pageNumber={pageNumber}
         pageWidth={pageWidth}
         pageHeight={pageHeight}

@@ -4252,6 +4252,7 @@ const PageAnnotationLayer = memo(({
         selectedCalloutId={selectedCalloutId}
         setSelectedCalloutId={setSelectedCalloutId}
         isCalloutToolActive={tool === 'callout'}
+        activeTool={tool}
         pageNumber={pageNumber}
         pageWidth={width}
         pageHeight={height}
