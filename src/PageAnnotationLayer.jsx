@@ -1266,8 +1266,6 @@ const PageAnnotationLayer = memo(({
   const clipboardRef = useRef(null);
   // Edit Modal State
   const [editModal, setEditModal] = useState(null); // { x, y, object }
-  // Callout selection rect for drag selection
-  const [calloutSelectionRect, setCalloutSelectionRect] = useState(null);
   const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1 });
   const editModalRef = useRef(null);
 
@@ -4454,25 +4452,6 @@ const PageAnnotationLayer = memo(({
         }}
       />
 
-      {/* Callout Overlay - rendered on top of Fabric canvas */}
-      <CalloutOverlay
-        callouts={callouts}
-        setCallouts={setCallouts}
-        selectedCalloutId={selectedCalloutId}
-        setSelectedCalloutId={setSelectedCalloutId}
-        isCalloutToolActive={tool === 'callout'}
-        activeTool={tool}
-        pageNumber={pageNumber}
-        pageWidth={width}
-        pageHeight={height}
-        defaultStyle={{
-          borderColor: strokeColor,
-          lineThickness: strokeWidth,
-        }}
-        onSave={onSaveAnnotations}
-        selectionRect={calloutSelectionRect}
-      />
-
       {/* Context Menu */}
       {contextMenu && contextMenu.visible && (
         <div
@@ -5002,9 +4981,7 @@ const PageAnnotationLayer = memo(({
     prevProps.highlightsToRemove === nextProps.highlightsToRemove &&
     prevProps.onHighlightCreated === nextProps.onHighlightCreated &&
     prevProps.selectedSpaceId === nextProps.selectedSpaceId &&
-    prevProps.activeRegions === nextProps.activeRegions &&
-    prevProps.callouts === nextProps.callouts &&
-    prevProps.selectedCalloutId === nextProps.selectedCalloutId
+    prevProps.activeRegions === nextProps.activeRegions
   );
 });
 
