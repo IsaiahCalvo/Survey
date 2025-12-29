@@ -448,14 +448,3 @@ screen and (min-resolution: 192dpi) {
   background: rgba(0, 0, 255, 0.2);
   color: transparent;
 }
-
-/* Hide native selection for RTL (right-to-left) selections to avoid blue/green conflict */
-.textLayer[data-rtl-selection="true"] ::selection {
-  background: transparent;
-  color: transparent;
-}
-
-.textLayer[data-rtl-selection="true"] ::-moz-selection {
-  background: transparent;
-  color: transparent;
-}

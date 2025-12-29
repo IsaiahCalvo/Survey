@@ -1515,7 +1515,12 @@ const PageAnnotationLayer = memo(({
     // Get pointer position relative to canvas
     // If fabricTarget is provided (from Fabric.js event), use it directly
     // Otherwise, try to find target using the event
-    const target = fabricTarget || (e ? canvas.findTarget(e, false) : null);
+    let target = fabricTarget || (e ? canvas.findTarget(e, false) : null);
+    
+    // If target is a child of a callout group, use the parent group instead
+    if (target && !target.data?.type && target.group && target.group.data?.type === 'callout') {
+      target = target.group;
+    }
 
     // If we clicked on an object, select it (if not already selected)
     if (target) {
