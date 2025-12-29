@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { uploadExcelFile, getFileMetadata, downloadExcelFileByPath } from './services/excelGraphService';
-import PageAnnotationLayer from './PageAnnotationLayer';
+import PageAnnotationLayer, { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './PageAnnotationLayer';
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
@@ -8008,6 +8008,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [fillColor, setFillColor] = useState('#ff0000');
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
+  const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
 
   // Callout overlay state
   const [callouts, setCallouts] = useState([]);
@@ -13645,6 +13646,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   tool={activeTool}
                                   strokeColor={strokeColor}
                                   strokeWidth={Number(strokeWidth) || 3}
+                                  arrowheadStyle={arrowheadStyle}
                                   annotations={annotationsByPage[pageNumber]}
                                   onSaveAnnotations={handleSaveAnnotations}
                                   onToolChange={setActiveTool}
@@ -13785,6 +13787,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               tool={activeTool}
                               strokeColor={strokeColor}
                               strokeWidth={Number(strokeWidth) || 3}
+                              arrowheadStyle={arrowheadStyle}
                               annotations={annotationsByPage[pageNum]}
                               onSaveAnnotations={handleSaveAnnotations}
                               newHighlights={newHighlightsByPage[pageNum]}
@@ -14303,6 +14306,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 }}
                 title="Width"
               />
+
+              {/* Arrowhead Style Dropdown - only show for arrow tool */}
+              {activeTool === 'arrow' && (
+                <select
+                  value={arrowheadStyle}
+                  onChange={(e) => setArrowheadStyle(e.target.value)}
+                  style={{
+                    height: "32px",
+                    padding: "0 8px",
+                    background: "#444",
+                    color: "#ddd",
+                    border: "1px solid transparent",
+                    borderRadius: "5px",
+                    fontSize: "12px",
+                    fontFamily: FONT_FAMILY,
+                    cursor: "pointer",
+                    outline: "none"
+                  }}
+                  title="Arrowhead Style"
+                >
+                  {Object.entries(ARROWHEAD_STYLE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 

@@ -1346,6 +1346,7 @@ const PageAnnotationLayer = memo(({
   tool = 'pan', // 'pen' | 'highlighter' | 'eraser' | 'text' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'underline' | 'strikeout' | 'squiggly' | 'note' | 'highlight'
   strokeColor = '#DC3545',
   strokeWidth = 3,
+  arrowheadStyle = ARROWHEAD_STYLES.SOLID_TRIANGLE,
   annotations = null,
   onSaveAnnotations = () => { },
   onToolChange = () => { },
@@ -1377,13 +1378,15 @@ const PageAnnotationLayer = memo(({
   const drawingStateRef = useRef({ isDrawingShape: false, startX: 0, startY: 0, tempObj: null });
   const toolRef = useRef(tool);
   const strokeColorRef = useRef(strokeColor);
+  const arrowheadStyleRef = useRef(arrowheadStyle);
 
   // Keep refs in sync with props
   useEffect(() => {
     toolRef.current = tool;
     strokeColorRef.current = strokeColor;
     strokeWidthRef.current = strokeWidth;
-  }, [tool, strokeColor, strokeWidth]);
+    arrowheadStyleRef.current = arrowheadStyle;
+  }, [tool, strokeColor, strokeWidth, arrowheadStyle]);
 
   useEffect(() => {
     calloutsRef.current = callouts;
@@ -3643,9 +3646,9 @@ const PageAnnotationLayer = memo(({
       } else if (currentTool === 'arrow' && ds.tempObj.type === 'line') {
         const { x1, y1, x2, y2 } = ds.tempObj;
         const angle = Math.atan2(y2 - y1, x2 - x1);
-        // Default arrowhead style for new arrows
-        const defaultArrowheadStyle = ARROWHEAD_STYLES.SOLID_TRIANGLE;
-        const head = createArrowhead(x2, y2, angle, currentStrokeColor, currentStrokeWidth, defaultArrowheadStyle);
+        // Use the arrowhead style from toolbar settings
+        const selectedArrowheadStyle = arrowheadStyleRef.current || ARROWHEAD_STYLES.SOLID_TRIANGLE;
+        const head = createArrowhead(x2, y2, angle, currentStrokeColor, currentStrokeWidth, selectedArrowheadStyle);
 
         // Create group with line and arrowhead (if not NONE style)
         const groupObjects = head ? [ds.tempObj, head] : [ds.tempObj];
@@ -3653,7 +3656,7 @@ const PageAnnotationLayer = memo(({
 
         // Store arrowhead style and mark as arrow type on the group
         group.set({
-          data: { type: 'arrow', arrowheadStyle: defaultArrowheadStyle }
+          data: { type: 'arrow', arrowheadStyle: selectedArrowheadStyle }
         });
 
         // Store current selectedSpaceId on the arrow group
