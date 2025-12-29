@@ -539,12 +539,38 @@ const CalloutCanvas = ({
     }
   }, [newCalloutId]);
 
-  // Block pointer events if callout tool is active OR if there are callouts on this page
-  // This prevents eraser/selection tools from passing through callouts to Fabric objects below
-  // When callout tool is active, use 'auto' to enable callout creation/editing
-  // When callouts exist, use 'auto' to block events from passing through (callouts should block other tools)
-  // Only use 'none' when no callouts exist and callout tool is not active
-  const pointerEventsValue = (isCalloutToolActive || pageCallouts.length > 0) ? 'auto' : 'none';
+  // Use document-level listeners for drag operations when not in callout tool mode
+  // This allows dragging to work even when canvas has pointerEvents: 'none'
+  useEffect(() => {
+    const isDragging = dragTarget.type !== 'none';
+
+    if (!isDragging || isCalloutToolActive) {
+      return; // No need for document listeners if not dragging or callout tool is active
+    }
+
+    const handleDocumentMouseMove = (e) => {
+      handleMouseMove(e);
+    };
+
+    const handleDocumentMouseUp = (e) => {
+      handleMouseUp(e);
+    };
+
+    document.addEventListener('mousemove', handleDocumentMouseMove);
+    document.addEventListener('mouseup', handleDocumentMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleDocumentMouseMove);
+      document.removeEventListener('mouseup', handleDocumentMouseUp);
+    };
+  }, [dragTarget.type, isCalloutToolActive, handleMouseMove, handleMouseUp]);
+
+  // Pointer events logic:
+  // - When callout tool is active: 'auto' to enable callout creation on the canvas
+  // - When other tools are active: 'none' to let clicks pass through to Fabric canvas
+  // Individual CalloutComponent elements have their own pointerEvents: 'auto' so they
+  // can still receive clicks for selection, eraser, and editing even when the canvas is 'none'
+  const pointerEventsValue = isCalloutToolActive ? 'auto' : 'none';
 
   return (
     <div
