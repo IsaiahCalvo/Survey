@@ -10,11 +10,15 @@ import CompactColorPicker from '../CompactColorPicker';
  * @param {Object|null} props.selectedCallout - Currently selected callout
  * @param {Function} props.onUpdateStyle - Callback to update style properties
  * @param {Function} props.onClose - Callback to close the panel
+ * @param {Object} props.middleAreaBounds - Bounds of the middle area ({top, height})
+ * @param {number} props.surveyPanelWidth - Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
  */
 const CalloutPropertiesPanel = ({
   selectedCallout,
   onUpdateStyle,
   onClose,
+  middleAreaBounds = { top: 0, height: 500 },
+  surveyPanelWidth = 0,
 }) => {
   const [colorMode, setColorMode] = useState('border');
   const [expandedSections, setExpandedSections] = useState({
@@ -64,16 +68,17 @@ const CalloutPropertiesPanel = ({
       className="callout-properties-panel"
       style={{
         position: 'fixed',
-        top: 0,
-        right: 0,
+        top: middleAreaBounds?.top ?? 0,
+        right: surveyPanelWidth,
         width: 280,
-        height: '100vh',
-        backgroundColor: '#ffffff',
-        borderLeft: '1px solid #e5e7eb',
-        boxShadow: '-4px 0 12px rgba(0,0,0,0.1)',
-        zIndex: 10000,
+        height: middleAreaBounds?.height ?? '100vh',
+        backgroundColor: '#2b2b2b',
+        borderLeft: '1px solid #444',
+        boxShadow: '-4px 0 20px rgba(0,0,0,0.5)',
+        zIndex: 9998,
         overflowY: 'auto',
         animation: 'slideInFromRight 0.2s ease-out',
+        transition: 'right 0.2s ease, top 0.2s ease, height 0.2s ease',
       }}
       onMouseDown={stopPropagation}
       onMouseMove={stopPropagation}
@@ -87,13 +92,14 @@ const CalloutPropertiesPanel = ({
       <div
         style={{
           padding: '12px 16px',
-          borderBottom: '1px solid #e5e7eb',
+          borderBottom: '1px solid #444',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          background: '#252525',
         }}
       >
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Properties</h3>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#ddd' }}>Properties</h3>
         <button
           onClick={onClose}
           style={{
@@ -102,14 +108,16 @@ const CalloutPropertiesPanel = ({
             cursor: 'pointer',
             padding: 4,
             fontSize: 18,
-            color: '#6b7280',
+            color: '#999',
           }}
+          onMouseEnter={(e) => e.currentTarget.style.color = '#ddd'}
+          onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
         >
           ×
         </button>
       </div>
 
-      <div style={{ padding: 12 }}>
+      <div style={{ padding: 12, background: '#2b2b2b' }}>
         {/* Visual Settings Section */}
         <div style={{ marginBottom: 16 }}>
           <button
@@ -125,11 +133,11 @@ const CalloutPropertiesPanel = ({
               cursor: 'pointer',
               fontSize: 12,
               fontWeight: 600,
-              color: '#374151',
+              color: '#ddd',
             }}
           >
             Visual Settings
-            <span style={{ fontSize: 10 }}>{expandedSections.visual ? '▼' : '▶'}</span>
+            <span style={{ fontSize: 10, color: '#999' }}>{expandedSections.visual ? '▼' : '▶'}</span>
           </button>
 
           {expandedSections.visual && (
@@ -137,7 +145,7 @@ const CalloutPropertiesPanel = ({
               {/* Color Toggle */}
               <div style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase' }}>
+                  <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase' }}>
                     COLOR
                   </label>
                   <div style={{ display: 'flex', gap: 4 }}>
@@ -146,9 +154,9 @@ const CalloutPropertiesPanel = ({
                       style={{
                         padding: '4px 8px',
                         fontSize: 10,
-                        border: colorMode === 'border' ? '1px solid #3b82f6' : '1px solid #d1d5db',
-                        background: colorMode === 'border' ? '#3b82f6' : 'white',
-                        color: colorMode === 'border' ? 'white' : '#374151',
+                        border: colorMode === 'border' ? '1px solid #4A90E2' : '1px solid #555',
+                        background: colorMode === 'border' ? '#4A90E2' : '#333',
+                        color: colorMode === 'border' ? 'white' : '#ddd',
                         borderRadius: 4,
                         cursor: 'pointer',
                       }}
@@ -160,9 +168,9 @@ const CalloutPropertiesPanel = ({
                       style={{
                         padding: '4px 8px',
                         fontSize: 10,
-                        border: colorMode === 'fill' ? '1px solid #3b82f6' : '1px solid #d1d5db',
-                        background: colorMode === 'fill' ? '#3b82f6' : 'white',
-                        color: colorMode === 'fill' ? 'white' : '#374151',
+                        border: colorMode === 'fill' ? '1px solid #4A90E2' : '1px solid #555',
+                        background: colorMode === 'fill' ? '#4A90E2' : '#333',
+                        color: colorMode === 'fill' ? 'white' : '#ddd',
                         borderRadius: 4,
                         cursor: 'pointer',
                       }}
@@ -179,27 +187,27 @@ const CalloutPropertiesPanel = ({
                     style={{
                       width: '100%',
                       padding: '8px',
-                      border: '1px solid #d1d5db',
+                      border: '1px solid #555',
                       borderRadius: 4,
-                      background: 'white',
+                      background: '#333',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                     }}
                   >
-                    <span style={{ fontSize: 12, color: '#374151' }}>Select Color</span>
+                    <span style={{ fontSize: 12, color: '#ddd' }}>Select Color</span>
                     <div
                       style={{
                         width: 24,
                         height: 24,
                         borderRadius: 4,
                         background: currentColor === 'transparent'
-                          ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)'
+                          ? 'linear-gradient(45deg, #666 25%, transparent 25%), linear-gradient(-45deg, #666 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #666 75%), linear-gradient(-45deg, transparent 75%, #666 75%)'
                           : currentColor,
                         backgroundSize: currentColor === 'transparent' ? '8px 8px' : 'auto',
                         backgroundPosition: currentColor === 'transparent' ? '0 0, 0 4px, 4px -4px, -4px 0px' : 'auto',
-                        border: '1px solid #d1d5db',
+                        border: '1px solid #555',
                       }}
                     />
                   </button>
@@ -219,7 +227,7 @@ const CalloutPropertiesPanel = ({
 
               {/* Opacity */}
               <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
                   OPACITY
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -256,18 +264,20 @@ const CalloutPropertiesPanel = ({
                       width: 50,
                       padding: '4px 6px',
                       fontSize: 12,
-                      border: '1px solid #d1d5db',
+                      border: '1px solid #555',
                       borderRadius: 4,
                       textAlign: 'right',
+                      background: '#333',
+                      color: '#ddd',
                     }}
                   />
-                  <span style={{ fontSize: 12, color: '#6b7280' }}>%</span>
+                  <span style={{ fontSize: 12, color: '#999' }}>%</span>
                 </div>
               </div>
 
               {/* Line Thickness */}
               <div>
-                <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
                   LINE THICKNESS
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -293,18 +303,20 @@ const CalloutPropertiesPanel = ({
                       width: 50,
                       padding: '4px 6px',
                       fontSize: 12,
-                      border: '1px solid #d1d5db',
+                      border: '1px solid #555',
                       borderRadius: 4,
                       textAlign: 'right',
+                      background: '#333',
+                      color: '#ddd',
                     }}
                   />
-                  <span style={{ fontSize: 12, color: '#6b7280' }}>px</span>
+                  <span style={{ fontSize: 12, color: '#999' }}>px</span>
                 </div>
               </div>
 
               {/* Arrowhead Style */}
               <div>
-                <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
                   ARROWHEAD STYLE
                 </label>
                 <select
@@ -314,9 +326,10 @@ const CalloutPropertiesPanel = ({
                     width: '100%',
                     padding: '6px 8px',
                     fontSize: 12,
-                    border: '1px solid #d1d5db',
+                    border: '1px solid #555',
                     borderRadius: 4,
-                    backgroundColor: 'white',
+                    backgroundColor: '#333',
+                    color: '#ddd',
                     cursor: 'pointer',
                   }}
                 >
@@ -344,11 +357,11 @@ const CalloutPropertiesPanel = ({
               cursor: 'pointer',
               fontSize: 12,
               fontWeight: 600,
-              color: '#374151',
+              color: '#ddd',
             }}
           >
             Text Settings
-            <span style={{ fontSize: 10 }}>{expandedSections.text ? '▼' : '▶'}</span>
+            <span style={{ fontSize: 10, color: '#999' }}>{expandedSections.text ? '▼' : '▶'}</span>
           </button>
 
           {expandedSections.text && (
@@ -356,7 +369,7 @@ const CalloutPropertiesPanel = ({
               {/* Font Family & Size */}
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                  <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
                     FONT
                   </label>
                   <select
@@ -366,9 +379,12 @@ const CalloutPropertiesPanel = ({
                       width: '100%',
                       padding: '6px 8px',
                       fontSize: 12,
-                      border: '1px solid #d1d5db',
+                      border: '1px solid #555',
                       borderRadius: 4,
                       fontFamily: style.fontFamily,
+                      backgroundColor: '#333',
+                      color: '#ddd',
+                      cursor: 'pointer',
                     }}
                   >
                     {fontFamilies.map((font) => (
@@ -379,7 +395,7 @@ const CalloutPropertiesPanel = ({
                   </select>
                 </div>
                 <div style={{ width: 70 }}>
-                  <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                  <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
                     SIZE
                   </label>
                   <select
@@ -389,8 +405,11 @@ const CalloutPropertiesPanel = ({
                       width: '100%',
                       padding: '6px 8px',
                       fontSize: 12,
-                      border: '1px solid #d1d5db',
+                      border: '1px solid #555',
                       borderRadius: 4,
+                      backgroundColor: '#333',
+                      color: '#ddd',
+                      cursor: 'pointer',
                     }}
                   >
                     {fontSizes.map((size) => (
@@ -404,7 +423,7 @@ const CalloutPropertiesPanel = ({
 
               {/* Text Alignment */}
               <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
                   TEXT ALIGNMENT
                 </label>
                 <div style={{ display: 'flex', gap: 4 }}>
@@ -416,9 +435,9 @@ const CalloutPropertiesPanel = ({
                         flex: 1,
                         padding: '6px 12px',
                         fontSize: 12,
-                        border: style.textAlign === align ? '1px solid #3b82f6' : '1px solid #d1d5db',
-                        background: style.textAlign === align ? '#3b82f6' : 'white',
-                        color: style.textAlign === align ? 'white' : '#374151',
+                        border: style.textAlign === align ? '1px solid #4A90E2' : '1px solid #555',
+                        background: style.textAlign === align ? '#4A90E2' : '#333',
+                        color: style.textAlign === align ? 'white' : '#ddd',
                         borderRadius: 4,
                         cursor: 'pointer',
                         display: 'flex',
