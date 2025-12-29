@@ -18,6 +18,8 @@ export { defaultCalloutStyle, createCallout, hexToRgba } from './types';
  * @param {number} props.pageWidth - Page width in pixels at current scale
  * @param {number} props.pageHeight - Page height in pixels at current scale
  * @param {Object} props.defaultStyle - Default style for new callouts (optional)
+ * @param {Object} props.middleAreaBounds - Bounds of the middle area ({top, height})
+ * @param {number} props.surveyPanelWidth - Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
  */
 const CalloutOverlay = ({
   callouts,
@@ -34,6 +36,8 @@ const CalloutOverlay = ({
   selectedSpaceId,
   selectedModuleId,
   showSurveyPanel,
+  middleAreaBounds,
+  surveyPanelWidth,
 }) => {
   const selectedCallout = callouts.find(c => c.id === selectedCalloutId) || null;
 
@@ -131,6 +135,8 @@ const CalloutOverlay = ({
           selectedCallout={selectedCallout}
           onUpdateStyle={handleUpdateStyle}
           onClose={handleClosePanel}
+          middleAreaBounds={middleAreaBounds}
+          surveyPanelWidth={surveyPanelWidth}
         />
       )}
     </>

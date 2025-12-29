@@ -467,7 +467,7 @@ const CalloutPropertiesPanel = ({
 
               {/* Text Style (Bold, Italic, Underline, Strikethrough) */}
               <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
                   STYLE
                 </label>
                 <div style={{ display: 'flex', gap: 4 }}>
@@ -477,9 +477,9 @@ const CalloutPropertiesPanel = ({
                       padding: '6px 10px',
                       fontSize: 14,
                       fontWeight: 'bold',
-                      border: style.bold ? '1px solid #3b82f6' : '1px solid #d1d5db',
-                      background: style.bold ? '#3b82f6' : 'white',
-                      color: style.bold ? 'white' : '#374151',
+                      border: style.bold ? '1px solid #4A90E2' : '1px solid #555',
+                      background: style.bold ? '#4A90E2' : '#333',
+                      color: style.bold ? 'white' : '#ddd',
                       borderRadius: 4,
                       cursor: 'pointer',
                     }}
@@ -492,9 +492,9 @@ const CalloutPropertiesPanel = ({
                       padding: '6px 10px',
                       fontSize: 14,
                       fontStyle: 'italic',
-                      border: style.italic ? '1px solid #3b82f6' : '1px solid #d1d5db',
-                      background: style.italic ? '#3b82f6' : 'white',
-                      color: style.italic ? 'white' : '#374151',
+                      border: style.italic ? '1px solid #4A90E2' : '1px solid #555',
+                      background: style.italic ? '#4A90E2' : '#333',
+                      color: style.italic ? 'white' : '#ddd',
                       borderRadius: 4,
                       cursor: 'pointer',
                     }}
@@ -507,9 +507,9 @@ const CalloutPropertiesPanel = ({
                       padding: '6px 10px',
                       fontSize: 14,
                       textDecoration: 'underline',
-                      border: style.underline ? '1px solid #3b82f6' : '1px solid #d1d5db',
-                      background: style.underline ? '#3b82f6' : 'white',
-                      color: style.underline ? 'white' : '#374151',
+                      border: style.underline ? '1px solid #4A90E2' : '1px solid #555',
+                      background: style.underline ? '#4A90E2' : '#333',
+                      color: style.underline ? 'white' : '#ddd',
                       borderRadius: 4,
                       cursor: 'pointer',
                     }}
@@ -522,9 +522,9 @@ const CalloutPropertiesPanel = ({
                       padding: '6px 10px',
                       fontSize: 14,
                       textDecoration: 'line-through',
-                      border: style.strikethrough ? '1px solid #3b82f6' : '1px solid #d1d5db',
-                      background: style.strikethrough ? '#3b82f6' : 'white',
-                      color: style.strikethrough ? 'white' : '#374151',
+                      border: style.strikethrough ? '1px solid #4A90E2' : '1px solid #555',
+                      background: style.strikethrough ? '#4A90E2' : '#333',
+                      color: style.strikethrough ? 'white' : '#ddd',
                       borderRadius: 4,
                       cursor: 'pointer',
                     }}
@@ -537,7 +537,7 @@ const CalloutPropertiesPanel = ({
               {/* Text Color */}
               <div style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase' }}>
+                  <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase' }}>
                     TEXT COLOR
                   </label>
                 </div>
@@ -549,23 +549,23 @@ const CalloutPropertiesPanel = ({
                     style={{
                       width: '100%',
                       padding: '8px',
-                      border: '1px solid #d1d5db',
+                      border: '1px solid #555',
                       borderRadius: 4,
-                      background: 'white',
+                      background: '#333',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                     }}
                   >
-                    <span style={{ fontSize: 12, color: '#374151' }}>Select Color</span>
+                    <span style={{ fontSize: 12, color: '#ddd' }}>Select Color</span>
                     <div
                       style={{
                         width: 24,
                         height: 24,
                         borderRadius: 4,
                         background: style.fontColor || '#000000',
-                        border: '1px solid #d1d5db',
+                        border: '1px solid #555',
                       }}
                     />
                   </button>

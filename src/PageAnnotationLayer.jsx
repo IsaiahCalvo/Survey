@@ -1369,6 +1369,9 @@ const PageAnnotationLayer = memo(({
   setCallouts = () => {}, // Update callouts callback
   selectedCalloutId = null, // Currently selected callout ID
   setSelectedCalloutId = () => {}, // Set selected callout callback
+  // Properties panel positioning props
+  middleAreaBounds = { top: 0, height: 500 }, // Bounds of the middle area ({top, height})
+  surveyPanelWidth = 0, // Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
   // Note: selectedSpaceId, selectedModuleId, and showSurveyPanel are already defined above
 }) => {
   const canvasRef = useRef(null);
@@ -4876,6 +4879,8 @@ const PageAnnotationLayer = memo(({
         selectedSpaceId={selectedSpaceId}
         selectedModuleId={selectedModuleId}
         showSurveyPanel={showSurveyPanel}
+        middleAreaBounds={middleAreaBounds}
+        surveyPanelWidth={surveyPanelWidth}
       />
 
       {/* Context Menu */}

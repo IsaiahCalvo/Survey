@@ -12991,6 +12991,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [showSurveyPanel]);
 
+  // Calculate survey panel width for properties panel positioning
+  const surveyPanelWidth = useMemo(() => {
+    return showSurveyPanel ? (isSurveyPanelCollapsed ? 48 : 320) : 0;
+  }, [showSurveyPanel, isSurveyPanelCollapsed]);
+
   // Auto-adjust PDF zoom when sidebars expand/collapse or survey panel opens/closes
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -13668,6 +13673,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   setCallouts={setCallouts}
                                   selectedCalloutId={selectedCalloutId}
                                   setSelectedCalloutId={setSelectedCalloutId}
+                                  middleAreaBounds={middleAreaBounds}
+                                  surveyPanelWidth={surveyPanelWidth}
                                 />
                               )}
                               {/* Space Region Dimming Overlay */}
@@ -13807,6 +13814,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               setCallouts={setCallouts}
                               selectedCalloutId={selectedCalloutId}
                               setSelectedCalloutId={setSelectedCalloutId}
+                              middleAreaBounds={middleAreaBounds}
+                              surveyPanelWidth={surveyPanelWidth}
                             />
                           )}
                         </div>
