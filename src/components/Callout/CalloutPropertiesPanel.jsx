@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { presetBorderColors, presetFillColors, fontFamilies, fontSizes, ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './types';
+import { presetBorderColors, presetFillColors, fontFamilies, fontSizes, ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS, defaultCalloutStyle } from './types';
 import CompactColorPicker from '../CompactColorPicker';
 
 /**
@@ -28,7 +28,8 @@ const CalloutPropertiesPanel = ({
     return null;
   }
 
-  const { style } = selectedCallout;
+  // Merge callout style with defaults to ensure all properties exist
+  const style = { ...defaultCalloutStyle, ...selectedCallout.style };
 
   const toggleSection = (section) => {
     setExpandedSections(prev => ({

@@ -370,7 +370,8 @@ const CalloutComponent = ({
     onSelect();
   }, [activeTool, onSelect]);
 
-  const { style } = callout;
+  // Merge callout style with defaults to ensure all properties exist
+  const style = { ...defaultCalloutStyle, ...callout.style };
 
   // Find the closest point on the text box border to the knee
   const getClosestBorderPoint = () => {

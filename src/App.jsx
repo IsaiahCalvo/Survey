@@ -19890,27 +19890,44 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0, 0, 0, 0.7)',
+          background: 'rgba(0, 0, 0, 0.75)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 10000
+          zIndex: 10000,
+          backdropFilter: 'blur(4px)',
+          animation: 'fadeIn 0.2s ease-out'
         }}>
           <div style={{
-            background: '#2a2a2a',
+            background: '#252525',
             borderRadius: '12px',
-            padding: '32px',
-            maxWidth: '500px',
+            padding: '40px',
+            maxWidth: '520px',
             width: '90%',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            animation: 'fadeIn 0.2s ease-out'
           }}>
-            <h2 style={{ color: '#fff', marginBottom: '16px', fontSize: '24px' }}>
+            <h2 style={{ 
+              color: '#FFFFFF', 
+              marginBottom: '12px', 
+              fontSize: '22px',
+              fontWeight: 600,
+              letterSpacing: '-0.01em',
+              lineHeight: '1.3'
+            }}>
               Choose Export Location
             </h2>
-            <p style={{ color: '#ccc', marginBottom: '32px', lineHeight: '1.6' }}>
+            <p style={{ 
+              color: '#C8C8C8', 
+              marginBottom: '32px', 
+              lineHeight: '1.5',
+              fontSize: '14px',
+              letterSpacing: '-0.01em'
+            }}>
               Where would you like to save your Excel file?
             </p>
-            <div style={{ display: 'flex', gap: '16px', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', gap: '12px', flexDirection: 'column' }}>
               <button
                 onClick={async () => {
                   setShowExportLocationModal(false);
@@ -19940,20 +19957,37 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   setExportPendingData(null);
                 }}
                 style={{
-                  padding: '16px 24px',
-                  background: '#3498db',
-                  border: 'none',
+                  padding: '16px 20px',
+                  background: '#4A90E2',
+                  border: '1px solid #4A90E2',
                   borderRadius: '8px',
-                  color: '#fff',
-                  fontSize: '16px',
-                  fontWeight: 600,
+                  color: '#FFFFFF',
+                  fontSize: '14px',
+                  fontWeight: 500,
                   cursor: 'pointer',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                  letterSpacing: '-0.01em',
+                  boxShadow: '0 2px 8px rgba(74, 144, 226, 0.2)'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#2980b9'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#3498db'}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#3A7BC8';
+                  e.currentTarget.style.borderColor = '#3A7BC8';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(74, 144, 226, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#4A90E2';
+                  e.currentTarget.style.borderColor = '#4A90E2';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.2)';
+                }}
               >
-                💻 Save to Computer
+                <span style={{ fontSize: '18px' }}>💻</span>
+                <span>Save to Computer</span>
               </button>
               <button
                 onClick={async () => {
@@ -19986,20 +20020,37 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   setExportPendingData(null);
                 }}
                 style={{
-                  padding: '16px 24px',
-                  background: '#0078d4',
-                  border: 'none',
+                  padding: '16px 20px',
+                  background: '#4A90E2',
+                  border: '1px solid #4A90E2',
                   borderRadius: '8px',
-                  color: '#fff',
-                  fontSize: '16px',
-                  fontWeight: 600,
+                  color: '#FFFFFF',
+                  fontSize: '14px',
+                  fontWeight: 500,
                   cursor: 'pointer',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                  letterSpacing: '-0.01em',
+                  boxShadow: '0 2px 8px rgba(74, 144, 226, 0.2)'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#106ebe'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#0078d4'}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#3A7BC8';
+                  e.currentTarget.style.borderColor = '#3A7BC8';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(74, 144, 226, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#4A90E2';
+                  e.currentTarget.style.borderColor = '#4A90E2';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.2)';
+                }}
               >
-                ☁️ Save to OneDrive
+                <span style={{ fontSize: '18px' }}>☁️</span>
+                <span>Save to OneDrive</span>
               </button>
               <button
                 onClick={() => {
@@ -20007,17 +20058,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   setExportPendingData(null);
                 }}
                 style={{
-                  padding: '12px 24px',
+                  padding: '12px 20px',
                   background: 'transparent',
-                  border: '1px solid #666',
+                  border: '1px solid #3A3A3A',
                   borderRadius: '8px',
-                  color: '#ccc',
+                  color: '#C8C8C8',
                   fontSize: '14px',
+                  fontWeight: 500,
                   cursor: 'pointer',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s ease',
+                  letterSpacing: '-0.01em',
+                  marginTop: '4px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.borderColor = '#999'}
-                onMouseLeave={(e) => e.currentTarget.style.borderColor = '#666'}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                  e.currentTarget.style.borderColor = '#4A4A4A';
+                  e.currentTarget.style.color = '#FFFFFF';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.borderColor = '#3A3A3A';
+                  e.currentTarget.style.color = '#C8C8C8';
+                }}
               >
                 Cancel
               </button>
