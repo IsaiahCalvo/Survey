@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { presetBorderColors, presetFillColors, fontFamilies, fontSizes } from './types';
+import { presetBorderColors, presetFillColors, fontFamilies, fontSizes, ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './types';
 import CompactColorPicker from '../CompactColorPicker';
 
 /**
@@ -53,6 +53,11 @@ const CalloutPropertiesPanel = ({
     onUpdateStyle({ fontColor: hex });
   };
 
+  // Stop all events from propagating to canvas below
+  const stopPropagation = (e) => {
+    e.stopPropagation();
+  };
+
   return (
     <div
       className="callout-properties-panel"
@@ -65,10 +70,17 @@ const CalloutPropertiesPanel = ({
         backgroundColor: '#ffffff',
         borderLeft: '1px solid #e5e7eb',
         boxShadow: '-4px 0 12px rgba(0,0,0,0.1)',
-        zIndex: 1000,
+        zIndex: 10000,
         overflowY: 'auto',
         animation: 'slideInFromRight 0.2s ease-out',
       }}
+      onMouseDown={stopPropagation}
+      onMouseMove={stopPropagation}
+      onMouseUp={stopPropagation}
+      onClick={stopPropagation}
+      onPointerDown={stopPropagation}
+      onPointerMove={stopPropagation}
+      onPointerUp={stopPropagation}
     >
       {/* Header */}
       <div
@@ -287,6 +299,30 @@ const CalloutPropertiesPanel = ({
                   />
                   <span style={{ fontSize: 12, color: '#6b7280' }}>px</span>
                 </div>
+              </div>
+
+              {/* Arrowhead Style */}
+              <div>
+                <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                  ARROWHEAD STYLE
+                </label>
+                <select
+                  value={style.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE}
+                  onChange={(e) => onUpdateStyle({ arrowheadStyle: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    fontSize: 12,
+                    border: '1px solid #d1d5db',
+                    borderRadius: 4,
+                    backgroundColor: 'white',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {Object.entries(ARROWHEAD_STYLE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
               </div>
             </div>
           )}

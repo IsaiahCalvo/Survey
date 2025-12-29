@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { hexToRgba } from './types';
+import { hexToRgba, ARROWHEAD_STYLES, defaultCalloutStyle } from './types';
 
 /**
  * CalloutComponent - Renders a single callout annotation
@@ -519,6 +519,131 @@ const CalloutComponent = ({
   const arrowHeadHitAreaPoints = calculateArrowHeadPoints(3);
   const arrowHeadHitAreaPointsString = arrowHeadHitAreaPoints.map(p => `${p.x},${p.y}`).join(' ');
 
+  // Get current arrowhead style (default to solid triangle for backwards compatibility)
+  const currentArrowheadStyle = style.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE;
+
+  // Calculate additional arrowhead geometry for different styles
+  const dx = arrowTip.x - knee.x;
+  const dy = arrowTip.y - knee.y;
+  const arrowAngle = Math.atan2(dy, dx);
+
+  // Render the appropriate arrowhead based on style
+  const renderArrowhead = () => {
+    const color = hexToRgba(style.borderColor, style.borderOpacity);
+    const strokeW = Math.max(2, style.lineThickness);
+
+    switch (currentArrowheadStyle) {
+      case ARROWHEAD_STYLES.NONE:
+        return null;
+
+      case ARROWHEAD_STYLES.SOLID_TRIANGLE:
+        return (
+          <polygon
+            points={arrowHeadPointsString}
+            fill={color}
+            stroke={color}
+            strokeWidth={1}
+            style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+            onMouseDown={handleLineMouseDown}
+            onClick={handleLineClick}
+          />
+        );
+
+      case ARROWHEAD_STYLES.V_SHAPE: {
+        // V-shape: two lines forming a V
+        const armLength = arrowWidth;
+        const armAngle = Math.PI / 6; // 30 degrees spread
+        const arm1X = arrowTip.x - armLength * Math.cos(arrowAngle - armAngle);
+        const arm1Y = arrowTip.y - armLength * Math.sin(arrowAngle - armAngle);
+        const arm2X = arrowTip.x - armLength * Math.cos(arrowAngle + armAngle);
+        const arm2Y = arrowTip.y - armLength * Math.sin(arrowAngle + armAngle);
+        const vShapePoints = `${arm1X},${arm1Y} ${arrowTip.x},${arrowTip.y} ${arm2X},${arm2Y}`;
+        return (
+          <polyline
+            points={vShapePoints}
+            fill="none"
+            stroke={color}
+            strokeWidth={strokeW}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+            onMouseDown={handleLineMouseDown}
+            onClick={handleLineClick}
+          />
+        );
+      }
+
+      case ARROWHEAD_STYLES.OPEN_CIRCLE: {
+        const radius = arrowWidth / 2;
+        return (
+          <circle
+            cx={arrowTip.x}
+            cy={arrowTip.y}
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth={strokeW}
+            style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+            onMouseDown={handleLineMouseDown}
+            onClick={handleLineClick}
+          />
+        );
+      }
+
+      case ARROWHEAD_STYLES.OPEN_TRIANGLE:
+        return (
+          <polygon
+            points={arrowHeadPointsString}
+            fill="none"
+            stroke={color}
+            strokeWidth={strokeW}
+            strokeLinejoin="round"
+            style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+            onMouseDown={handleLineMouseDown}
+            onClick={handleLineClick}
+          />
+        );
+
+      case ARROWHEAD_STYLES.HORIZONTAL_LINE: {
+        // Perpendicular line at the end of the arrow
+        const halfLength = arrowWidth / 2;
+        const perpAngle = arrowAngle + Math.PI / 2;
+        const lineX1 = arrowTip.x + halfLength * Math.cos(perpAngle);
+        const lineY1 = arrowTip.y + halfLength * Math.sin(perpAngle);
+        const lineX2 = arrowTip.x - halfLength * Math.cos(perpAngle);
+        const lineY2 = arrowTip.y - halfLength * Math.sin(perpAngle);
+        return (
+          <line
+            x1={lineX1}
+            y1={lineY1}
+            x2={lineX2}
+            y2={lineY2}
+            stroke={color}
+            strokeWidth={strokeW}
+            strokeLinecap="round"
+            style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+            onMouseDown={handleLineMouseDown}
+            onClick={handleLineClick}
+          />
+        );
+      }
+
+      default:
+        // Default to solid triangle
+        return (
+          <polygon
+            points={arrowHeadPointsString}
+            fill={color}
+            stroke={color}
+            strokeWidth={1}
+            style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+            onMouseDown={handleLineMouseDown}
+            onClick={handleLineClick}
+          />
+        );
+    }
+  };
+
   return (
     <>
       {/* SVG for lines */}
@@ -560,27 +685,20 @@ const CalloutComponent = ({
           style={{ pointerEvents: 'none' }}
         />
 
-        {/* Invisible larger hit area triangle (3x size) for easier clicking */}
-        {/* Render AFTER line hit area so it gets pointer events first (SVG processes later elements first) */}
-        <polygon
-          points={arrowHeadHitAreaPointsString}
-          fill="transparent"
-          style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
-          onMouseDown={handleLineMouseDown}
-          onClick={handleLineClick}
-        />
+        {/* Invisible larger hit area for arrowhead (for easier clicking) */}
+        {/* Only show if arrowhead style is not NONE */}
+        {currentArrowheadStyle !== ARROWHEAD_STYLES.NONE && (
+          <polygon
+            points={arrowHeadHitAreaPointsString}
+            fill="transparent"
+            style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
+            onMouseDown={handleLineMouseDown}
+            onClick={handleLineClick}
+          />
+        )}
 
-        {/* Visible arrow head triangle (original size) */}
-        {/* Also clickable - users expect to click on the visible triangle */}
-        <polygon
-          points={arrowHeadPointsString}
-          fill={hexToRgba(style.borderColor, style.borderOpacity)}
-          stroke={hexToRgba(style.borderColor, style.borderOpacity)}
-          strokeWidth={1}
-          style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
-          onMouseDown={handleLineMouseDown}
-          onClick={handleLineClick}
-        />
+        {/* Visible arrowhead - style-dependent rendering */}
+        {renderArrowhead()}
 
         {/* Hit area for knee - invisible circle for easier clicking */}
         <circle

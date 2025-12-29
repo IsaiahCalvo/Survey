@@ -4,6 +4,27 @@
  */
 
 /**
+ * Arrowhead style options
+ */
+export const ARROWHEAD_STYLES = {
+  NONE: 'none',
+  SOLID_TRIANGLE: 'solidTriangle',
+  V_SHAPE: 'vShape',
+  OPEN_CIRCLE: 'openCircle',
+  OPEN_TRIANGLE: 'openTriangle',
+  HORIZONTAL_LINE: 'horizontalLine'
+};
+
+export const ARROWHEAD_STYLE_LABELS = {
+  [ARROWHEAD_STYLES.NONE]: 'None',
+  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'Solid Triangle',
+  [ARROWHEAD_STYLES.V_SHAPE]: 'V-Shape',
+  [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Open Circle',
+  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Open Triangle',
+  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal Line'
+};
+
+/**
  * @typedef {Object} Point
  * @property {number} x
  * @property {number} y
@@ -14,6 +35,7 @@
  * @property {string} borderColor - Hex color for border/line
  * @property {number} borderOpacity - 0-1 opacity for border
  * @property {number} lineThickness - Line width in pixels (1-6)
+ * @property {string} arrowheadStyle - Arrowhead style (see ARROWHEAD_STYLES)
  * @property {string} fillColor - Hex color for text box fill
  * @property {number} fillOpacity - 0-1 opacity for fill
  * @property {string} fontFamily - Font family name
@@ -94,6 +116,7 @@ export const defaultCalloutStyle = {
   borderColor: '#1e293b',
   borderOpacity: 1,
   lineThickness: 2,
+  arrowheadStyle: ARROWHEAD_STYLES.SOLID_TRIANGLE,
   fillColor: '#ffffff',
   fillOpacity: 1,
   fontFamily: 'Inter, Arial, sans-serif',
