@@ -2311,7 +2311,6 @@ const PageAnnotationLayer = memo(({
         const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON);
-        onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
       }
@@ -4873,7 +4872,6 @@ const PageAnnotationLayer = memo(({
           borderColor: strokeColor,
           lineThickness: strokeWidth,
         }}
-        onSave={onSaveAnnotations}
         selectionRect={calloutSelectionRect}
         selectedSpaceId={selectedSpaceId}
         selectedModuleId={selectedModuleId}

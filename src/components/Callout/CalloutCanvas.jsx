@@ -567,10 +567,12 @@ const CalloutCanvas = ({
 
   // Pointer events logic:
   // - When callout tool is active: 'auto' to enable callout creation on the canvas
+  // - When pan/select tool is active AND a callout is selected: 'auto' to enable clicking off to deselect
   // - When other tools are active: 'none' to let clicks pass through to Fabric canvas
-  // Individual CalloutComponent elements have their own pointerEvents: 'auto' so they
-  // can still receive clicks for selection, eraser, and editing even when the canvas is 'none'
-  const pointerEventsValue = isCalloutToolActive ? 'auto' : 'none';
+  // Individual CalloutComponent elements have their own pointerEvents based on shouldReceivePointerEvents
+  const pointerEventsValue = isCalloutToolActive ||
+    ((activeTool === 'pan' || activeTool === 'select') && selectedCalloutId)
+    ? 'auto' : 'none';
 
   return (
     <div

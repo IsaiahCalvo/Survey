@@ -18,7 +18,6 @@ export { defaultCalloutStyle, createCallout, hexToRgba } from './types';
  * @param {number} props.pageWidth - Page width in pixels at current scale
  * @param {number} props.pageHeight - Page height in pixels at current scale
  * @param {Object} props.defaultStyle - Default style for new callouts (optional)
- * @param {Function} props.onSave - Callback when callouts change (for persistence)
  */
 const CalloutOverlay = ({
   callouts,
@@ -31,7 +30,6 @@ const CalloutOverlay = ({
   pageWidth,
   pageHeight,
   defaultStyle,
-  onSave,
   selectionRect,
   selectedSpaceId,
   selectedModuleId,
@@ -44,9 +42,8 @@ const CalloutOverlay = ({
     if (selectedCalloutId) {
       setCallouts(prev => prev.filter(c => c.id !== selectedCalloutId));
       setSelectedCalloutId(null);
-      if (onSave) onSave();
     }
-  }, [selectedCalloutId, setCallouts, setSelectedCalloutId, onSave]);
+  }, [selectedCalloutId, setCallouts, setSelectedCalloutId]);
 
   // Handle updating callout style
   const handleUpdateStyle = useCallback((updates) => {
@@ -56,9 +53,8 @@ const CalloutOverlay = ({
           ? { ...c, style: { ...c.style, ...updates } }
           : c
       ));
-      if (onSave) onSave();
     }
-  }, [selectedCalloutId, setCallouts, onSave]);
+  }, [selectedCalloutId, setCallouts]);
 
   // Handle closing properties panel
   const handleClosePanel = useCallback(() => {
@@ -94,12 +90,9 @@ const CalloutOverlay = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedCalloutId, handleDeleteSelected, setSelectedCalloutId, setCallouts]);
 
-  // Trigger save when callouts change
-  useEffect(() => {
-    if (onSave) {
-      onSave();
-    }
-  }, [callouts, onSave]);
+  // Note: Callout saves are handled by setCallouts in App.jsx
+  // The onSave prop here was incorrectly calling the annotation save function
+  // without proper arguments. Removed to prevent interference.
 
   return (
     <>

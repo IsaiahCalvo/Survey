@@ -41,6 +41,18 @@ const CalloutComponent = ({
     activeTool === 'text-select'
   );
 
+  // Callout elements should receive pointer events when:
+  // - Callout tool is active (for editing)
+  // - Pan/selection tool is active (for selecting)
+  // - Eraser tool is active (for deleting)
+  // But NOT when other drawing tools are active (pen, rect, etc.) - let clicks pass through to Fabric canvas
+  const shouldReceivePointerEvents =
+    isCalloutToolActive ||
+    activeTool === 'pan' ||
+    activeTool === 'select' ||
+    activeTool === 'text-select' ||
+    activeTool === 'eraser';
+
   // Show resize handles (corners, knee, arrow tip) when:
   // - Callout tool is active AND callout is selected, OR
   // - Select tool is active AND callout is selected, OR
@@ -520,7 +532,7 @@ const CalloutComponent = ({
           width: '100%',
           height: '100%',
           overflow: 'visible',
-          pointerEvents: 'auto', // Always block events to prevent tools from passing through callouts
+          pointerEvents: 'none', // SVG container doesn't block - individual elements handle their own events
         }}
       >
         {/* Hit area for connector path - invisible wider stroke for easier clicking */}
@@ -531,7 +543,7 @@ const CalloutComponent = ({
           strokeLinejoin="round"
           strokeLinecap="round"
           fill="none"
-          style={{ pointerEvents: 'stroke', cursor: isInteractive ? 'pointer' : 'default' }}
+          style={{ pointerEvents: shouldReceivePointerEvents ? 'stroke' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
@@ -553,7 +565,7 @@ const CalloutComponent = ({
         <polygon
           points={arrowHeadHitAreaPointsString}
           fill="transparent"
-          style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
+          style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
@@ -565,7 +577,7 @@ const CalloutComponent = ({
           fill={hexToRgba(style.borderColor, style.borderOpacity)}
           stroke={hexToRgba(style.borderColor, style.borderOpacity)}
           strokeWidth={1}
-          style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
+          style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
@@ -576,7 +588,7 @@ const CalloutComponent = ({
           cy={knee.y}
           r={12}
           fill="transparent"
-          style={{ pointerEvents: 'auto', cursor: isInteractive ? 'pointer' : 'default' }}
+          style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
         />
@@ -590,7 +602,7 @@ const CalloutComponent = ({
           left: textBoxPosition.x,
           top: textBoxPosition.y,
           cursor: isInteractive ? (isEditing ? 'text' : 'move') : 'default',
-          pointerEvents: 'auto', // Always block events to prevent tools from passing through, even when not interactive
+          pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', // Only block events when callout/selection/eraser tools are active
         }}
         onMouseDown={handleTextBoxMouseDown}
         onMouseUp={handleTextBoxMouseUp}
