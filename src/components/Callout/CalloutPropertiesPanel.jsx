@@ -79,6 +79,8 @@ const CalloutPropertiesPanel = ({
         overflowY: 'auto',
         animation: 'slideInFromRight 0.2s ease-out',
         transition: 'right 0.2s ease, top 0.2s ease, height 0.2s ease',
+        display: 'flex',
+        flexDirection: 'column',
       }}
       onMouseDown={stopPropagation}
       onMouseMove={stopPropagation}
@@ -117,7 +119,7 @@ const CalloutPropertiesPanel = ({
         </button>
       </div>
 
-      <div style={{ padding: 12, background: '#2b2b2b' }}>
+      <div style={{ padding: 12, background: '#2b2b2b', flex: 1, overflowY: 'auto' }}>
         {/* Visual Settings Section */}
         <div style={{ marginBottom: 16 }}>
           <button

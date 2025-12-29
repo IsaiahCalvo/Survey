@@ -7,6 +7,17 @@ import * as XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { uploadExcelFile, getFileMetadata, downloadExcelFileByPath } from './services/excelGraphService';
+import {
+  getFileIdFromPath,
+  createWorkbookSession,
+  closeWorkbookSession,
+  refreshWorkbookSession,
+  updateCellRange,
+  getCellRange,
+  getWorksheets,
+  getUsedRange,
+  checkSessionSupport
+} from './services/excelSessionService';
 import PageAnnotationLayer, { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './PageAnnotationLayer';
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
@@ -12285,7 +12296,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         activeElement &&
         (activeElement.tagName === 'INPUT' ||
           activeElement.tagName === 'TEXTAREA' ||
-          activeElement.isContentEditable);
+          activeElement.isContentEditable ||
+          activeElement.contentEditable === 'true');
+
+      // 'V' key to switch to Selection Tool (only when no modifiers are pressed)
+      if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        // Don't trigger if user is focused on an input field, textbox, or callout
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+
+        // Prevent default behavior and switch to select tool
+        e.preventDefault();
+        setActiveTool('select');
+        return;
+      }
 
       if (!isFormField && (e.metaKey || e.ctrlKey)) {
         const key = e.key.toLowerCase();
@@ -12341,7 +12366,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument]);
+  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool]);
 
   // Mode toggle
   const toggleScrollMode = useCallback(() => {

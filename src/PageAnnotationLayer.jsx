@@ -1434,6 +1434,7 @@ const PageAnnotationLayer = memo(({
 
   // Context Menu State
   const [contextMenu, setContextMenu] = useState(null); // { x, y, type: 'annotation' | 'canvas', target: object }
+  const contextMenuJustOpenedRef = useRef(false); // Track if context menu was just opened to prevent immediate closing
   // Clipboard for Cut/Copy/Paste - using Ref to persist across renders without triggering them
   const clipboardRef = useRef(null);
   // Edit Modal State
@@ -1499,18 +1500,22 @@ const PageAnnotationLayer = memo(({
   }, [pageNumber, onSaveAnnotations]);
 
   // Context Menu Handlers
-  const handleContextMenu = useCallback((e) => {
+  const handleContextMenu = useCallback((e, fabricTarget = null) => {
     // Only show context menu if not in drawing mode or other active interaction
     if (drawingStateRef.current.isDrawingShape || panInteractionTypeRef.current) {
       return;
     }
 
-    e.preventDefault();
+    if (e && e.preventDefault) {
+      e.preventDefault();
+    }
     const canvas = fabricRef.current;
     if (!canvas) return;
 
     // Get pointer position relative to canvas
-    const target = canvas.findTarget(e, false);
+    // If fabricTarget is provided (from Fabric.js event), use it directly
+    // Otherwise, try to find target using the event
+    const target = fabricTarget || (e ? canvas.findTarget(e, false) : null);
 
     // If we clicked on an object, select it (if not already selected)
     if (target) {
@@ -1526,6 +1531,11 @@ const PageAnnotationLayer = memo(({
         type: 'annotation',
         target: target
       });
+      // Mark that context menu was just opened to prevent immediate closing
+      contextMenuJustOpenedRef.current = true;
+      setTimeout(() => {
+        contextMenuJustOpenedRef.current = false;
+      }, 100); // Allow clicks after 100ms
     } else {
       // Empty space click - check if we have something to paste
       if (clipboardRef.current) {
@@ -1536,6 +1546,15 @@ const PageAnnotationLayer = memo(({
           type: 'canvas',
           target: null
         });
+        // Mark that context menu was just opened to prevent immediate closing
+        contextMenuJustOpenedRef.current = true;
+        setTimeout(() => {
+          contextMenuJustOpenedRef.current = false;
+        }, 100); // Allow clicks after 100ms
+      } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1540',message:'handleContextMenu NO CONTEXT MENU (no target, no clipboard)',data:{pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
       }
     }
   }, []);
@@ -4195,7 +4214,28 @@ const PageAnnotationLayer = memo(({
     canvas.on('object:rotating', handleObjectRotating);
     canvas.on('object:moving', handleObjectMoving);
     canvas.on('path:created', handlePathCreated);
-    canvas.on('mouse:down', handleMouseDown);
+    canvas.on('mouse:down', (opt) => {
+      // Detect right-click: actual right button, or Ctrl+click (Windows/Linux), or Command+click (Mac)
+      const isRightClick = opt.e.button === 2 || opt.e.which === 3 || (opt.e.ctrlKey && opt.e.button === 0) || (opt.e.metaKey && opt.e.button === 0);
+      
+      // Handle right-click for context menu directly from Fabric.js event
+      if (isRightClick) {
+        opt.e.preventDefault(); // Prevent default browser context menu
+        // Create a synthetic event object that matches what handleContextMenu expects
+        const syntheticEvent = {
+          preventDefault: () => opt.e.preventDefault(),
+          clientX: opt.e.clientX || opt.e.pageX || (opt.e.touches && opt.e.touches[0] ? opt.e.touches[0].clientX : 0),
+          clientY: opt.e.clientY || opt.e.pageY || (opt.e.touches && opt.e.touches[0] ? opt.e.touches[0].clientY : 0),
+          button: opt.e.button,
+          which: opt.e.which
+        };
+        // Pass the Fabric.js target directly to avoid needing to call findTarget again
+        handleContextMenu(syntheticEvent, opt.target);
+        return; // Don't process as regular mouse down
+      }
+      
+      handleMouseDown(opt);
+    });
     canvas.on('mouse:move', handleMouseMove);
     canvas.on('mouse:up', handleMouseUp);
     canvas.on('mouse:dblclick', handleDblClick);
@@ -4835,10 +4875,18 @@ const PageAnnotationLayer = memo(({
 
   return (
     <div
-      onContextMenu={handleContextMenu}
-      onClick={() => {
-        if (contextMenu) closeContextMenu();
-        if (editModal) closeEditModal();
+      onContextMenu={(e) => {
+        handleContextMenu(e);
+      }}
+      onClick={(e) => {
+        // Don't close context menu if:
+        // 1. It's a right-click or Command/Ctrl+click
+        // 2. The context menu was just opened (prevent immediate closing)
+        const isRightClick = e.button === 2 || e.which === 3 || e.ctrlKey || e.metaKey;
+        if (!isRightClick && !contextMenuJustOpenedRef.current) {
+          if (contextMenu) closeContextMenu();
+          if (editModal) closeEditModal();
+        }
       }}
       style={{
         position: 'absolute',

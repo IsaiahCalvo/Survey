@@ -124,8 +124,40 @@ const TextLayer = memo(({
 
           // Check if selection is within this text layer
           if (selectedText && textLayerDiv.contains(range.commonAncestorContainer)) {
-            // Get bounding rectangles of selected text
+            // Detect RTL selection direction
+            // When selecting from right to left, the range's start offset is greater than end offset
+            // OR the start container comes after the end container in document order
             const rects = range.getClientRects();
+            let isRTL = false;
+            
+            const startContainer = range.startContainer;
+            const endContainer = range.endContainer;
+            
+            if (startContainer === endContainer) {
+              // Same container: RTL if start offset > end offset (selection made backwards)
+              isRTL = range.startOffset > range.endOffset;
+            } else {
+              // Different containers: check if start comes after end in document order
+              const position = startContainer.compareDocumentPosition(endContainer);
+              // DOCUMENT_POSITION_FOLLOWING means start comes after end (RTL selection)
+              isRTL = (position & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+              
+              // Fallback: check visual position using rects
+              if (rects.length > 1 && !isRTL) {
+                const firstRect = rects[0];
+                const lastRect = rects[rects.length - 1];
+                // RTL if first rect is visually to the right of last rect
+                isRTL = firstRect.left > lastRect.left + 10; // 10px threshold
+              }
+            }
+            
+            // Set attribute to control CSS for RTL selections
+            if (isRTL) {
+              textLayerDiv.setAttribute('data-rtl-selection', 'true');
+            } else {
+              textLayerDiv.removeAttribute('data-rtl-selection');
+            }
+            
             const textLayerRect = textLayerDiv.getBoundingClientRect();
 
             // Convert to coordinates relative to the PDF page (accounting for scale)
@@ -151,8 +183,16 @@ const TextLayer = memo(({
             // Clear selection after capturing
             setTimeout(() => {
               selection.removeAllRanges();
+              // Clear RTL attribute after selection is cleared
+              textLayerDiv.removeAttribute('data-rtl-selection');
             }, 50);
+          } else {
+            // Clear RTL attribute when selection is not in this layer
+            textLayerDiv.removeAttribute('data-rtl-selection');
           }
+        } else {
+          // Clear RTL attribute when selection is cleared
+          textLayerDiv.removeAttribute('data-rtl-selection');
         }
       }, 10);
     };
