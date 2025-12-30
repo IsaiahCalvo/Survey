@@ -36,7 +36,7 @@ const CalloutOverlay = ({
   selectedModuleId,
   showSurveyPanel,
   clipboardCallout,
-  clipboardType,
+  clipboardCalloutType,
   onCutCallout,
   onCopyCallout,
   onPasteCallout,
@@ -113,7 +113,7 @@ const CalloutOverlay = ({
         selectedModuleId={selectedModuleId}
         showSurveyPanel={showSurveyPanel}
         clipboardCallout={clipboardCallout}
-        clipboardType={clipboardType}
+        clipboardCalloutType={clipboardCalloutType}
         onCutCallout={onCutCallout}
         onCopyCallout={onCopyCallout}
         onPasteCallout={onPasteCallout}

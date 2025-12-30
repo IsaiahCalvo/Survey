@@ -31,7 +31,7 @@ const CalloutComponent = ({
   activeTool,
   isCalloutToolActive,
   clipboardCallout,
-  clipboardType,
+  clipboardCalloutType,
   onCutCallout,
   onCopyCallout,
   onPasteCallout,
@@ -77,6 +77,7 @@ const CalloutComponent = ({
   const prevIsSelectedRef = useRef(isSelected);
   const [contextMenu, setContextMenu] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [editModalAnchor, setEditModalAnchor] = useState(null);
   const longPressTimerRef = useRef(null);
   const touchStartPositionRef = useRef(null);
 
@@ -519,23 +520,39 @@ const CalloutComponent = ({
   }, [onDelete]);
 
   const handleEdit = useCallback(() => {
-    setShowEditModal(true);
-    setContextMenu(null);
-  }, []);
-
-  // Calculate anchor position for edit modal (near text box)
-  const getEditModalAnchor = useCallback(() => {
+    // #region agent log
+    console.log('[DEBUG] handleEdit called', { calloutId: callout.id, showEditModalBefore: showEditModal, isSelected });
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:522',message:'handleEdit called',data:{calloutId:callout.id,showEditModalBefore:showEditModal,isSelected},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A,B'})}).catch((e)=>console.error('Log error:',e));
+    // #endregion
+    // Calculate anchor position when opening modal
+    let anchor = null;
     if (textareaRef.current) {
       const textBoxRect = textareaRef.current.getBoundingClientRect();
       if (textBoxRect) {
-        return {
+        anchor = {
           x: textBoxRect.right + 20,
           y: textBoxRect.top,
         };
       }
     }
-    return null;
-  }, []);
+    // Fallback to center if textarea not available
+    if (!anchor) {
+      anchor = {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      };
+    }
+    setEditModalAnchor(anchor);
+    console.log('[DEBUG] About to setShowEditModal(true)', { anchor });
+    setShowEditModal(true);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:543',message:'setShowEditModal(true) called',data:{anchor},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch((e)=>console.error('Log error:',e));
+    // #endregion
+    setContextMenu(null);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:545',message:'handleEdit completed, contextMenu cleared',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch((e)=>console.error('Log error:',e));
+    // #endregion
+  }, [callout.id, showEditModal]);
 
   // Close edit modal when callout is deleted
   useEffect(() => {
@@ -543,6 +560,14 @@ const CalloutComponent = ({
       setShowEditModal(false);
     }
   }, [isSelected, showEditModal]);
+
+  // Track showEditModal changes
+  useEffect(() => {
+    // #region agent log
+    console.log('[DEBUG] showEditModal changed', { showEditModal, calloutId: callout.id });
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:547',message:'showEditModal state changed',data:{showEditModal,calloutId:callout.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'B'})}).catch((e)=>console.error('Log error:',e));
+    // #endregion
+  }, [showEditModal, callout.id]);
 
   // Merge callout style with defaults to ensure all properties exist
   const style = { ...defaultCalloutStyle, ...callout.style };
@@ -1110,7 +1135,13 @@ const CalloutComponent = ({
         visible={contextMenu?.visible || false}
         x={contextMenu?.x || 0}
         y={contextMenu?.y || 0}
-        onClose={() => setContextMenu(null)}
+        onClose={() => {
+          // #region agent log
+          console.log('[DEBUG] Context menu onClose called', { calloutId: callout.id, showEditModal });
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:1119',message:'Context menu onClose called',data:{calloutId:callout.id,showEditModal},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A,C'})}).catch((e)=>console.error('Log error:',e));
+          // #endregion
+          setContextMenu(null);
+        }}
         onCut={handleCut}
         onCopy={handleCopy}
         onPaste={handlePaste}
@@ -1120,12 +1151,23 @@ const CalloutComponent = ({
       />
 
       {/* Edit Modal */}
+      {/* #region agent log */}
+      {(() => {
+        console.log('[DEBUG] Edit modal render check', { showEditModal, hasCallout: !!callout, calloutId: callout?.id, isSelected });
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:1129',message:'Edit modal render check',data:{showEditModal,hasCallout:!!callout,calloutId:callout?.id,isSelected},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D,E'})}).catch((e)=>console.error('Log error:',e));
+        return null;
+      })()}
+      {/* #endregion */}
       <CalloutEditModal
         visible={showEditModal}
         callout={callout}
         onUpdate={onUpdate}
-        onClose={() => setShowEditModal(false)}
-        anchorPosition={getEditModalAnchor()}
+        onClose={() => {
+          console.log('[DEBUG] Edit modal onClose called');
+          setShowEditModal(false);
+          setEditModalAnchor(null);
+        }}
+        anchorPosition={editModalAnchor}
       />
     </>
   );

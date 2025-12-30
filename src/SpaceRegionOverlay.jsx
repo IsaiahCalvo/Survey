@@ -216,7 +216,7 @@ const SpaceRegionOverlay = ({
         width: `${scaledWidth}px`,
         height: `${scaledHeight}px`,
         pointerEvents: 'auto',
-        zIndex: 20
+        zIndex: 30
       }}
     >
       <svg

@@ -231,6 +231,30 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             ☰
           </div>
 
+          {!isEditing && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRenameClick(space.id, space.name);
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '4px',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              title="Rename"
+            >
+              <Icon name="edit" size={12} color="#666" />
+            </button>
+          )}
+
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -334,27 +358,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                     Exit
                   </button>
                 )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRenameClick(space.id, space.name);
-                  }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    padding: '4px',
-                    cursor: 'pointer',
-                    borderRadius: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  title="Rename"
-                >
-                  <Icon name="edit" size={12} color="#666" />
-                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -707,6 +710,44 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             )}
                           </div>
                           <div style={{ display: 'flex', gap: '4px' }}>
+                            {/* Background Annotations Toggle */}
+                            {/* #region agent log */}
+                            {(() => {
+                              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:714', message: 'Toggle button render check', data: { isSelected, hasToggleHandler: !!onToggleBackgroundAnnotations, showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => {});
+                              return null;
+                            })()}
+                            {/* #endregion */}
+                            {isSelected && onToggleBackgroundAnnotations && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onToggleBackgroundAnnotations(!showBackgroundAnnotations);
+                                }}
+                                style={{
+                                  background: showBackgroundAnnotations ? '#4A90E2' : '#3a3a3a',
+                                  border: '1px solid #4A90E2',
+                                  padding: '4px 8px',
+                                  cursor: 'pointer',
+                                  borderRadius: '4px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '10px',
+                                  color: showBackgroundAnnotations ? '#ffffff' : '#999',
+                                  fontFamily: FONT_FAMILY,
+                                  transition: 'background 0.15s ease, color 0.15s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = showBackgroundAnnotations ? '#357abd' : '#4a4a4a';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = showBackgroundAnnotations ? '#4A90E2' : '#3a3a3a';
+                                }}
+                                title={showBackgroundAnnotations ? 'Hide Background Annotations' : 'Show Background Annotations'}
+                              >
+                                <Icon name="eye" size={12} color={showBackgroundAnnotations ? '#ffffff' : '#999'} />
+                              </button>
+                            )}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -785,7 +826,9 @@ const SpacesPanel = ({
   onExportSpacePDF,
   isRegionSelectionActive = false,
   numPages,
-  features
+  features,
+  showBackgroundAnnotations = true,
+  onToggleBackgroundAnnotations = null
 }) => {
   const [newSpaceName, setNewSpaceName] = useState('');
   const [editingSpace, setEditingSpace] = useState(null);
@@ -1134,6 +1177,8 @@ const SpacesPanel = ({
                     onRemovePage={handleRemovePage}
                     isRegionSelectionActive={isRegionSelectionActive}
                     features={features}
+                    showBackgroundAnnotations={showBackgroundAnnotations}
+                    onToggleBackgroundAnnotations={onToggleBackgroundAnnotations}
                   />
                 );
               })}

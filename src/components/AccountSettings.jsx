@@ -4,6 +4,7 @@ import { useMSGraph } from '../contexts/MSGraphContext';
 import { supabase } from '../supabaseClient';
 import Icon from '../Icons';
 import StripeCheckout from './StripeCheckout';
+import UsageIndicator from './UsageIndicator';
 import './AccountSettings.css';
 
 export const AccountSettings = ({ isOpen, onClose }) => {
@@ -14,6 +15,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [message, setMessage] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
+  const [subscriptionViewTab, setSubscriptionViewTab] = useState('manage'); // 'manage' or 'usage'
 
   // Form state
   const [firstName, setFirstName] = useState('');
@@ -33,6 +35,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (isOpen) {
       setActiveTab('general');
+      setSubscriptionViewTab('manage');
       setIsEditing(false);
       setCurrentPassword('');
       setNewPassword('');
@@ -282,7 +285,26 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
         {/* Header */}
         <div className="account-settings-header">
-          <h2>Settings</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+            <h2>Settings</h2>
+            {/* Subscription View Tabs - only show when subscription tab is active */}
+            {activeTab === 'subscription' && (
+              <div className="account-subscription-tabs">
+                <button
+                  onClick={() => setSubscriptionViewTab('manage')}
+                  className={`account-subscription-tab ${subscriptionViewTab === 'manage' ? 'active' : ''}`}
+                >
+                  Manage Subscription
+                </button>
+                <button
+                  onClick={() => setSubscriptionViewTab('usage')}
+                  className={`account-subscription-tab ${subscriptionViewTab === 'usage' ? 'active' : ''}`}
+                >
+                  Usage
+                </button>
+              </div>
+            )}
+          </div>
           <button className="account-settings-close" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -525,38 +547,40 @@ export const AccountSettings = ({ isOpen, onClose }) => {
             )}
 
             {activeTab === 'subscription' && (
-              <section className="account-section">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                  <h3 style={{ margin: 0 }}>Manage Subscription</h3>
-                  <button
-                    onClick={async () => {
-                      console.log('Manual refresh triggered');
-                      fetchSubscription();
-                      // Also refresh the tier in AuthContext to update feature gates
-                      if (refreshSubscriptionTier) {
-                        await refreshSubscriptionTier();
-                      }
-                    }}
-                    style={{
-                      padding: '6px 12px',
-                      fontSize: '12px',
-                      background: '#4A90E2',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                    disabled={loadingSubscription}
-                  >
-                    <Icon name="refresh" size={14} />
-                    {loadingSubscription ? 'Refreshing...' : 'Refresh'}
-                  </button>
-                </div>
+              <>
+                {subscriptionViewTab === 'manage' && (
+                  <section className="account-section">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                      <h3 style={{ margin: 0 }}>Manage Subscription</h3>
+                      <button
+                        onClick={async () => {
+                          console.log('Manual refresh triggered');
+                          fetchSubscription();
+                          // Also refresh the tier in AuthContext to update feature gates
+                          if (refreshSubscriptionTier) {
+                            await refreshSubscriptionTier();
+                          }
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          background: '#4A90E2',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        disabled={loadingSubscription}
+                      >
+                        <Icon name="refresh" size={14} />
+                        {loadingSubscription ? 'Refreshing...' : 'Refresh'}
+                      </button>
+                    </div>
 
-                {loadingSubscription ? (
+                    {loadingSubscription ? (
                   <div style={{ textAlign: 'center', padding: '20px', color: '#888', fontSize: '13px' }}>
                     Loading subscription...
                   </div>

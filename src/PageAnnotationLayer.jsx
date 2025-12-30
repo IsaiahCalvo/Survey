@@ -1360,6 +1360,8 @@ const PageAnnotationLayer = memo(({
   selectedModuleId = null, // Module ID to filter annotations by
   selectedCategoryId = null, // Category ID to keep highlights visible when panel is hidden
   activeRegions = null,
+  showBackgroundAnnotations = true, // NEW: Toggle for background annotations visibility
+  activeRegionId = null, // NEW: ID of currently active region for scoping
   eraserMode = 'partial', // 'partial' | 'entire'
   eraserSize = 20, // Eraser radius in pixels
   showSurveyPanel = false, // Whether survey mode is active
@@ -1370,7 +1372,7 @@ const PageAnnotationLayer = memo(({
   selectedCalloutId = null, // Currently selected callout ID
   setSelectedCalloutId = () => { }, // Set selected callout callback
   clipboardCallout = null, // Clipboard callout for cut/copy/paste
-  clipboardType = null, // 'cut' | 'copy'
+  clipboardCalloutType = null, // 'cut' | 'copy'
   onCutCallout = () => { }, // Cut callout handler
   onCopyCallout = () => { }, // Copy callout handler
   onPasteCallout = () => { }, // Paste callout handler
@@ -1402,10 +1404,11 @@ const PageAnnotationLayer = memo(({
     selectedSpaceIdRef.current = selectedSpaceId;
     selectedModuleIdRef.current = selectedModuleId;
     showSurveyPanelRef.current = showSurveyPanel;
+    activeRegionIdRef.current = activeRegionId;
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1351', message: 'Callouts ref updated', data: { calloutsCount: callouts.length, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => { });
     // #endregion
-  }, [callouts, setCallouts, selectedSpaceId, selectedModuleId, showSurveyPanel, pageNumber]);
+  }, [callouts, setCallouts, selectedSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, pageNumber]);
   const strokeWidthRef = useRef(strokeWidth);
   const justCreatedCalloutRef = useRef(false);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
@@ -1414,6 +1417,7 @@ const PageAnnotationLayer = memo(({
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const selectedModuleIdRef = useRef(selectedModuleId);
   const showSurveyPanelRef = useRef(showSurveyPanel);
+  const activeRegionIdRef = useRef(activeRegionId);
   const calloutsRef = useRef(callouts);
   const setCalloutsRef = useRef(setCallouts);
   const eraserModeRef = useRef(eraserMode);
@@ -2471,6 +2475,10 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           e.path.set({ moduleId: selectedModuleIdRef.current });
         }
+        // Store current activeRegionId on the path if a region is active
+        if (activeRegionIdRef.current) {
+          e.path.set({ regionId: activeRegionIdRef.current });
+        }
       }
       saveCanvas();
     };
@@ -3242,6 +3250,10 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           tb.set({ moduleId: selectedModuleIdRef.current });
         }
+        // Store current activeRegionId on the textbox if a region is active
+        if (activeRegionIdRef.current) {
+          tb.set({ regionId: activeRegionIdRef.current });
+        }
         canvas.add(tb);
         canvas.setActiveObject(tb);
         canvas.requestRenderAll();
@@ -3276,6 +3288,10 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           temp.set({ moduleId: selectedModuleIdRef.current });
         }
+        // Store current activeRegionId on the shape if a region is active
+        if (activeRegionIdRef.current) {
+          temp.set({ regionId: activeRegionIdRef.current });
+        }
         canvas.add(temp);
         return;
       } else if (currentTool === 'rect') {
@@ -3303,6 +3319,10 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           note.set({ moduleId: selectedModuleIdRef.current });
         }
+        // Store current activeRegionId on the note if a region is active
+        if (activeRegionIdRef.current) {
+          note.set({ regionId: activeRegionIdRef.current });
+        }
         note.on('mousedblclick', () => {
           const text = window.prompt('Note:', note.get('noteText') || '');
           if (text !== null) {
@@ -3322,6 +3342,10 @@ const PageAnnotationLayer = memo(({
         }
         if (selectedModuleIdRef.current) {
           temp.set({ moduleId: selectedModuleIdRef.current });
+        }
+        // Store current activeRegionId on the shape if a region is active
+        if (activeRegionIdRef.current) {
+          temp.set({ regionId: activeRegionIdRef.current });
         }
         ds.isDrawingShape = true;
         ds.startX = x;
@@ -3742,6 +3766,10 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           group.set({ moduleId: selectedModuleIdRef.current });
         }
+        // Store current activeRegionId on the arrow group if a region is active
+        if (activeRegionIdRef.current) {
+          group.set({ regionId: activeRegionIdRef.current });
+        }
         canvas.add(group);
         canvas.remove(ds.tempObj);
       } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
@@ -3759,6 +3787,10 @@ const PageAnnotationLayer = memo(({
         }
         if (selectedModuleIdRef.current) {
           calloutGroup.set({ moduleId: selectedModuleIdRef.current });
+        }
+        // Store current activeRegionId on the callout group if a region is active
+        if (activeRegionIdRef.current) {
+          calloutGroup.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(calloutGroup);
         canvas.remove(ds.tempObj);
@@ -4637,6 +4669,10 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
+          // Store current activeRegionId on the highlight if a region is active
+          if (activeRegionIdRef.current) {
+            rect.set({ regionId: activeRegionIdRef.current });
+          }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
           const isSurveyAnnotation = objModuleId !== null;
           const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
@@ -4680,6 +4716,10 @@ const PageAnnotationLayer = memo(({
           const objModuleId = highlight.moduleId || selectedModuleIdRef.current;
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
+          }
+          // Store current activeRegionId on the highlight if a region is active
+          if (activeRegionIdRef.current) {
+            rect.set({ regionId: activeRegionIdRef.current });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
           const isSurveyAnnotation = objModuleId !== null;
@@ -4789,14 +4829,22 @@ const PageAnnotationLayer = memo(({
     const objects = canvas.getObjects();
     const regions = Array.isArray(activeRegions) && activeRegions.length > 0 ? activeRegions : null;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4825', message: 'Visibility filter effect entry', data: { pageNumber, regionsCount: regions ? regions.length : 0, showBackgroundAnnotations, activeRegionId, objectsCount: objects.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+    // #endregion
+
     let visibleCount = 0;
     let hiddenCount = 0;
     objects.forEach(obj => {
       const objSpaceId = obj.spaceId || null;
       const objModuleId = obj.moduleId || null;
+      const objRegionId = obj.regionId || null; // NEW: Get region ID from annotation
 
       // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
       const isSurveyAnnotation = objModuleId !== null;
+      
+      // NEW: Check if this is a scoped region annotation
+      const isScopedRegionAnnotation = objRegionId !== null;
 
       // Filter by space: if selectedSpaceId is set, object must match
       const matchesSpace = selectedSpaceId === null || objSpaceId === selectedSpaceId;
@@ -4808,17 +4856,51 @@ const PageAnnotationLayer = memo(({
       // Survey annotations require: survey panel open AND matching module selected
       const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanel && selectedModuleId !== null && objModuleId === selectedModuleId);
 
+      // NEW: Scoped region annotations should only be visible when their region is active
+      const scopedRegionAnnotationVisible = !isScopedRegionAnnotation || (activeRegionId !== null && objRegionId === activeRegionId);
+
+      // NEW: Background annotations visibility logic
       let withinRegions = true;
-      if (regions) {
-        const bounds = obj.getBoundingRect(true, true);
-        const centerX = bounds.left + (bounds.width || 0) / 2;
-        const centerY = bounds.top + (bounds.height || 0) / 2;
-        withinRegions = regions.some(region => regionContainsPoint(centerX, centerY, region, scale));
+      let backgroundAnnotationVisible = true;
+      
+      if (regions && !isScopedRegionAnnotation) {
+        // Only filter background annotations (not scoped ones) by region containment
+        if (!showBackgroundAnnotations) {
+          // If toggle is off, hide background annotations
+          backgroundAnnotationVisible = false;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4864', message: 'Toggle off - hiding background annotation', data: { objType: obj.type, objId: obj.id || 'no-id' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+          // #endregion
+        } else {
+          // If toggle is on, check if annotation is within any region
+          const bounds = obj.getBoundingRect(true, true);
+          const centerX = bounds.left + (bounds.width || 0) / 2;
+          const centerY = bounds.top + (bounds.height || 0) / 2;
+          withinRegions = regions.some(region => regionContainsPoint(centerX, centerY, region, scale));
+          backgroundAnnotationVisible = withinRegions;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4872', message: 'Toggle on - checking region containment', data: { objType: obj.type, withinRegions, centerX, centerY, regionsCount: regions.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+          // #endregion
+        }
       }
 
-      // Object is visible only if it matches BOTH space and module filters (and regions if applicable)
-      // AND survey annotations are only visible when survey mode is active with a module selected
-      const isVisible = matchesSpace && matchesModule && withinRegions && surveyAnnotationVisible;
+      // Object is visible if:
+      // 1. It matches space and module filters
+      // 2. Survey annotations are visible (if applicable)
+      // 3. Scoped region annotations are visible (if applicable)
+      // 4. Background annotations respect the toggle and region containment
+      const isVisible = matchesSpace && 
+                       matchesModule && 
+                       surveyAnnotationVisible && 
+                       scopedRegionAnnotationVisible &&
+                       (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
+      
+      // #region agent log
+      if (regions && !isScopedRegionAnnotation) {
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4885', message: 'Visibility calculation result', data: { objType: obj.type, isVisible, matchesSpace, matchesModule, surveyAnnotationVisible, scopedRegionAnnotationVisible, backgroundAnnotationVisible, isScopedRegionAnnotation, showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+      }
+      // #endregion
+      
       const isInteractive = isVisible && (selectedSpaceId === null || objSpaceId === selectedSpaceId) && (selectedModuleId === null || objModuleId === selectedModuleId);
 
       obj.set({
@@ -4852,7 +4934,7 @@ const PageAnnotationLayer = memo(({
     }); */
 
     canvas.renderAll();
-  }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale]);
+  }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, showBackgroundAnnotations, activeRegionId]);
 
   // Keyboard handler for deleting selected annotations
   useEffect(() => {
@@ -4986,7 +5068,7 @@ const PageAnnotationLayer = memo(({
         selectedModuleId={selectedModuleId}
         showSurveyPanel={showSurveyPanel}
         clipboardCallout={clipboardCallout}
-        clipboardType={clipboardType}
+        clipboardCalloutType={clipboardCalloutType}
         onCutCallout={onCutCallout}
         onCopyCallout={onCopyCallout}
         onPasteCallout={onPasteCallout}

@@ -8025,14 +8025,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [callouts, setCallouts] = useState([]);
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
   const [clipboardCallout, setClipboardCallout] = useState(null);
-  const [clipboardType, setClipboardType] = useState(null); // 'cut' | 'copy'
+  const [clipboardCalloutType, setClipboardCalloutType] = useState(null); // 'cut' | 'copy'
   
   // Clipboard handlers for callouts
   const handleCutCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
     if (callout) {
       setClipboardCallout(callout);
-      setClipboardType('cut');
+      setClipboardCalloutType('cut');
       setCallouts(prev => prev.filter(c => c.id !== calloutId));
       if (selectedCalloutId === calloutId) {
         setSelectedCalloutId(null);
@@ -8044,7 +8044,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const callout = callouts.find(c => c.id === calloutId);
     if (callout) {
       setClipboardCallout(callout);
-      setClipboardType('copy');
+      setClipboardCalloutType('copy');
     }
   }, [callouts]);
 
@@ -8071,11 +8071,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setCallouts(prev => [...prev, newCallout]);
     
     // Clear clipboard if it was a cut operation
-    if (clipboardType === 'cut') {
+    if (clipboardCalloutType === 'cut') {
       setClipboardCallout(null);
-      setClipboardType(null);
+      setClipboardCalloutType(null);
     }
-  }, [clipboardCallout, clipboardType]);
+  }, [clipboardCallout, clipboardCalloutType]);
 
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
   const [unsupportedAnnotationTypes, setUnsupportedAnnotationTypes] = useState([]); // PDF annotation types we can't edit
@@ -8126,6 +8126,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showSurveyPanel, setShowSurveyPanel] = useState(false);
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(false);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
+  
+  // Region annotation visibility state
+  const [showBackgroundAnnotations, setShowBackgroundAnnotations] = useState(true);
+  const [activeRegionId, setActiveRegionId] = useState(null);
   const [showTemplateSelection, setShowTemplateSelection] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [selectedModuleId, setSelectedModuleId] = useState(null);
@@ -13281,6 +13285,41 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return assignedPage.regions;
   }, [activeSpaceId, spaces]);
 
+  // Track active region ID when regions are active
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13289', message: 'Active region tracking effect entry', data: { activeSpaceId, spacesCount: spaces.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
+    // #endregion
+    if (activeSpaceId) {
+      // Find the first page with regions in the active space
+      const space = spaces.find(s => s.id === activeSpaceId);
+      if (space && space.assignedPages) {
+        for (const assignedPage of space.assignedPages) {
+          if (assignedPage.regions && assignedPage.regions.length > 0) {
+            // Use the first region's ID as the active region
+            const firstRegion = assignedPage.regions[0];
+            if (firstRegion && firstRegion.regionId) {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13299', message: 'Setting activeRegionId', data: { regionId: firstRegion.regionId, pageId: assignedPage.pageId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
+              // #endregion
+              setActiveRegionId(firstRegion.regionId);
+              return;
+            }
+          }
+        }
+      }
+    }
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13308', message: 'Clearing activeRegionId', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
+    // #endregion
+    setActiveRegionId(null);
+  }, [activeSpaceId, spaces]);
+
+  // Handler for toggling background annotations visibility
+  const handleToggleBackgroundAnnotations = useCallback((value) => {
+    setShowBackgroundAnnotations(value);
+  }, []);
+
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {
     return (
@@ -13637,6 +13676,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             scale={scale}
             tabId={tabId}
             onPageDrop={onPageDrop}
+            showBackgroundAnnotations={showBackgroundAnnotations}
+            onToggleBackgroundAnnotations={handleToggleBackgroundAnnotations}
             onToggleCollapse={(isCollapsed) => {
               setIsLeftSidebarCollapsed(isCollapsed);
               requestAnimationFrame(() => {
@@ -13743,6 +13784,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   selectedModuleId={selectedModuleId}
                                   selectedCategoryId={selectedCategoryId}
                                   activeRegions={pageRegions}
+                                  showBackgroundAnnotations={showBackgroundAnnotations}
+                                  activeRegionId={activeRegionId}
                                   eraserMode={eraserMode}
                                   eraserSize={eraserSize}
                                   showSurveyPanel={showSurveyPanel}
@@ -13752,7 +13795,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   selectedCalloutId={selectedCalloutId}
                                   setSelectedCalloutId={setSelectedCalloutId}
                                   clipboardCallout={clipboardCallout}
-                                  clipboardType={clipboardType}
+                                  clipboardCalloutType={clipboardCalloutType}
                                   onCutCallout={handleCutCallout}
                                   onCopyCallout={handleCopyCallout}
                                   onPasteCallout={handlePasteCallout}

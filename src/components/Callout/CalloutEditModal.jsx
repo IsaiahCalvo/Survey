@@ -15,7 +15,18 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
   useEffect(() => {
     if (!visible) return;
 
+    // Use a ref to track if we should ignore the next click (prevents immediate close)
+    const ignoreNextClickRef = { current: true };
+    const ignoreTimeout = setTimeout(() => {
+      ignoreNextClickRef.current = false;
+    }, 100);
+
     const handleClickOutside = (e) => {
+      // Ignore the first click after opening (from context menu click)
+      if (ignoreNextClickRef.current) {
+        return;
+      }
+      
       if (modalRef.current && !modalRef.current.contains(e.target)) {
         // Don't close if clicking on color picker
         if (e.target.closest('.compact-color-picker')) {
@@ -39,12 +50,18 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
 
     return () => {
       clearTimeout(timeout);
+      clearTimeout(ignoreTimeout);
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
   }, [visible, onClose]);
 
-  if (!visible || !callout) return null;
+  // #region agent log
+  if (!visible || !callout) {
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutEditModal.jsx:47',message:'Modal not rendering - condition check failed',data:{visible,hasCallout:!!callout,calloutId:callout?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D,E'})}).catch(()=>{});
+    return null;
+  }
+  // #endregion
 
   const currentColor = colorMode === 'border' ? style.borderColor : style.fillColor;
   const currentOpacity = colorMode === 'border' ? style.borderOpacity : style.fillOpacity;

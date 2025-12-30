@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import Icon from '../Icons';
+import Icon from '../../Icons';
 
 const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, onDelete, onEdit, hasClipboard }) => {
   const menuRef = useRef(null);
@@ -8,6 +8,10 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
     if (!visible) return;
 
     const handleClickOutside = (e) => {
+      // Don't close if clicking on the menu or any button inside it
+      if (menuRef.current && menuRef.current.contains(e.target)) {
+        return; // Let button handlers process the click
+      }
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         onClose();
       }
@@ -19,18 +23,18 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
       }
     };
 
-    // Small delay to prevent immediate close from the triggering event
+    // Longer delay to ensure button clicks register first
     const timeout = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside);
-      document.addEventListener('contextmenu', handleClickOutside);
-    }, 10);
+      document.addEventListener('click', handleClickOutside, true); // Use capture phase
+      document.addEventListener('contextmenu', handleClickOutside, true);
+    }, 100); // Increased delay
 
     document.addEventListener('keydown', handleEscape);
 
     return () => {
       clearTimeout(timeout);
-      document.removeEventListener('click', handleClickOutside);
-      document.removeEventListener('contextmenu', handleClickOutside);
+      document.removeEventListener('click', handleClickOutside, true);
+      document.removeEventListener('contextmenu', handleClickOutside, true);
       document.removeEventListener('keydown', handleEscape);
     };
   }, [visible, onClose]);
@@ -190,7 +194,33 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
         margin: '4px 0'
       }} />
       <button
-        onClick={() => { onEdit(); onClose(); }}
+        onMouseDown={(e) => {
+          // Use onMouseDown to catch the event earlier, before click-outside handler
+          e.stopPropagation();
+          e.preventDefault();
+        }}
+        onClick={(e) => {
+          // #region agent log
+          console.log('[DEBUG] Edit button clicked', e);
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutContextMenu.jsx:193',message:'Edit button clicked',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'A,C'})}).catch((e)=>console.error('Log error:',e));
+          // #endregion
+          e.stopPropagation();
+          e.preventDefault();
+          // Call onEdit first, then close after a small delay to allow state update
+          console.log('[DEBUG] About to call onEdit');
+          onEdit();
+          // #region agent log
+          console.log('[DEBUG] onEdit called, scheduling onClose');
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutContextMenu.jsx:201',message:'onEdit called, scheduling onClose',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'A,C'})}).catch((e)=>console.error('Log error:',e));
+          // #endregion
+          // Use requestAnimationFrame to ensure state update happens before closing
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              console.log('[DEBUG] Calling onClose after animation frames');
+              onClose();
+            });
+          });
+        }}
         style={{
           width: '100%',
           padding: '8px 12px',
