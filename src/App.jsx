@@ -8704,6 +8704,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showRegionSelection, setShowRegionSelection] = useState(false); // Show region selection tool
   const [regionSelectionPage, setRegionSelectionPage] = useState(null); // Page for region selection
 
+  // Region overlay visibility state - persists across sessions
+  // Key format: `${spaceId}-${pageId}`, value: true = disabled, false/undefined/null = enabled (default)
+  const [regionOverlayDisabled, setRegionOverlayDisabled] = useState(() => {
+    if (!pdfId) return new Map();
+    try {
+      const stored = localStorage.getItem(`regionOverlayStates_${pdfId}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return new Map(Object.entries(parsed).map(([k, v]) => [k, v === true]));
+      }
+    } catch (e) {
+      console.error('Error loading region overlay states:', e);
+    }
+    return new Map();
+  });
+
+  // Save to localStorage whenever it changes
+  useEffect(() => {
+    if (!pdfId) return;
+    try {
+      const serializable = Object.fromEntries(regionOverlayDisabled);
+      localStorage.setItem(`regionOverlayStates_${pdfId}`, JSON.stringify(serializable));
+    } catch (e) {
+      console.error('Error saving region overlay states:', e);
+    }
+  }, [regionOverlayDisabled, pdfId]);
+
   // Clipboard state for cut/copy operations
   const [clipboardPage, setClipboardPage] = useState(null);
   const [clipboardType, setClipboardType] = useState(null); // 'cut' | 'copy'
@@ -11092,6 +11119,64 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const handleExitSpaceMode = useCallback(() => {
     setActiveSpaceId(null);
   }, [activeSpaceId, selectedSpaceId]);
+
+  // Helper to check if a region has valid areas (reused from SpaceRegionOverlay logic)
+  const hasValidRegionAreas = useCallback((page) => {
+    if (!page || !Array.isArray(page.regions) || page.regions.length === 0) {
+      return false;
+    }
+    // Enforce single region per page (as per requirements)
+    if (page.regions.length > 1) {
+      console.warn('Page has multiple regions, expected max 1:', page.regions.length);
+    }
+    const region = page.regions[0]; // Use first region only
+    if (!region || !Array.isArray(region.coordinates)) {
+      return false;
+    }
+    const coords = region.coordinates;
+    return (region.shapeType === 'rectangular' && coords.length >= 8) ||
+           (region.shapeType === 'polygon' && coords.length >= 6);
+  }, []);
+
+  // Toggle region overlay visibility
+  const handleToggleRegionOverlay = useCallback((spaceId, pageId) => {
+    setRegionOverlayDisabled(prev => {
+      const key = `${spaceId}-${pageId}`;
+      const newMap = new Map(prev);
+      // Toggle: if currently disabled (true), enable it (delete); if enabled, disable it (set to true)
+      if (newMap.get(key) === true) {
+        newMap.delete(key);
+      } else {
+        newMap.set(key, true);
+      }
+      return newMap;
+    });
+  }, []);
+
+  // Check if a region overlay is enabled
+  const isRegionOverlayEnabled = useCallback((spaceId, pageId, page) => {
+    // If space is not active, overlay is not shown regardless
+    if (!activeSpaceId || activeSpaceId !== spaceId) {
+      return false;
+    }
+    // If page has no valid regions, overlay cannot be enabled
+    if (!hasValidRegionAreas(page)) {
+      return false;
+    }
+    // Default to enabled (true) if not explicitly disabled
+    const key = `${spaceId}-${pageId}`;
+    return regionOverlayDisabled.get(key) !== true;
+  }, [activeSpaceId, regionOverlayDisabled, hasValidRegionAreas]);
+
+  // Check if toggle should be interactive
+  const isRegionOverlayToggleEnabled = useCallback((spaceId, pageId, page) => {
+    // Must have active space
+    if (!activeSpaceId || activeSpaceId !== spaceId) {
+      return false;
+    }
+    // Must have valid regions
+    return hasValidRegionAreas(page);
+  }, [activeSpaceId, hasValidRegionAreas]);
 
   // Active space pages - compute which pages are included in the active space
   const activeSpacePages = useMemo(() => {
@@ -14131,6 +14216,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             onToggleBackgroundAnnotations={handleToggleBackgroundAnnotations}
             activeSpaceId={activeSpaceId}
             selectedSpaceId={selectedSpaceId}
+            onToggleRegionOverlay={handleToggleRegionOverlay}
+            getRegionOverlayEnabled={isRegionOverlayEnabled}
+            isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
             onToggleCollapse={(isCollapsed) => {
               setIsLeftSidebarCollapsed(isCollapsed);
               requestAnimationFrame(() => {
@@ -14262,24 +14350,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 />
                               )}
                               {/* Space Region Dimming Overlay */}
-                              {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates */}
+                              {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates AND overlay is enabled */}
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
-                                // Check if any region has valid coordinates/areas
-                                const hasValidAreas = pageRegions.some(region => {
+                                // Get the page object from the active space to check overlay state
+                                const space = spaces.find(s => s.id === activeSpaceId);
+                                const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
+                                
+                                // Check if overlay should be shown for this page
+                                if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNumber, page)) {
+                                  return null;
+                                }
+                                
+                                // Filter to only regions with valid areas
+                                const validRegions = pageRegions.filter(region => {
                                   if (!region || !Array.isArray(region.coordinates)) return false;
                                   const coords = region.coordinates;
                                   return (region.shapeType === 'rectangular' && coords.length >= 8) ||
                                          (region.shapeType === 'polygon' && coords.length >= 6);
                                 });
-                                return hasValidAreas ? (
+                                
+                                if (validRegions.length === 0) return null;
+                                
+                                return (
                                   <SpaceRegionOverlay
                                     pageNumber={pageNumber}
-                                    regions={pageRegions}
+                                    regions={validRegions}
                                     width={pageSizes[pageNumber]?.width || 0}
                                     height={pageSizes[pageNumber]?.height || 0}
                                     scale={renderedScale}
                                   />
-                                ) : null;
+                                );
                               })()}
                               {/* Region Selection Overlay for this specific page */}
                               {showRegionSelection && regionSelectionPage === pageNumber && (
@@ -14424,24 +14524,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           )}
                         </div>
                         {/* Space Region Dimming Overlay */}
-                        {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates */}
+                        {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates AND overlay is enabled */}
                         {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNum) && (() => {
-                          // Check if any region has valid coordinates/areas
-                          const hasValidAreas = pageRegions.some(region => {
+                          // Get the page object from the active space to check overlay state
+                          const space = spaces.find(s => s.id === activeSpaceId);
+                          const page = space?.assignedPages?.find(p => p.pageId === pageNum);
+                          
+                          // Check if overlay should be shown for this page
+                          if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNum, page)) {
+                            return null;
+                          }
+                          
+                          // Filter to only regions with valid areas
+                          const validRegions = pageRegions.filter(region => {
                             if (!region || !Array.isArray(region.coordinates)) return false;
                             const coords = region.coordinates;
                             return (region.shapeType === 'rectangular' && coords.length >= 8) ||
                                    (region.shapeType === 'polygon' && coords.length >= 6);
                           });
-                          return hasValidAreas ? (
+                          
+                          if (validRegions.length === 0) return null;
+                          
+                          return (
                             <SpaceRegionOverlay
                               pageNumber={pageNum}
-                              regions={pageRegions}
+                              regions={validRegions}
                               width={pageSizes[pageNum]?.width || 0}
                               height={pageSizes[pageNum]?.height || 0}
                               scale={renderedScale}
                             />
-                          ) : null;
+                          );
                         })()}
                         {/* Region Selection Overlay for this specific page */}
                         {showRegionSelection && regionSelectionPage === pageNum && (

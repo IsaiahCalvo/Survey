@@ -80,7 +80,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   features,
   getRegionLightbulbState = null,
   onToggleBackgroundAnnotations = null,
-  activeSpaceId = null
+  activeSpaceId = null,
+  onToggleRegionOverlay = null,
+  getRegionOverlayEnabled = null,
+  isRegionOverlayToggleEnabled = null
 }) {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isExportHovered, setIsExportHovered] = useState(false);
@@ -671,6 +674,70 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             borderRadius: '6px'
                           }}
                         >
+                          {/* Region Overlay Toggle Switch - Always visible, dimmed when disabled */}
+                          {onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled && (() => {
+                            const isOverlayEnabled = getRegionOverlayEnabled(space.id, page.pageId, page);
+                            const isToggleEnabled = isRegionOverlayToggleEnabled(space.id, page.pageId, page);
+                            const isSpaceActive = isActive;
+                            
+                            return (
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isToggleEnabled) return;
+                                  onToggleRegionOverlay(space.id, page.pageId);
+                                }}
+                                style={{
+                                  position: 'relative',
+                                  width: '28px',  // Smaller than space switch (36px)
+                                  height: '16px', // Smaller than space switch (20px)
+                                  borderRadius: '8px',
+                                  background: isToggleEnabled && isOverlayEnabled ? '#4A90E2' : '#3a3a3a',
+                                  cursor: isToggleEnabled ? 'pointer' : 'not-allowed',
+                                  transition: 'background 0.2s ease',
+                                  border: isToggleEnabled && isOverlayEnabled ? '1px solid #357abd' : '1px solid #4a4a4a',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  padding: '1px',
+                                  flexShrink: 0,
+                                  opacity: isToggleEnabled ? 1 : 0.5
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isToggleEnabled) return;
+                                  if (!isOverlayEnabled) {
+                                    e.currentTarget.style.background = '#4a4a4a';
+                                  } else {
+                                    e.currentTarget.style.background = '#357abd';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isToggleEnabled) return;
+                                  e.currentTarget.style.background = isOverlayEnabled ? '#4A90E2' : '#3a3a3a';
+                                }}
+                                title={
+                                  !isSpaceActive 
+                                    ? 'Enable space to toggle overlay' 
+                                    : !isToggleEnabled
+                                    ? 'Define regions first to enable overlay'
+                                    : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region')
+                                }
+                              >
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    width: '14px',
+                                    height: '14px',
+                                    borderRadius: '50%',
+                                    background: '#ffffff',
+                                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)',
+                                    transition: 'transform 0.2s ease',
+                                    transform: isToggleEnabled && isOverlayEnabled ? 'translateX(12px)' : 'translateX(0px)',
+                                    left: '1px'
+                                  }}
+                                />
+                              </div>
+                            );
+                          })()}
                           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {isEditingRegion ? (
                               <input
@@ -881,7 +948,10 @@ const SpacesPanel = ({
   features,
   getRegionLightbulbState = null,
   onToggleBackgroundAnnotations = null,
-  externalSelectedSpaceId = null
+  externalSelectedSpaceId = null,
+  onToggleRegionOverlay = null,
+  getRegionOverlayEnabled = null,
+  isRegionOverlayToggleEnabled = null
 }) => {
   const [newSpaceName, setNewSpaceName] = useState('');
   const [editingSpace, setEditingSpace] = useState(null);
@@ -1273,6 +1343,9 @@ const SpacesPanel = ({
                     getRegionLightbulbState={getRegionLightbulbState}
                     onToggleBackgroundAnnotations={onToggleBackgroundAnnotations}
                     activeSpaceId={activeSpaceId}
+                    onToggleRegionOverlay={onToggleRegionOverlay}
+                    getRegionOverlayEnabled={getRegionOverlayEnabled}
+                    isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
                   />
                 );
               })}
