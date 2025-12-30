@@ -117,14 +117,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     setEditingRegionValue('');
   }, [space.id]);
 
-  React.useEffect(() => {
-    if (editingRegionId !== null) {
-      requestAnimationFrame(() => {
-        editingRegionInputRef.current?.focus();
-        editingRegionInputRef.current?.select();
-      });
-    }
-  }, [editingRegionId]);
   const isExportActive = isExportHovered || isExportMenuOpen;
 
   const commitRegionRename = useCallback((pageId, triggerRegionEdit = false) => {
