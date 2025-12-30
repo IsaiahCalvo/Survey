@@ -8531,6 +8531,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [lastPushMessage, setLastPushMessage] = useState('');
   const pushTimeoutRef = useRef(null);
 
+  // Live sync state (for OneDrive real-time co-authoring)
+  const [liveSyncEnabled, setLiveSyncEnabled] = useState(false);
+  const [liveSyncSupported, setLiveSyncSupported] = useState(null); // null = unknown, true/false = checked
+  const [liveSyncStatus, setLiveSyncStatus] = useState(''); // 'connecting', 'connected', 'error', ''
+  const [oneDriveFileId, setOneDriveFileId] = useState(null);
+  const [excelSessionId, setExcelSessionId] = useState(null);
+  const excelSessionRef = useRef({ sessionId: null, expiresAt: null });
+  const liveSyncPollRef = useRef(null);
+  const lastPollDataRef = useRef(null);
+
+  // Local file live sync state (uses CSV shadow file)
+  const [localLiveSyncEnabled, setLocalLiveSyncEnabled] = useState(false);
+  const [showPowerQueryInstructions, setShowPowerQueryInstructions] = useState(false);
+
   // Export/Sync modal states
   const [showExportLocationModal, setShowExportLocationModal] = useState(false);
   const [showMSLoginModal, setShowMSLoginModal] = useState(false);
@@ -10501,6 +10515,82 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [selectedTemplate?.id, selectedTemplate?.linkedExcelPath, handleAutoSyncFromExcel]);
 
+  // Generate CSV content from highlight annotations for local file live sync
+  const generateSurveyCSV = useCallback(() => {
+    if (!selectedTemplate) return '';
+
+    const modulesList = selectedTemplate.modules || selectedTemplate.spaces || [];
+    const rows = [];
+
+    // Header row
+    const headers = ['Module', 'Category', 'Item', 'Changed By', 'Changed Date', 'Ball in Court', 'Notes'];
+
+    // Get all checklist column names across all categories
+    const allChecklistItems = new Set();
+    modulesList.forEach(mod => {
+      (mod.categories || []).forEach(cat => {
+        (cat.checklist || []).forEach(item => {
+          allChecklistItems.add(item.text || item.id);
+        });
+      });
+    });
+    const checklistHeaders = Array.from(allChecklistItems);
+    headers.push(...checklistHeaders);
+
+    rows.push(headers.map(escapeCSVValue).join(','));
+
+    // Data rows
+    Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
+      const moduleId = highlight.moduleId || highlight.spaceId;
+      const module = modulesList.find(m => m.id === moduleId);
+      const moduleName = module?.name || '';
+
+      const category = (module?.categories || []).find(c => c.id === highlight.categoryId);
+      const categoryName = category?.name || '';
+
+      const checklistValues = checklistHeaders.map(header => {
+        const checklistItem = (category?.checklist || []).find(c => c.text === header || c.id === header);
+        if (!checklistItem) return '';
+        const response = highlight.checklistResponses?.[checklistItem.id];
+        return response?.selection || '';
+      });
+
+      const row = [
+        escapeCSVValue(moduleName),
+        escapeCSVValue(categoryName),
+        escapeCSVValue(highlight.name || ''),
+        escapeCSVValue(highlight.changedBy || ''),
+        escapeCSVValue(highlight.changedDate ? new Date(highlight.changedDate).toLocaleDateString() : ''),
+        escapeCSVValue(highlight.ballInCourtEntityName || ''),
+        escapeCSVValue(highlight.note?.text || ''),
+        ...checklistValues.map(escapeCSVValue)
+      ];
+
+      rows.push(row.join(','));
+    });
+
+    return rows.join('\n');
+  }, [selectedTemplate, highlightAnnotations]);
+
+  // Write CSV shadow file for local file live sync
+  const writeShadowCSV = useCallback(async () => {
+    if (!selectedTemplate?.linkedExcelPath || selectedTemplate?.isOneDrive || !window.electronAPI) {
+      return false;
+    }
+
+    try {
+      const csvContent = generateSurveyCSV();
+      const csvPath = selectedTemplate.linkedExcelPath.replace(/\.xlsx?$/i, '_sync.csv');
+
+      await window.electronAPI.writeFile(csvPath, new TextEncoder().encode(csvContent));
+      console.log('Shadow CSV written:', csvPath);
+      return true;
+    } catch (error) {
+      console.error('Failed to write shadow CSV:', error);
+      return false;
+    }
+  }, [selectedTemplate, generateSurveyCSV]);
+
   // Auto-push to Excel when highlight annotations change
   useEffect(() => {
     if (!autoPushToExcel || !selectedTemplate?.linkedExcelPath || !window.electronAPI) {
@@ -10532,6 +10622,208 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     };
   }, [autoPushToExcel, selectedTemplate?.linkedExcelPath, highlightAnnotations, handleExportSurveyToExcel]);
+
+  // Local file live sync - write CSV shadow file when annotations change
+  useEffect(() => {
+    // Only for local files with live sync enabled
+    if (!localLiveSyncEnabled || !selectedTemplate?.linkedExcelPath || selectedTemplate?.isOneDrive || !window.electronAPI) {
+      return;
+    }
+
+    // Debounce CSV writes
+    const csvTimeout = setTimeout(async () => {
+      console.log('Local live sync: Writing CSV shadow file...');
+      const success = await writeShadowCSV();
+      if (success) {
+        setLastPushMessage('CSV synced');
+        setTimeout(() => setLastPushMessage(''), 2000);
+      } else {
+        setLastPushMessage('CSV sync failed');
+        setTimeout(() => setLastPushMessage(''), 3000);
+      }
+    }, 1000);
+
+    return () => clearTimeout(csvTimeout);
+  }, [localLiveSyncEnabled, selectedTemplate?.linkedExcelPath, selectedTemplate?.isOneDrive, highlightAnnotations, writeShadowCSV]);
+
+  // Live sync session lifecycle management (OneDrive only)
+  useEffect(() => {
+    // Only for OneDrive files with live sync enabled
+    if (!liveSyncEnabled || !selectedTemplate?.isOneDrive || !selectedTemplate?.linkedExcelPath || !graphClient) {
+      // Clean up existing session
+      if (excelSessionRef.current.sessionId && oneDriveFileId && graphClient) {
+        closeWorkbookSession(graphClient, oneDriveFileId, excelSessionRef.current.sessionId);
+        excelSessionRef.current = { sessionId: null, expiresAt: null };
+        setExcelSessionId(null);
+      }
+      setLiveSyncStatus('');
+      return;
+    }
+
+    let isMounted = true;
+    let sessionRefreshInterval = null;
+
+    const initSession = async () => {
+      try {
+        setLiveSyncStatus('connecting');
+
+        // Get file ID from path
+        const fileId = await getFileIdFromPath(graphClient, selectedTemplate.linkedExcelPath);
+        if (!isMounted) return;
+        setOneDriveFileId(fileId);
+
+        // Check if session API is supported (Business accounts only)
+        if (liveSyncSupported === null) {
+          const support = await checkSessionSupport(graphClient, fileId);
+          if (!isMounted) return;
+          setLiveSyncSupported(support.supported);
+          if (!support.supported) {
+            setLiveSyncStatus('error');
+            setLastSyncMessage(support.error || 'Live sync not supported for this account');
+            setTimeout(() => setLastSyncMessage(''), 5000);
+            return;
+          }
+        }
+
+        // Create session
+        const { sessionId, expiresAt } = await createWorkbookSession(graphClient, fileId, true);
+        if (!isMounted) return;
+
+        excelSessionRef.current = { sessionId, expiresAt };
+        setExcelSessionId(sessionId);
+        setLiveSyncStatus('connected');
+        console.log('Live sync session established');
+
+        // Set up session refresh (every 3 minutes to prevent 5-min timeout)
+        sessionRefreshInterval = setInterval(async () => {
+          if (!isMounted || !excelSessionRef.current.sessionId) return;
+          try {
+            const refreshed = await refreshWorkbookSession(graphClient, fileId, excelSessionRef.current.sessionId);
+            excelSessionRef.current = refreshed;
+          } catch (err) {
+            console.error('Session refresh failed, recreating...', err);
+            // Try to recreate session
+            try {
+              const newSession = await createWorkbookSession(graphClient, fileId, true);
+              excelSessionRef.current = newSession;
+              setExcelSessionId(newSession.sessionId);
+            } catch (recreateErr) {
+              console.error('Failed to recreate session:', recreateErr);
+              setLiveSyncStatus('error');
+            }
+          }
+        }, 3 * 60 * 1000); // 3 minutes
+
+      } catch (error) {
+        console.error('Failed to initialize live sync session:', error);
+        if (!isMounted) return;
+        setLiveSyncStatus('error');
+        setLastSyncMessage(error.message);
+        setTimeout(() => setLastSyncMessage(''), 5000);
+      }
+    };
+
+    initSession();
+
+    return () => {
+      isMounted = false;
+      if (sessionRefreshInterval) {
+        clearInterval(sessionRefreshInterval);
+      }
+      // Close session on cleanup
+      if (excelSessionRef.current.sessionId && oneDriveFileId) {
+        closeWorkbookSession(graphClient, oneDriveFileId, excelSessionRef.current.sessionId);
+        excelSessionRef.current = { sessionId: null, expiresAt: null };
+      }
+    };
+  }, [liveSyncEnabled, selectedTemplate?.isOneDrive, selectedTemplate?.linkedExcelPath, selectedTemplate?.id, graphClient, liveSyncSupported, oneDriveFileId]);
+
+  // Poll for Excel changes when live sync is active
+  useEffect(() => {
+    if (!liveSyncEnabled || !excelSessionId || !oneDriveFileId || !graphClient || liveSyncStatus !== 'connected') {
+      if (liveSyncPollRef.current) {
+        clearInterval(liveSyncPollRef.current);
+        liveSyncPollRef.current = null;
+      }
+      return;
+    }
+
+    const pollExcelChanges = async () => {
+      try {
+        // Get all worksheets
+        const worksheets = await getWorksheets(graphClient, oneDriveFileId, excelSessionId);
+
+        // Read data from each worksheet and compare with last poll
+        for (const sheet of worksheets) {
+          try {
+            const usedRange = await getUsedRange(graphClient, oneDriveFileId, excelSessionId, sheet.name);
+
+            const key = sheet.name;
+            const lastData = lastPollDataRef.current?.[key];
+            const currentData = JSON.stringify(usedRange.values);
+
+            if (lastData && lastData !== currentData) {
+              console.log(`Excel changes detected in sheet: ${sheet.name}`);
+              // Trigger sync from Excel
+              handleAutoSyncFromExcel();
+              break; // Only sync once per poll cycle
+            }
+
+            // Update last poll data
+            if (!lastPollDataRef.current) lastPollDataRef.current = {};
+            lastPollDataRef.current[key] = currentData;
+          } catch (sheetErr) {
+            console.warn(`Failed to read sheet ${sheet.name}:`, sheetErr);
+          }
+        }
+      } catch (error) {
+        console.error('Poll for Excel changes failed:', error);
+      }
+    };
+
+    // Initial poll to establish baseline
+    pollExcelChanges();
+
+    // Poll every 5 seconds
+    liveSyncPollRef.current = setInterval(pollExcelChanges, 5000);
+
+    return () => {
+      if (liveSyncPollRef.current) {
+        clearInterval(liveSyncPollRef.current);
+        liveSyncPollRef.current = null;
+      }
+    };
+  }, [liveSyncEnabled, excelSessionId, oneDriveFileId, graphClient, liveSyncStatus, handleAutoSyncFromExcel]);
+
+  // Live sync push to Excel (cell-level updates instead of full file upload)
+  useEffect(() => {
+    if (!liveSyncEnabled || !excelSessionId || !oneDriveFileId || !graphClient || liveSyncStatus !== 'connected') {
+      return;
+    }
+
+    // Skip if autoPushToExcel is also enabled (avoid duplicate pushes)
+    if (autoPushToExcel) {
+      return;
+    }
+
+    // Debounce cell updates
+    const pushTimeout = setTimeout(async () => {
+      try {
+        console.log('Live sync: Pushing changes to Excel...');
+        // For now, we'll use the bulk export but through the session
+        // In a future enhancement, we could do granular cell updates
+        await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
+        setLastPushMessage('Live synced');
+        setTimeout(() => setLastPushMessage(''), 2000);
+      } catch (error) {
+        console.error('Live sync push failed:', error);
+        setLastPushMessage('Sync failed');
+        setTimeout(() => setLastPushMessage(''), 3000);
+      }
+    }, 1500);
+
+    return () => clearTimeout(pushTimeout);
+  }, [liveSyncEnabled, excelSessionId, oneDriveFileId, graphClient, liveSyncStatus, autoPushToExcel, highlightAnnotations, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
 
   const handleExportSpaceToCSV = useCallback((spaceId) => {
     if (!features?.excelExport) {
@@ -10898,6 +11190,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [searchResults, currentMatchIndex]);
 
   const handleRequestRegionEdit = useCallback((spaceId, pageId) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11089', message: 'handleRequestRegionEdit called', data: { spaceId, pageId, activeSpaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '1' }) }).catch(() => {});
+    // #endregion
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
       return;
@@ -13344,8 +13639,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Handler for toggling background annotations visibility
   const handleToggleBackgroundAnnotations = useCallback((value) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13346', message: 'handleToggleBackgroundAnnotations called', data: { newValue: value, activeSpaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
+    // #endregion
     setShowBackgroundAnnotations(value);
-  }, []);
+  }, [activeSpaceId]);
 
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {
@@ -15810,6 +16108,128 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 }}>
                                   {lastPushMessage}
                                 </div>
+                              )}
+                              {/* Live Sync toggle - only for OneDrive files */}
+                              {selectedTemplate?.isOneDrive && (
+                                <button
+                                  onClick={() => {
+                                    if (liveSyncEnabled) {
+                                      setLiveSyncEnabled(false);
+                                    } else {
+                                      // Disable auto-push when enabling live sync to avoid conflicts
+                                      setAutoPushToExcel(false);
+                                      setLiveSyncEnabled(true);
+                                    }
+                                  }}
+                                  disabled={liveSyncSupported === false}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    fontSize: '11px',
+                                    color: liveSyncEnabled && liveSyncStatus === 'connected'
+                                      ? '#3498db'
+                                      : liveSyncStatus === 'connecting'
+                                        ? '#f39c12'
+                                        : liveSyncStatus === 'error' || liveSyncSupported === false
+                                          ? '#e74c3c'
+                                          : '#888',
+                                    padding: '4px 8px',
+                                    background: liveSyncEnabled && liveSyncStatus === 'connected'
+                                      ? 'rgba(52, 152, 219, 0.1)'
+                                      : liveSyncStatus === 'connecting'
+                                        ? 'rgba(243, 156, 18, 0.1)'
+                                        : liveSyncStatus === 'error' || liveSyncSupported === false
+                                          ? 'rgba(231, 76, 60, 0.1)'
+                                          : 'rgba(136, 136, 136, 0.1)',
+                                    borderRadius: '4px',
+                                    border: liveSyncEnabled && liveSyncStatus === 'connected'
+                                      ? '1px solid rgba(52, 152, 219, 0.3)'
+                                      : liveSyncStatus === 'connecting'
+                                        ? '1px solid rgba(243, 156, 18, 0.3)'
+                                        : liveSyncStatus === 'error' || liveSyncSupported === false
+                                          ? '1px solid rgba(231, 76, 60, 0.3)'
+                                          : '1px solid rgba(136, 136, 136, 0.3)',
+                                    cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
+                                    opacity: liveSyncSupported === false ? 0.6 : 1,
+                                    transition: 'all 0.2s'
+                                  }}
+                                  title={
+                                    liveSyncSupported === false
+                                      ? 'Live sync requires Microsoft 365 Business account'
+                                      : liveSyncEnabled && liveSyncStatus === 'connected'
+                                        ? 'Live sync is active - changes sync in real-time'
+                                        : liveSyncStatus === 'connecting'
+                                          ? 'Connecting to Excel...'
+                                          : liveSyncStatus === 'error'
+                                            ? 'Live sync error - click to retry'
+                                            : 'Enable live sync for real-time Excel updates'
+                                  }
+                                >
+                                  <span style={{ fontSize: '14px' }}>
+                                    {liveSyncStatus === 'connecting'
+                                      ? '...'
+                                      : liveSyncEnabled && liveSyncStatus === 'connected'
+                                        ? '●'
+                                        : '○'}
+                                  </span>
+                                  <span>Live Sync</span>
+                                </button>
+                              )}
+                              {/* Local file live sync toggle - uses CSV shadow file */}
+                              {!selectedTemplate?.isOneDrive && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      if (localLiveSyncEnabled) {
+                                        setLocalLiveSyncEnabled(false);
+                                      } else {
+                                        setAutoPushToExcel(false);
+                                        setLocalLiveSyncEnabled(true);
+                                        // Show Power Query instructions on first enable
+                                        setShowPowerQueryInstructions(true);
+                                      }
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      fontSize: '11px',
+                                      color: localLiveSyncEnabled ? '#e67e22' : '#888',
+                                      padding: '4px 8px',
+                                      background: localLiveSyncEnabled ? 'rgba(230, 126, 34, 0.1)' : 'rgba(136, 136, 136, 0.1)',
+                                      borderRadius: '4px',
+                                      border: localLiveSyncEnabled ? '1px solid rgba(230, 126, 34, 0.3)' : '1px solid rgba(136, 136, 136, 0.3)',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s'
+                                    }}
+                                    title={
+                                      localLiveSyncEnabled
+                                        ? 'CSV live sync is active - Excel can auto-refresh from CSV file'
+                                        : 'Enable CSV live sync for local files (requires Power Query setup in Excel)'
+                                    }
+                                  >
+                                    <span style={{ fontSize: '14px' }}>{localLiveSyncEnabled ? '●' : '○'}</span>
+                                    <span>CSV Sync</span>
+                                  </button>
+                                  {localLiveSyncEnabled && (
+                                    <button
+                                      onClick={() => setShowPowerQueryInstructions(true)}
+                                      style={{
+                                        fontSize: '11px',
+                                        color: '#3498db',
+                                        padding: '2px 6px',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        textDecoration: 'underline'
+                                      }}
+                                      title="Show Power Query setup instructions"
+                                    >
+                                      Setup
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </>
                           )}
@@ -20254,6 +20674,140 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 }}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Power Query Setup Instructions Modal */}
+      {showPowerQueryInstructions && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          backdropFilter: 'blur(4px)',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{
+            background: '#252525',
+            borderRadius: '12px',
+            padding: '32px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflowY: 'auto',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            <h2 style={{
+              color: '#FFFFFF',
+              marginBottom: '8px',
+              fontSize: '20px',
+              fontWeight: 600,
+              letterSpacing: '-0.01em'
+            }}>
+              Set Up Excel Auto-Refresh
+            </h2>
+            <p style={{
+              color: '#e67e22',
+              marginBottom: '20px',
+              fontSize: '13px',
+              fontWeight: 500
+            }}>
+              One-time setup required for live sync with local files
+            </p>
+            <div style={{ color: '#C8C8C8', fontSize: '14px', lineHeight: '1.6' }}>
+              <p style={{ marginBottom: '16px' }}>
+                The app writes changes to a CSV file that Excel can auto-refresh from. Here's how to set it up:
+              </p>
+
+              <div style={{
+                background: '#1a1a1a',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '16px',
+                border: '1px solid #333'
+              }}>
+                <p style={{ color: '#e67e22', fontWeight: 600, marginBottom: '12px' }}>
+                  CSV File Location:
+                </p>
+                <code style={{
+                  background: '#333',
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  display: 'block',
+                  wordBreak: 'break-all',
+                  fontSize: '12px',
+                  color: '#4ecdc4'
+                }}>
+                  {selectedTemplate?.linkedExcelPath?.replace(/\.xlsx?$/i, '_sync.csv') || 'yourfile_sync.csv'}
+                </code>
+              </div>
+
+              <ol style={{ paddingLeft: '20px', marginBottom: '20px' }}>
+                <li style={{ marginBottom: '12px' }}>
+                  <strong style={{ color: '#fff' }}>Open your Excel workbook</strong>
+                </li>
+                <li style={{ marginBottom: '12px' }}>
+                  <strong style={{ color: '#fff' }}>Go to Data tab</strong> → Get Data → From File → From Text/CSV
+                </li>
+                <li style={{ marginBottom: '12px' }}>
+                  <strong style={{ color: '#fff' }}>Select the CSV file</strong> shown above and click Import
+                </li>
+                <li style={{ marginBottom: '12px' }}>
+                  <strong style={{ color: '#fff' }}>Click "Load"</strong> to import the data
+                </li>
+                <li style={{ marginBottom: '12px' }}>
+                  <strong style={{ color: '#fff' }}>Set up auto-refresh:</strong>
+                  <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                    <li>Right-click the imported table</li>
+                    <li>Select "Table" → "Edit Query Properties" (or go to Data → Queries & Connections)</li>
+                    <li>Click the refresh icon dropdown → "Connection Properties"</li>
+                    <li>Check "Refresh every" and set to 1 minute</li>
+                    <li>Check "Refresh data when opening the file"</li>
+                  </ul>
+                </li>
+              </ol>
+
+              <div style={{
+                background: 'rgba(52, 152, 219, 0.1)',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                marginBottom: '16px',
+                border: '1px solid rgba(52, 152, 219, 0.3)'
+              }}>
+                <p style={{ color: '#3498db', margin: 0, fontSize: '13px' }}>
+                  <strong>Tip:</strong> You only need to do this setup once. Excel will remember the connection and auto-refresh whenever the CSV file changes.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+              <button
+                onClick={() => setShowPowerQueryInstructions(false)}
+                style={{
+                  flex: 1,
+                  padding: '12px 20px',
+                  background: '#4A90E2',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#FFFFFF',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                Got it
               </button>
             </div>
           </div>

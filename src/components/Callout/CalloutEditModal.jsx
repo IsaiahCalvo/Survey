@@ -4,6 +4,8 @@ import CompactColorPicker from '../CompactColorPicker';
 
 const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition }) => {
   const modalRef = useRef(null);
+  const colorPickerRef = useRef(null);
+  const textColorPickerRef = useRef(null);
   const [activeTab, setActiveTab] = useState('visual');
   const [colorMode, setColorMode] = useState('border');
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -22,16 +24,36 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
     }, 100);
 
     const handleClickOutside = (e) => {
+      // Check if click originated from inside the modal by checking the event path
+      const clickPath = e.composedPath ? e.composedPath() : (e.path || []);
+      const isClickInsideModal = clickPath.some(node => {
+        if (!node || typeof node !== 'object') return false;
+        // Check if node is the modal or contains the data attribute
+        if (node === modalRef.current) return true;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          if (node.hasAttribute && node.hasAttribute('data-callout-edit-modal')) return true;
+          if (node.closest && node.closest('[data-callout-edit-modal]')) return true;
+        }
+        return false;
+      });
+      
+      // Also check using contains as fallback
+      const isInsideByContains = modalRef.current && modalRef.current.contains(e.target);
+      
+      // Check for color picker
+      const isColorPicker = e.target.closest && e.target.closest('.compact-color-picker');
+      
       // #region agent log
       console.log('[DEBUG] handleClickOutside called', { 
         target: e.target?.tagName, 
         targetClass: e.target?.className,
         ignoreNextClick: ignoreNextClickRef.current,
-        modalContains: modalRef.current?.contains(e.target),
-        isColorPicker: !!e.target?.closest('.compact-color-picker'),
-        isModalElement: !!e.target?.closest('[data-callout-edit-modal]')
+        isClickInsideModal,
+        isInsideByContains,
+        isColorPicker,
+        clickPathLength: clickPath.length
       });
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutEditModal.jsx:24',message:'handleClickOutside called',data:{targetTag:e.target?.tagName,targetClass:e.target?.className,ignoreNextClick:ignoreNextClickRef.current,modalContains:modalRef.current?.contains(e.target),isColorPicker:!!e.target?.closest('.compact-color-picker'),isModalElement:!!e.target?.closest('[data-callout-edit-modal]')},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'F'})}).catch((e)=>console.error('Log error:',e));
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutEditModal.jsx:24',message:'handleClickOutside called',data:{targetTag:e.target?.tagName,targetClass:e.target?.className,ignoreNextClick:ignoreNextClickRef.current,isClickInsideModal,isInsideByContains,isColorPicker:!!isColorPicker},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'F'})}).catch((e)=>console.error('Log error:',e));
       // #endregion
       
       // Ignore the first click after opening (from context menu click)
@@ -43,7 +65,7 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
       }
       
       // Don't close if clicking on modal or any element inside it
-      if (modalRef.current && modalRef.current.contains(e.target)) {
+      if (isClickInsideModal || isInsideByContains) {
         // #region agent log
         console.log('[DEBUG] Click is inside modal - not closing');
         // #endregion
@@ -51,29 +73,19 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
       }
       
       // Don't close if clicking on color picker (which might render outside modal)
-      if (e.target.closest('.compact-color-picker')) {
+      if (isColorPicker) {
         // #region agent log
         console.log('[DEBUG] Click is on color picker - not closing');
         // #endregion
         return;
       }
       
-      // Don't close if clicking on any element with data-callout-edit-modal attribute
-      if (e.target.closest('[data-callout-edit-modal]')) {
-        // #region agent log
-        console.log('[DEBUG] Click is on modal element - not closing');
-        // #endregion
-        return;
-      }
-      
       // Only close if clicking truly outside
-      if (modalRef.current && !modalRef.current.contains(e.target)) {
-        // #region agent log
-        console.log('[DEBUG] Closing modal - click outside');
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutEditModal.jsx:55',message:'Closing modal due to click outside',data:{targetTag:e.target?.tagName,targetClass:e.target?.className},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'F'})}).catch((e)=>console.error('Log error:',e));
-        // #endregion
-        onClose();
-      }
+      // #region agent log
+      console.log('[DEBUG] Closing modal - click outside');
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutEditModal.jsx:70',message:'Closing modal due to click outside',data:{targetTag:e.target?.tagName,targetClass:e.target?.className},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'F'})}).catch((e)=>console.error('Log error:',e));
+      // #endregion
+      onClose();
     };
 
     const handleEscape = (e) => {
@@ -82,19 +94,61 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
       }
     };
 
+    // Delay attaching listener to avoid immediate close from opening click
     const timeout = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside);
-    }, 10);
+      document.addEventListener('click', handleClickOutside, false); // Use bubble phase
+    }, 150); // Increased delay to ensure modal is fully rendered and first click is processed
 
     document.addEventListener('keydown', handleEscape);
 
     return () => {
       clearTimeout(timeout);
       clearTimeout(ignoreTimeout);
-      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('click', handleClickOutside, false);
       document.removeEventListener('keydown', handleEscape);
     };
   }, [visible, onClose]);
+
+  // Adjust color picker position if it would overflow viewport
+  useEffect(() => {
+    if (showColorPicker && colorPickerRef.current) {
+      const rect = colorPickerRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      if (rect.bottom > viewportHeight - 20) {
+        // Position above button instead
+        colorPickerRef.current.style.top = 'auto';
+        colorPickerRef.current.style.bottom = '100%';
+        colorPickerRef.current.style.marginTop = '0';
+        colorPickerRef.current.style.marginBottom = '4px';
+      } else {
+        // Reset to default position
+        colorPickerRef.current.style.top = '100%';
+        colorPickerRef.current.style.bottom = 'auto';
+        colorPickerRef.current.style.marginTop = '4px';
+        colorPickerRef.current.style.marginBottom = '0';
+      }
+    }
+  }, [showColorPicker]);
+
+  useEffect(() => {
+    if (showTextColorPicker && textColorPickerRef.current) {
+      const rect = textColorPickerRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      if (rect.bottom > viewportHeight - 20) {
+        // Position above button instead
+        textColorPickerRef.current.style.top = 'auto';
+        textColorPickerRef.current.style.bottom = '100%';
+        textColorPickerRef.current.style.marginTop = '0';
+        textColorPickerRef.current.style.marginBottom = '4px';
+      } else {
+        // Reset to default position
+        textColorPickerRef.current.style.top = '100%';
+        textColorPickerRef.current.style.bottom = 'auto';
+        textColorPickerRef.current.style.marginTop = '4px';
+        textColorPickerRef.current.style.marginBottom = '0';
+      }
+    }
+  }, [showTextColorPicker]);
 
   // #region agent log
   if (!visible || !callout) {
@@ -118,34 +172,50 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
     onUpdate({ fontColor: hex });
   };
 
-  // Calculate modal position (anchor near callout, but ensure it's visible)
+  // Calculate modal position and size (anchor near callout, but ensure it's visible and fits viewport)
   const getModalPosition = () => {
-    if (!anchorPosition) {
-      return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
-    }
-
     const modalWidth = 320;
-    const modalHeight = 500;
     const padding = 20;
-
-    let left = anchorPosition.x;
-    let top = anchorPosition.y;
-
-    // Ensure modal stays within viewport
-    if (left + modalWidth > window.innerWidth) {
-      left = window.innerWidth - modalWidth - padding;
-    }
-    if (left < padding) {
-      left = padding;
-    }
-    if (top + modalHeight > window.innerHeight) {
-      top = window.innerHeight - modalHeight - padding;
-    }
-    if (top < padding) {
+    const headerHeight = 48; // Approximate header height
+    const tabHeight = 40; // Approximate tab height
+    // Use most of viewport height, leaving padding for color picker overflow
+    const maxContentHeight = window.innerHeight - padding * 2 - headerHeight - tabHeight;
+    
+    let left, top;
+    
+    if (!anchorPosition) {
+      // Center the modal
+      left = (window.innerWidth - modalWidth) / 2;
       top = padding;
+    } else {
+      left = anchorPosition.x;
+      top = anchorPosition.y;
+      
+      // Ensure modal stays within viewport horizontally
+      if (left + modalWidth > window.innerWidth) {
+        left = window.innerWidth - modalWidth - padding;
+      }
+      if (left < padding) {
+        left = padding;
+      }
+      
+      // Ensure modal stays within viewport vertically - position from top
+      const totalHeight = maxContentHeight + headerHeight + tabHeight;
+      if (top + totalHeight > window.innerHeight - padding) {
+        top = window.innerHeight - totalHeight - padding;
+      }
+      if (top < padding) {
+        top = padding;
+      }
     }
 
-    return { top: `${top}px`, left: `${left}px`, transform: 'none' };
+    return { 
+      top: `${top}px`, 
+      left: `${left}px`, 
+      transform: 'none',
+      height: `${maxContentHeight + headerHeight + tabHeight}px`,
+      maxHeight: `${window.innerHeight - padding * 2}px`
+    };
   };
 
   return (
@@ -177,7 +247,6 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
           ...getModalPosition(),
           position: 'fixed',
           width: 320,
-          maxHeight: '80vh',
           backgroundColor: '#2b2b2b',
           border: '1px solid #444',
           borderRadius: '8px',
@@ -187,8 +256,11 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
           overflow: 'hidden'
         }}
         onMouseDown={(e) => {
-          // Only stop propagation to prevent canvas from handling the click
-          // Don't prevent default - allow normal interactions inside modal
+          // Stop propagation to prevent canvas and document handlers from receiving the event
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          // Stop propagation to prevent document click handler from closing modal
           e.stopPropagation();
         }}
       >
@@ -258,7 +330,7 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
         </div>
 
         {/* Content */}
-        <div style={{ padding: 12, background: '#2b2b2b', flex: 1, overflowY: 'auto' }}>
+        <div style={{ padding: 12, background: '#2b2b2b', flex: 1, overflowY: 'auto', minHeight: 0 }}>
           {activeTab === 'visual' && (
             <div>
               {/* Color Toggle */}
@@ -332,7 +404,10 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
                   </button>
                   
                   {showColorPicker && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1002, marginTop: 4 }}>
+                    <div 
+                      ref={colorPickerRef}
+                      style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1002, marginTop: 4 }}
+                    >
                       <CompactColorPicker
                         color={currentColor}
                         opacity={currentOpacity}
@@ -667,7 +742,10 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
                   </button>
                   
                   {showTextColorPicker && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1002, marginTop: 4 }}>
+                    <div 
+                      ref={textColorPickerRef}
+                      style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1002, marginTop: 4 }}
+                    >
                       <CompactColorPicker
                         color={style.fontColor || '#000000'}
                         opacity={1}

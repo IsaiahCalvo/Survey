@@ -3107,6 +3107,10 @@ const PageAnnotationLayer = memo(({
 
     const handleMouseDown = (opt) => {
       const currentTool = toolRef.current;
+      // #region agent log
+      const regionsForLog = Array.isArray(activeRegions) && activeRegions.length > 0 ? activeRegions : null;
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3108', message: 'handleMouseDown called', data: { currentTool, pageNumber, hasActiveRegions: !!regionsForLog, regionsCount: regionsForLog?.length || 0, showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '3' }) }).catch(() => {});
+      // #endregion
       const currentStrokeColor = strokeColorRef.current;
       const currentStrokeWidth = strokeWidthRef.current;
       const currentEraserMode = eraserModeRef.current;
@@ -4837,7 +4841,7 @@ const PageAnnotationLayer = memo(({
     const regions = Array.isArray(activeRegions) && activeRegions.length > 0 ? activeRegions : null;
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4825', message: 'Visibility filter effect entry', data: { pageNumber, regionsCount: regions ? regions.length : 0, showBackgroundAnnotations, activeRegionId, objectsCount: objects.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4837', message: 'Visibility filter effect entry', data: { pageNumber, regionsCount: regions ? regions.length : 0, showBackgroundAnnotations, activeRegionId, activeRegionsIsArray: Array.isArray(activeRegions), activeRegionsLength: activeRegions?.length, objectsCount: objects.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '1,2' }) }).catch(() => {});
     // #endregion
 
     let visibleCount = 0;
