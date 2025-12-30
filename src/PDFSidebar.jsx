@@ -57,7 +57,10 @@ const PDFSidebar = ({
   features,
   getRegionLightbulbState = null,
   onToggleBackgroundAnnotations = null,
-  selectedSpaceId = null
+  selectedSpaceId = null,
+  onToggleRegionOverlay = null,
+  getRegionOverlayEnabled = null,
+  isRegionOverlayToggleEnabled = null
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces'
@@ -260,6 +263,9 @@ const PDFSidebar = ({
                 onToggleBackgroundAnnotations={onToggleBackgroundAnnotations}
                 activeSpaceId={activeSpaceId}
                 externalSelectedSpaceId={selectedSpaceId}
+                onToggleRegionOverlay={onToggleRegionOverlay}
+                getRegionOverlayEnabled={getRegionOverlayEnabled}
+                isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
               />
             )}
           </div>

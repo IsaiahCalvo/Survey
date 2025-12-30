@@ -675,16 +675,17 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           }}
                         >
                           {/* Region Overlay Toggle Switch - Always visible, dimmed when disabled */}
-                          {onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled && (() => {
-                            const isOverlayEnabled = getRegionOverlayEnabled(space.id, page.pageId, page);
-                            const isToggleEnabled = isRegionOverlayToggleEnabled(space.id, page.pageId, page);
+                          {(() => {
+                            const hasProps = onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled;
+                            const isOverlayEnabled = hasProps && getRegionOverlayEnabled ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
+                            const isToggleEnabled = hasProps && isRegionOverlayToggleEnabled ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
                             const isSpaceActive = isActive;
                             
                             return (
                               <div
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (!isToggleEnabled) return;
+                                  if (!isToggleEnabled || !onToggleRegionOverlay) return;
                                   onToggleRegionOverlay(space.id, page.pageId);
                                 }}
                                 style={{
@@ -715,7 +716,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   e.currentTarget.style.background = isOverlayEnabled ? '#4A90E2' : '#3a3a3a';
                                 }}
                                 title={
-                                  !isSpaceActive 
+                                  !hasProps
+                                    ? 'Overlay toggle'
+                                    : !isSpaceActive 
                                     ? 'Enable space to toggle overlay' 
                                     : !isToggleEnabled
                                     ? 'Define regions first to enable overlay'

@@ -8731,6 +8731,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [regionOverlayDisabled, pdfId]);
 
+  // Reload overlay states when pdfId changes
+  useEffect(() => {
+    if (!pdfId) {
+      setRegionOverlayDisabled(new Map());
+      return;
+    }
+    try {
+      const stored = localStorage.getItem(`regionOverlayStates_${pdfId}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setRegionOverlayDisabled(new Map(Object.entries(parsed).map(([k, v]) => [k, v === true])));
+      } else {
+        setRegionOverlayDisabled(new Map());
+      }
+    } catch (e) {
+      console.error('Error loading region overlay states:', e);
+      setRegionOverlayDisabled(new Map());
+    }
+  }, [pdfId]);
+
   // Clipboard state for cut/copy operations
   const [clipboardPage, setClipboardPage] = useState(null);
   const [clipboardType, setClipboardType] = useState(null); // 'cut' | 'copy'
@@ -12527,7 +12547,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Using smaller increments and minimal throttle for fluid feel
   const wheelTimerRef = useRef(null);
   const handleWheel = useCallback((e) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12549',message:'handleWheel called',data:{ctrlKey:e.ctrlKey,metaKey:e.metaKey,deltaY:e.deltaY,hasContainer:!!containerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     if (e.ctrlKey || e.metaKey) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12551',message:'handleWheel processing zoom',data:{deltaY:e.deltaY,currentScale:scaleRef.current,manualZoomScale:manualZoomScaleRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       e.preventDefault();
 
       // Minimal throttle (16ms = 1 frame) for smooth but not overwhelming updates
@@ -12559,9 +12585,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Attach wheel event listener with passive: false to allow preventDefault
   useEffect(() => {
     const wheelHandler = (e) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12581',message:'Wheel handler called',data:{targetTag:e.target?.tagName,targetId:e.target?.id,hasContainer:!!containerRef.current,isContained:containerRef.current?.contains(e.target),deltaY:e.deltaY,ctrlKey:e.ctrlKey,metaKey:e.metaKey},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       // Only handle if the event target is within our PDF container
       if (containerRef.current?.contains(e.target)) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12584',message:'Calling handleWheel - event is within container',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         handleWheel(e);
+      } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12587',message:'Wheel event NOT within container - skipping',data:{targetTag:e.target?.tagName,targetId:e.target?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
       }
     };
 
@@ -14216,6 +14252,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             onToggleBackgroundAnnotations={handleToggleBackgroundAnnotations}
             activeSpaceId={activeSpaceId}
             selectedSpaceId={selectedSpaceId}
+            onToggleRegionOverlay={handleToggleRegionOverlay}
+            getRegionOverlayEnabled={isRegionOverlayEnabled}
+            isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
             onToggleRegionOverlay={handleToggleRegionOverlay}
             getRegionOverlayEnabled={isRegionOverlayEnabled}
             isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
