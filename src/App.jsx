@@ -12548,11 +12548,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const wheelTimerRef = useRef(null);
   const handleWheel = useCallback((e) => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12549',message:'handleWheel called',data:{ctrlKey:e.ctrlKey,metaKey:e.metaKey,deltaY:e.deltaY,hasContainer:!!containerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12549',message:'handleWheel called',data:{ctrlKey:e.ctrlKey,metaKey:e.metaKey,deltaY:e.deltaY,hasContainer:!!containerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'E'})}).catch(()=>{});
     // #endregion
     if (e.ctrlKey || e.metaKey) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12551',message:'handleWheel processing zoom',data:{deltaY:e.deltaY,currentScale:scaleRef.current,manualZoomScale:manualZoomScaleRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12551',message:'handleWheel processing zoom',data:{deltaY:e.deltaY,currentScale:scaleRef.current,manualZoomScale:manualZoomScaleRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'E'})}).catch(()=>{});
       // #endregion
       e.preventDefault();
 
@@ -12579,6 +12579,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           zoomControllerRef.current?.setScale(nextScale);
         }
       }
+    } else {
+      // Regular scroll (no Ctrl/Cmd) - manually scroll the container
+      // This is needed because the overlay div blocks events from reaching the container
+      const container = containerRef.current;
+      if (container) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12585',message:'handleWheel processing scroll',data:{deltaY:e.deltaY,deltaX:e.deltaX},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+        // Prevent default to avoid double scrolling, then manually scroll
+        e.preventDefault();
+        container.scrollTop += e.deltaY;
+        container.scrollLeft += e.deltaX;
+      }
     }
   }, []);
 
@@ -12586,17 +12599,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   useEffect(() => {
     const wheelHandler = (e) => {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12581',message:'Wheel handler called',data:{targetTag:e.target?.tagName,targetId:e.target?.id,hasContainer:!!containerRef.current,isContained:containerRef.current?.contains(e.target),deltaY:e.deltaY,ctrlKey:e.ctrlKey,metaKey:e.metaKey},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12581',message:'Wheel handler called',data:{targetTag:e.target?.tagName,targetId:e.target?.id,hasContainer:!!containerRef.current,isContained:containerRef.current?.contains(e.target),deltaY:e.deltaY,ctrlKey:e.ctrlKey,metaKey:e.metaKey},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
-      // Only handle if the event target is within our PDF container
-      if (containerRef.current?.contains(e.target)) {
+      // Check if event target is within container OR if event coordinates are within container bounds
+      // This handles cases where overlay divs (like region selection tool) are positioned over the container
+      const container = containerRef.current;
+      if (!container) return;
+      
+      const isTargetContained = container.contains(e.target);
+      let isCoordInContainer = false;
+      
+      if (!isTargetContained) {
+        // Check if event coordinates are within container bounds
+        const rect = container.getBoundingClientRect();
+        isCoordInContainer = (
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom
+        );
+      }
+      
+      if (isTargetContained || isCoordInContainer) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12584',message:'Calling handleWheel - event is within container',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12595',message:'Calling handleWheel - event is within container',data:{isTargetContained,isCoordInContainer},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
         handleWheel(e);
       } else {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12587',message:'Wheel event NOT within container - skipping',data:{targetTag:e.target?.tagName,targetId:e.target?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12600',message:'Wheel event NOT within container - skipping',data:{targetTag:e.target?.tagName,targetId:e.target?.id,clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
       }
     };
@@ -12612,11 +12643,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
     // Only allow pan when:
-    // 1. Pan tool is active
-    // 2. Region selection is not active
-    // 3. Can pan (content exceeds viewport)
-    // 4. Left mouse button
-    if (activeTool === 'pan' && !showRegionSelection && canPan && e.button === 0) {
+    // 1. Pan tool is active (spacebar pan should work even when region selection is active)
+    // 2. Can pan (content exceeds viewport)
+    // 3. Left mouse button
+    // Note: Allow pan even when showRegionSelection is true (spacebar pan override)
+    if (activeTool === 'pan' && canPan && e.button === 0) {
       // Check if click is on an annotation layer canvas
       // Annotation layers use canvas elements for Fabric.js
       const target = e.target;
@@ -12655,7 +12686,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         container.scrollLeft = panStart.x - e.clientX;
         container.scrollTop = panStart.y - e.clientY;
       }
-    } else if (activeTool === 'pan' && !showRegionSelection && canPan && canvasMouseDownRef.current) {
+    } else if (activeTool === 'pan' && canPan && canvasMouseDownRef.current) {
       // Check if mouse has moved enough to start panning (empty space drag on canvas)
       const start = canvasMouseDownRef.current;
       const moveDistance = Math.sqrt(
@@ -12674,19 +12705,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         canvasMouseDownRef.current = null; // Clear after starting pan
       }
     }
-  }, [isPanning, panStart, activeTool, showRegionSelection, canPan]);
+  }, [isPanning, panStart, activeTool, canPan]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
     canvasMouseDownRef.current = null; // Clear canvas mouse down tracking
   }, []);
 
-  // Stop panning if tool changes away from pan or region selection becomes active
+  // Stop panning if tool changes away from pan
+  // Note: Don't stop panning when region selection becomes active - spacebar pan should work
   useEffect(() => {
-    if (activeTool !== 'pan' || showRegionSelection) {
+    if (activeTool !== 'pan') {
       setIsPanning(false);
     }
-  }, [activeTool, showRegionSelection]);
+  }, [activeTool]);
 
   // Track eraser cursor position when eraser tool is active
   useEffect(() => {

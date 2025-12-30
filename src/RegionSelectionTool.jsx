@@ -109,32 +109,8 @@ const RegionSelectionTool = ({
     };
   }, [active, targetElement, scale]);
 
-  // Handle wheel events with native listener to allow pass-through when not drawing
-  useEffect(() => {
-    if (!active || !containerRef.current) return;
-
-    const handleWheel = (e) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:wheel-listener',message:'Native wheel listener called',data:{isDrawing,hasInteractionState:!!interactionState,deltaY:e.deltaY,ctrlKey:e.ctrlKey,metaKey:e.metaKey},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      // Only prevent when actively drawing/interacting
-      if (isDrawing || interactionState) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:wheel-listener-prevent',message:'Preventing wheel - actively drawing',data:{isDrawing,hasInteractionState:!!interactionState},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
-        e.preventDefault();
-        e.stopPropagation();
-      }
-      // Otherwise, let the event pass through naturally
-    };
-
-    const container = containerRef.current;
-    container.addEventListener('wheel', handleWheel, { passive: false, capture: false });
-
-    return () => {
-      container.removeEventListener('wheel', handleWheel, { capture: false });
-    };
-  }, [active, isDrawing, interactionState]);
+  // No wheel listener needed - allow all wheel events to pass through to underlying canvas
+  // The App.jsx document-level listener will handle zoom/scroll
 
   useEffect(() => {
     if (active) {
