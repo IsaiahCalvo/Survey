@@ -10773,7 +10773,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
-    // Debounce cell updates
+    // Debounce cell updates (5 seconds to avoid too frequent syncs)
     const pushTimeout = setTimeout(async () => {
       try {
         console.log('Live sync: Pushing changes to Excel...');
@@ -10786,7 +10786,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setLastPushMessage('Sync failed');
         setTimeout(() => setLastPushMessage(''), 3000);
       }
-    }, 1500);
+    }, 5000);
 
     return () => clearTimeout(pushTimeout);
   }, [liveSyncEnabled, excelSessionId, oneDriveFileId, graphClient, liveSyncStatus, autoPushToExcel, highlightAnnotations, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
