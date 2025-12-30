@@ -121,13 +121,25 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const isExportActive = isExportHovered || isExportMenuOpen;
 
   const commitRegionRename = useCallback((pageId, triggerRegionEdit = false) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:123',message:'commitRegionRename called',data:{pageId,triggerRegionEdit,editingRegionId,editingRegionValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     if (editingRegionId !== pageId) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:126',message:'commitRegionRename early return - editingRegionId mismatch',data:{pageId,editingRegionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       return;
     }
     const labelToSave = editingRegionValue.trim();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:130',message:'commitRegionRename saving',data:{pageId,labelToSave,spaceId:space.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     onRenameRegion?.(space.id, pageId, labelToSave);
     setEditingRegionId(null);
     setEditingRegionValue('');
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:135',message:'commitRegionRename state cleared',data:{pageId,triggerRegionEdit},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     if (triggerRegionEdit) {
       onRequestRegionEdit?.(space.id, pageId);
     }
@@ -682,13 +694,29 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   commitRegionRename(page.pageId, false);
                                 }}
                                 onKeyDown={(e) => {
+                                  // #region agent log
+                                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:684',message:'Input onKeyDown event',data:{key:e.key,pageId:page.pageId,spaceId:space.id,editingRegionId,isRegionSelectionActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                                  // #endregion
                                   if (e.key === 'Enter') {
                                     e.preventDefault();
                                     commitRegionRename(page.pageId, true);
                                   } else if (e.key === 'Escape') {
+                                    // #region agent log
+                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:690',message:'Esc key pressed in input',data:{pageId:page.pageId,spaceId:space.id,editingRegionId,editingRegionValue,onCancelRegionEditDefined:!!onCancelRegionEdit},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                                    // #endregion
                                     e.preventDefault();
+                                    e.stopPropagation();
+                                    // #region agent log
+                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:695',message:'Calling commitRegionRename',data:{pageId:page.pageId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                                    // #endregion
                                     commitRegionRename(page.pageId, false); // Save the current value (don't trigger edit mode)
+                                    // #region agent log
+                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:697',message:'After commitRegionRename, calling onCancelRegionEdit',data:{spaceId:space.id,pageId:page.pageId,onCancelRegionEditDefined:!!onCancelRegionEdit},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                                    // #endregion
                                     onCancelRegionEdit?.(space.id, page.pageId); // Dismiss edit mode
+                                    // #region agent log
+                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:699',message:'After onCancelRegionEdit call',data:{spaceId:space.id,pageId:page.pageId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                                    // #endregion
                                   }
                                 }}
                                 style={{
