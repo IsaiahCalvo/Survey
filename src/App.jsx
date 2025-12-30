@@ -8185,6 +8185,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [activeTool]);
 
+  // Close secondary toolbar when pan or select tools are active
+  useEffect(() => {
+    if (activeTool === 'pan' || activeTool === 'select') {
+      setActiveCategoryDropdown(null);
+    }
+  }, [activeTool]);
+
   // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, memo, useState, useCallback } from 'react';
 import CalloutOverlay from './components/Callout';
+import Icon from './Icons';
 
 // Globally patch getContext BEFORE importing Fabric.js to prevent willReadFrequently warnings
 // This must happen before any canvas contexts are created by Fabric
@@ -4854,21 +4855,28 @@ const PageAnnotationLayer = memo(({
       let withinRegions = true;
       let backgroundAnnotationVisible = true;
       
-      // Only apply to background annotations (not scoped region annotations)
+      // Only apply to background annotations (not scoped region annotations, not space-specific annotations)
       if (!isScopedRegionAnnotation && objSpaceId === null) {
+        // This is a background annotation (made outside any space)
         if (selectedSpaceId !== null) {
           // A space is active: respect the toggle
           backgroundAnnotationVisible = showBackgroundAnnotations;
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4854',message:'Toggle applied for background annotations',data:{pageNumber,selectedSpaceId,showBackgroundAnnotations,hasActiveRegions,objSpaceId,backgroundAnnotationVisible,isScopedRegionAnnotation},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4861',message:'Toggle applied for background annotations',data:{pageNumber,selectedSpaceId,showBackgroundAnnotations,hasActiveRegions,objSpaceId,backgroundAnnotationVisible,isScopedRegionAnnotation},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
           // #endregion
         } else {
           // No space is active: background annotations should always be visible
           backgroundAnnotationVisible = true;
         }
-      } else if (hasActiveRegions && !isScopedRegionAnnotation) {
-        // When regions are active, also apply toggle for background annotations
+      } else if (hasActiveRegions && !isScopedRegionAnnotation && objSpaceId === null) {
+        // When regions are active, also apply toggle for background annotations only
         backgroundAnnotationVisible = showBackgroundAnnotations;
+      } else if (objSpaceId !== null) {
+        // Space-specific annotations should always be visible (not affected by toggle)
+        backgroundAnnotationVisible = true;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4875',message:'Space-specific annotation - toggle not applied',data:{pageNumber,selectedSpaceId,objSpaceId,showBackgroundAnnotations,backgroundAnnotationVisible},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
       }
 
       // Object is visible if:
@@ -4876,14 +4884,16 @@ const PageAnnotationLayer = memo(({
       // 2. Survey annotations are visible (if applicable)
       // 3. Scoped region annotations are visible (if applicable)
       // 4. Background annotations respect the toggle and region containment
+      // For space-specific annotations, always use true (not affected by toggle)
+      const finalBackgroundVisible = (objSpaceId !== null) ? true : backgroundAnnotationVisible;
       const isVisible = matchesSpace && 
                        matchesModule && 
                        surveyAnnotationVisible && 
                        scopedRegionAnnotationVisible &&
-                       (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
+                       (isScopedRegionAnnotation ? true : finalBackgroundVisible);
       // #region agent log
-      if (objSpaceId === null && selectedSpaceId !== null && isVisible === false) {
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4862',message:'Background annotation hidden',data:{pageNumber,selectedSpaceId,objSpaceId,matchesSpace,matchesModule,surveyAnnotationVisible,scopedRegionAnnotationVisible,backgroundAnnotationVisible,isVisible,showBackgroundAnnotations},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+      if (selectedSpaceId !== null) {
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4887',message:'Visibility calculated',data:{pageNumber,selectedSpaceId,objSpaceId,matchesSpace,matchesModule,surveyAnnotationVisible,scopedRegionAnnotationVisible,backgroundAnnotationVisible,finalBackgroundVisible,isVisible,showBackgroundAnnotations,isScopedRegionAnnotation},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
       }
       // #endregion
       
@@ -5068,85 +5078,167 @@ const PageAnnotationLayer = memo(({
             position: 'fixed',
             top: contextMenu.y,
             left: contextMenu.x,
-            background: '#ffffff',
-            border: '1px solid #e0e0e0',
+            background: '#333',
+            border: '1px solid #444',
             borderRadius: '6px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
             zIndex: 10000,
-            padding: '4px 0',
-            minWidth: '140px',
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"'
+            padding: '4px',
+            minWidth: '180px',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif'
           }}
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
           {contextMenu.type === 'annotation' && (
             <>
-              <div
-                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+              <button
                 onClick={handleCut}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
+                <Icon name="scissors" size={14} color="#999" />
                 Cut
-              </div>
-              <div
-                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+              </button>
+              <button
                 onClick={handleCopy}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
+                <Icon name="copy" size={14} color="#999" />
                 Copy
-              </div>
+              </button>
             </>
           )}
 
           {/* Paste is available if clipboard has something */}
           {clipboardRef.current && (
-            <div
-              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+            <button
               onClick={handlePaste}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '13px',
+                textAlign: 'left',
+                cursor: 'pointer',
+                color: '#ddd',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
+              <Icon name="paste" size={14} color="#999" />
               Paste
-            </div>
+            </button>
           )}
 
           {contextMenu.type === 'annotation' && (
             <>
-              <div style={{ height: '1px', background: '#e0e0e0', margin: '4px 0' }} />
+              <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
 
               {/* Group/Ungroup */}
               {contextMenu.target && contextMenu.target.type === 'activeSelection' && (
-                <div
-                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+                <button
                   onClick={handleGroup}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '13px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    color: '#ddd',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   Group
-                </div>
+                </button>
               )}
               {contextMenu.target && contextMenu.target.type === 'group' && (
-                <div
-                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+                <button
                   onClick={handleUngroup}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '13px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    color: '#ddd',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   Ungroup
-                </div>
+                </button>
               )}
 
-              <div
-                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center' }}
+              <button
                 onClick={handleEdit}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
+                <Icon name="edit" size={14} color="#999" />
                 Edit...
-              </div>
+              </button>
             </>
           )}
         </div>
