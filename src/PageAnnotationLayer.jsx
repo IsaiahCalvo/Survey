@@ -4813,7 +4813,22 @@ const PageAnnotationLayer = memo(({
       const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanel && selectedModuleId !== null && objModuleId === selectedModuleId);
 
       // NEW: Scoped region annotations should only be visible when their region is active
-      const scopedRegionAnnotationVisible = !isScopedRegionAnnotation || (activeRegionId !== null && objRegionId === activeRegionId);
+      // FIX: Annotations created while a region is active should persist after region edits,
+      // regardless of whether they remain within the updated region geometry
+      let scopedRegionAnnotationVisible = true;
+      if (isScopedRegionAnnotation && objRegionId !== null) {
+        // If there are active regions, always show annotations that were created while a region was active
+        // This ensures they persist even after region boundaries are modified
+        if (hasActiveRegions) {
+          scopedRegionAnnotationVisible = true;
+        } else if (activeRegionId !== null) {
+          // Fallback: if only activeRegionId is set (backward compatibility)
+          scopedRegionAnnotationVisible = objRegionId === activeRegionId;
+        } else {
+          // No active regions, hide scoped annotations
+          scopedRegionAnnotationVisible = false;
+        }
+      }
 
       // NEW: Background annotations visibility logic
       let withinRegions = true;

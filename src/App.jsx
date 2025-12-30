@@ -8313,6 +8313,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const appTemplates = templates;
   const handleTemplatesChange = onTemplatesChange;
 
+  // Helper to sanitize template config before saving to Supabase
+  const sanitizeTemplateConfig = (template) => {
+    if (!template || typeof template !== 'object') return template;
+    const { supabaseId, ...rest } = template;
+    return rest;
+  };
+
   // Restore scroll position when PDF loads
   useEffect(() => {
     if (initialViewState && containerRef.current) {
@@ -9881,16 +9888,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             };
             setSelectedTemplate(updatedTemplate);
 
+            // Persist to Supabase (store in config JSONB)
             const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
             if (updateSupabaseTemplate && supabaseTemplateId) {
               try {
+                const configPayload = sanitizeTemplateConfig(updatedTemplate);
                 await updateSupabaseTemplate(supabaseTemplateId, {
-                  linked_excel_path: targetPath,
-                  last_sync_time: updatedTemplate.lastSyncTime
+                  config: configPayload
                 });
               } catch (err) {
                 console.warn('Failed to update template in Supabase (local export successful):', err);
               }
+            }
+
+            // Update local templates array to propagate linkedExcelPath to parent
+            if (handleTemplatesChange && appTemplates) {
+              const updatedTemplates = appTemplates.map(t =>
+                (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
+                  ? updatedTemplate
+                  : t
+              );
+              handleTemplatesChange(updatedTemplates);
             }
 
             alert('Sync to Excel successful!');
@@ -13455,29 +13473,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Get regions for a page in the active space
   const getPageRegions = useCallback((pageNumber) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13268', message: 'getPageRegions called', data: { pageNumber, activeSpaceId, spacesCount: spaces.length, showRegionSelection, regionSelectionPage }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
-    // #endregion
     if (!activeSpaceId) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13270', message: 'getPageRegions: no activeSpaceId', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
-      // #endregion
       return null;
     }
 
     const space = spaces.find(s => s.id === activeSpaceId);
     if (!space) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13273', message: 'getPageRegions: space not found', data: { activeSpaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
-      // #endregion
       return null;
     }
 
     const assignedPage = space.assignedPages?.find(p => p.pageId === pageNumber);
     if (!assignedPage) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13276', message: 'getPageRegions: assignedPage not found', data: { pageNumber, assignedPagesCount: space.assignedPages?.length || 0, assignedPageIds: space.assignedPages?.map(p => p.pageId) || [] }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
-      // #endregion
       return null;
     }
 
@@ -13486,30 +13492,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const isEditingThisPage = showRegionSelection && regionSelectionPage === pageNumber;
     
     if (assignedPage.wholePageIncluded !== false && !isEditingThisPage) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13279', message: 'getPageRegions: wholePageIncluded is true', data: { wholePageIncluded: assignedPage.wholePageIncluded, isEditingThisPage }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
-      // #endregion
       return null;
     }
 
     if (!assignedPage.regions || assignedPage.regions.length === 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13283', message: 'getPageRegions: no regions found', data: { regionsCount: assignedPage.regions?.length || 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
-      // #endregion
       return null;
     }
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13287', message: 'getPageRegions: returning regions', data: { regionsCount: assignedPage.regions.length, firstRegionId: assignedPage.regions[0]?.regionId || 'no-id', isEditingThisPage }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
-    // #endregion
     return assignedPage.regions;
   }, [activeSpaceId, spaces, showRegionSelection, regionSelectionPage]);
 
   // Track active region ID when regions are active
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13289', message: 'Active region tracking effect entry', data: { activeSpaceId, spacesCount: spaces.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
-    // #endregion
     if (activeSpaceId) {
       // Find the first page with regions in the active space
       const space = spaces.find(s => s.id === activeSpaceId);
@@ -13519,9 +13512,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             // Use the first region's ID as the active region
             const firstRegion = assignedPage.regions[0];
             if (firstRegion && firstRegion.regionId) {
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13299', message: 'Setting activeRegionId', data: { regionId: firstRegion.regionId, pageId: assignedPage.pageId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
-              // #endregion
               setActiveRegionId(firstRegion.regionId);
               return;
             }
@@ -13529,17 +13519,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       }
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13308', message: 'Clearing activeRegionId', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
-    // #endregion
     setActiveRegionId(null);
   }, [activeSpaceId, spaces]);
 
   // Handler for toggling background annotations visibility
   const handleToggleBackgroundAnnotations = useCallback((value) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13346', message: 'handleToggleBackgroundAnnotations called', data: { newValue: value, activeSpaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
-    // #endregion
     setShowBackgroundAnnotations(value);
   }, [activeSpaceId]);
 
@@ -14007,9 +13991,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   selectedModuleId={selectedModuleId}
                                   selectedCategoryId={selectedCategoryId}
                               activeRegions={(() => {
-                                // #region agent log
-                                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:14012', message: 'Passing activeRegions to PageAnnotationLayer (continuous)', data: { pageNum: pageNumber, regionsCount: pageRegions ? pageRegions.length : 0, hasRegions: !!pageRegions, showRegionSelection, regionSelectionPage }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '1' }) }).catch(() => {});
-                                // #endregion
                                 return pageRegions;
                               })()}
                               showBackgroundAnnotations={showBackgroundAnnotations}
@@ -14526,7 +14507,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setTooltip({ visible: true, text: 'Draw', x: rect.left + rect.width / 2, y: rect.top - 10 });
               }}
               onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-md ${activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'eraser'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
+              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'eraser'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Draw"
             >
@@ -14551,7 +14532,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setTooltip({ visible: true, text: 'Shape', x: rect.left + rect.width / 2, y: rect.top - 10 });
               }}
               onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-md ${activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
+              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Shape"
             >
@@ -14576,7 +14557,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setTooltip({ visible: true, text: 'Review', x: rect.left + rect.width / 2, y: rect.top - 10 });
               }}
               onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-md ${activeCategoryDropdown === 'review' || ['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool) ? 'btn-active' : 'btn-default'}`}
+              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'review' || ['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Review"
             >
@@ -14598,7 +14579,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   setTooltip({ visible: true, text: 'Survey', x: rect.left + rect.width / 2, y: rect.top - 10 });
                 }}
                 onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                className={`btn btn-md ${activeCategoryDropdown === 'survey' || activeTool === 'highlight' ? 'btn-active' : 'btn-default'}`}
+                className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'survey' || activeTool === 'highlight') ? 'btn-active' : 'btn-default'}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
                 title="Survey"
               >
@@ -20384,9 +20365,34 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       const updatedTemplate = {
                         ...selectedTemplate,
                         linkedExcelPath: result.filePath,
+                        isOneDrive: false,
                         lastSyncTime: new Date().toISOString()
                       };
                       setSelectedTemplate(updatedTemplate);
+
+                      // Persist to Supabase (store in config JSONB)
+                      const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+                      if (updateSupabaseTemplate && supabaseTemplateId) {
+                        try {
+                          const configPayload = sanitizeTemplateConfig(updatedTemplate);
+                          await updateSupabaseTemplate(supabaseTemplateId, {
+                            config: configPayload
+                          });
+                        } catch (err) {
+                          console.warn('Failed to persist Excel link to Supabase:', err);
+                        }
+                      }
+
+                      // Update local templates array to propagate linkedExcelPath to parent
+                      if (handleTemplatesChange && appTemplates) {
+                        const updatedTemplates = appTemplates.map(t =>
+                          (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
+                            ? updatedTemplate
+                            : t
+                        );
+                        handleTemplatesChange(updatedTemplates);
+                      }
+
                       alert('Export to computer successful!');
                     }
                   } catch (error) {
@@ -20451,6 +20457,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       lastSyncTime: new Date().toISOString()
                     };
                     setSelectedTemplate(updatedTemplate);
+
+                    // Persist to Supabase (store in config JSONB)
+                    const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+                    if (updateSupabaseTemplate && supabaseTemplateId) {
+                      try {
+                        const configPayload = sanitizeTemplateConfig(updatedTemplate);
+                        await updateSupabaseTemplate(supabaseTemplateId, {
+                          config: configPayload
+                        });
+                      } catch (err) {
+                        console.warn('Failed to persist Excel link to Supabase:', err);
+                      }
+                    }
+
+                    // Update local templates array to propagate linkedExcelPath to parent
+                    if (handleTemplatesChange && appTemplates) {
+                      const updatedTemplates = appTemplates.map(t =>
+                        (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
+                          ? updatedTemplate
+                          : t
+                      );
+                      handleTemplatesChange(updatedTemplates);
+                    }
+
                     alert('Export to OneDrive successful!');
                   } catch (error) {
                     console.error('Failed to export to OneDrive:', error);

@@ -713,19 +713,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           </div>
                           <div style={{ display: 'flex', gap: '4px' }}>
                             {/* Background Annotations Toggle */}
-                            {/* #region agent log */}
-                            {(() => {
-                              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:714', message: 'Toggle button render check', data: { isSelected, hasToggleHandler: !!onToggleBackgroundAnnotations, showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => {});
-                              return null;
-                            })()}
-                            {/* #endregion */}
                             {(isSelected || isActive) && onToggleBackgroundAnnotations && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  // #region agent log
-                                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:726', message: 'Toggle button clicked', data: { currentValue: showBackgroundAnnotations, newValue: !showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
-                                  // #endregion
                                   onToggleBackgroundAnnotations(!showBackgroundAnnotations);
                                 }}
                                 style={{
