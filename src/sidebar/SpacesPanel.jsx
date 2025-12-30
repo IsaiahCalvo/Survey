@@ -701,22 +701,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     e.preventDefault();
                                     commitRegionRename(page.pageId, true);
                                   } else if (e.key === 'Escape') {
-                                    // #region agent log
-                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:690',message:'Esc key pressed in input',data:{pageId:page.pageId,spaceId:space.id,editingRegionId,editingRegionValue,onCancelRegionEditDefined:!!onCancelRegionEdit},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-                                    // #endregion
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    // #region agent log
-                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:695',message:'Calling commitRegionRename',data:{pageId:page.pageId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-                                    // #endregion
-                                    commitRegionRename(page.pageId, false); // Save the current value (don't trigger edit mode)
-                                    // #region agent log
-                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:697',message:'After commitRegionRename, calling onCancelRegionEdit',data:{spaceId:space.id,pageId:page.pageId,onCancelRegionEditDefined:!!onCancelRegionEdit},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-                                    // #endregion
-                                    onCancelRegionEdit?.(space.id, page.pageId); // Dismiss edit mode
-                                    // #region agent log
-                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:699',message:'After onCancelRegionEdit call',data:{spaceId:space.id,pageId:page.pageId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-                                    // #endregion
+                                    cancelRegionRename();
                                   }
                                 }}
                                 style={{
@@ -815,10 +802,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                // If we're already editing this region, commit it first
-                                if (editingRegionId === page.pageId) {
-                                  commitRegionRename(page.pageId, false);
-                                }
                                 handleRegionEditClick(page.pageId, regionLabel);
                                 onRequestRegionEdit?.(space.id, page.pageId);
                               }}

@@ -11255,7 +11255,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       alert('The Region Selection Tool is a Pro feature. Please upgrade to use this tool.');
     }
     goToPage(pageId, { fallback: 'nearest' });
-  }, [spaces, goToPage]);
+  }, [spaces, goToPage, features]);
+
+  const handleCancelRegionEdit = useCallback(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11258',message:'handleCancelRegionEdit called',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+    setShowRegionSelection(false);
+    setRegionSelectionPage(null);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11261',message:'handleCancelRegionEdit state updated',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+  }, []);
 
   const handleRegionSetFullPage = useCallback(() => {
     console.log('[App] ===== handleRegionSetFullPage CALLED =====', { activeSpaceId, regionSelectionPage });
@@ -14103,10 +14114,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             onSetActiveSpace={handleSetActiveSpace}
             onExitSpaceMode={handleExitSpaceMode}
             onRequestRegionEdit={handleRequestRegionEdit}
-            onCancelRegionEdit={() => {
-              setShowRegionSelection(false);
-              setRegionSelectionPage(null);
-            }}
+            onCancelRegionEdit={handleCancelRegionEdit}
             onSpaceAssignPages={handleSpaceAssignPages}
             onSpaceRenamePage={handleSpaceRenamePage}
             onSpaceRemovePage={handleSpaceRemovePage}
