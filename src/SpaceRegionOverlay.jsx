@@ -88,6 +88,22 @@ const polygonToPath = (polygon, scale) => {
   return path;
 };
 
+// Helper function to check if a region has valid coordinates/areas
+const hasValidAreas = (region) => {
+  if (!region || !Array.isArray(region.coordinates)) {
+    return false;
+  }
+  const coords = region.coordinates;
+  // Check if region has enough coordinates for its shape type
+  if (region.shapeType === 'rectangular' && coords.length >= 8) {
+    return true;
+  }
+  if (region.shapeType === 'polygon' && coords.length >= 6) {
+    return true;
+  }
+  return false;
+};
+
 // Component that overlays a dimming effect on pages, keeping only selected regions visible
 const SpaceRegionOverlay = ({
   pageNumber,
@@ -124,8 +140,28 @@ const SpaceRegionOverlay = ({
 
 
   const overlayPath = useMemo(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpaceRegionOverlay.jsx:overlayPath',message:'overlayPath useMemo called',data:{pageNumber,regionsCount:regions?.length||0,width,height,scale,regions:regions?.map(r=>({shapeType:r?.shapeType,coordsLength:r?.coordinates?.length||0,operation:r?.operation}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     if (!regions || regions.length === 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpaceRegionOverlay.jsx:overlayPath',message:'Returning null - no regions',data:{pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       return null;
+    }
+
+    // Requirement: "When a user enters a space and no area has been defined for a region on a page 
+    // → the entire page is fully visible with no grey hashed overlay."
+    // Check if any region has valid areas/coordinates
+    const hasAnyValidAreas = regions.some(region => hasValidAreas(region));
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpaceRegionOverlay.jsx:overlayPath',message:'Checking valid areas',data:{pageNumber,hasAnyValidAreas,regions:regions.map(r=>({hasValid:hasValidAreas(r),shapeType:r?.shapeType,coordsLength:r?.coordinates?.length||0}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,D'})}).catch(()=>{});
+    // #endregion
+    if (!hasAnyValidAreas) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpaceRegionOverlay.jsx:overlayPath',message:'Returning null - no valid areas',data:{pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      return null; // No valid areas defined, don't show overlay
     }
 
     const outerWidth = width * scale;
@@ -140,7 +176,14 @@ const SpaceRegionOverlay = ({
     // Assuming all regions passed here are "selected" (additive).
 
     for (const region of regions) {
+      // Skip regions without valid areas
+      if (!hasValidAreas(region)) {
+        continue;
+      }
       const poly = regionToPolygon(region);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpaceRegionOverlay.jsx:overlayPath',message:'Processing region',data:{pageNumber,regionId:region?.regionId,hasPoly:!!poly,operation:region?.operation,mergedPolygonsCount:mergedPolygons.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       if (!poly) continue;
 
       if (mergedPolygons.length === 0) {
@@ -191,11 +234,21 @@ const SpaceRegionOverlay = ({
       });
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpaceRegionOverlay.jsx:overlayPath',message:'Final overlay path check',data:{pageNumber,regionPathsLength:regionPaths?.length||0,hasRegionPaths:!!regionPaths,mergedPolygonsCount:mergedPolygons.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     if (!regionPaths) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpaceRegionOverlay.jsx:overlayPath',message:'Returning null - no regionPaths',data:{pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
-    return `${basePath} ${regionPaths}`;
+    const finalPath = `${basePath} ${regionPaths}`;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpaceRegionOverlay.jsx:overlayPath',message:'Returning overlay path',data:{pageNumber,pathLength:finalPath.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    return finalPath;
   }, [regions, width, height, scale]);
 
   const hatchId = useMemo(() => `space-hatch-${pageNumber}`, [pageNumber]);

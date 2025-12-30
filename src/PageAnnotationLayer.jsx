@@ -1357,7 +1357,8 @@ const PageAnnotationLayer = memo(({
   onHighlightCreated = null, // Callback for when highlight tool creates a rectangle
   onHighlightDeleted = null, // Callback for when highlight is deleted via eraser
   onHighlightClicked = null, // Callback for when a highlight is clicked (reverse navigation)
-  selectedSpaceId = null, // Space ID to filter annotations by
+  selectedSpaceId = null, // Space ID to filter annotations by (used for background annotation lightbulb)
+  activeSpaceId = null, // Active space ID - region-scoped annotations only visible when this is not null
   selectedModuleId = null, // Module ID to filter annotations by
   selectedCategoryId = null, // Category ID to keep highlights visible when panel is hidden
   activeRegions = null,
@@ -4893,16 +4894,17 @@ const PageAnnotationLayer = memo(({
       }
       
       // Filter by space:
-      // - Region-scoped annotations: derive spaceId from regionId and check if that space is active
+      // - Region-scoped annotations: derive spaceId from regionId and check if that space is ACTIVE (activeSpaceId)
       // - Background annotations (objRegionId === null): always pass space filter and be controlled by per-region lightbulb
       let matchesSpace = true;
       if (hasActiveRegions && !isScopedRegionAnnotation) {
         // When regions are active, don't filter background annotations by space
         matchesSpace = true;
       } else {
-        // For region-scoped annotations: only visible when their derived space is active
+        // For region-scoped annotations: only visible when their derived space is ACTIVE (activeSpaceId, not selectedSpaceId)
+        // Requirement: "When no space is active: Region-scoped annotations: Hidden (no regions are active)"
         if (isScopedRegionAnnotation && derivedSpaceId !== null) {
-          matchesSpace = selectedSpaceId !== null && derivedSpaceId === selectedSpaceId;
+          matchesSpace = activeSpaceId !== null && derivedSpaceId === activeSpaceId;
         } else {
           // Background annotations (objRegionId === null): always pass space filter check
           // Visibility will be controlled by per-region lightbulb toggle
@@ -4920,11 +4922,15 @@ const PageAnnotationLayer = memo(({
       // Scoped region annotations should only be visible when their region is active
       // Annotations created while a region is active should persist after region edits,
       // regardless of whether they remain within the updated region geometry
+      // Requirement: "When no space is active: Region-scoped annotations: Hidden (no regions are active)"
       let scopedRegionAnnotationVisible = true;
       if (isScopedRegionAnnotation && objRegionId !== null) {
-        // If there are active regions, always show annotations that were created while a region was active
-        // This ensures they persist even after region boundaries are modified
-        if (hasActiveRegions) {
+        // First check: if no space is active, hide all region-scoped annotations
+        if (activeSpaceId === null) {
+          scopedRegionAnnotationVisible = false;
+        } else if (hasActiveRegions) {
+          // If there are active regions and a space is active, always show annotations that were created while a region was active
+          // This ensures they persist even after region boundaries are modified
           scopedRegionAnnotationVisible = true;
         } else if (activeRegionId !== null) {
           // Fallback: if only activeRegionId is set (backward compatibility)
@@ -4977,7 +4983,7 @@ const PageAnnotationLayer = memo(({
     });
 
     canvas.renderAll();
-  }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, activeRegionId, isRegionSelectionActive, layerVisibility, tool, pageNumber, spaces, getSpaceIdForRegion, getRegionLightbulbState]);
+  }, [selectedSpaceId, activeSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, activeRegionId, isRegionSelectionActive, layerVisibility, tool, pageNumber, spaces, getSpaceIdForRegion, getRegionLightbulbState]);
 
   // Keyboard handler for deleting selected annotations
   useEffect(() => {
@@ -5593,6 +5599,7 @@ const PageAnnotationLayer = memo(({
     prevProps.highlightsToRemove === nextProps.highlightsToRemove &&
     prevProps.onHighlightCreated === nextProps.onHighlightCreated &&
     prevProps.selectedSpaceId === nextProps.selectedSpaceId &&
+    prevProps.activeSpaceId === nextProps.activeSpaceId &&
     prevProps.selectedModuleId === nextProps.selectedModuleId &&
     prevProps.selectedCategoryId === nextProps.selectedCategoryId &&
     prevProps.activeRegions === nextProps.activeRegions &&

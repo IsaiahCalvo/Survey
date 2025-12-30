@@ -9258,7 +9258,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               ? entry.label.trim()
               : `Region ${entry.pageId}`,
             wholePageIncluded: entry.wholePageIncluded !== false ? true : false,
-            regions: Array.isArray(entry.regions) ? entry.regions : []
+            // Requirement: "Each page can have at most one region" - enforce constraint
+            regions: Array.isArray(entry.regions) && entry.regions.length > 0 
+              ? [entry.regions[0]] // Only keep first region
+              : []
           }
         ])
       );
@@ -11339,11 +11342,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'Calling handleSpaceUpdate',data:{activeSpaceId,regionsCount:migratedRegions.length,pageIndex},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'Calling handleSpaceUpdate',data:{activeSpaceId,regionsCount:migratedRegions.length,pageIndex,updatedPagesCount:updatedPages.length,pageData:updatedPages[pageIndex>=0?pageIndex:updatedPages.length-1]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,E'})}).catch(()=>{});
     // #endregion
     handleSpaceUpdate(activeSpaceId, { assignedPages: updatedPages });
     setShowRegionSelection(false);
     setRegionSelectionPage(null);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'After state updates',data:{activeSpaceId,regionSelectionPage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     // Keep selectedSpaceId set - don't clear it when region selection completes
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'handleRegionComplete completed',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
@@ -13644,17 +13650,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Get regions for a page in the active space
   const getPageRegions = useCallback((pageNumber) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'getPageRegions called',data:{pageNumber,activeSpaceId,spacesCount:spaces.length,showRegionSelection,regionSelectionPage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     if (!activeSpaceId) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning null - no activeSpaceId',data:{pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
     const space = spaces.find(s => s.id === activeSpaceId);
     if (!space) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning null - space not found',data:{pageNumber,activeSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
     const assignedPage = space.assignedPages?.find(p => p.pageId === pageNumber);
     if (!assignedPage) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning null - assignedPage not found',data:{pageNumber,activeSpaceId,assignedPagesCount:space.assignedPages?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
@@ -13662,15 +13680,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // This ensures annotations remain visible during region editing
     const isEditingThisPage = showRegionSelection && regionSelectionPage === pageNumber;
     
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Checking wholePageIncluded',data:{pageNumber,wholePageIncluded:assignedPage.wholePageIncluded,isEditingThisPage,regionsCount:assignedPage.regions?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
     if (assignedPage.wholePageIncluded !== false && !isEditingThisPage) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning null - wholePageIncluded check failed',data:{pageNumber,wholePageIncluded:assignedPage.wholePageIncluded,isEditingThisPage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
     if (!assignedPage.regions || assignedPage.regions.length === 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning null - no regions',data:{pageNumber,regionsCount:assignedPage.regions?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       return null;
     }
     // Enforce one region per page - return only the first region
-    return [assignedPage.regions[0]];
+    const firstRegion = assignedPage.regions[0];
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning regions',data:{pageNumber,regionId:firstRegion?.regionId,shapeType:firstRegion?.shapeType,coordsLength:firstRegion?.coordinates?.length||0,hasValidAreas:firstRegion?.coordinates?.length>=6},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    return [firstRegion];
   }, [activeSpaceId, spaces, showRegionSelection, regionSelectionPage]);
 
   // Track active region ID when regions are active
@@ -14225,6 +14257,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   onHighlightDeleted={handleHighlightDeleted}
                                   onHighlightClicked={handleHighlightClicked}
                                   selectedSpaceId={annotationSpaceId}
+                                  activeSpaceId={activeSpaceId}
                                   selectedModuleId={selectedModuleId}
                                   selectedCategoryId={selectedCategoryId}
                               activeRegions={(() => {
@@ -14252,15 +14285,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 />
                               )}
                               {/* Space Region Dimming Overlay */}
-                              {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (
-                                <SpaceRegionOverlay
-                                  pageNumber={pageNumber}
-                                  regions={pageRegions}
-                                  width={pageSizes[pageNumber]?.width || 0}
-                                  height={pageSizes[pageNumber]?.height || 0}
-                                  scale={renderedScale}
-                                />
-                              )}
+                              {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates */}
+                              {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
+                                // Check if any region has valid coordinates/areas
+                                const hasValidAreas = pageRegions.some(region => {
+                                  if (!region || !Array.isArray(region.coordinates)) return false;
+                                  const coords = region.coordinates;
+                                  return (region.shapeType === 'rectangular' && coords.length >= 8) ||
+                                         (region.shapeType === 'polygon' && coords.length >= 6);
+                                });
+                                // #region agent log
+                                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:overlay-render',message:'Overlay render check',data:{pageNumber,pageRegionsCount:pageRegions?.length||0,hasValidAreas,showRegionSelection,regionSelectionPage,regions:pageRegions?.map(r=>({shapeType:r?.shapeType,coordsLength:r?.coordinates?.length||0}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,D,E'})}).catch(()=>{});
+                                // #endregion
+                                return hasValidAreas ? (
+                                  <SpaceRegionOverlay
+                                    pageNumber={pageNumber}
+                                    regions={pageRegions}
+                                    width={pageSizes[pageNumber]?.width || 0}
+                                    height={pageSizes[pageNumber]?.height || 0}
+                                    scale={renderedScale}
+                                  />
+                                ) : null;
+                              })()}
                               {/* Region Selection Overlay for this specific page */}
                               {showRegionSelection && regionSelectionPage === pageNumber && (
                                 <div style={{
@@ -14377,6 +14423,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               onHighlightDeleted={handleHighlightDeleted}
                               onHighlightClicked={handleHighlightClicked}
                               selectedSpaceId={annotationSpaceId}
+                              activeSpaceId={activeSpaceId}
                               selectedModuleId={selectedModuleId}
                               selectedCategoryId={selectedCategoryId}
                               activeRegions={pageRegions}
@@ -14403,15 +14450,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           )}
                         </div>
                         {/* Space Region Dimming Overlay */}
-                        {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNum) && (
-                          <SpaceRegionOverlay
-                            pageNumber={pageNum}
-                            regions={pageRegions}
-                            width={pageSizes[pageNum]?.width || 0}
-                            height={pageSizes[pageNum]?.height || 0}
-                            scale={renderedScale}
-                          />
-                        )}
+                        {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates */}
+                        {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNum) && (() => {
+                          // Check if any region has valid coordinates/areas
+                          const hasValidAreas = pageRegions.some(region => {
+                            if (!region || !Array.isArray(region.coordinates)) return false;
+                            const coords = region.coordinates;
+                            return (region.shapeType === 'rectangular' && coords.length >= 8) ||
+                                   (region.shapeType === 'polygon' && coords.length >= 6);
+                          });
+                          return hasValidAreas ? (
+                            <SpaceRegionOverlay
+                              pageNumber={pageNum}
+                              regions={pageRegions}
+                              width={pageSizes[pageNum]?.width || 0}
+                              height={pageSizes[pageNum]?.height || 0}
+                              scale={renderedScale}
+                            />
+                          ) : null;
+                        })()}
                         {/* Region Selection Overlay for this specific page */}
                         {showRegionSelection && regionSelectionPage === pageNum && (
                           <div style={{
