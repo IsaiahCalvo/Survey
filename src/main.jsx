@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import { AuthProvider } from './contexts/AuthContext';
 import { MSGraphProvider } from './contexts/MSGraphContext';
+import { SurveySessionProvider } from './contexts/SurveySessionContext';
 import './styles.css';
 
 // Suppress PDF.js "TT: undefined function" warnings
@@ -28,8 +29,10 @@ createRoot(document.getElementById('root')).render(
   <ErrorBoundary>
     <AuthProvider>
       <MSGraphProvider>
-        <App />
-        <KeyboardShortcutsOverlay />
+        <SurveySessionProvider>
+          <App />
+          <KeyboardShortcutsOverlay />
+        </SurveySessionProvider>
       </MSGraphProvider>
     </AuthProvider>
   </ErrorBoundary>
