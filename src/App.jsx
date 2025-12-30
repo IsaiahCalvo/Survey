@@ -14103,6 +14103,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             onSetActiveSpace={handleSetActiveSpace}
             onExitSpaceMode={handleExitSpaceMode}
             onRequestRegionEdit={handleRequestRegionEdit}
+            onCancelRegionEdit={() => {
+              setShowRegionSelection(false);
+              setRegionSelectionPage(null);
+            }}
             onSpaceAssignPages={handleSpaceAssignPages}
             onSpaceRenamePage={handleSpaceRenamePage}
             onSpaceRemovePage={handleSpaceRemovePage}

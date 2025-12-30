@@ -72,6 +72,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onAssignPages,
   onRenameRegion,
   onRequestRegionEdit,
+  onCancelRegionEdit,
   onRemovePage,
   onExitSpace,
   onToggleSpace,
@@ -137,6 +138,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     setEditingRegionId(null);
     setEditingRegionValue('');
   }, []);
+
+  React.useEffect(() => {
+    // When edit mode is dismissed, save any active rename
+    if (!isRegionSelectionActive && editingRegionId !== null) {
+      commitRegionRename(editingRegionId, false);
+    }
+  }, [isRegionSelectionActive, editingRegionId, commitRegionRename]);
 
   const handleRegionEditClick = useCallback((pageId, currentLabel) => {
     setEditingRegionId(pageId);
@@ -679,7 +687,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     commitRegionRename(page.pageId, true);
                                   } else if (e.key === 'Escape') {
                                     e.preventDefault();
-                                    cancelRegionRename();
+                                    commitRegionRename(page.pageId, false); // Save the current value (don't trigger edit mode)
+                                    onCancelRegionEdit?.(space.id, page.pageId); // Dismiss edit mode
                                   }
                                 }}
                                 style={{
@@ -778,6 +787,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                // If we're already editing this region, commit it first
+                                if (editingRegionId === page.pageId) {
+                                  commitRegionRename(page.pageId, false);
+                                }
                                 handleRegionEditClick(page.pageId, regionLabel);
                                 onRequestRegionEdit?.(space.id, page.pageId);
                               }}
@@ -845,6 +858,7 @@ const SpacesPanel = ({
   onSetActiveSpace,
   onExitSpaceMode,
   onRequestRegionEdit,
+  onCancelRegionEdit,
   onSpaceAssignPages,
   onSpaceRenamePage,
   onSpaceRemovePage,
@@ -1241,6 +1255,7 @@ const SpacesPanel = ({
                     onAssignPages={handleAssignPages}
                     onRenameRegion={onSpaceRenamePage}
                     onRequestRegionEdit={(spaceId, pageId) => onRequestRegionEdit?.(spaceId, pageId)}
+                    onCancelRegionEdit={(spaceId, pageId) => onCancelRegionEdit?.(spaceId, pageId)}
                     onRemovePage={handleRemovePage}
                     isRegionSelectionActive={isRegionSelectionActive}
                     features={features}
