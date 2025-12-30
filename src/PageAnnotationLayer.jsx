@@ -1382,9 +1382,6 @@ const PageAnnotationLayer = memo(({
   surveyPanelWidth = 0, // Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
   // Note: selectedSpaceId, selectedModuleId, and showSurveyPanel are already defined above
 }) => {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1384', message: 'PageAnnotationLayer component render', data: { pageNumber, showBackgroundAnnotations, activeRegionsLength: activeRegions?.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2,4' }) }).catch(() => {});
-  // #endregion
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
   const processedHighlightsRef = useRef(new Set());
@@ -1409,9 +1406,6 @@ const PageAnnotationLayer = memo(({
     selectedModuleIdRef.current = selectedModuleId;
     showSurveyPanelRef.current = showSurveyPanel;
     activeRegionIdRef.current = activeRegionId;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1351', message: 'Callouts ref updated', data: { calloutsCount: callouts.length, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => { });
-    // #endregion
   }, [callouts, setCallouts, selectedSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, pageNumber]);
   const strokeWidthRef = useRef(strokeWidth);
   const justCreatedCalloutRef = useRef(false);
@@ -2081,22 +2075,17 @@ const PageAnnotationLayer = memo(({
 
     canvas.isDrawingMode = tool === 'pen' || tool === 'highlighter';
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1744', message: 'Setting canvas selection properties', data: { tool, willEnableSelection: tool === 'select', pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run6', hypothesisId: 'N' }) }).catch(() => { });
-    // #endregion
     // Disable Fabric.js built-in selection for Pan tool (we want drag-to-pan)
     // Enable selection for Select tool (we have custom selection handler but need Fabric's selection enabled for it to work)
     canvas.selection = tool === 'select';
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1749', message: 'Canvas selection set', data: { tool, canvasSelection: canvas.selection, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run6', hypothesisId: 'N' }) }).catch(() => { });
-    // #endregion
 
     // Deselect active object when switching away from select tool to prevent interference
     if (tool !== 'select') {
       const activeObject = canvas.getActiveObject();
       if (activeObject) {
         canvas.discardActiveObject();
-        canvas.requestRenderAll();
+        // Don't call requestRenderAll here - let the visibility filter handle rendering
+        // canvas.requestRenderAll();
       }
     }
 
@@ -2119,7 +2108,10 @@ const PageAnnotationLayer = memo(({
       canvas.freeDrawingBrush.width = w;
     }
 
-    canvas.requestRenderAll();
+    // FIX: Don't call requestRenderAll here - let the visibility filter handle rendering
+    // The visibility filter will run when tool changes (it's in the dependency array)
+    // and will call renderAll() at the end, ensuring visibility is correct
+    // canvas.requestRenderAll();
   }, [tool, strokeColor, strokeWidth, highlightColor]);
 
   // Helper to load annotations into canvas
@@ -4470,43 +4462,29 @@ const PageAnnotationLayer = memo(({
       canvas.freeDrawingBrush.color = c;
       canvas.freeDrawingBrush.width = w;
     }
+    // FIX: This effect should ONLY handle interactivity (selectable/evented), NOT visibility
+    // The main visibility filter (lines 4817+) handles all visibility logic including regions/toggle
+    // Don't set visible here - let the main filter handle it
     canvas.getObjects().forEach((obj, idx) => {
-      // Respect space/module filtering - only make objects interactive if they're visible
-      const objSpaceId = obj.spaceId || null;
-      const objModuleId = obj.moduleId || null;
-      const matchesSpace = selectedSpaceIdRef.current === null || objSpaceId === selectedSpaceIdRef.current;
-      const matchesModule = selectedModuleIdRef.current === null || objModuleId === selectedModuleIdRef.current;
-
-      // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
-      const isSurveyAnnotation = objModuleId !== null;
-
-      // Survey annotations (highlights, callouts, etc.) should only be visible when survey mode is active AND a module is selected
-      // Survey annotations require: survey panel open AND matching module selected
-      const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
-
-      const isVisible = matchesSpace && matchesModule && surveyAnnotationVisible;
-
-      if (isVisible) {
-        // Only make visible objects interactive based on tool
-        const isSelectable = tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight';
-        // Callouts should only be evented when using select, pan, or callout tool to prevent blocking other annotation tools
-        const isCallout = obj.data?.type === 'callout';
-        const shouldBeEvented = isSelectable && (!isCallout || tool === 'select' || tool === 'pan' || tool === 'callout');
-        obj.set({
-          visible: true,
-          selectable: isSelectable,
-          evented: shouldBeEvented,
-          // Enable pixel-perfect hit detection for selection (our findTarget override handles the logic)
-          // This ensures we can detect actual annotation content, not just bounding box
-          perPixelTargetFind: true,
-          targetFindTolerance: (tool === 'pan' || tool === 'select') ? 5 : 0
-        });
-      } else {
-        // Keep hidden objects non-interactive and invisible
-        obj.set({ visible: false, selectable: false, evented: false });
-      }
+      // Only update interactivity based on tool - don't touch visibility
+      // The main visibility filter will have already set visibility correctly
+      const isSelectable = tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight';
+      // Callouts should only be evented when using select, pan, or callout tool to prevent blocking other annotation tools
+      const isCallout = obj.data?.type === 'callout';
+      const shouldBeEvented = isSelectable && (!isCallout || tool === 'select' || tool === 'pan' || tool === 'callout');
+      
+      // Only update interactivity properties, preserve visibility from main filter
+      obj.set({
+        selectable: obj.visible && isSelectable, // Only selectable if visible AND tool allows it
+        evented: obj.visible && shouldBeEvented, // Only evented if visible AND tool allows it
+        // Enable pixel-perfect hit detection for selection (our findTarget override handles the logic)
+        // This ensures we can detect actual annotation content, not just bounding box
+        perPixelTargetFind: true,
+        targetFindTolerance: (tool === 'pan' || tool === 'select') ? 5 : 0
+      });
     });
-    canvas.renderAll();
+    // Don't call renderAll here - let the main visibility filter handle rendering
+    // canvas.renderAll();
   }, [tool, strokeColor, strokeWidth, selectedModuleId, selectedSpaceId, showSurveyPanel]);
 
   // Track rendered highlight objects by highlightId for updates
@@ -4827,10 +4805,6 @@ const PageAnnotationLayer = memo(({
       : (isRegionSelectionActive ? [] : null);
     const hasActiveRegions = regions !== null; // null = no regions mode, [] or [...] = regions mode active
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4842', message: 'Visibility filter effect entry', data: { pageNumber, regionsCount: Array.isArray(regions) ? regions.length : 0, showBackgroundAnnotations, activeRegionId, activeRegionsIsArray: Array.isArray(activeRegions), activeRegionsLength: activeRegions?.length, isRegionSelectionActive, hasActiveRegions, objectsCount: objects.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '1,2' }) }).catch(() => {});
-    // #endregion
-
     let visibleCount = 0;
     let hiddenCount = 0;
     objects.forEach(obj => {
@@ -4958,6 +4932,9 @@ const PageAnnotationLayer = memo(({
       }))
     }); */
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4964', message: 'Visibility filter calling renderAll', data: { pageNumber, tool, visibleCount, hiddenCount, totalObjects: objects.length, showBackgroundAnnotations, hasActiveRegions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '5' }) }).catch(() => {});
+    // #endregion
     canvas.renderAll();
   }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, showBackgroundAnnotations, activeRegionId, isRegionSelectionActive, layerVisibility, tool]);
 
