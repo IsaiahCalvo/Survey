@@ -1669,34 +1669,54 @@ const PageAnnotationLayer = memo(({
       // Get initial values from first object if selection
       const target = activeObject.type === 'activeSelection' ? activeObject.getObjects()[0] : activeObject;
 
-      // Get stroke values from the line within a group if applicable
-      let strokeVal = target.stroke || '#000000';
-      let strokeWidthVal = target.strokeWidth || 1;
-
-      // For arrow groups, get stroke from the line object
-      if (target.data?.type === 'arrow' && target.type === 'group') {
-        const lineObj = target.getObjects().find(o => o.type === 'line');
-        if (lineObj) {
-          strokeVal = lineObj.stroke || strokeVal;
-          strokeWidthVal = lineObj.strokeWidth || strokeWidthVal;
+      // Handle React callouts (synthetic objects)
+      if (target.data?.reactCalloutId) {
+        const reactCallout = calloutsRef.current.find(c => c.id === target.data.reactCalloutId);
+        if (reactCallout) {
+          setEditValues({
+            stroke: reactCallout.style?.borderColor || '#000000',
+            strokeWidth: reactCallout.style?.lineThickness || 1,
+            opacity: reactCallout.style?.opacity !== undefined ? reactCallout.style.opacity : 1,
+            arrowheadStyle: ARROWHEAD_STYLES.SOLID_TRIANGLE,
+            fill: reactCallout.style?.textColor || '#000000',
+            fontSize: reactCallout.style?.fontSize || 16,
+            fontWeight: reactCallout.style?.fontWeight || 'normal',
+            fontStyle: reactCallout.style?.fontStyle || 'normal',
+            textAlign: reactCallout.style?.textAlign || 'left',
+            fontFamily: reactCallout.style?.fontFamily || 'Arial',
+            fillColor: reactCallout.style?.fillColor || 'rgba(255,255,255,0.9)'
+          });
         }
-      }
+      } else {
+        // Get stroke values from the line within a group if applicable
+        let strokeVal = target.stroke || '#000000';
+        let strokeWidthVal = target.strokeWidth || 1;
 
-      setEditValues({
-        stroke: strokeVal,
-        strokeWidth: strokeWidthVal,
-        opacity: target.opacity !== undefined ? target.opacity : 1,
-        // Arrow specific props
-        arrowheadStyle: target.data?.type === 'arrow' ? (target.data?.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE) : ARROWHEAD_STYLES.SOLID_TRIANGLE,
-        // Callout specific props
-        fill: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fill || '#000000') : (target.fill || 'transparent'),
-        fontSize: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontSize || 16) : 16,
-        fontWeight: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontWeight || 'normal') : 'normal',
-        fontStyle: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontStyle || 'normal') : 'normal',
-        textAlign: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.textAlign || 'left') : 'left',
-        fontFamily: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontFamily || 'Arial') : 'Arial',
-        fillColor: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.backgroundColor || 'rgba(255,255,255,0.9)') : '#ffffff'
-      });
+        // For arrow groups, get stroke from the line object
+        if (target.data?.type === 'arrow' && target.type === 'group') {
+          const lineObj = target.getObjects().find(o => o.type === 'line');
+          if (lineObj) {
+            strokeVal = lineObj.stroke || strokeVal;
+            strokeWidthVal = lineObj.strokeWidth || strokeWidthVal;
+          }
+        }
+
+        setEditValues({
+          stroke: strokeVal,
+          strokeWidth: strokeWidthVal,
+          opacity: target.opacity !== undefined ? target.opacity : 1,
+          // Arrow specific props
+          arrowheadStyle: target.data?.type === 'arrow' ? (target.data?.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE) : ARROWHEAD_STYLES.SOLID_TRIANGLE,
+          // Callout specific props
+          fill: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fill || '#000000') : (target.fill || 'transparent'),
+          fontSize: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontSize || 16) : 16,
+          fontWeight: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontWeight || 'normal') : 'normal',
+          fontStyle: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontStyle || 'normal') : 'normal',
+          textAlign: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.textAlign || 'left') : 'left',
+          fontFamily: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.fontFamily || 'Arial') : 'Arial',
+          fillColor: target.data?.type === 'callout' ? (target.getObjects().find(o => o.name === 'calloutText')?.backgroundColor || 'rgba(255,255,255,0.9)') : '#ffffff'
+        });
+      }
 
       // Capture initial state for revert
       const objects = activeObject.type === 'activeSelection' ? activeObject.getObjects() : [activeObject];
@@ -1726,8 +1746,31 @@ const PageAnnotationLayer = memo(({
       : [editModal.object];
 
     objects.forEach(obj => {
-      if (obj.data?.type === 'callout') {
-        // Apply to Callout parts
+      // Handle React callouts (synthetic objects)
+      if (obj.data?.reactCalloutId) {
+        const reactCalloutId = obj.data.reactCalloutId;
+        setCallouts(prev => prev.map(c => 
+          c.id === reactCalloutId
+            ? {
+                ...c,
+                style: {
+                  ...c.style,
+                  borderColor: editValues.stroke,
+                  lineThickness: parseInt(editValues.strokeWidth, 10),
+                  opacity: parseFloat(editValues.opacity),
+                  textColor: editValues.fill,
+                  fontSize: parseInt(editValues.fontSize, 10),
+                  fontWeight: editValues.fontWeight,
+                  fontStyle: editValues.fontStyle,
+                  textAlign: editValues.textAlign,
+                  fontFamily: editValues.fontFamily || 'Arial',
+                  fillColor: editValues.fillColor === 'transparent' ? '' : (editValues.fillColor || 'rgba(255,255,255,0.9)')
+                }
+              }
+            : c
+        ));
+      } else if (obj.data?.type === 'callout') {
+        // Apply to Fabric.js Callout parts
         const line = obj.getObjects().find(o => o.name === 'calloutLine');
         const head = obj.getObjects().find(o => o.name === 'calloutHead');
         const text = obj.getObjects().find(o => o.name === 'calloutText');
@@ -4934,6 +4977,34 @@ const PageAnnotationLayer = memo(({
         showSurveyPanel={showSurveyPanel}
         middleAreaBounds={middleAreaBounds}
         surveyPanelWidth={surveyPanelWidth}
+        onCalloutRightClick={(e, callout) => {
+          // Handle right-click on React callout
+          // Create a synthetic event and target for the context menu
+          const syntheticEvent = {
+            preventDefault: () => e.preventDefault(),
+            clientX: e.clientX,
+            clientY: e.clientY,
+            button: e.button,
+            which: e.which
+          };
+          
+          // Create a synthetic Fabric object representation of the callout
+          // This allows the context menu and edit modal to work with React callouts
+          const syntheticTarget = {
+            type: 'group',
+            data: { type: 'callout', reactCalloutId: callout.id },
+            getObjects: () => [
+              // Create synthetic objects for the callout parts
+              { name: 'calloutText', fill: callout.style?.textColor || '#000000', fontSize: callout.style?.fontSize || 16, fontWeight: callout.style?.fontWeight || 'normal', fontStyle: callout.style?.fontStyle || 'normal', textAlign: callout.style?.textAlign || 'left', fontFamily: callout.style?.fontFamily || 'Arial', backgroundColor: callout.style?.fillColor || 'rgba(255,255,255,0.9)' },
+              { name: 'calloutLine', stroke: callout.style?.borderColor || '#000000', strokeWidth: callout.style?.lineThickness || 1 },
+              { name: 'calloutHead', fill: callout.style?.borderColor || '#000000' },
+              { name: 'calloutTextBorder', stroke: callout.style?.borderColor || '#000000', strokeWidth: callout.style?.lineThickness || 1 }
+            ],
+            opacity: callout.style?.opacity !== undefined ? callout.style.opacity : 1
+          };
+          
+          handleContextMenu(syntheticEvent, syntheticTarget);
+        }}
       />
 
       {/* Context Menu */}

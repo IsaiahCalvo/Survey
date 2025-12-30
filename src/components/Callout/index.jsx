@@ -38,6 +38,7 @@ const CalloutOverlay = ({
   showSurveyPanel,
   middleAreaBounds,
   surveyPanelWidth,
+  onCalloutRightClick,
 }) => {
   const selectedCallout = callouts.find(c => c.id === selectedCalloutId) || null;
 
@@ -127,6 +128,7 @@ const CalloutOverlay = ({
         selectedSpaceId={selectedSpaceId}
         selectedModuleId={selectedModuleId}
         showSurveyPanel={showSurveyPanel}
+        onCalloutRightClick={onCalloutRightClick}
       />
 
       {/* Properties Panel - slides in from right when callout selected */}
