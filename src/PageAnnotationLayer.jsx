@@ -1564,9 +1564,6 @@ const PageAnnotationLayer = memo(({
           contextMenuJustOpenedRef.current = false;
         }, 100); // Allow clicks after 100ms
       } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1540', message: 'handleContextMenu NO CONTEXT MENU (no target, no clipboard)', data: { pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-        // #endregion
       }
     }
   }, []);
@@ -2451,13 +2448,7 @@ const PageAnnotationLayer = memo(({
         // Store current activeRegionId on the path if a region is active
         if (activeRegionIdRef.current) {
           e.path.set({ regionId: activeRegionIdRef.current });
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:2479', message: 'Tagging annotation with regionId', data: { regionId: activeRegionIdRef.current, tool: 'pen/highlighter' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => {});
-          // #endregion
         } else {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:2482', message: 'No activeRegionId when creating annotation', data: { tool: 'pen/highlighter' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => {});
-          // #endregion
         }
       }
       saveCanvas();
@@ -3080,28 +3071,18 @@ const PageAnnotationLayer = memo(({
 
     const handleMouseDown = (opt) => {
       const currentTool = toolRef.current;
-      // #region agent log
-      const regionsForLog = Array.isArray(activeRegions) && activeRegions.length > 0 ? activeRegions : null;
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3108', message: 'handleMouseDown called', data: { currentTool, pageNumber, hasActiveRegions: !!regionsForLog, regionsCount: regionsForLog?.length || 0, showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '3' }) }).catch(() => {});
-      // #endregion
       const currentStrokeColor = strokeColorRef.current;
       const currentStrokeWidth = strokeWidthRef.current;
       const currentEraserMode = eraserModeRef.current;
       const { x, y } = canvas.getPointer(opt.e);
       const pointer = { x, y }; // Ensure pointer object exists
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:2647', message: 'PageAnnotationLayer handleMouseDown called', data: { currentTool, x, y, hasTarget: !!opt.target, targetType: opt.target?.type, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
-      // #endregion
 
       // Handle Fabric callout objects when select, pan, or callout tool is active
       // Note: React callouts (via CalloutOverlay) handle their own events separately
       // IMPORTANT: For select tool, we should NOT return early here - let the custom selection handler work
       // Only handle Fabric callout drag interactions if clicking on a Fabric callout object
       if (currentTool === 'select' || currentTool === 'pan' || currentTool === 'callout') {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:2670', message: 'Select tool handleMouseDown', data: { hasTarget: !!opt.target, targetType: opt.target?.type, isFabricCallout: opt.target?.data?.type === 'callout', pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'G' }) }).catch(() => { });
-        // #endregion
         // Only handle Fabric callout objects (if they exist) for drag interactions
         const target = opt.target;
         if (target && target.data?.type === 'callout' && !canvas._currentTransform) {
@@ -3571,16 +3552,10 @@ const PageAnnotationLayer = memo(({
 
           // Handle React callouts (not Fabric objects)
           // Check if eraser path intersects with any callout on this page
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3128', message: 'Eraser checking callouts', data: { hasCalloutsRef: !!calloutsRef.current, calloutsCount: calloutsRef.current?.length || 0, hasSetCallouts: !!setCalloutsRef.current, pageNumber, eraserPointsCount: eraserPath?.points?.length || 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'J' }) }).catch(() => { });
-          // #endregion
           if (calloutsRef.current && calloutsRef.current.length > 0 && setCalloutsRef.current) {
             // Get canvas zoom/scale - eraser points are in canvas coordinates which may include zoom
             const canvasZoom = canvas.getZoom ? canvas.getZoom() : 1;
             const pageCallouts = calloutsRef.current.filter(c => c.pageNumber === pageNumber);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3135', message: 'Page callouts found', data: { pageCalloutsCount: pageCallouts.length, width, height, canvasZoom, scale, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'J' }) }).catch(() => { });
-            // #endregion
             const calloutsToDelete = [];
 
             for (const callout of pageCallouts) {
@@ -3601,9 +3576,6 @@ const PageAnnotationLayer = memo(({
               const textBoxWidthPx = callout.textBoxWidth * width;
               const textBoxHeightPx = callout.textBoxHeight * height;
 
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3145', message: 'Checking callout for eraser', data: { calloutId: callout.id, arrowTipPx, kneePx, textBoxPx, textBoxWidthPx, textBoxHeightPx, width, height, firstEraserPoint: eraserPath.points[0], eraserRadius, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'F' }) }).catch(() => { });
-              // #endregion
 
               // Check if any eraser point is within eraser radius of:
               // 1. Arrow tip
@@ -3648,22 +3620,13 @@ const PageAnnotationLayer = memo(({
 
               if (isTouching) {
                 calloutsToDelete.push(callout.id);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3178', message: 'Callout touched by eraser', data: { calloutId: callout.id, arrowTip: callout.arrowTip, knee: callout.knee, textBoxPosition: callout.textBoxPosition, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'F' }) }).catch(() => { });
-                // #endregion
               }
             }
 
             // Delete touched callouts
             if (calloutsToDelete.length > 0) {
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3204', message: 'Deleting callouts', data: { calloutsToDeleteCount: calloutsToDelete.length, calloutIds: calloutsToDelete, pageNumber, beforeCount: calloutsRef.current.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => { });
-              // #endregion
               setCalloutsRef.current(prev => {
                 const filtered = prev.filter(c => !calloutsToDelete.includes(c.id));
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3208', message: 'Callouts after deletion', data: { afterCount: filtered.length, deletedIds: calloutsToDelete, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => { });
-                // #endregion
                 return filtered;
               });
               needsRenderAndSave = true;
@@ -4862,16 +4825,10 @@ const PageAnnotationLayer = memo(({
         if (!showBackgroundAnnotations) {
           // If toggle is off, hide background annotations
           backgroundAnnotationVisible = false;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4893', message: 'Toggle off - hiding background annotation', data: { objType: obj.type, objId: obj.id || 'no-id', showBackgroundAnnotations, hasActiveRegions, regionsLength: Array.isArray(regions) ? regions.length : 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
-          // #endregion
         } else {
           // If toggle is on, annotations remain visible (no region containment check needed per requirements)
           // The requirement says they "must remain visible by default"
           backgroundAnnotationVisible = true;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4901', message: 'Toggle on - background annotations visible', data: { objType: obj.type, showBackgroundAnnotations, hasActiveRegions, regionsLength: Array.isArray(regions) ? regions.length : 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
-          // #endregion
         }
       } else if (!hasActiveRegions && !isScopedRegionAnnotation) {
         // When no regions are active, background annotations should always be visible
@@ -4889,19 +4846,7 @@ const PageAnnotationLayer = memo(({
                        scopedRegionAnnotationVisible &&
                        (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
       
-      // #region agent log
-      if (hasActiveRegions && !isScopedRegionAnnotation) {
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4925', message: 'Visibility calculation result', data: { objType: obj.type, isVisible, matchesSpace, matchesModule, surveyAnnotationVisible, scopedRegionAnnotationVisible, backgroundAnnotationVisible, isScopedRegionAnnotation, showBackgroundAnnotations, layerVisible }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2,4' }) }).catch(() => {});
-      }
-      // #endregion
-      
       const isInteractive = isVisible && (selectedSpaceId === null || objSpaceId === selectedSpaceId) && (selectedModuleId === null || objModuleId === selectedModuleId);
-
-      // #region agent log
-      if (hasActiveRegions && !isScopedRegionAnnotation) {
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4941', message: 'Setting object visibility', data: { objType: obj.type, isVisible, backgroundAnnotationVisible, showBackgroundAnnotations, hasActiveRegions, regionsLength: Array.isArray(regions) ? regions.length : 0, layerVisible }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2,4' }) }).catch(() => {});
-      }
-      // #endregion
       obj.set({
         visible: isVisible,
         selectable: isInteractive,
@@ -4932,9 +4877,6 @@ const PageAnnotationLayer = memo(({
       }))
     }); */
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4964', message: 'Visibility filter calling renderAll', data: { pageNumber, tool, visibleCount, hiddenCount, totalObjects: objects.length, showBackgroundAnnotations, hasActiveRegions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '5' }) }).catch(() => {});
-    // #endregion
     canvas.renderAll();
   }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, showBackgroundAnnotations, activeRegionId, isRegionSelectionActive, layerVisibility, tool]);
 
@@ -5454,9 +5396,6 @@ const PageAnnotationLayer = memo(({
     </div>
   );
 }, (prevProps, nextProps) => {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:5479', message: 'React.memo comparison called', data: { pageNumber: nextProps.pageNumber, showBackgroundAnnotationsChanged: prevProps.showBackgroundAnnotations !== nextProps.showBackgroundAnnotations, prevShowBackgroundAnnotations: prevProps.showBackgroundAnnotations, nextShowBackgroundAnnotations: nextProps.showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2,4' }) }).catch(() => {});
-  // #endregion
   // Custom comparison to prevent unnecessary re-renders
   // Only re-render if actually relevant props changed
   return (

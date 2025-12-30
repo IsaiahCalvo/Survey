@@ -11087,9 +11087,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [searchResults, currentMatchIndex]);
 
   const handleRequestRegionEdit = useCallback((spaceId, pageId) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:11089', message: 'handleRequestRegionEdit called', data: { spaceId, pageId, activeSpaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '1' }) }).catch(() => {});
-    // #endregion
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
       return;
