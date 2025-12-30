@@ -1366,9 +1366,9 @@ const PageAnnotationLayer = memo(({
   layerVisibility = { 'native': true, 'pdf-annotations': true }, // Layer visibility toggles
   // Callout overlay props
   callouts = [], // Array of all callout objects
-  setCallouts = () => {}, // Update callouts callback
+  setCallouts = () => { }, // Update callouts callback
   selectedCalloutId = null, // Currently selected callout ID
-  setSelectedCalloutId = () => {}, // Set selected callout callback
+  setSelectedCalloutId = () => { }, // Set selected callout callback
   // Properties panel positioning props
   middleAreaBounds = { top: 0, height: 500 }, // Bounds of the middle area ({top, height})
   surveyPanelWidth = 0, // Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
@@ -1398,7 +1398,7 @@ const PageAnnotationLayer = memo(({
     selectedModuleIdRef.current = selectedModuleId;
     showSurveyPanelRef.current = showSurveyPanel;
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1351',message:'Callouts ref updated',data:{calloutsCount:callouts.length,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1351', message: 'Callouts ref updated', data: { calloutsCount: callouts.length, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => { });
     // #endregion
   }, [callouts, setCallouts, selectedSpaceId, selectedModuleId, showSurveyPanel, pageNumber]);
   const strokeWidthRef = useRef(strokeWidth);
@@ -1516,7 +1516,7 @@ const PageAnnotationLayer = memo(({
     // If fabricTarget is provided (from Fabric.js event), use it directly
     // Otherwise, try to find target using the event
     let target = fabricTarget || (e ? canvas.findTarget(e, false) : null);
-    
+
     // If target is a child of a callout group, use the parent group instead
     if (target && !target.data?.type && target.group && target.group.data?.type === 'callout') {
       target = target.group;
@@ -1558,7 +1558,7 @@ const PageAnnotationLayer = memo(({
         }, 100); // Allow clicks after 100ms
       } else {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1540',message:'handleContextMenu NO CONTEXT MENU (no target, no clipboard)',data:{pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1540', message: 'handleContextMenu NO CONTEXT MENU (no target, no clipboard)', data: { pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
         // #endregion
       }
     }
@@ -1735,7 +1735,7 @@ const PageAnnotationLayer = memo(({
       });
     }
     closeContextMenu();
-  }, [contextMenu, closeContextMenu]);
+  }, [contextMenu, closeContextMenu, calloutsRef]);
 
   const saveEdit = useCallback(() => {
     const canvas = fabricRef.current;
@@ -1749,9 +1749,10 @@ const PageAnnotationLayer = memo(({
       // Handle React callouts (synthetic objects)
       if (obj.data?.reactCalloutId) {
         const reactCalloutId = obj.data.reactCalloutId;
-        setCallouts(prev => prev.map(c => 
-          c.id === reactCalloutId
-            ? {
+        if (setCalloutsRef.current) {
+          setCalloutsRef.current(prev => prev.map(c =>
+            c.id === reactCalloutId
+              ? {
                 ...c,
                 style: {
                   ...c.style,
@@ -1767,8 +1768,9 @@ const PageAnnotationLayer = memo(({
                   fillColor: editValues.fillColor === 'transparent' ? '' : (editValues.fillColor || 'rgba(255,255,255,0.9)')
                 }
               }
-            : c
-        ));
+              : c
+          ));
+        }
       } else if (obj.data?.type === 'callout') {
         // Apply to Fabric.js Callout parts
         const line = obj.getObjects().find(o => o.name === 'calloutLine');
@@ -2090,13 +2092,13 @@ const PageAnnotationLayer = memo(({
     canvas.isDrawingMode = tool === 'pen' || tool === 'highlighter';
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1744',message:'Setting canvas selection properties',data:{tool,willEnableSelection:tool==='select',pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'N'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1744', message: 'Setting canvas selection properties', data: { tool, willEnableSelection: tool === 'select', pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run6', hypothesisId: 'N' }) }).catch(() => { });
     // #endregion
     // Disable Fabric.js built-in selection for Pan tool (we want drag-to-pan)
     // Enable selection for Select tool (we have custom selection handler but need Fabric's selection enabled for it to work)
     canvas.selection = tool === 'select';
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1749',message:'Canvas selection set',data:{tool,canvasSelection:canvas.selection,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'N'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1749', message: 'Canvas selection set', data: { tool, canvasSelection: canvas.selection, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run6', hypothesisId: 'N' }) }).catch(() => { });
     // #endregion
 
     // Deselect active object when switching away from select tool to prevent interference
@@ -2420,7 +2422,7 @@ const PageAnnotationLayer = memo(({
         canvas.requestRenderAll();
         return;
       }
-      
+
       // Ensure callout groups have controls enabled when selected
       if (e.selected && e.selected.data?.type === 'callout') {
         // Enable controls and borders (borders may be needed for controls to render in Fabric.js)
@@ -2434,7 +2436,7 @@ const PageAnnotationLayer = memo(({
           canvas.requestRenderAll();
         }, 0);
       }
-      
+
       setPerPixelTargetFind(e.selected, false);
     });
 
@@ -3092,7 +3094,7 @@ const PageAnnotationLayer = memo(({
       const pointer = { x, y }; // Ensure pointer object exists
 
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2647',message:'PageAnnotationLayer handleMouseDown called',data:{currentTool,x,y,hasTarget:!!opt.target,targetType:opt.target?.type,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:2647', message: 'PageAnnotationLayer handleMouseDown called', data: { currentTool, x, y, hasTarget: !!opt.target, targetType: opt.target?.type, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
       // #endregion
 
       // Handle Fabric callout objects when select, pan, or callout tool is active
@@ -3101,7 +3103,7 @@ const PageAnnotationLayer = memo(({
       // Only handle Fabric callout drag interactions if clicking on a Fabric callout object
       if (currentTool === 'select' || currentTool === 'pan' || currentTool === 'callout') {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2670',message:'Select tool handleMouseDown',data:{hasTarget:!!opt.target,targetType:opt.target?.type,isFabricCallout:opt.target?.data?.type==='callout',pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'G'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:2670', message: 'Select tool handleMouseDown', data: { hasTarget: !!opt.target, targetType: opt.target?.type, isFabricCallout: opt.target?.data?.type === 'callout', pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'G' }) }).catch(() => { });
         // #endregion
         // Only handle Fabric callout objects (if they exist) for drag interactions
         const target = opt.target;
@@ -3557,14 +3559,14 @@ const PageAnnotationLayer = memo(({
           // Handle React callouts (not Fabric objects)
           // Check if eraser path intersects with any callout on this page
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3128',message:'Eraser checking callouts',data:{hasCalloutsRef:!!calloutsRef.current,calloutsCount:calloutsRef.current?.length||0,hasSetCallouts:!!setCalloutsRef.current,pageNumber,eraserPointsCount:eraserPath?.points?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'J'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3128', message: 'Eraser checking callouts', data: { hasCalloutsRef: !!calloutsRef.current, calloutsCount: calloutsRef.current?.length || 0, hasSetCallouts: !!setCalloutsRef.current, pageNumber, eraserPointsCount: eraserPath?.points?.length || 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'J' }) }).catch(() => { });
           // #endregion
           if (calloutsRef.current && calloutsRef.current.length > 0 && setCalloutsRef.current) {
             // Get canvas zoom/scale - eraser points are in canvas coordinates which may include zoom
             const canvasZoom = canvas.getZoom ? canvas.getZoom() : 1;
             const pageCallouts = calloutsRef.current.filter(c => c.pageNumber === pageNumber);
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3135',message:'Page callouts found',data:{pageCalloutsCount:pageCallouts.length,width,height,canvasZoom,scale,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'J'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3135', message: 'Page callouts found', data: { pageCalloutsCount: pageCallouts.length, width, height, canvasZoom, scale, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'J' }) }).catch(() => { });
             // #endregion
             const calloutsToDelete = [];
 
@@ -3587,7 +3589,7 @@ const PageAnnotationLayer = memo(({
               const textBoxHeightPx = callout.textBoxHeight * height;
 
               // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3145',message:'Checking callout for eraser',data:{calloutId:callout.id,arrowTipPx,kneePx,textBoxPx,textBoxWidthPx,textBoxHeightPx,width,height,firstEraserPoint:eraserPath.points[0],eraserRadius,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3145', message: 'Checking callout for eraser', data: { calloutId: callout.id, arrowTipPx, kneePx, textBoxPx, textBoxWidthPx, textBoxHeightPx, width, height, firstEraserPoint: eraserPath.points[0], eraserRadius, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'F' }) }).catch(() => { });
               // #endregion
 
               // Check if any eraser point is within eraser radius of:
@@ -3609,7 +3611,7 @@ const PageAnnotationLayer = memo(({
                 if (distToKnee < eraserRadius) return true;
 
                 // Check text box bounds (expand bounds by eraser radius)
-                const inTextBox = 
+                const inTextBox =
                   point.x >= textBoxPx.x - eraserRadius &&
                   point.x <= textBoxPx.x + textBoxWidthPx + eraserRadius &&
                   point.y >= textBoxPx.y - eraserRadius &&
@@ -3634,7 +3636,7 @@ const PageAnnotationLayer = memo(({
               if (isTouching) {
                 calloutsToDelete.push(callout.id);
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3178',message:'Callout touched by eraser',data:{calloutId:callout.id,arrowTip:callout.arrowTip,knee:callout.knee,textBoxPosition:callout.textBoxPosition,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3178', message: 'Callout touched by eraser', data: { calloutId: callout.id, arrowTip: callout.arrowTip, knee: callout.knee, textBoxPosition: callout.textBoxPosition, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run2', hypothesisId: 'F' }) }).catch(() => { });
                 // #endregion
               }
             }
@@ -3642,12 +3644,12 @@ const PageAnnotationLayer = memo(({
             // Delete touched callouts
             if (calloutsToDelete.length > 0) {
               // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3204',message:'Deleting callouts',data:{calloutsToDeleteCount:calloutsToDelete.length,calloutIds:calloutsToDelete,pageNumber,beforeCount:calloutsRef.current.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H'})}).catch(()=>{});
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3204', message: 'Deleting callouts', data: { calloutsToDeleteCount: calloutsToDelete.length, calloutIds: calloutsToDelete, pageNumber, beforeCount: calloutsRef.current.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => { });
               // #endregion
               setCalloutsRef.current(prev => {
                 const filtered = prev.filter(c => !calloutsToDelete.includes(c.id));
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3208',message:'Callouts after deletion',data:{afterCount:filtered.length,deletedIds:calloutsToDelete,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:3208', message: 'Callouts after deletion', data: { afterCount: filtered.length, deletedIds: calloutsToDelete, pageNumber }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => { });
                 // #endregion
                 return filtered;
               });
@@ -3834,7 +3836,7 @@ const PageAnnotationLayer = memo(({
       if (toolRef.current !== 'select') {
         return;
       }
-      
+
       // Ensure canvas.selection is enabled for select tool
       if (!canvas.selection) {
         canvas.selection = true;
@@ -3898,7 +3900,7 @@ const PageAnnotationLayer = memo(({
           canvas.requestRenderAll();
           return;
         }
-        
+
         // If clicking directly on a callout group, ensure controls are enabled
         if (e.target && e.target.data?.type === 'callout') {
           if (e.target._originalHasBorders === undefined) {
@@ -3911,7 +3913,7 @@ const PageAnnotationLayer = memo(({
             canvas.requestRenderAll();
           }, 0);
         }
-        
+
         // Don't initialize selection rect - allow single-click object selection to work normally
         // But also don't prevent the object from being selected
         // Return early so Fabric.js can handle the object selection
@@ -3944,6 +3946,9 @@ const PageAnnotationLayer = memo(({
         isWindowSelection: true // Default to window (L→R), updated during drag
       };
 
+      // Disable Fabric's default selection visual to prevent double overlay
+      canvas.selection = false;
+
       // Create temporary rectangle for visual feedback using viewport-transformed coordinates
       // This ensures the rectangle aligns exactly with the cursor position
       const selectionRect = new Rect({
@@ -3967,9 +3972,9 @@ const PageAnnotationLayer = memo(({
     // Track mouse move to update selection rectangle and visual style based on direction
     const handleMouseMoveForSelection = (e) => {
       if (!selectionRectRef.current) return;
-      
-      // During drag selection, we keep canvas.selection enabled
-      // This allows Fabric.js to handle object interactions properly
+
+      // During drag selection, we disable canvas.selection to avoid double overlay
+      // We handle the selection logic manually in mouseUp
 
       // Get viewport-transformed coordinates for visual rectangle (to match cursor position)
       const pointer = canvas.getPointer(e.e, false);
@@ -4047,7 +4052,7 @@ const PageAnnotationLayer = memo(({
       if (!selectionRectRef.current) {
         // Ensure canvas.selection is enabled for single-click selection
         canvas.selection = true;
-        
+
         // Use geometry-based hit testing for single-click selection
         const pointer = canvas.getPointer(e.e);
         const allObjects = canvas.getObjects();
@@ -4142,13 +4147,13 @@ const PageAnnotationLayer = memo(({
           selectionRectObjRef.current = null;
           canvas.renderAll();
         }
-        
+
         // Handle single-click deselection (clicked on empty space)
         canvas.discardActiveObject();
         canvas.requestRenderAll();
         return;
       }
-      
+
       // There was a meaningful drag - perform drag selection
       if (selWidth > 5 || selHeight > 5) {
         const selRight = selLeft + selWidth;
@@ -4265,7 +4270,7 @@ const PageAnnotationLayer = memo(({
     canvas.on('mouse:down', (opt) => {
       // Detect right-click: actual right button, or Ctrl+click (Windows/Linux), or Command+click (Mac)
       const isRightClick = opt.e.button === 2 || opt.e.which === 3 || (opt.e.ctrlKey && opt.e.button === 0) || (opt.e.metaKey && opt.e.button === 0);
-      
+
       // Handle right-click for context menu directly from Fabric.js event
       if (isRightClick) {
         opt.e.preventDefault(); // Prevent default browser context menu
@@ -4281,7 +4286,7 @@ const PageAnnotationLayer = memo(({
         handleContextMenu(syntheticEvent, opt.target);
         return; // Don't process as regular mouse down
       }
-      
+
       handleMouseDown(opt);
     });
     canvas.on('mouse:move', handleMouseMove);
@@ -4442,14 +4447,14 @@ const PageAnnotationLayer = memo(({
       const objModuleId = obj.moduleId || null;
       const matchesSpace = selectedSpaceIdRef.current === null || objSpaceId === selectedSpaceIdRef.current;
       const matchesModule = selectedModuleIdRef.current === null || objModuleId === selectedModuleIdRef.current;
-      
+
       // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
       const isSurveyAnnotation = objModuleId !== null;
-      
+
       // Survey annotations (highlights, callouts, etc.) should only be visible when survey mode is active AND a module is selected
       // Survey annotations require: survey panel open AND matching module selected
       const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
-      
+
       const isVisible = matchesSpace && matchesModule && surveyAnnotationVisible;
 
       if (isVisible) {
@@ -4987,7 +4992,7 @@ const PageAnnotationLayer = memo(({
             button: e.button,
             which: e.which
           };
-          
+
           // Create a synthetic Fabric object representation of the callout
           // This allows the context menu and edit modal to work with React callouts
           const syntheticTarget = {
@@ -5002,7 +5007,7 @@ const PageAnnotationLayer = memo(({
             ],
             opacity: callout.style?.opacity !== undefined ? callout.style.opacity : 1
           };
-          
+
           handleContextMenu(syntheticEvent, syntheticTarget);
         }}
       />
@@ -5202,7 +5207,7 @@ const PageAnnotationLayer = memo(({
             </div>
           )}
 
-          {editModal.object.data?.type === 'callout' && (
+          {(editModal.object.data?.type === 'callout' || editModal.object.data?.reactCalloutId) && (
             <>
               <div style={{ marginBottom: '12px' }}>
                 <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Text Style</label>
