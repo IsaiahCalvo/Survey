@@ -2478,6 +2478,13 @@ const PageAnnotationLayer = memo(({
         // Store current activeRegionId on the path if a region is active
         if (activeRegionIdRef.current) {
           e.path.set({ regionId: activeRegionIdRef.current });
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:2479', message: 'Tagging annotation with regionId', data: { regionId: activeRegionIdRef.current, tool: 'pen/highlighter' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => {});
+          // #endregion
+        } else {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:2482', message: 'No activeRegionId when creating annotation', data: { tool: 'pen/highlighter' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => {});
+          // #endregion
         }
       }
       saveCanvas();

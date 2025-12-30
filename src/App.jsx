@@ -13783,12 +13783,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   selectedSpaceId={annotationSpaceId}
                                   selectedModuleId={selectedModuleId}
                                   selectedCategoryId={selectedCategoryId}
-                                  activeRegions={pageRegions}
-                                  showBackgroundAnnotations={showBackgroundAnnotations}
-                                  activeRegionId={activeRegionId}
-                                  eraserMode={eraserMode}
-                                  eraserSize={eraserSize}
-                                  showSurveyPanel={showSurveyPanel}
+                              activeRegions={(() => {
+                                // #region agent log
+                                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13891', message: 'Passing activeRegions to PageAnnotationLayer (single page)', data: { pageNum, regionsCount: pageRegions ? pageRegions.length : 0, hasRegions: !!pageRegions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+                                // #endregion
+                                return pageRegions;
+                              })()}
+                              showBackgroundAnnotations={showBackgroundAnnotations}
+                              activeRegionId={activeRegionId}
+                              eraserMode={eraserMode}
+                              eraserSize={eraserSize}
+                              showSurveyPanel={showSurveyPanel}
                                   layerVisibility={annotationLayerVisibility}
                                   callouts={callouts}
                                   setCallouts={setCallouts}

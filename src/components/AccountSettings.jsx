@@ -886,9 +886,17 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
                       </div>
                     </div>
-                  </>
+                    </>
+                  )}
+                  </section>
                 )}
-              </section>
+
+                {subscriptionViewTab === 'usage' && (
+                  <section className="account-section">
+                    <UsageIndicator />
+                  </section>
+                )}
+              </>
             )}
 
             {activeTab === 'connected-services' && (
