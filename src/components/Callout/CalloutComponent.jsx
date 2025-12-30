@@ -117,6 +117,10 @@ const CalloutComponent = ({
 
     if (!isSelected) {
       setIsEditing(false);
+      // Blur the textarea if it's focused
+      if (textareaRef.current && document.activeElement === textareaRef.current) {
+        textareaRef.current.blur();
+      }
       // Only delete if we were previously selected (not on initial mount)
       if (wasSelected && (!callout.text || callout.text.trim() === '')) {
         onDelete();
@@ -167,8 +171,12 @@ const CalloutComponent = ({
       mouseDownPositionRef.current = { x: e.clientX, y: e.clientY };
 
       // Check if Control/Command is held to move the entire callout
-      const isWholeMove = e.ctrlKey || e.metaKey;
-      const isCommandKey = e.ctrlKey || e.metaKey;
+      const isModifierKey = e.ctrlKey || e.metaKey; // Ctrl on Windows/Linux, Cmd on Mac
+      const isWholeMove = isModifierKey;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:handleTextBoxMouseDown',message:'MouseDown - Control/Command state',data:{isModifierKey,isWholeMove,hasDragged:hasDraggedRef.current,ctrlKey:e.ctrlKey,metaKey:e.metaKey},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D'})}).catch(()=>{});
+      // #endregion
 
       // Capture DOM references before creating closure
       const targetElement = e.currentTarget;
@@ -180,8 +188,11 @@ const CalloutComponent = ({
           const dy = Math.abs(moveEvent.clientY - mouseDownPositionRef.current.y);
           if (dx > 5 || dy > 5) {
             hasDraggedRef.current = true;
-            // If Command key is held and we've started dragging, start the drag operation
-            if (isCommandKey && isInteractive) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:handleMouseMove',message:'Drag detected - setting hasDragged to true',data:{hasDragged:hasDraggedRef.current,dx,dy,isModifierKey,isInteractive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,D'})}).catch(()=>{});
+            // #endregion
+            // If Control/Command key is held and we've started dragging, start the drag operation
+            if (isModifierKey && isInteractive) {
               // For whole callout movement, use mouse position relative to the canvas
               let offset;
               if (canvasElement) {
@@ -215,8 +226,14 @@ const CalloutComponent = ({
       document.addEventListener('mousemove', handleMouseMove);
 
       const handleMouseUp = () => {
-        // If Command key was held and no drag occurred, show context menu
-        if (isCommandKey && isInteractive && !hasDraggedRef.current) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:handleMouseUp',message:'MouseUp - checking context menu condition',data:{hasDragged:hasDraggedRef.current,isModifierKey,isInteractive,willShowContextMenu:isModifierKey && isInteractive && !hasDraggedRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'})}).catch(()=>{});
+        // #endregion
+        // If Control/Command key was held and no drag occurred, show context menu
+        if (isModifierKey && isInteractive && !hasDraggedRef.current) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:handleMouseUp',message:'SHOWING CONTEXT MENU',data:{hasDragged:hasDraggedRef.current,isModifierKey,isInteractive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'})}).catch(()=>{});
+          // #endregion
           setContextMenu({
             visible: true,
             x: mouseDownPositionRef.current.x,
@@ -241,8 +258,8 @@ const CalloutComponent = ({
       wasSelectedBeforeClickRef.current = isSelected;
       onSelect();
 
-      // Only start drag immediately if Command is NOT held (normal drag)
-      // If Command is held, wait to see if it's a drag or click
+      // Only start drag immediately if Control/Command is NOT held (normal drag)
+      // If Control/Command is held, wait to see if it's a drag or click
       if (isWholeMove) {
         // Don't start drag immediately - wait to see if mouse moves
         // If mouse moves, handleMouseMove will start the drag
@@ -274,9 +291,15 @@ const CalloutComponent = ({
     }
 
     const didDrag = hasDraggedRef.current;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:handleTextBoxClick',message:'Click handler - BEFORE reset',data:{didDrag,hasDragged:hasDraggedRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     isInClickSequenceRef.current = false;
     hasDraggedRef.current = false;
     mouseDownPositionRef.current = null;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:handleTextBoxClick',message:'Click handler - AFTER reset',data:{didDrag,hasDragged:hasDraggedRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
 
     // Only enter editing if it was already selected and no drag occurred
     // This means: first click selects, second click enters edit mode
@@ -309,8 +332,8 @@ const CalloutComponent = ({
     e.stopPropagation();
     e.preventDefault();
     
-    const isCommandKey = e.ctrlKey || e.metaKey;
-    const isWholeMove = isCommandKey;
+    const isModifierKey = e.ctrlKey || e.metaKey; // Ctrl on Windows/Linux, Cmd on Mac
+    const isWholeMove = isModifierKey;
     
     // Track mouse position and drag state
     hasDraggedRef.current = false;
@@ -338,8 +361,8 @@ const CalloutComponent = ({
         const dy = Math.abs(moveEvent.clientY - mouseDownPositionRef.current.y);
         if (dx > 5 || dy > 5) {
           hasDraggedRef.current = true;
-          // If Command key is held and we've started dragging, start the drag operation
-          if (isCommandKey && isInteractive) {
+          // If Control/Command key is held and we've started dragging, start the drag operation
+          if (isModifierKey && isInteractive) {
             // For whole callout movement, use mouse position relative to the canvas
             let offset;
             if (canvasElement && canvasElement !== document.body && canvasElement.getBoundingClientRect) {
@@ -363,8 +386,8 @@ const CalloutComponent = ({
     };
 
     const handleMouseUp = () => {
-      // If Command key was held and no drag occurred, show context menu
-      if (isCommandKey && isInteractive && !hasDraggedRef.current) {
+      // If Control/Command key was held and no drag occurred, show context menu
+      if (isModifierKey && isInteractive && !hasDraggedRef.current) {
         setContextMenu({
           visible: true,
           x: mouseDownPositionRef.current.x,
@@ -416,8 +439,8 @@ const CalloutComponent = ({
       return;
     }
     
-    const isCommandKey = e.ctrlKey || e.metaKey;
-    const isWholeMove = isCommandKey;
+    const isModifierKey = e.ctrlKey || e.metaKey; // Ctrl on Windows/Linux, Cmd on Mac
+    const isWholeMove = isModifierKey;
     
     // Track mouse position and drag state
     hasDraggedRef.current = false;
@@ -441,8 +464,8 @@ const CalloutComponent = ({
         const dy = Math.abs(moveEvent.clientY - mouseDownPositionRef.current.y);
         if (dx > 5 || dy > 5) {
           hasDraggedRef.current = true;
-          // If Command key is held and we've started dragging, start the drag operation
-          if (isCommandKey && isInteractive) {
+          // If Control/Command key is held and we've started dragging, start the drag operation
+          if (isModifierKey && isInteractive) {
             // For whole callout movement, use mouse position relative to the canvas
             let offset;
             if (canvasElement && canvasElement !== document.body && canvasElement.getBoundingClientRect) {
@@ -465,8 +488,8 @@ const CalloutComponent = ({
     };
 
     const handleMouseUp = () => {
-      // If Command key was held and no drag occurred, show context menu
-      if (isCommandKey && isInteractive && !hasDraggedRef.current) {
+      // If Control/Command key was held and no drag occurred, show context menu
+      if (isModifierKey && isInteractive && !hasDraggedRef.current) {
         setContextMenu({
           visible: true,
           x: mouseDownPositionRef.current.x,
@@ -498,8 +521,8 @@ const CalloutComponent = ({
     mouseUpHandlerRef.current = handleMouseUp;
     document.addEventListener('mouseup', handleMouseUp);
     
-    // Only start drag immediately if Command is NOT held (normal drag)
-    // If Command is held, wait to see if it's a drag or click
+    // Only start drag immediately if Control/Command is NOT held (normal drag)
+    // If Control/Command is held, wait to see if it's a drag or click
     if (isWholeMove) {
       // Don't start drag immediately - wait to see if mouse moves
       // If mouse moves, handleMouseMove will start the drag
@@ -519,6 +542,10 @@ const CalloutComponent = ({
   const handleContextMenu = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:handleContextMenu',message:'Right-click context menu triggered',data:{isInteractive,hasDragged:hasDraggedRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     
     // Only show context menu when callout is interactive
     if (!isInteractive) return;

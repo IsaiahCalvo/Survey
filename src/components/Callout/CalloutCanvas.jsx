@@ -183,6 +183,10 @@ const CalloutCanvas = ({
       
       // If clicking on empty space (not within any callout bounds), deselect
       if (!isClickOnAnyCallout) {
+        // Blur any active text inputs before deselecting
+        if (document.activeElement && (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT')) {
+          document.activeElement.blur();
+        }
         setSelectedCalloutId(null);
         setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
         // Don't return - let the event continue to Fabric canvas for pan/select behavior
@@ -481,6 +485,10 @@ const CalloutCanvas = ({
       
       // If clicking on empty space (not within any callout bounds), deselect
       if (!isClickOnAnyCallout) {
+        // Blur any active text inputs before deselecting
+        if (document.activeElement && (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT')) {
+          document.activeElement.blur();
+        }
         setSelectedCalloutId(null);
         setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
         return;
@@ -489,6 +497,10 @@ const CalloutCanvas = ({
     
     // Deselect if clicking on empty space (not on a callout) - for callout tool
     if (e.target === canvasRef.current) {
+      // Blur any active text inputs before deselecting
+      if (document.activeElement && (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT')) {
+        document.activeElement.blur();
+      }
       setSelectedCalloutId(null);
       setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
     }

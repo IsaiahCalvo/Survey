@@ -1362,6 +1362,7 @@ const PageAnnotationLayer = memo(({
   activeRegions = null,
   showBackgroundAnnotations = true, // NEW: Toggle for background annotations visibility
   activeRegionId = null, // NEW: ID of currently active region for scoping
+  isRegionSelectionActive = false, // NEW: Whether region selection/editing is currently active
   eraserMode = 'partial', // 'partial' | 'entire'
   eraserSize = 20, // Eraser radius in pixels
   showSurveyPanel = false, // Whether survey mode is active
@@ -4838,10 +4839,16 @@ const PageAnnotationLayer = memo(({
 
     const canvas = fabricRef.current;
     const objects = canvas.getObjects();
-    const regions = Array.isArray(activeRegions) && activeRegions.length > 0 ? activeRegions : null;
+    // FIX: When region selection is active, preserve regions even if activeRegions is null temporarily
+    // This ensures annotations remain visible during region editing
+    // Use empty array to represent "regions mode active but no regions yet" vs null = "no regions mode"
+    const regions = (Array.isArray(activeRegions) && activeRegions.length > 0) 
+      ? activeRegions 
+      : (isRegionSelectionActive ? [] : null);
+    const hasActiveRegions = regions !== null; // null = no regions mode, [] or [...] = regions mode active
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4837', message: 'Visibility filter effect entry', data: { pageNumber, regionsCount: regions ? regions.length : 0, showBackgroundAnnotations, activeRegionId, activeRegionsIsArray: Array.isArray(activeRegions), activeRegionsLength: activeRegions?.length, objectsCount: objects.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '1,2' }) }).catch(() => {});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4842', message: 'Visibility filter effect entry', data: { pageNumber, regionsCount: Array.isArray(regions) ? regions.length : 0, showBackgroundAnnotations, activeRegionId, activeRegionsIsArray: Array.isArray(activeRegions), activeRegionsLength: activeRegions?.length, isRegionSelectionActive, hasActiveRegions, objectsCount: objects.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '1,2' }) }).catch(() => {});
     // #endregion
 
     let visibleCount = 0;
@@ -4859,7 +4866,7 @@ const PageAnnotationLayer = memo(({
 
       // NEW: When regions are active, background annotations should remain visible by default
       // Only apply space/module filtering if regions are NOT active, or for scoped region annotations
-      const hasActiveRegions = regions !== null;
+      // hasActiveRegions is already computed above
       
       // Filter by space: if selectedSpaceId is set, object must match
       // BUT: Skip space filtering for background annotations when regions are active
@@ -4886,23 +4893,24 @@ const PageAnnotationLayer = memo(({
       let withinRegions = true;
       let backgroundAnnotationVisible = true;
       
-      if (regions && !isScopedRegionAnnotation) {
-        // Only filter background annotations (not scoped ones) by region containment
+      // FIX: Check hasActiveRegions instead of just regions to handle empty array case
+      if (hasActiveRegions && !isScopedRegionAnnotation) {
+        // Only filter background annotations (not scoped ones) by toggle
         if (!showBackgroundAnnotations) {
           // If toggle is off, hide background annotations
           backgroundAnnotationVisible = false;
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4887', message: 'Toggle off - hiding background annotation', data: { objType: obj.type, objId: obj.id || 'no-id', showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4893', message: 'Toggle off - hiding background annotation', data: { objType: obj.type, objId: obj.id || 'no-id', showBackgroundAnnotations, hasActiveRegions, regionsLength: Array.isArray(regions) ? regions.length : 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
           // #endregion
         } else {
           // If toggle is on, annotations remain visible (no region containment check needed per requirements)
           // The requirement says they "must remain visible by default"
           backgroundAnnotationVisible = true;
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4895', message: 'Toggle on - background annotations visible', data: { objType: obj.type, showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4901', message: 'Toggle on - background annotations visible', data: { objType: obj.type, showBackgroundAnnotations, hasActiveRegions, regionsLength: Array.isArray(regions) ? regions.length : 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
           // #endregion
         }
-      } else if (!regions && !isScopedRegionAnnotation) {
+      } else if (!hasActiveRegions && !isScopedRegionAnnotation) {
         // When no regions are active, background annotations should always be visible
         backgroundAnnotationVisible = true;
       }
@@ -4926,6 +4934,11 @@ const PageAnnotationLayer = memo(({
       
       const isInteractive = isVisible && (selectedSpaceId === null || objSpaceId === selectedSpaceId) && (selectedModuleId === null || objModuleId === selectedModuleId);
 
+      // #region agent log
+      if (regions && !isScopedRegionAnnotation) {
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4929', message: 'Setting object visibility', data: { objType: obj.type, isVisible, backgroundAnnotationVisible, showBackgroundAnnotations, hasRegions: !!regions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
+      }
+      // #endregion
       obj.set({
         visible: isVisible,
         selectable: isInteractive,
