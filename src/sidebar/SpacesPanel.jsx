@@ -74,6 +74,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onRequestRegionEdit,
   onRemovePage,
   onExitSpace,
+  onToggleSpace,
   isRegionSelectionActive = false,
   features,
   getRegionLightbulbState = null,
@@ -188,11 +189,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
         }}
       >
         <div
-          onClick={() => onSpaceClick(space.id)}
           onDoubleClick={() => onToggleExpand(space.id)}
           style={{
             padding: '10px 10px 10px 6px',
-            cursor: 'pointer',
+            cursor: 'default',
             background: headerBackground,
             transition: 'background 0.15s ease',
             display: 'flex',
@@ -333,35 +333,52 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 alignItems: 'center',
                 marginLeft: 'auto'
               }}>
-                {isActive && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onExitSpace?.(space.id);
-                    }}
-                    style={{
-                      background: '#4A90E2',
-                      border: 'none',
-                      color: '#ffffff',
-                      padding: '4px 10px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      fontFamily: FONT_FAMILY,
-                      transition: 'background 0.15s ease'
-                    }}
-                    onMouseEnter={(e) => {
+                {/* Toggle Switch - Always visible */}
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleSpace?.(space.id, !isActive);
+                  }}
+                  style={{
+                    position: 'relative',
+                    width: '36px',
+                    height: '20px',
+                    borderRadius: '10px',
+                    background: isActive ? '#4A90E2' : '#3a3a3a',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s ease',
+                    border: isActive ? '1px solid #357abd' : '1px solid #4a4a4a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '2px',
+                    flexShrink: 0
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = '#4a4a4a';
+                    } else {
                       e.currentTarget.style.background = '#357abd';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = isActive ? '#4A90E2' : '#3a3a3a';
+                  }}
+                  title={isActive ? 'Turn off space' : 'Turn on space'}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '50%',
+                      background: '#ffffff',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+                      transition: 'transform 0.2s ease',
+                      transform: isActive ? 'translateX(16px)' : 'translateX(0px)',
+                      left: '2px'
                     }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#4A90E2';
-                    }}
-                    title="Exit Space"
-                  >
-                    Exit
-                  </button>
-                )}
+                  />
+                </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -982,6 +999,24 @@ const SpacesPanel = ({
     }
   }, [selectedSpaceId, activeSpaceId, onExitSpaceMode]);
 
+  const handleToggleSpace = useCallback((spaceId, shouldActivate) => {
+    if (shouldActivate) {
+      // Turn on: activate the space
+      setSelectedSpaceId(spaceId);
+      if (onSetActiveSpace) {
+        onSetActiveSpace(spaceId);
+      }
+    } else {
+      // Turn off: deactivate the space
+      if (selectedSpaceId === spaceId) {
+        setSelectedSpaceId(null);
+      }
+      if (activeSpaceId === spaceId && onExitSpaceMode) {
+        onExitSpaceMode();
+      }
+    }
+  }, [selectedSpaceId, activeSpaceId, onSetActiveSpace, onExitSpaceMode]);
+
   const handlePageInputChange = useCallback((spaceId, value) => {
     setPageInputs(prev => ({
       ...prev,
@@ -1228,6 +1263,7 @@ const SpacesPanel = ({
                     onCancelRename={handleRenameCancel}
                     onDelete={handleDelete}
                     onExitSpace={handleExitSpace}
+                    onToggleSpace={handleToggleSpace}
                     onExportSpaceCSV={(spaceId) => onExportSpaceCSV?.(spaceId)}
                     onExportSpacePDF={(spaceId) => onExportSpacePDF?.(spaceId)}
                     onPageInputChange={handlePageInputChange}
