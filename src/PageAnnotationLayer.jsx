@@ -1382,6 +1382,9 @@ const PageAnnotationLayer = memo(({
   surveyPanelWidth = 0, // Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
   // Note: selectedSpaceId, selectedModuleId, and showSurveyPanel are already defined above
 }) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:1384', message: 'PageAnnotationLayer component render', data: { pageNumber, showBackgroundAnnotations, activeRegionsLength: activeRegions?.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2,4' }) }).catch(() => {});
+  // #endregion
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
   const processedHighlightsRef = useRef(new Set());
@@ -2059,35 +2062,12 @@ const PageAnnotationLayer = memo(({
   }, [eraserMode]);
 
   // Keep layerVisibility ref in sync
+  // FIX: This effect should NOT override the main visibility filter - it should only update the ref
+  // The main visibility filter (lines 4836+) handles everything including layer visibility
   useEffect(() => {
     layerVisibilityRef.current = layerVisibility;
-    // Update object visibility when layer visibility changes
-    if (fabricRef.current) {
-      fabricRef.current.getObjects().forEach(obj => {
-        const objLayer = obj.layer || 'native'; // Default to 'native' for objects without layer
-        const layerVisible = layerVisibilityRef.current[objLayer] !== false;
-        if (!layerVisible) {
-          obj.set({ visible: false, selectable: false, evented: false });
-        } else {
-          // Re-check other visibility conditions (space, module, survey panel)
-          const objSpaceId = obj.spaceId || null;
-          const objModuleId = obj.moduleId || null;
-          const currentSpaceId = selectedSpaceIdRef.current;
-          const currentModuleId = selectedModuleIdRef.current;
-          const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
-          const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
-
-          // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
-          const isSurveyAnnotation = objModuleId !== null;
-          // Survey annotations (highlights, callouts, etc.) should only be visible when survey mode is active AND a module is selected
-          const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && currentModuleId !== null && objModuleId === currentModuleId);
-
-          const isVisible = matchesSpace && matchesModule && surveyAnnotationVisible;
-          obj.set({ visible: isVisible, selectable: isVisible, evented: isVisible });
-        }
-      });
-      fabricRef.current.renderAll();
-    }
+    // Don't set visibility here - let the main filter handle it
+    // The main filter will re-run when layerVisibility changes (it's in the dependency array)
   }, [layerVisibility]);
 
   useEffect(() => {
@@ -4854,6 +4834,15 @@ const PageAnnotationLayer = memo(({
     let visibleCount = 0;
     let hiddenCount = 0;
     objects.forEach(obj => {
+      // FIX: Check layer visibility FIRST - if layer is hidden, object is hidden regardless of other conditions
+      const objLayer = obj.layer || 'native';
+      const layerVisible = layerVisibilityRef.current[objLayer] !== false;
+      if (!layerVisible) {
+        obj.set({ visible: false, selectable: false, evented: false });
+        hiddenCount += 1;
+        return; // Skip further visibility checks
+      }
+      
       const objSpaceId = obj.spaceId || null;
       const objModuleId = obj.moduleId || null;
       const objRegionId = obj.regionId || null; // NEW: Get region ID from annotation
@@ -4927,16 +4916,16 @@ const PageAnnotationLayer = memo(({
                        (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
       
       // #region agent log
-      if (regions && !isScopedRegionAnnotation) {
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4885', message: 'Visibility calculation result', data: { objType: obj.type, isVisible, matchesSpace, matchesModule, surveyAnnotationVisible, scopedRegionAnnotationVisible, backgroundAnnotationVisible, isScopedRegionAnnotation, showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+      if (hasActiveRegions && !isScopedRegionAnnotation) {
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4925', message: 'Visibility calculation result', data: { objType: obj.type, isVisible, matchesSpace, matchesModule, surveyAnnotationVisible, scopedRegionAnnotationVisible, backgroundAnnotationVisible, isScopedRegionAnnotation, showBackgroundAnnotations, layerVisible }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2,4' }) }).catch(() => {});
       }
       // #endregion
       
       const isInteractive = isVisible && (selectedSpaceId === null || objSpaceId === selectedSpaceId) && (selectedModuleId === null || objModuleId === selectedModuleId);
 
       // #region agent log
-      if (regions && !isScopedRegionAnnotation) {
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4929', message: 'Setting object visibility', data: { objType: obj.type, isVisible, backgroundAnnotationVisible, showBackgroundAnnotations, hasRegions: !!regions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
+      if (hasActiveRegions && !isScopedRegionAnnotation) {
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4941', message: 'Setting object visibility', data: { objType: obj.type, isVisible, backgroundAnnotationVisible, showBackgroundAnnotations, hasActiveRegions, regionsLength: Array.isArray(regions) ? regions.length : 0, layerVisible }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2,4' }) }).catch(() => {});
       }
       // #endregion
       obj.set({
@@ -4970,7 +4959,7 @@ const PageAnnotationLayer = memo(({
     }); */
 
     canvas.renderAll();
-  }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, showBackgroundAnnotations, activeRegionId]);
+  }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, showBackgroundAnnotations, activeRegionId, isRegionSelectionActive, layerVisibility, tool]);
 
   // Keyboard handler for deleting selected annotations
   useEffect(() => {
@@ -5488,6 +5477,9 @@ const PageAnnotationLayer = memo(({
     </div>
   );
 }, (prevProps, nextProps) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:5479', message: 'React.memo comparison called', data: { pageNumber: nextProps.pageNumber, showBackgroundAnnotationsChanged: prevProps.showBackgroundAnnotations !== nextProps.showBackgroundAnnotations, prevShowBackgroundAnnotations: prevProps.showBackgroundAnnotations, nextShowBackgroundAnnotations: nextProps.showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2,4' }) }).catch(() => {});
+  // #endregion
   // Custom comparison to prevent unnecessary re-renders
   // Only re-render if actually relevant props changed
   return (
@@ -5503,7 +5495,14 @@ const PageAnnotationLayer = memo(({
     prevProps.highlightsToRemove === nextProps.highlightsToRemove &&
     prevProps.onHighlightCreated === nextProps.onHighlightCreated &&
     prevProps.selectedSpaceId === nextProps.selectedSpaceId &&
+    prevProps.selectedModuleId === nextProps.selectedModuleId &&
+    prevProps.selectedCategoryId === nextProps.selectedCategoryId &&
     prevProps.activeRegions === nextProps.activeRegions &&
+    prevProps.showBackgroundAnnotations === nextProps.showBackgroundAnnotations &&
+    prevProps.activeRegionId === nextProps.activeRegionId &&
+    prevProps.isRegionSelectionActive === nextProps.isRegionSelectionActive &&
+    prevProps.showSurveyPanel === nextProps.showSurveyPanel &&
+    prevProps.layerVisibility === nextProps.layerVisibility &&
     prevProps.callouts === nextProps.callouts &&
     prevProps.selectedCalloutId === nextProps.selectedCalloutId
   );

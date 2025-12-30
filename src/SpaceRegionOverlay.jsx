@@ -215,7 +215,7 @@ const SpaceRegionOverlay = ({
         left: 0,
         width: `${scaledWidth}px`,
         height: `${scaledHeight}px`,
-        pointerEvents: 'auto',
+        pointerEvents: 'none', // FIX: Don't block mouse events - overlay is visual only
         zIndex: 30
       }}
     >
@@ -225,7 +225,8 @@ const SpaceRegionOverlay = ({
         style={{
           position: 'absolute',
           top: 0,
-          left: 0
+          left: 0,
+          pointerEvents: 'none' // FIX: Don't block mouse events
         }}
       >
         <defs>
@@ -246,14 +247,14 @@ const SpaceRegionOverlay = ({
           d={overlayPath}
           fill="rgba(40, 40, 40, 0.55)"
           fillRule="evenodd"
-          pointerEvents="auto"
+          pointerEvents="none"
         />
         <path
           d={overlayPath}
           fill={`url(#${hatchId})`}
           fillRule="evenodd"
           opacity={0.3}
-          pointerEvents="auto"
+          pointerEvents="none"
         />
       </svg>
     </div>

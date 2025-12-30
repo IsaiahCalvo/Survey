@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import Icon from '../../Icons';
 
-const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, onDelete, onEdit, hasClipboard }) => {
+const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, onDelete, onEdit, hasClipboard, onDeselect }) => {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -13,6 +13,10 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
         return; // Let button handlers process the click
       }
       if (menuRef.current && !menuRef.current.contains(e.target)) {
+        // If clicking outside, deselect the callout (if callback provided) and close the menu
+        if (onDeselect) {
+          onDeselect();
+        }
         onClose();
       }
     };
@@ -37,7 +41,7 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
       document.removeEventListener('contextmenu', handleClickOutside, true);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [visible, onClose]);
+  }, [visible, onClose, onDeselect]);
 
   if (!visible) return null;
 

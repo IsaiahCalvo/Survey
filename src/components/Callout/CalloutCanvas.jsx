@@ -543,6 +543,11 @@ const CalloutCanvas = ({
     setCallouts(prev => prev.map(c => ({ ...c, isSelected: c.id === id })));
   }, [setSelectedCalloutId, setCallouts]);
 
+  const deselectCallout = useCallback(() => {
+    setSelectedCalloutId(null);
+    setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
+  }, [setSelectedCalloutId, setCallouts]);
+
   const updateCallout = useCallback((id, updates) => {
     setCallouts(prev => prev.map(c => {
       if (c.id === id) {
@@ -699,6 +704,7 @@ const CalloutCanvas = ({
           callout={callout}
           isSelected={callout.id === selectedCalloutId}
           onSelect={() => selectCallout(callout.id)}
+          onDeselect={deselectCallout}
           onStartDrag={startDrag}
           onUpdate={(updates) => updateCallout(callout.id, updates)}
           onDelete={() => deleteCallout(callout.id)}
