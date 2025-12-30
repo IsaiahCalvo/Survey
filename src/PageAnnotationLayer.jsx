@@ -3375,8 +3375,7 @@ const PageAnnotationLayer = memo(({
         return;
       }
       if (temp) {
-        // Store current selectedSpaceId on the shape
-        if (selectedSpaceIdRef.current) {
+        // Store current moduleId on the shape
         if (selectedModuleIdRef.current) {
           temp.set({ moduleId: selectedModuleIdRef.current });
         }
@@ -3794,8 +3793,7 @@ const PageAnnotationLayer = memo(({
           data: { type: 'arrow', arrowheadStyle: selectedArrowheadStyle }
         });
 
-        // Store current selectedSpaceId on the arrow group
-        if (selectedSpaceIdRef.current) {
+        // Store current moduleId on the arrow group
         if (selectedModuleIdRef.current) {
           group.set({ moduleId: selectedModuleIdRef.current });
         }
@@ -4677,8 +4675,7 @@ const PageAnnotationLayer = memo(({
           });
           // Store the highlightId and needsBIC flag on the object for later reference
           rect.set({ highlightId: highlight.highlightId, needsBIC: true });
-          // Store current selectedSpaceId on the highlight
-          if (selectedSpaceIdRef.current) {
+          // Store current moduleId on the highlight
           const objModuleId = highlight.moduleId || selectedModuleIdRef.current;
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
@@ -4723,8 +4720,7 @@ const PageAnnotationLayer = memo(({
             rect.set({ highlightId: highlight.highlightId });
             renderedHighlightsRef.current.set(highlight.highlightId, rect);
           }
-          // Store current selectedSpaceId on the highlight
-          if (selectedSpaceIdRef.current) {
+          // Store current moduleId on the highlight
           const objModuleId = highlight.moduleId || selectedModuleIdRef.current;
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
