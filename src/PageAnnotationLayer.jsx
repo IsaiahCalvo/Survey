@@ -4862,10 +4862,6 @@ const PageAnnotationLayer = memo(({
       : (isRegionSelectionActive ? [] : null);
     const hasActiveRegions = regions !== null; // null = no regions mode, [] or [...] = regions mode active
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4770',message:'Visibility filter effect entry',data:{pageNumber,selectedSpaceId,hasActiveRegions,activeRegionsLength:activeRegions?.length||0,isRegionSelectionActive,objectCount:objects.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
-    // #endregion
-
     let visibleCount = 0;
     let hiddenCount = 0;
     objects.forEach(obj => {

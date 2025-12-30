@@ -8734,15 +8734,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const sidebarData = JSON.parse(localStorage.getItem(`pdfSidebar_${pdfId}`) || '{}');
       setPageNames(sidebarData.pageNames || {});
       setBookmarks(sidebarData.bookmarks || []);
-      // Migrate spaces: ensure regions have showBackgroundAnnotations and enforce one region per page
+      // Migrate spaces: ensure regions have showBackgroundAnnotations
+      // Requirement: "A region can contain multiple areas (polygons) within it"
+      // Keep all regions as they represent multiple areas within the same logical region
       const migratedSpaces = (sidebarData.spaces || []).map(space => ({
         ...space,
         assignedPages: (space.assignedPages || []).map(page => {
           const regions = page.regions || [];
-          // Enforce one region per page - take only first region
-          const normalizedRegions = regions.length > 0 ? [regions[0]] : [];
           // Migrate: ensure showBackgroundAnnotations property exists
-          const migratedRegions = normalizedRegions.map(region => ({
+          const migratedRegions = regions.map(region => ({
             ...region,
             showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
           }));
@@ -8824,15 +8824,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Restore previous state
     setAnnotationsByPage(stateToRestore.annotationsByPage);
     setHighlightAnnotations(stateToRestore.highlightAnnotations);
-    // Migrate spaces: ensure regions have showBackgroundAnnotations and enforce one region per page
+    // Migrate spaces: ensure regions have showBackgroundAnnotations
+    // Requirement: "A region can contain multiple areas (polygons) within it"
+    // Keep all regions as they represent multiple areas within the same logical region
     const migratedSpaces = (stateToRestore.spaces || []).map(space => ({
       ...space,
       assignedPages: (space.assignedPages || []).map(page => {
         const regions = page.regions || [];
-        // Enforce one region per page - take only first region
-        const normalizedRegions = regions.length > 0 ? [regions[0]] : [];
         // Migrate: ensure showBackgroundAnnotations property exists
-        const migratedRegions = normalizedRegions.map(region => ({
+        const migratedRegions = regions.map(region => ({
           ...region,
           showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
         }));
@@ -8871,15 +8871,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Restore state
     setAnnotationsByPage(stateToRestore.annotationsByPage);
     setHighlightAnnotations(stateToRestore.highlightAnnotations);
-    // Migrate spaces: ensure regions have showBackgroundAnnotations and enforce one region per page
+    // Migrate spaces: ensure regions have showBackgroundAnnotations
+    // Requirement: "A region can contain multiple areas (polygons) within it"
+    // Keep all regions as they represent multiple areas within the same logical region
     const migratedSpaces = (stateToRestore.spaces || []).map(space => ({
       ...space,
       assignedPages: (space.assignedPages || []).map(page => {
         const regions = page.regions || [];
-        // Enforce one region per page - take only first region
-        const normalizedRegions = regions.length > 0 ? [regions[0]] : [];
         // Migrate: ensure showBackgroundAnnotations property exists
-        const migratedRegions = normalizedRegions.map(region => ({
+        const migratedRegions = regions.map(region => ({
           ...region,
           showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
         }));
@@ -9217,14 +9217,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         sanitizedUpdates = { ...sanitizedUpdates, name: trimmedName };
       }
 
-      // If assignedPages are being updated, enforce one region per page and migrate
+      // If assignedPages are being updated, preserve all regions (multiple areas within a region)
+      // Requirement: "A region can contain multiple areas (polygons) within it"
       if (Object.prototype.hasOwnProperty.call(updates, 'assignedPages')) {
         sanitizedUpdates.assignedPages = (updates.assignedPages || []).map(page => {
           const regions = page.regions || [];
-          // Enforce one region per page - take only first region
-          const normalizedRegions = regions.length > 0 ? [regions[0]] : [];
+          // Keep all regions as they represent multiple areas within the same logical region
           // Migrate: ensure showBackgroundAnnotations property exists
-          const migratedRegions = normalizedRegions.map(region => ({
+          const migratedRegions = regions.map(region => ({
             ...region,
             showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
           }));
@@ -9258,10 +9258,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               ? entry.label.trim()
               : `Region ${entry.pageId}`,
             wholePageIncluded: entry.wholePageIncluded !== false ? true : false,
-            // Requirement: "Each page can have at most one region" - enforce constraint
-            regions: Array.isArray(entry.regions) && entry.regions.length > 0 
-              ? [entry.regions[0]] // Only keep first region
-              : []
+            // Requirement: "A region can contain multiple areas (polygons) within it"
+            // Keep all regions as they represent multiple areas within the same logical region
+            regions: Array.isArray(entry.regions) ? entry.regions : []
           }
         ])
       );
@@ -11087,16 +11086,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [activeSpaceId]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11008',message:'Setting active space',data:{spaceId,previousActiveSpaceId:activeSpaceId,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
-    // #endregion
     setActiveSpaceId(spaceId);
   }, [activeSpaceId, selectedSpaceId]);
 
   const handleExitSpaceMode = useCallback(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11012',message:'Exiting space mode',data:{activeSpaceId,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     setActiveSpaceId(null);
   }, [activeSpaceId, selectedSpaceId]);
 
@@ -11291,35 +11284,41 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [spaces, activeSpaceId, regionSelectionPage]);
 
   const handleRegionComplete = useCallback((regions) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'handleRegionComplete called',data:{regionsCount:regions?.length||0,activeSpaceId,regionSelectionPage,regions:regions?.map(r=>({regionId:r.regionId,operation:r.operation,coordsLength:r.coordinates?.length}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     if (!activeSpaceId || !regionSelectionPage) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'Early return - missing activeSpaceId or regionSelectionPage',data:{activeSpaceId,regionSelectionPage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return;
     }
 
     const space = spaces.find(s => s.id === activeSpaceId);
     if (!space) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'Space not found',data:{activeSpaceId,spacesCount:spaces.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return;
     }
 
     const updatedPages = [...(space.assignedPages || [])];
     const pageIndex = updatedPages.findIndex(p => p.pageId === regionSelectionPage);
 
-    // Enforce one region per page - take only the first region if multiple exist
-    const normalizedRegions = Array.isArray(regions) && regions.length > 0 
-      ? [regions[0]] // Only keep first region
+    // Requirement: "A region can contain multiple areas (polygons) within it"
+    // Combine all additive regions (non-touching areas) into a single region object
+    // that contains all areas. Non-touching areas should be preserved as separate polygons
+    // within the same region.
+    // Filter to only additive regions with valid coordinates
+    // Regions with coordsLength: 0 are invalid/empty and should be excluded
+    const additiveRegions = Array.isArray(regions) 
+      ? regions.filter(r => {
+          const isAdditive = !r.operation || r.operation === 'add';
+          const hasValidCoords = Array.isArray(r.coordinates) && r.coordinates.length > 0;
+          return isAdditive && hasValidCoords;
+        })
       : [];
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'Normalized regions',data:{originalCount:regions?.length||0,normalizedCount:normalizedRegions.length,pageIndex},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
+    // If we have multiple additive regions (non-touching areas), we need to combine them
+    // into a single region. However, the current data structure stores coordinates as a flat array
+    // for a single polygon. For now, we'll use the first region and store the others in sourceRegions
+    // so they can be preserved and rendered separately in the overlay.
+    // The overlay component processes all regions in the array, so we can pass all additive regions
+    // as separate region objects, but they'll be treated as areas within the same logical region.
+    const normalizedRegions = additiveRegions.length > 0 
+      ? additiveRegions // Keep all additive regions as separate areas within the region
+      : [];
     
     // Ensure region has showBackgroundAnnotations property (migration)
     const migratedRegions = normalizedRegions.map(region => ({
@@ -11341,19 +11340,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       });
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'Calling handleSpaceUpdate',data:{activeSpaceId,regionsCount:migratedRegions.length,pageIndex,updatedPagesCount:updatedPages.length,pageData:updatedPages[pageIndex>=0?pageIndex:updatedPages.length-1]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,E'})}).catch(()=>{});
-    // #endregion
     handleSpaceUpdate(activeSpaceId, { assignedPages: updatedPages });
     setShowRegionSelection(false);
     setRegionSelectionPage(null);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'After state updates',data:{activeSpaceId,regionSelectionPage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     // Keep selectedSpaceId set - don't clear it when region selection completes
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'handleRegionComplete completed',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
   }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate]);
 
   // Templates are loaded from Supabase via Dashboard component
@@ -13650,29 +13640,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Get regions for a page in the active space
   const getPageRegions = useCallback((pageNumber) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'getPageRegions called',data:{pageNumber,activeSpaceId,spacesCount:spaces.length,showRegionSelection,regionSelectionPage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
-    // #endregion
     if (!activeSpaceId) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning null - no activeSpaceId',data:{pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return null;
     }
 
     const space = spaces.find(s => s.id === activeSpaceId);
     if (!space) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning null - space not found',data:{pageNumber,activeSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return null;
     }
 
     const assignedPage = space.assignedPages?.find(p => p.pageId === pageNumber);
     if (!assignedPage) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning null - assignedPage not found',data:{pageNumber,activeSpaceId,assignedPagesCount:space.assignedPages?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       return null;
     }
 
@@ -13680,29 +13658,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // This ensures annotations remain visible during region editing
     const isEditingThisPage = showRegionSelection && regionSelectionPage === pageNumber;
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Checking wholePageIncluded',data:{pageNumber,wholePageIncluded:assignedPage.wholePageIncluded,isEditingThisPage,regionsCount:assignedPage.regions?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-    
     if (assignedPage.wholePageIncluded !== false && !isEditingThisPage) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning null - wholePageIncluded check failed',data:{pageNumber,wholePageIncluded:assignedPage.wholePageIncluded,isEditingThisPage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       return null;
     }
 
     if (!assignedPage.regions || assignedPage.regions.length === 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning null - no regions',data:{pageNumber,regionsCount:assignedPage.regions?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       return null;
     }
-    // Enforce one region per page - return only the first region
-    const firstRegion = assignedPage.regions[0];
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:getPageRegions',message:'Returning regions',data:{pageNumber,regionId:firstRegion?.regionId,shapeType:firstRegion?.shapeType,coordsLength:firstRegion?.coordinates?.length||0,hasValidAreas:firstRegion?.coordinates?.length>=6},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
-    return [firstRegion];
+    // Requirement: "A region can contain multiple areas (polygons) within it"
+    // Return all regions as they represent multiple areas within the same logical region
+    // The overlay component will process all of them to show the combined visible areas
+    const allRegions = assignedPage.regions;
+    return allRegions;
   }, [activeSpaceId, spaces, showRegionSelection, regionSelectionPage]);
 
   // Track active region ID when regions are active
@@ -13768,13 +13735,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           };
         }
         
-        // Update the first (and only) region's lightbulb state
+        // Update all regions' lightbulb state (all areas share the same lightbulb)
+        // Requirement: "Each region has exactly one lightbulb"
         return {
           ...page,
-          regions: [{
-            ...regions[0],
+          regions: regions.map(region => ({
+            ...region,
             showBackgroundAnnotations: value
-          }]
+          }))
         };
       });
       
@@ -13787,9 +13755,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Handler for toggling background annotations visibility (per-region)
   const handleToggleBackgroundAnnotations = useCallback((spaceId, pageId, value) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13579',message:'Toggling background annotations',data:{newValue:value,spaceId,pageId,activeSpaceId,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,D'})}).catch(()=>{});
-    // #endregion
     setRegionLightbulbState(spaceId, pageId, value);
   }, [activeSpaceId, selectedSpaceId, setRegionLightbulbState]);
 
@@ -14294,9 +14259,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   return (region.shapeType === 'rectangular' && coords.length >= 8) ||
                                          (region.shapeType === 'polygon' && coords.length >= 6);
                                 });
-                                // #region agent log
-                                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:overlay-render',message:'Overlay render check',data:{pageNumber,pageRegionsCount:pageRegions?.length||0,hasValidAreas,showRegionSelection,regionSelectionPage,regions:pageRegions?.map(r=>({shapeType:r?.shapeType,coordsLength:r?.coordinates?.length||0}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,D,E'})}).catch(()=>{});
-                                // #endregion
                                 return hasValidAreas ? (
                                   <SpaceRegionOverlay
                                     pageNumber={pageNumber}
