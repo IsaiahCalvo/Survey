@@ -11156,30 +11156,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [searchResults, currentMatchIndex]);
 
   const handleRequestRegionEdit = useCallback((spaceId, pageId) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11156',message:'handleRequestRegionEdit called',data:{spaceId,pageId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11159',message:'Space not found',data:{spaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       return;
     }
 
     const assignedPage = space.assignedPages?.find(p => p.pageId === pageId);
     if (!assignedPage) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11164',message:'Assigned page not found',data:{spaceId,pageId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       return;
     }
 
     setActiveSpaceId(spaceId);
     setSelectedSpaceId(spaceId); // Automatically select the space when entering edit mode
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11168',message:'setSelectedSpaceId called in handleRequestRegionEdit',data:{spaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     setRegionSelectionPage(pageId);
     if (features?.advancedSurvey) {
       setShowRegionSelection(true);
@@ -11216,9 +11204,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [spaces, activeSpaceId, regionSelectionPage]);
 
   const handleRegionComplete = useCallback((regions) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11217',message:'handleRegionComplete called',data:{activeSpaceId,regionSelectionPage,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
     if (!activeSpaceId || !regionSelectionPage) return;
 
     const space = spaces.find(s => s.id === activeSpaceId);
@@ -11242,13 +11227,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     handleSpaceUpdate(activeSpaceId, { assignedPages: updatedPages });
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11241',message:'Closing region selection, keeping selectedSpaceId',data:{activeSpaceId,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
     setShowRegionSelection(false);
     setRegionSelectionPage(null);
     // Keep selectedSpaceId set - don't clear it when region selection completes
-  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, selectedSpaceId]);
+  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate]);
 
   // Templates are loaded from Supabase via Dashboard component
   // No need to load from localStorage here

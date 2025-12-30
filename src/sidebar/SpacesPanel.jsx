@@ -1161,9 +1161,6 @@ const SpacesPanel = ({
               {spaces.map((space) => {
                 const isActive = activeSpaceId === space.id;
                 const isSelected = selectedSpaceId === space.id;
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:1145',message:'isSelected calculated',data:{spaceId:space.id,selectedSpaceId,externalSelectedSpaceId,isSelected},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});
-                // #endregion
                 const isExpanded = expandedSpaces.has(space.id);
                 const pageCount = space.assignedPages?.length || 0;
                 const regionCount = space.assignedPages?.reduce((sum, p) => sum + (p.regions?.length || 0), 0) || 0;
