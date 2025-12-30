@@ -4798,18 +4798,27 @@ const PageAnnotationLayer = memo(({
       // Only apply space/module filtering if regions are NOT active, or for scoped region annotations
       // hasActiveRegions is already computed above
       
-      // Filter by space: if selectedSpaceId is set, object must match
-      // BUT: Skip space filtering for background annotations when regions are active
+      // Filter by space:
+      // - Annotations with a spaceId should only be visible when that specific space is active (hidden when no space is active)
+      // - Background annotations (objSpaceId === null) should always pass space filter and be controlled by toggle
       let matchesSpace = true;
       if (hasActiveRegions && !isScopedRegionAnnotation) {
         // When regions are active, don't filter background annotations by space
         matchesSpace = true;
       } else {
-        // Normal space filtering when no regions or for scoped annotations
-        matchesSpace = selectedSpaceId === null || objSpaceId === selectedSpaceId;
+        // For annotations with a spaceId: only visible when that specific space is active
+        if (objSpaceId !== null) {
+          // Annotation belongs to a space: only visible when that space is active
+          // When no space is active (selectedSpaceId === null), hide space-specific annotations
+          matchesSpace = selectedSpaceId !== null && objSpaceId === selectedSpaceId;
+        } else {
+          // Background annotations (objSpaceId === null): always pass space filter check
+          // Visibility will be controlled by showBackgroundAnnotations toggle
+          matchesSpace = true;
+        }
         // #region agent log
         if (objSpaceId === null && selectedSpaceId !== null && matchesSpace === false) {
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4805',message:'Background annotation filtered out by space',data:{pageNumber,selectedSpaceId,objSpaceId,matchesSpace,isScopedRegionAnnotation,hasActiveRegions},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4815',message:'Background annotation filtered out by space',data:{pageNumber,selectedSpaceId,objSpaceId,matchesSpace,isScopedRegionAnnotation,hasActiveRegions},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         }
         // #endregion
       }
@@ -4840,28 +4849,26 @@ const PageAnnotationLayer = memo(({
       }
 
       // NEW: Background annotations visibility logic
+      // Background annotations (objSpaceId === null and not scoped) should respect the toggle
+      // when a space is active, or be visible when no space is active
       let withinRegions = true;
       let backgroundAnnotationVisible = true;
       
-      // FIX: Check hasActiveRegions instead of just regions to handle empty array case
-      if (hasActiveRegions && !isScopedRegionAnnotation) {
-        // Only filter background annotations (not scoped ones) by toggle
-        if (!showBackgroundAnnotations) {
-          // If toggle is off, hide background annotations
-          backgroundAnnotationVisible = false;
+      // Only apply to background annotations (not scoped region annotations)
+      if (!isScopedRegionAnnotation && objSpaceId === null) {
+        if (selectedSpaceId !== null) {
+          // A space is active: respect the toggle
+          backgroundAnnotationVisible = showBackgroundAnnotations;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4854',message:'Toggle applied for background annotations',data:{pageNumber,selectedSpaceId,showBackgroundAnnotations,hasActiveRegions,objSpaceId,backgroundAnnotationVisible,isScopedRegionAnnotation},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
         } else {
-          // If toggle is on, annotations remain visible (no region containment check needed per requirements)
-          // The requirement says they "must remain visible by default"
+          // No space is active: background annotations should always be visible
           backgroundAnnotationVisible = true;
         }
-      } else if (!hasActiveRegions && !isScopedRegionAnnotation) {
-        // When no regions are active, background annotations should always be visible
-        backgroundAnnotationVisible = true;
-        // #region agent log
-        if (selectedSpaceId !== null && objSpaceId === null) {
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4848',message:'Toggle not applied - no active regions',data:{pageNumber,selectedSpaceId,showBackgroundAnnotations,hasActiveRegions,objSpaceId,backgroundAnnotationVisible,isScopedRegionAnnotation},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        }
-        // #endregion
+      } else if (hasActiveRegions && !isScopedRegionAnnotation) {
+        // When regions are active, also apply toggle for background annotations
+        backgroundAnnotationVisible = showBackgroundAnnotations;
       }
 
       // Object is visible if:
