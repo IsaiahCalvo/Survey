@@ -11006,12 +11006,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [activeSpaceId]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11008',message:'Setting active space',data:{spaceId,previousActiveSpaceId:activeSpaceId,selectedSpaceId,showBackgroundAnnotations},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+    // #endregion
     setActiveSpaceId(spaceId);
-  }, []);
+  }, [activeSpaceId, selectedSpaceId, showBackgroundAnnotations]);
 
   const handleExitSpaceMode = useCallback(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11012',message:'Exiting space mode',data:{activeSpaceId,selectedSpaceId,showBackgroundAnnotations},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     setActiveSpaceId(null);
-  }, []);
+  }, [activeSpaceId, selectedSpaceId, showBackgroundAnnotations]);
 
   // Active space pages - compute which pages are included in the active space
   const activeSpacePages = useMemo(() => {
@@ -13577,8 +13583,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Handler for toggling background annotations visibility
   const handleToggleBackgroundAnnotations = useCallback((value) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13579',message:'Toggling background annotations',data:{newValue:value,previousValue:showBackgroundAnnotations,activeSpaceId,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,D'})}).catch(()=>{});
+    // #endregion
     setShowBackgroundAnnotations(value);
-  }, [activeSpaceId]);
+  }, [activeSpaceId, selectedSpaceId, showBackgroundAnnotations]);
 
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {

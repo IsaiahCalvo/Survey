@@ -718,11 +718,14 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  // #region agent log
+                                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:719',message:'Button clicked',data:{currentValue:showBackgroundAnnotations,newValue:!showBackgroundAnnotations,spaceId:space.id,isActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                                  // #endregion
                                   onToggleBackgroundAnnotations(!showBackgroundAnnotations);
                                 }}
                                 style={{
-                                  background: showBackgroundAnnotations ? '#4A90E2' : '#3a3a3a',
-                                  border: '1px solid #4A90E2',
+                                  background: 'transparent',
+                                  border: '1px solid transparent',
                                   padding: '4px 8px',
                                   cursor: 'pointer',
                                   borderRadius: '4px',
@@ -730,17 +733,17 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   fontSize: '10px',
-                                  color: showBackgroundAnnotations ? '#ffffff' : '#999',
+                                  color: showBackgroundAnnotations ? '#4A90E2' : '#999',
                                   fontFamily: FONT_FAMILY,
-                                  transition: 'background 0.15s ease, color 0.15s ease',
+                                  transition: 'color 0.15s ease',
                                   width: '18px',
                                   height: '27px'
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = showBackgroundAnnotations ? '#357abd' : '#4a4a4a';
+                                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = showBackgroundAnnotations ? '#4A90E2' : '#3a3a3a';
+                                  e.currentTarget.style.background = 'transparent';
                                 }}
                                 title={showBackgroundAnnotations ? 'Hide Background Annotations' : 'Show Background Annotations'}
                               >

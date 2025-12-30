@@ -4768,6 +4768,10 @@ const PageAnnotationLayer = memo(({
       : (isRegionSelectionActive ? [] : null);
     const hasActiveRegions = regions !== null; // null = no regions mode, [] or [...] = regions mode active
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4770',message:'Visibility filter effect entry',data:{pageNumber,selectedSpaceId,showBackgroundAnnotations,hasActiveRegions,activeRegionsLength:activeRegions?.length||0,isRegionSelectionActive,objectCount:objects.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
+
     let visibleCount = 0;
     let hiddenCount = 0;
     objects.forEach(obj => {
@@ -4803,6 +4807,11 @@ const PageAnnotationLayer = memo(({
       } else {
         // Normal space filtering when no regions or for scoped annotations
         matchesSpace = selectedSpaceId === null || objSpaceId === selectedSpaceId;
+        // #region agent log
+        if (objSpaceId === null && selectedSpaceId !== null && matchesSpace === false) {
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4805',message:'Background annotation filtered out by space',data:{pageNumber,selectedSpaceId,objSpaceId,matchesSpace,isScopedRegionAnnotation,hasActiveRegions},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        }
+        // #endregion
       }
 
       // Filter by module: if selectedModuleId is set, object must match
@@ -4848,6 +4857,11 @@ const PageAnnotationLayer = memo(({
       } else if (!hasActiveRegions && !isScopedRegionAnnotation) {
         // When no regions are active, background annotations should always be visible
         backgroundAnnotationVisible = true;
+        // #region agent log
+        if (selectedSpaceId !== null && objSpaceId === null) {
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4848',message:'Toggle not applied - no active regions',data:{pageNumber,selectedSpaceId,showBackgroundAnnotations,hasActiveRegions,objSpaceId,backgroundAnnotationVisible,isScopedRegionAnnotation},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        }
+        // #endregion
       }
 
       // Object is visible if:
@@ -4860,6 +4874,11 @@ const PageAnnotationLayer = memo(({
                        surveyAnnotationVisible && 
                        scopedRegionAnnotationVisible &&
                        (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
+      // #region agent log
+      if (objSpaceId === null && selectedSpaceId !== null && isVisible === false) {
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4862',message:'Background annotation hidden',data:{pageNumber,selectedSpaceId,objSpaceId,matchesSpace,matchesModule,surveyAnnotationVisible,scopedRegionAnnotationVisible,backgroundAnnotationVisible,isVisible,showBackgroundAnnotations},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+      }
+      // #endregion
       
       const isInteractive = isVisible && (selectedSpaceId === null || objSpaceId === selectedSpaceId) && (selectedModuleId === null || objModuleId === selectedModuleId);
       obj.set({
