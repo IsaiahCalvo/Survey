@@ -1,149 +1,202 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { presetBorderColors, presetFillColors, fontFamilies, fontSizes, ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS, defaultCalloutStyle } from './types';
 import CompactColorPicker from '../CompactColorPicker';
 
-/**
- * CalloutPropertiesPanel - Sliding panel for editing callout properties
- * Ported from reference Callout app
- *
- * @param {Object} props
- * @param {Object|null} props.selectedCallout - Currently selected callout
- * @param {Function} props.onUpdateStyle - Callback to update style properties
- * @param {Function} props.onClose - Callback to close the panel
- * @param {Object} props.middleAreaBounds - Bounds of the middle area ({top, height})
- * @param {number} props.surveyPanelWidth - Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
- */
-const CalloutPropertiesPanel = ({
-  selectedCallout,
-  onUpdateStyle,
-  onClose,
-  middleAreaBounds = { top: 0, height: 500 },
-  surveyPanelWidth = 0,
-}) => {
+const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition }) => {
+  const modalRef = useRef(null);
+  const [activeTab, setActiveTab] = useState('visual');
   const [colorMode, setColorMode] = useState('border');
-  const [expandedSections, setExpandedSections] = useState({
-    visual: true,
-    text: true,
-  });
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showTextColorPicker, setShowTextColorPicker] = useState(false);
 
-  if (!selectedCallout) {
-    return null;
-  }
+  // Merge callout style with defaults
+  const style = callout ? { ...defaultCalloutStyle, ...callout.style } : defaultCalloutStyle;
 
-  // Merge callout style with defaults to ensure all properties exist
-  const style = { ...defaultCalloutStyle, ...selectedCallout.style };
+  useEffect(() => {
+    if (!visible) return;
 
-  const toggleSection = (section) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  };
+    const handleClickOutside = (e) => {
+      if (modalRef.current && !modalRef.current.contains(e.target)) {
+        // Don't close if clicking on color picker
+        if (e.target.closest('.compact-color-picker')) {
+          return;
+        }
+        onClose();
+      }
+    };
+
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    const timeout = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 10);
+
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [visible, onClose]);
+
+  if (!visible || !callout) return null;
 
   const currentColor = colorMode === 'border' ? style.borderColor : style.fillColor;
   const currentOpacity = colorMode === 'border' ? style.borderOpacity : style.fillOpacity;
 
   const handleColorChange = (hex, alpha) => {
     if (colorMode === 'border') {
-      onUpdateStyle({ borderColor: hex, borderOpacity: alpha });
+      onUpdate({ borderColor: hex, borderOpacity: alpha });
     } else {
-      onUpdateStyle({ fillColor: hex, fillOpacity: alpha });
+      onUpdate({ fillColor: hex, fillOpacity: alpha });
     }
   };
 
   const handleTextColorChange = (hex, alpha) => {
-    // Text color doesn't use opacity, but we'll accept it for consistency
-    onUpdateStyle({ fontColor: hex });
+    onUpdate({ fontColor: hex });
   };
 
-  // Stop all events from propagating to canvas below
-  const stopPropagation = (e) => {
-    e.stopPropagation();
+  // Calculate modal position (anchor near callout, but ensure it's visible)
+  const getModalPosition = () => {
+    if (!anchorPosition) {
+      return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+    }
+
+    const modalWidth = 320;
+    const modalHeight = 500;
+    const padding = 20;
+
+    let left = anchorPosition.x;
+    let top = anchorPosition.y;
+
+    // Ensure modal stays within viewport
+    if (left + modalWidth > window.innerWidth) {
+      left = window.innerWidth - modalWidth - padding;
+    }
+    if (left < padding) {
+      left = padding;
+    }
+    if (top + modalHeight > window.innerHeight) {
+      top = window.innerHeight - modalHeight - padding;
+    }
+    if (top < padding) {
+      top = padding;
+    }
+
+    return { top: `${top}px`, left: `${left}px`, transform: 'none' };
   };
 
   return (
     <div
-      className="callout-properties-panel"
       style={{
         position: 'fixed',
-        top: middleAreaBounds?.top ?? 0,
-        right: surveyPanelWidth,
-        width: 280,
-        height: middleAreaBounds?.height ?? '100vh',
-        backgroundColor: '#2b2b2b',
-        borderLeft: '1px solid #444',
-        boxShadow: '-4px 0 20px rgba(0,0,0,0.5)',
-        zIndex: 9998,
-        overflowY: 'auto',
-        animation: 'slideInFromRight 0.2s ease-out',
-        transition: 'right 0.2s ease, top 0.2s ease, height 0.2s ease',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.5)',
+        zIndex: 10001,
         display: 'flex',
-        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center'
       }}
-      onMouseDown={stopPropagation}
-      onMouseMove={stopPropagation}
-      onMouseUp={stopPropagation}
-      onClick={stopPropagation}
-      onPointerDown={stopPropagation}
-      onPointerMove={stopPropagation}
-      onPointerUp={stopPropagation}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
-      {/* Header */}
       <div
+        ref={modalRef}
         style={{
-          padding: '12px 16px',
-          borderBottom: '1px solid #444',
+          ...getModalPosition(),
+          position: 'fixed',
+          width: 320,
+          maxHeight: '80vh',
+          backgroundColor: '#2b2b2b',
+          border: '1px solid #444',
+          borderRadius: '8px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: '#252525',
+          flexDirection: 'column',
+          overflow: 'hidden'
         }}
+        onClick={(e) => e.stopPropagation()}
       >
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#ddd' }}>Properties</h3>
-        <button
-          onClick={onClose}
+        {/* Header */}
+        <div
           style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 4,
-            fontSize: 18,
-            color: '#999',
+            padding: '12px 16px',
+            borderBottom: '1px solid #444',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#252525',
           }}
-          onMouseEnter={(e) => e.currentTarget.style.color = '#ddd'}
-          onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
         >
-          ×
-        </button>
-      </div>
-
-      <div style={{ padding: 12, background: '#2b2b2b', flex: 1, overflowY: 'auto' }}>
-        {/* Visual Settings Section */}
-        <div style={{ marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#ddd' }}>Edit Callout</h3>
           <button
-            onClick={() => toggleSection('visual')}
+            onClick={onClose}
             style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
               background: 'none',
               border: 'none',
-              padding: '8px 0',
               cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 600,
-              color: '#ddd',
+              padding: 4,
+              fontSize: 18,
+              color: '#999',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#ddd'}
+            onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', borderBottom: '1px solid #444', background: '#252525' }}>
+          <button
+            onClick={() => setActiveTab('visual')}
+            style={{
+              flex: 1,
+              padding: '10px 16px',
+              background: activeTab === 'visual' ? '#2b2b2b' : 'transparent',
+              border: 'none',
+              borderBottom: activeTab === 'visual' ? '2px solid #4A90E2' : '2px solid transparent',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 500,
+              color: activeTab === 'visual' ? '#ddd' : '#999',
             }}
           >
             Visual Settings
-            <span style={{ fontSize: 10, color: '#999' }}>{expandedSections.visual ? '▼' : '▶'}</span>
           </button>
+          <button
+            onClick={() => setActiveTab('text')}
+            style={{
+              flex: 1,
+              padding: '10px 16px',
+              background: activeTab === 'text' ? '#2b2b2b' : 'transparent',
+              border: 'none',
+              borderBottom: activeTab === 'text' ? '2px solid #4A90E2' : '2px solid transparent',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 500,
+              color: activeTab === 'text' ? '#ddd' : '#999',
+            }}
+          >
+            Text Settings
+          </button>
+        </div>
 
-          {expandedSections.visual && (
-            <div style={{ paddingTop: 8 }}>
+        {/* Content */}
+        <div style={{ padding: 12, background: '#2b2b2b', flex: 1, overflowY: 'auto' }}>
+          {activeTab === 'visual' && (
+            <div>
               {/* Color Toggle */}
               <div style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -215,7 +268,7 @@ const CalloutPropertiesPanel = ({
                   </button>
                   
                   {showColorPicker && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1001, marginTop: 4 }}>
+                    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1002, marginTop: 4 }}>
                       <CompactColorPicker
                         color={currentColor}
                         opacity={currentOpacity}
@@ -242,9 +295,9 @@ const CalloutPropertiesPanel = ({
                     onChange={(e) => {
                       const value = Number(e.target.value) / 100;
                       if (colorMode === 'border') {
-                        onUpdateStyle({ borderOpacity: value });
+                        onUpdate({ borderOpacity: value });
                       } else {
-                        onUpdateStyle({ fillOpacity: value });
+                        onUpdate({ fillOpacity: value });
                       }
                     }}
                     style={{ flex: 1 }}
@@ -257,9 +310,9 @@ const CalloutPropertiesPanel = ({
                     onChange={(e) => {
                       const value = Math.max(20, Math.min(100, Number(e.target.value) || 20)) / 100;
                       if (colorMode === 'border') {
-                        onUpdateStyle({ borderOpacity: value });
+                        onUpdate({ borderOpacity: value });
                       } else {
-                        onUpdateStyle({ fillOpacity: value });
+                        onUpdate({ fillOpacity: value });
                       }
                     }}
                     style={{
@@ -278,7 +331,7 @@ const CalloutPropertiesPanel = ({
               </div>
 
               {/* Line Thickness */}
-              <div>
+              <div style={{ marginBottom: 12 }}>
                 <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
                   LINE THICKNESS
                 </label>
@@ -289,7 +342,7 @@ const CalloutPropertiesPanel = ({
                     max={6}
                     step={1}
                     value={style.lineThickness}
-                    onChange={(e) => onUpdateStyle({ lineThickness: Number(e.target.value) })}
+                    onChange={(e) => onUpdate({ lineThickness: Number(e.target.value) })}
                     style={{ flex: 1 }}
                   />
                   <input
@@ -299,7 +352,7 @@ const CalloutPropertiesPanel = ({
                     value={style.lineThickness}
                     onChange={(e) => {
                       const value = Math.max(1, Math.min(6, Number(e.target.value) || 1));
-                      onUpdateStyle({ lineThickness: value });
+                      onUpdate({ lineThickness: value });
                     }}
                     style={{
                       width: 50,
@@ -323,7 +376,7 @@ const CalloutPropertiesPanel = ({
                 </label>
                 <select
                   value={style.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE}
-                  onChange={(e) => onUpdateStyle({ arrowheadStyle: e.target.value })}
+                  onChange={(e) => onUpdate({ arrowheadStyle: e.target.value })}
                   style={{
                     width: '100%',
                     padding: '6px 8px',
@@ -342,32 +395,9 @@ const CalloutPropertiesPanel = ({
               </div>
             </div>
           )}
-        </div>
 
-        {/* Text Settings Section */}
-        <div>
-          <button
-            onClick={() => toggleSection('text')}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'none',
-              border: 'none',
-              padding: '8px 0',
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 600,
-              color: '#ddd',
-            }}
-          >
-            Text Settings
-            <span style={{ fontSize: 10, color: '#999' }}>{expandedSections.text ? '▼' : '▶'}</span>
-          </button>
-
-          {expandedSections.text && (
-            <div style={{ paddingTop: 8 }}>
+          {activeTab === 'text' && (
+            <div>
               {/* Font Family & Size */}
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <div style={{ flex: 1 }}>
@@ -376,7 +406,7 @@ const CalloutPropertiesPanel = ({
                   </label>
                   <select
                     value={style.fontFamily}
-                    onChange={(e) => onUpdateStyle({ fontFamily: e.target.value })}
+                    onChange={(e) => onUpdate({ fontFamily: e.target.value })}
                     style={{
                       width: '100%',
                       padding: '6px 8px',
@@ -402,7 +432,7 @@ const CalloutPropertiesPanel = ({
                   </label>
                   <select
                     value={style.fontSize}
-                    onChange={(e) => onUpdateStyle({ fontSize: Number(e.target.value) })}
+                    onChange={(e) => onUpdate({ fontSize: Number(e.target.value) })}
                     style={{
                       width: '100%',
                       padding: '6px 8px',
@@ -432,7 +462,7 @@ const CalloutPropertiesPanel = ({
                   {['left', 'center', 'right'].map((align) => (
                     <button
                       key={align}
-                      onClick={() => onUpdateStyle({ textAlign: align })}
+                      onClick={() => onUpdate({ textAlign: align })}
                       style={{
                         flex: 1,
                         padding: '6px 12px',
@@ -474,7 +504,7 @@ const CalloutPropertiesPanel = ({
                 </label>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button
-                    onClick={() => onUpdateStyle({ bold: !style.bold })}
+                    onClick={() => onUpdate({ bold: !style.bold })}
                     style={{
                       padding: '6px 10px',
                       fontSize: 14,
@@ -489,7 +519,7 @@ const CalloutPropertiesPanel = ({
                     B
                   </button>
                   <button
-                    onClick={() => onUpdateStyle({ italic: !style.italic })}
+                    onClick={() => onUpdate({ italic: !style.italic })}
                     style={{
                       padding: '6px 10px',
                       fontSize: 14,
@@ -504,7 +534,7 @@ const CalloutPropertiesPanel = ({
                     I
                   </button>
                   <button
-                    onClick={() => onUpdateStyle({ underline: !style.underline })}
+                    onClick={() => onUpdate({ underline: !style.underline })}
                     style={{
                       padding: '6px 10px',
                       fontSize: 14,
@@ -519,7 +549,7 @@ const CalloutPropertiesPanel = ({
                     U
                   </button>
                   <button
-                    onClick={() => onUpdateStyle({ strikethrough: !style.strikethrough })}
+                    onClick={() => onUpdate({ strikethrough: !style.strikethrough })}
                     style={{
                       padding: '6px 10px',
                       fontSize: 14,
@@ -537,7 +567,7 @@ const CalloutPropertiesPanel = ({
               </div>
 
               {/* Text Color */}
-              <div style={{ marginBottom: 12 }}>
+              <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase' }}>
                     TEXT COLOR
@@ -573,7 +603,7 @@ const CalloutPropertiesPanel = ({
                   </button>
                   
                   {showTextColorPicker && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1001, marginTop: 4 }}>
+                    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1002, marginTop: 4 }}>
                       <CompactColorPicker
                         color={style.fontColor || '#000000'}
                         opacity={1}
@@ -592,4 +622,5 @@ const CalloutPropertiesPanel = ({
   );
 };
 
-export default CalloutPropertiesPanel;
+export default CalloutEditModal;
+

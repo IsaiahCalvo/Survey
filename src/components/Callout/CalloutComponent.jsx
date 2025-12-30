@@ -1,5 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { hexToRgba, ARROWHEAD_STYLES, defaultCalloutStyle } from './types';
+import CalloutContextMenu from './CalloutContextMenu';
+import CalloutEditModal from './CalloutEditModal';
 
 /**
  * CalloutComponent - Renders a single callout annotation
@@ -28,6 +30,12 @@ const CalloutComponent = ({
   pageHeight,
   activeTool,
   isCalloutToolActive,
+  clipboardCallout,
+  clipboardType,
+  onCutCallout,
+  onCopyCallout,
+  onPasteCallout,
+  pageNumber,
 }) => {
   // Callouts are interactive (selectable/movable) when:
   // - Callout tool is active, OR
@@ -67,6 +75,10 @@ const CalloutComponent = ({
   const mouseMoveHandlerRef = useRef(null);
   const mouseUpHandlerRef = useRef(null);
   const prevIsSelectedRef = useRef(isSelected);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const longPressTimerRef = useRef(null);
+  const touchStartPositionRef = useRef(null);
 
   // Convert percentage positions to pixels
   const toPixels = useCallback((point) => ({
@@ -140,6 +152,17 @@ const CalloutComponent = ({
 
   const handleTextBoxMouseDown = useCallback((e) => {
     e.stopPropagation();
+
+    // Check for Ctrl/Cmd+Click to show context menu
+    if ((e.ctrlKey || e.metaKey) && isInteractive) {
+      e.preventDefault();
+      setContextMenu({
+        visible: true,
+        x: e.clientX,
+        y: e.clientY,
+      });
+      return;
+    }
 
     // If eraser tool is active, delete the callout
     if (activeTool === 'eraser') {
@@ -224,7 +247,7 @@ const CalloutComponent = ({
         onStartDrag({ type: 'textBox', calloutId: callout.id }, offset);
       }
     }
-  }, [activeTool, callout.id, isEditing, isSelected, onDelete, onSelect, onStartDrag, textBoxPosition]);
+  }, [activeTool, callout.id, isEditing, isSelected, isInteractive, onDelete, onSelect, onStartDrag, textBoxPosition]);
 
   const handleTextBoxMouseUp = useCallback(() => {
     if (mouseMoveHandlerRef.current) {
@@ -277,6 +300,16 @@ const CalloutComponent = ({
     e.stopPropagation();
     e.preventDefault();
     
+    // Check for Ctrl/Cmd+Click to show context menu (instead of drag)
+    if ((e.ctrlKey || e.metaKey) && isInteractive) {
+      setContextMenu({
+        visible: true,
+        x: e.clientX,
+        y: e.clientY,
+      });
+      return;
+    }
+    
     // Check if Control/Command is held to move the entire callout
     const isWholeMove = e.ctrlKey || e.metaKey;
     
@@ -316,11 +349,22 @@ const CalloutComponent = ({
     } else {
       onStartDrag({ type: targetType, calloutId: callout.id }, { x: 0, y: 0 });
     }
-  }, [callout.id, onSelect, onStartDrag, arrowTip, knee]);
+  }, [callout.id, isInteractive, onSelect, onStartDrag, arrowTip, knee]);
 
   const handleLineMouseDown = useCallback((e) => {
     e.stopPropagation();
     e.preventDefault();
+    
+    // Check for Ctrl/Cmd+Click to show context menu (instead of drag)
+    if ((e.ctrlKey || e.metaKey) && isInteractive) {
+      setContextMenu({
+        visible: true,
+        x: e.clientX,
+        y: e.clientY,
+      });
+      return;
+    }
+    
     // If eraser tool is active, delete the callout
     if (activeTool === 'eraser') {
       onDelete();
@@ -359,7 +403,7 @@ const CalloutComponent = ({
       }
       onStartDrag({ type: 'whole', calloutId: callout.id }, offset);
     }
-  }, [activeTool, callout.id, onDelete, onSelect, onStartDrag, arrowTip]);
+  }, [activeTool, callout.id, isInteractive, onDelete, onSelect, onStartDrag, arrowTip]);
 
   const handleLineClick = useCallback((e) => {
     e.stopPropagation();
@@ -369,6 +413,136 @@ const CalloutComponent = ({
     }
     onSelect();
   }, [activeTool, onSelect]);
+
+  // Right-click handler
+  const handleContextMenu = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only show context menu when callout is interactive
+    if (!isInteractive) return;
+    
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+    });
+  }, [isInteractive]);
+
+  // Long-press handler for mobile
+  const handleTouchStart = useCallback((e) => {
+    if (!isInteractive) return;
+    
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    
+    // Store start position to detect movement
+    touchStartPositionRef.current = { x: startX, y: startY };
+    
+    // Start long press timer
+    longPressTimerRef.current = setTimeout(() => {
+      // Only trigger if timer wasn't cancelled (no movement detected)
+      if (longPressTimerRef.current) {
+        setContextMenu({
+          visible: true,
+          x: touch.clientX,
+          y: touch.clientY,
+        });
+        // Prevent native context menu AFTER showing ours
+        e.preventDefault();
+      }
+    }, 500);
+  }, [isInteractive]);
+
+  const handleTouchMove = useCallback((e) => {
+    // Cancel long press if user moves finger (allows scrolling/text selection)
+    if (longPressTimerRef.current) {
+      const touch = e.touches[0];
+      const currentX = touch.clientX;
+      const currentY = touch.clientY;
+      const startPos = touchStartPositionRef.current;
+      
+      if (startPos) {
+        // Calculate movement distance
+        const moveDistance = Math.sqrt(
+          Math.pow(currentX - startPos.x, 2) + 
+          Math.pow(currentY - startPos.y, 2)
+        );
+        
+        // If moved more than 5px, cancel the timer (allow normal behavior)
+        if (moveDistance > 5) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+          touchStartPositionRef.current = null;
+        }
+      }
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    // Cancel timer if touch ends before 500ms
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    touchStartPositionRef.current = null;
+  }, []);
+
+  // Context menu action handlers
+  const handleCut = useCallback(() => {
+    if (onCutCallout) {
+      onCutCallout(callout.id);
+    }
+    setContextMenu(null);
+  }, [callout.id, onCutCallout]);
+
+  const handleCopy = useCallback(() => {
+    if (onCopyCallout) {
+      onCopyCallout(callout.id);
+    }
+    setContextMenu(null);
+  }, [callout.id, onCopyCallout]);
+
+  const handlePaste = useCallback(() => {
+    if (onPasteCallout) {
+      // Paste at text box position with offset
+      // The handler will apply the offset
+      onPasteCallout(pageNumber, callout.textBoxPosition);
+    }
+    setContextMenu(null);
+  }, [callout.textBoxPosition, onPasteCallout, pageNumber]);
+
+  const handleDelete = useCallback(() => {
+    onDelete();
+    setContextMenu(null);
+  }, [onDelete]);
+
+  const handleEdit = useCallback(() => {
+    setShowEditModal(true);
+    setContextMenu(null);
+  }, []);
+
+  // Calculate anchor position for edit modal (near text box)
+  const getEditModalAnchor = useCallback(() => {
+    if (textareaRef.current) {
+      const textBoxRect = textareaRef.current.getBoundingClientRect();
+      if (textBoxRect) {
+        return {
+          x: textBoxRect.right + 20,
+          y: textBoxRect.top,
+        };
+      }
+    }
+    return null;
+  }, []);
+
+  // Close edit modal when callout is deleted
+  useEffect(() => {
+    if (!isSelected && showEditModal) {
+      setShowEditModal(false);
+    }
+  }, [isSelected, showEditModal]);
 
   // Merge callout style with defaults to ensure all properties exist
   const style = { ...defaultCalloutStyle, ...callout.style };
@@ -547,6 +721,10 @@ const CalloutComponent = ({
             style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
             onMouseDown={handleLineMouseDown}
             onClick={handleLineClick}
+            onContextMenu={handleContextMenu}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
           />
         );
 
@@ -570,6 +748,10 @@ const CalloutComponent = ({
             style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
             onMouseDown={handleLineMouseDown}
             onClick={handleLineClick}
+            onContextMenu={handleContextMenu}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
           />
         );
       }
@@ -587,6 +769,10 @@ const CalloutComponent = ({
             style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
             onMouseDown={handleLineMouseDown}
             onClick={handleLineClick}
+            onContextMenu={handleContextMenu}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
           />
         );
       }
@@ -602,6 +788,10 @@ const CalloutComponent = ({
             style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
             onMouseDown={handleLineMouseDown}
             onClick={handleLineClick}
+            onContextMenu={handleContextMenu}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
           />
         );
 
@@ -625,6 +815,10 @@ const CalloutComponent = ({
             style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
             onMouseDown={handleLineMouseDown}
             onClick={handleLineClick}
+            onContextMenu={handleContextMenu}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
           />
         );
       }
@@ -640,6 +834,10 @@ const CalloutComponent = ({
             style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
             onMouseDown={handleLineMouseDown}
             onClick={handleLineClick}
+            onContextMenu={handleContextMenu}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
           />
         );
     }
@@ -672,6 +870,10 @@ const CalloutComponent = ({
           style={{ pointerEvents: shouldReceivePointerEvents ? 'stroke' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
+          onContextMenu={handleContextMenu}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchMove}
         />
 
         {/* Connector path: Textbox border → Knee → Arrow base */}
@@ -695,6 +897,10 @@ const CalloutComponent = ({
             style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
             onMouseDown={handleLineMouseDown}
             onClick={handleLineClick}
+            onContextMenu={handleContextMenu}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
           />
         )}
 
@@ -710,6 +916,10 @@ const CalloutComponent = ({
           style={{ pointerEvents: shouldReceivePointerEvents ? 'auto' : 'none', cursor: isInteractive ? 'pointer' : 'default' }}
           onMouseDown={handleLineMouseDown}
           onClick={handleLineClick}
+          onContextMenu={handleContextMenu}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchMove}
         />
       </svg>
 
@@ -727,6 +937,10 @@ const CalloutComponent = ({
         onMouseUp={handleTextBoxMouseUp}
         onClick={handleTextBoxClick}
         onDoubleClick={handleTextBoxDoubleClick}
+        onContextMenu={handleContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchMove={handleTouchMove}
       >
         <textarea
           ref={textareaRef}
@@ -858,6 +1072,10 @@ const CalloutComponent = ({
           }}
           onMouseDown={(e) => handleHandleMouseDown(e, 'knee')}
           onClick={(e) => e.stopPropagation()}
+          onContextMenu={handleContextMenu}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchMove}
         />
       )}
 
@@ -880,8 +1098,35 @@ const CalloutComponent = ({
           }}
           onMouseDown={(e) => handleHandleMouseDown(e, 'arrowTip')}
           onClick={(e) => e.stopPropagation()}
+          onContextMenu={handleContextMenu}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchMove}
         />
       )}
+
+      {/* Context Menu */}
+      <CalloutContextMenu
+        visible={contextMenu?.visible || false}
+        x={contextMenu?.x || 0}
+        y={contextMenu?.y || 0}
+        onClose={() => setContextMenu(null)}
+        onCut={handleCut}
+        onCopy={handleCopy}
+        onPaste={handlePaste}
+        onDelete={handleDelete}
+        onEdit={handleEdit}
+        hasClipboard={!!clipboardCallout}
+      />
+
+      {/* Edit Modal */}
+      <CalloutEditModal
+        visible={showEditModal}
+        callout={callout}
+        onUpdate={onUpdate}
+        onClose={() => setShowEditModal(false)}
+        anchorPosition={getEditModalAnchor()}
+      />
     </>
   );
 };

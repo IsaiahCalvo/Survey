@@ -8024,6 +8024,59 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Callout overlay state
   const [callouts, setCallouts] = useState([]);
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
+  const [clipboardCallout, setClipboardCallout] = useState(null);
+  const [clipboardType, setClipboardType] = useState(null); // 'cut' | 'copy'
+  
+  // Clipboard handlers for callouts
+  const handleCutCallout = useCallback((calloutId) => {
+    const callout = callouts.find(c => c.id === calloutId);
+    if (callout) {
+      setClipboardCallout(callout);
+      setClipboardType('cut');
+      setCallouts(prev => prev.filter(c => c.id !== calloutId));
+      if (selectedCalloutId === calloutId) {
+        setSelectedCalloutId(null);
+      }
+    }
+  }, [callouts, selectedCalloutId]);
+
+  const handleCopyCallout = useCallback((calloutId) => {
+    const callout = callouts.find(c => c.id === calloutId);
+    if (callout) {
+      setClipboardCallout(callout);
+      setClipboardType('copy');
+    }
+  }, [callouts]);
+
+  const handlePasteCallout = useCallback((pageNumber, cursorPosition) => {
+    if (!clipboardCallout) return;
+    
+    // Generate new ID
+    const newId = `callout-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create new callout with offset position
+    const offsetX = 0.05; // 5% offset
+    const offsetY = 0.05;
+    
+    const newCallout = {
+      ...clipboardCallout,
+      id: newId,
+      pageNumber: pageNumber,
+      textBoxPosition: {
+        x: (cursorPosition?.x || clipboardCallout.textBoxPosition.x) + offsetX,
+        y: (cursorPosition?.y || clipboardCallout.textBoxPosition.y) + offsetY,
+      },
+    };
+    
+    setCallouts(prev => [...prev, newCallout]);
+    
+    // Clear clipboard if it was a cut operation
+    if (clipboardType === 'cut') {
+      setClipboardCallout(null);
+      setClipboardType(null);
+    }
+  }, [clipboardCallout, clipboardType]);
+
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
   const [unsupportedAnnotationTypes, setUnsupportedAnnotationTypes] = useState([]); // PDF annotation types we can't edit
   const [showUnsupportedNotice, setShowUnsupportedNotice] = useState(false); // Show notification about unsupported annotations
@@ -13698,6 +13751,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   setCallouts={setCallouts}
                                   selectedCalloutId={selectedCalloutId}
                                   setSelectedCalloutId={setSelectedCalloutId}
+                                  clipboardCallout={clipboardCallout}
+                                  clipboardType={clipboardType}
+                                  onCutCallout={handleCutCallout}
+                                  onCopyCallout={handleCopyCallout}
+                                  onPasteCallout={handlePasteCallout}
                                   middleAreaBounds={middleAreaBounds}
                                   surveyPanelWidth={surveyPanelWidth}
                                 />
@@ -13839,6 +13897,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               setCallouts={setCallouts}
                               selectedCalloutId={selectedCalloutId}
                               setSelectedCalloutId={setSelectedCalloutId}
+                              clipboardCallout={clipboardCallout}
+                              clipboardType={clipboardType}
+                              onCutCallout={handleCutCallout}
+                              onCopyCallout={handleCopyCallout}
+                              onPasteCallout={handlePasteCallout}
                               middleAreaBounds={middleAreaBounds}
                               surveyPanelWidth={surveyPanelWidth}
                             />

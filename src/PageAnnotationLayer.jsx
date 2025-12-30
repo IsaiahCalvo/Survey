@@ -1369,6 +1369,11 @@ const PageAnnotationLayer = memo(({
   setCallouts = () => { }, // Update callouts callback
   selectedCalloutId = null, // Currently selected callout ID
   setSelectedCalloutId = () => { }, // Set selected callout callback
+  clipboardCallout = null, // Clipboard callout for cut/copy/paste
+  clipboardType = null, // 'cut' | 'copy'
+  onCutCallout = () => { }, // Cut callout handler
+  onCopyCallout = () => { }, // Copy callout handler
+  onPasteCallout = () => { }, // Paste callout handler
   // Properties panel positioning props
   middleAreaBounds = { top: 0, height: 500 }, // Bounds of the middle area ({top, height})
   surveyPanelWidth = 0, // Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
@@ -4980,36 +4985,13 @@ const PageAnnotationLayer = memo(({
         selectedSpaceId={selectedSpaceId}
         selectedModuleId={selectedModuleId}
         showSurveyPanel={showSurveyPanel}
+        clipboardCallout={clipboardCallout}
+        clipboardType={clipboardType}
+        onCutCallout={onCutCallout}
+        onCopyCallout={onCopyCallout}
+        onPasteCallout={onPasteCallout}
         middleAreaBounds={middleAreaBounds}
         surveyPanelWidth={surveyPanelWidth}
-        onCalloutRightClick={(e, callout) => {
-          // Handle right-click on React callout
-          // Create a synthetic event and target for the context menu
-          const syntheticEvent = {
-            preventDefault: () => e.preventDefault(),
-            clientX: e.clientX,
-            clientY: e.clientY,
-            button: e.button,
-            which: e.which
-          };
-
-          // Create a synthetic Fabric object representation of the callout
-          // This allows the context menu and edit modal to work with React callouts
-          const syntheticTarget = {
-            type: 'group',
-            data: { type: 'callout', reactCalloutId: callout.id },
-            getObjects: () => [
-              // Create synthetic objects for the callout parts
-              { name: 'calloutText', fill: callout.style?.textColor || '#000000', fontSize: callout.style?.fontSize || 16, fontWeight: callout.style?.fontWeight || 'normal', fontStyle: callout.style?.fontStyle || 'normal', textAlign: callout.style?.textAlign || 'left', fontFamily: callout.style?.fontFamily || 'Arial', backgroundColor: callout.style?.fillColor || 'rgba(255,255,255,0.9)' },
-              { name: 'calloutLine', stroke: callout.style?.borderColor || '#000000', strokeWidth: callout.style?.lineThickness || 1 },
-              { name: 'calloutHead', fill: callout.style?.borderColor || '#000000' },
-              { name: 'calloutTextBorder', stroke: callout.style?.borderColor || '#000000', strokeWidth: callout.style?.lineThickness || 1 }
-            ],
-            opacity: callout.style?.opacity !== undefined ? callout.style.opacity : 1
-          };
-
-          handleContextMenu(syntheticEvent, syntheticTarget);
-        }}
       />
 
       {/* Context Menu */}

@@ -31,7 +31,11 @@ const CalloutCanvas = ({
   selectedSpaceId,
   selectedModuleId,
   showSurveyPanel,
-  onCalloutRightClick,
+  clipboardCallout,
+  clipboardType,
+  onCutCallout,
+  onCopyCallout,
+  onPasteCallout,
 }) => {
   const canvasRef = useRef(null);
   const [creationState, setCreationState] = useState({
@@ -594,55 +598,6 @@ const CalloutCanvas = ({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onClick={handleCanvasClick}
-      onContextMenu={(e) => {
-        if (!onCalloutRightClick) return;
-        
-        const pos = getMousePosition(e);
-        const clickPercent = toPercent(pos);
-        
-        // Find which callout was right-clicked
-        for (const callout of pageCallouts) {
-          // Check if click is within text box bounds
-          const textBoxLeft = callout.textBoxPosition.x;
-          const textBoxTop = callout.textBoxPosition.y;
-          const textBoxRight = textBoxLeft + callout.textBoxWidth;
-          const textBoxBottom = textBoxTop + callout.textBoxHeight;
-          
-          if (clickPercent.x >= textBoxLeft && clickPercent.x <= textBoxRight &&
-              clickPercent.y >= textBoxTop && clickPercent.y <= textBoxBottom) {
-            e.preventDefault();
-            e.stopPropagation();
-            onCalloutRightClick(e, callout);
-            return;
-          }
-          
-          // Check if click is near arrow tip, knee, or line
-          const arrowTipPixels = toPixels(callout.arrowTip);
-          const kneePixels = toPixels(callout.knee);
-          const distanceToTip = Math.sqrt(
-            Math.pow(pos.x - arrowTipPixels.x, 2) + Math.pow(pos.y - arrowTipPixels.y, 2)
-          );
-          const distanceToKnee = Math.sqrt(
-            Math.pow(pos.x - kneePixels.x, 2) + Math.pow(pos.y - kneePixels.y, 2)
-          );
-          
-          // Check distance to line segments
-          const textBoxCenter = {
-            x: textBoxLeft + callout.textBoxWidth / 2,
-            y: textBoxTop + callout.textBoxHeight / 2
-          };
-          const textBoxCenterPixels = toPixels(textBoxCenter);
-          const distToLine1 = distanceToLineSegment(pos, textBoxCenterPixels, kneePixels);
-          const distToLine2 = distanceToLineSegment(pos, kneePixels, arrowTipPixels);
-          
-          if (distanceToTip < 20 || distanceToKnee < 20 || distToLine1 < 10 || distToLine2 < 10) {
-            e.preventDefault();
-            e.stopPropagation();
-            onCalloutRightClick(e, callout);
-            return;
-          }
-        }
-      }}
     >
       {/* Creation preview line */}
       {creationState.isCreating && creationState.arrowTip && creationState.currentMouse && (
@@ -701,6 +656,12 @@ const CalloutCanvas = ({
           pageHeight={pageHeight}
           activeTool={activeTool}
           isCalloutToolActive={isCalloutToolActive}
+          clipboardCallout={clipboardCallout}
+          clipboardType={clipboardType}
+          onCutCallout={onCutCallout}
+          onCopyCallout={onCopyCallout}
+          onPasteCallout={onPasteCallout}
+          pageNumber={pageNumber}
         />
       ))}
     </div>

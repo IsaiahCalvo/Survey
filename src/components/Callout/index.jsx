@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect } from 'react';
 import CalloutCanvas from './CalloutCanvas';
-import CalloutPropertiesPanel from './CalloutPropertiesPanel';
 
 export { defaultCalloutStyle, createCallout, hexToRgba } from './types';
 
@@ -36,12 +35,14 @@ const CalloutOverlay = ({
   selectedSpaceId,
   selectedModuleId,
   showSurveyPanel,
+  clipboardCallout,
+  clipboardType,
+  onCutCallout,
+  onCopyCallout,
+  onPasteCallout,
   middleAreaBounds,
   surveyPanelWidth,
-  onCalloutRightClick,
 }) => {
-  const selectedCallout = callouts.find(c => c.id === selectedCalloutId) || null;
-
   // Handle deleting selected callout
   const handleDeleteSelected = useCallback(() => {
     if (selectedCalloutId) {
@@ -49,23 +50,6 @@ const CalloutOverlay = ({
       setSelectedCalloutId(null);
     }
   }, [selectedCalloutId, setCallouts, setSelectedCalloutId]);
-
-  // Handle updating callout style
-  const handleUpdateStyle = useCallback((updates) => {
-    if (selectedCalloutId) {
-      setCallouts(prev => prev.map(c =>
-        c.id === selectedCalloutId
-          ? { ...c, style: { ...c.style, ...updates } }
-          : c
-      ));
-    }
-  }, [selectedCalloutId, setCallouts]);
-
-  // Handle closing properties panel
-  const handleClosePanel = useCallback(() => {
-    setSelectedCalloutId(null);
-    setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
-  }, [setSelectedCalloutId, setCallouts]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -128,19 +112,12 @@ const CalloutOverlay = ({
         selectedSpaceId={selectedSpaceId}
         selectedModuleId={selectedModuleId}
         showSurveyPanel={showSurveyPanel}
-        onCalloutRightClick={onCalloutRightClick}
+        clipboardCallout={clipboardCallout}
+        clipboardType={clipboardType}
+        onCutCallout={onCutCallout}
+        onCopyCallout={onCopyCallout}
+        onPasteCallout={onPasteCallout}
       />
-
-      {/* Properties Panel - slides in from right when callout selected */}
-      {selectedCalloutId && (
-        <CalloutPropertiesPanel
-          selectedCallout={selectedCallout}
-          onUpdateStyle={handleUpdateStyle}
-          onClose={handleClosePanel}
-          middleAreaBounds={middleAreaBounds}
-          surveyPanelWidth={surveyPanelWidth}
-        />
-      )}
     </>
   );
 };
