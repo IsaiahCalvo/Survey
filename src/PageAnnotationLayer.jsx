@@ -1410,7 +1410,8 @@ const PageAnnotationLayer = memo(({
     selectedModuleIdRef.current = selectedModuleId;
     showSurveyPanelRef.current = showSurveyPanel;
     activeRegionIdRef.current = activeRegionId;
-  }, [callouts, setCallouts, selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, pageNumber]);
+    spacesRef.current = spaces;
+  }, [callouts, setCallouts, selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, spaces, pageNumber]);
   const strokeWidthRef = useRef(strokeWidth);
   const justCreatedCalloutRef = useRef(false);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
@@ -1421,6 +1422,7 @@ const PageAnnotationLayer = memo(({
   const selectedModuleIdRef = useRef(selectedModuleId);
   const showSurveyPanelRef = useRef(showSurveyPanel);
   const activeRegionIdRef = useRef(activeRegionId);
+  const spacesRef = useRef(spaces);
   const calloutsRef = useRef(callouts);
   const setCalloutsRef = useRef(setCallouts);
   const eraserModeRef = useRef(eraserMode);
@@ -3551,14 +3553,15 @@ const PageAnnotationLayer = memo(({
             
             // When a space is active (activeSpaceIdRef.current !== null):
             // - Background annotations (objRegionId === null) should NOT be erasable
-            // - Region-scoped annotations can only be erased if they belong to the active space
+            // - Region-scoped annotations (objRegionId !== null) SHOULD be erasable if they belong to the active space
             if (activeSpaceIdRef.current !== null) {
               if (objRegionId !== null) {
                 // Region-scoped annotation - check if it belongs to the active space
-                // Look up the space directly from the spaces array
+                // Look up the space directly from the spaces ref
                 let derivedSpaceId = null;
-                if (spaces && spaces.length > 0) {
-                  for (const space of spaces) {
+                const currentSpaces = spacesRef.current;
+                if (currentSpaces && currentSpaces.length > 0) {
+                  for (const space of currentSpaces) {
                     const assignedPages = space.assignedPages || [];
                     for (const page of assignedPages) {
                       const regions = page.regions || [];
@@ -3573,11 +3576,14 @@ const PageAnnotationLayer = memo(({
                     if (derivedSpaceId) break;
                   }
                 }
-                if (derivedSpaceId !== activeSpaceIdRef.current) {
+                // If we found the space and it matches the active space, allow erasing
+                // If lookup failed (derivedSpaceId is null), default to allowing erasing for region-scoped annotations
+                // since they are visible and interactive when a space is active
+                if (derivedSpaceId !== null && derivedSpaceId !== activeSpaceIdRef.current) {
                   // Region-scoped annotation from a different space - skip
                   shouldSkip = true;
                 } else {
-                  // Region-scoped annotation from the active space - allow erasing
+                  // Region-scoped annotation from the active space (or lookup failed) - allow erasing
                   shouldSkip = false;
                 }
               } else if (objSpaceId !== null) {
