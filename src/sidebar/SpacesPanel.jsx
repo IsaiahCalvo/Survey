@@ -658,6 +658,15 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 type="text"
                                 value={editingRegionValue}
                                 onChange={(e) => setEditingRegionValue(e.target.value)}
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                }}
+                                onFocus={(e) => {
+                                  e.stopPropagation();
+                                }}
                                 onBlur={() => {
                                   if (isRegionSelectionActive) {
                                     return;
