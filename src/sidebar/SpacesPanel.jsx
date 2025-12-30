@@ -337,11 +337,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               }}>
                 {/* #region agent log */}
                 {(() => {
-                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:338',message:'Exit button render check',data:{spaceId:space.id,isSelected,editingRegionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:338',message:'Exit button render check',data:{spaceId:space.id,isActive,isSelected,editingRegionId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'J'})}).catch(()=>{});
                   return null;
                 })()}
                 {/* #endregion */}
-                {isSelected && (
+                {isActive && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -860,6 +860,17 @@ const SpacesPanel = ({
     // Don't clear internal state when external becomes null - user might have manually selected
     // This ensures the exit button stays visible during region editing even if external state is cleared
   }, [externalSelectedSpaceId]); // Only depend on externalSelectedSpaceId to avoid infinite loop
+  
+  // Additional effect to restore state if it gets cleared but external is still set
+  // This handles cases where internal state is cleared by other means (e.g., space updates)
+  React.useEffect(() => {
+    if (externalSelectedSpaceId !== null && selectedSpaceId === null) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:867',message:'Restoring selectedSpaceId from external',data:{externalSelectedSpaceId,currentSelectedSpaceId:selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'I'})}).catch(()=>{});
+      // #endregion
+      setSelectedSpaceId(externalSelectedSpaceId);
+    }
+  }, [selectedSpaceId, externalSelectedSpaceId]);
   const [pageInputs, setPageInputs] = useState({});
   const [pageErrors, setPageErrors] = useState({});
   const [activeDragSpaceId, setActiveDragSpaceId] = useState(null);
