@@ -145,9 +145,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   }, []);
 
   const handleRegionEditClick = useCallback((pageId, currentLabel) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:147',message:'handleRegionEditClick called',data:{pageId,currentLabel,spaceId:space.id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     setEditingRegionId(pageId);
     setEditingRegionValue(currentLabel);
-  }, []);
+    // Note: Rename mode should NOT automatically select the space
+  }, [space.id]);
 
 
   const {
@@ -331,6 +335,12 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 alignItems: 'center',
                 marginLeft: 'auto'
               }}>
+                {/* #region agent log */}
+                {(() => {
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:338',message:'Exit button render check',data:{spaceId:space.id,isSelected,editingRegionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                  return null;
+                })()}
+                {/* #endregion */}
                 {isSelected && (
                   <button
                     onClick={(e) => {
@@ -824,13 +834,32 @@ const SpacesPanel = ({
   numPages,
   features,
   showBackgroundAnnotations = true,
-  onToggleBackgroundAnnotations = null
+  onToggleBackgroundAnnotations = null,
+  externalSelectedSpaceId = null
 }) => {
   const [newSpaceName, setNewSpaceName] = useState('');
   const [editingSpace, setEditingSpace] = useState(null);
   const [editingName, setEditingName] = useState('');
   const [expandedSpaces, setExpandedSpaces] = useState(new Set());
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
+  
+  // Sync external selectedSpaceId prop with internal state
+  React.useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:856',message:'Sync effect triggered',data:{externalSelectedSpaceId,currentSelectedSpaceId:selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    // Always sync when external changes, even if it's the same value (handles re-renders)
+    if (externalSelectedSpaceId !== null) {
+      if (externalSelectedSpaceId !== selectedSpaceId) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:862',message:'Syncing external selectedSpaceId',data:{externalSelectedSpaceId,currentSelectedSpaceId:selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+        setSelectedSpaceId(externalSelectedSpaceId);
+      }
+    }
+    // Don't clear internal state when external becomes null - user might have manually selected
+    // This ensures the exit button stays visible during region editing even if external state is cleared
+  }, [externalSelectedSpaceId]); // Only depend on externalSelectedSpaceId to avoid infinite loop
   const [pageInputs, setPageInputs] = useState({});
   const [pageErrors, setPageErrors] = useState({});
   const [activeDragSpaceId, setActiveDragSpaceId] = useState(null);
@@ -903,11 +932,17 @@ const SpacesPanel = ({
   }, []);
 
   const handleSpaceClick = useCallback((spaceId) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:909',message:'handleSpaceClick called',data:{spaceId,currentSelectedSpaceId:selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     setSelectedSpaceId(spaceId);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:912',message:'setSelectedSpaceId called',data:{spaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     if (onSetActiveSpace) {
       onSetActiveSpace(spaceId);
     }
-  }, [onSetActiveSpace]);
+  }, [onSetActiveSpace, selectedSpaceId]);
 
   const handleExitSpace = useCallback((spaceId) => {
     if (selectedSpaceId === spaceId) {
@@ -1139,6 +1174,9 @@ const SpacesPanel = ({
               {spaces.map((space) => {
                 const isActive = activeSpaceId === space.id;
                 const isSelected = selectedSpaceId === space.id;
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:1145',message:'isSelected calculated',data:{spaceId:space.id,selectedSpaceId,externalSelectedSpaceId,isSelected},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});
+                // #endregion
                 const isExpanded = expandedSpaces.has(space.id);
                 const pageCount = space.assignedPages?.length || 0;
                 const regionCount = space.assignedPages?.reduce((sum, p) => sum + (p.regions?.length || 0), 0) || 0;

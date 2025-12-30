@@ -9432,15 +9432,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [getUserInitials]);
 
-  const handleExportSurveyToExcel = useCallback(async (targetPath = null) => {
+  const handleExportSurveyToExcel = useCallback(async (targetPath = null, options = {}) => {
+    const { silent = false } = options;
     if (!features?.excelExport) {
-      alert('Excel Export is a Pro feature. Please upgrade to use this tool.');
+      if (!silent) alert('Excel Export is a Pro feature. Please upgrade to use this tool.');
       return;
     }
     // If called from event handler, targetPath will be the event object
     if (targetPath && typeof targetPath !== 'string') targetPath = null;
     if (!selectedTemplate) {
-      alert('Please select a survey template before exporting.');
+      if (!silent) alert('Please select a survey template before exporting.');
       return;
     }
 
@@ -9875,7 +9876,56 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 alert('Please sign in to Microsoft to sync with OneDrive.');
                 return;
               }
-              await uploadExcelFile(graphClient, targetPath, workbookBuffer);
+
+              // Check if Live Sync is enabled with active session - use cell-level updates
+              if (liveSyncEnabled && excelSessionId && oneDriveFileId && liveSyncStatus === 'connected') {
+                console.log('Using Live Sync cell-level updates...');
+
+                // Update each worksheet via session API
+                for (const ws of workbook.worksheets) {
+                  const sheetName = ws.name;
+                  const rowCount = ws.rowCount || 1;
+                  const colCount = ws.columnCount || 1;
+
+                  if (rowCount > 0 && colCount > 0) {
+                    // Build 2D array of values from worksheet
+                    const values = [];
+                    for (let r = 1; r <= rowCount; r++) {
+                      const row = [];
+                      for (let c = 1; c <= colCount; c++) {
+                        const cell = ws.getCell(r, c);
+                        // Get the display value (handles formulas, dates, etc.)
+                        row.push(cell.value !== null && cell.value !== undefined ? String(cell.value) : '');
+                      }
+                      values.push(row);
+                    }
+
+                    // Convert column number to letter (1 -> A, 2 -> B, etc.)
+                    const colLetter = (col) => {
+                      let result = '';
+                      while (col > 0) {
+                        const mod = (col - 1) % 26;
+                        result = String.fromCharCode(65 + mod) + result;
+                        col = Math.floor((col - 1) / 26);
+                      }
+                      return result;
+                    };
+
+                    const range = `A1:${colLetter(colCount)}${rowCount}`;
+
+                    try {
+                      await updateCellRange(graphClient, oneDriveFileId, excelSessionId, sheetName, range, values);
+                      console.log(`Updated sheet "${sheetName}" range ${range}`);
+                    } catch (sheetErr) {
+                      console.warn(`Failed to update sheet "${sheetName}":`, sheetErr);
+                      // Continue with other sheets
+                    }
+                  }
+                }
+              } else {
+                // Fall back to full file upload (requires Excel to be closed)
+                await uploadExcelFile(graphClient, targetPath, workbookBuffer);
+              }
             } else {
               // Use local filesystem
               await window.electronAPI.writeFile(targetPath, workbookBuffer);
@@ -9911,14 +9961,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               handleTemplatesChange(updatedTemplates);
             }
 
-            alert('Sync to Excel successful!');
+            if (!silent) alert('Sync to Excel successful!');
           } catch (err) {
             console.error('Failed to write file:', err);
             // Check for OneDrive locked file error
-            if (err.message && err.message.includes('locked')) {
-              alert('Failed to sync: The Excel file is locked. Please close it in Excel or OneDrive and try again.');
-            } else {
-              alert('Failed to sync to Excel file. It might be open in another program.');
+            if (!silent) {
+              if (err.message && err.message.includes('locked')) {
+                alert('Failed to sync: The Excel file is locked. Please close it in Excel or OneDrive and try again.');
+              } else {
+                alert('Failed to sync to Excel file. It might be open in another program.');
+              }
             }
             return;
           }
@@ -9950,7 +10002,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       console.error('Failed to create Excel export', error);
       alert('Unable to create the Excel file. Please try again.');
     }
-  }, [selectedTemplate, items, highlightAnnotations, graphClient]);
+  }, [selectedTemplate, items, highlightAnnotations, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -10544,7 +10596,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     pushTimeoutRef.current = setTimeout(async () => {
       console.log('Auto-pushing to Excel...');
       try {
-        await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
+        await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
         setLastPushMessage('Pushed to Excel');
         setTimeout(() => setLastPushMessage(''), 3000);
       } catch (error) {
@@ -10725,9 +10777,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const pushTimeout = setTimeout(async () => {
       try {
         console.log('Live sync: Pushing changes to Excel...');
-        // For now, we'll use the bulk export but through the session
-        // In a future enhancement, we could do granular cell updates
-        await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
+        // Use silent mode to prevent alert popups during live sync
+        await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
         setLastPushMessage('Live synced');
         setTimeout(() => setLastPushMessage(''), 2000);
       } catch (error) {
@@ -11105,17 +11156,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [searchResults, currentMatchIndex]);
 
   const handleRequestRegionEdit = useCallback((spaceId, pageId) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11156',message:'handleRequestRegionEdit called',data:{spaceId,pageId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11159',message:'Space not found',data:{spaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       return;
     }
 
     const assignedPage = space.assignedPages?.find(p => p.pageId === pageId);
     if (!assignedPage) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11164',message:'Assigned page not found',data:{spaceId,pageId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       return;
     }
 
     setActiveSpaceId(spaceId);
+    setSelectedSpaceId(spaceId); // Automatically select the space when entering edit mode
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11168',message:'setSelectedSpaceId called in handleRequestRegionEdit',data:{spaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     setRegionSelectionPage(pageId);
     if (features?.advancedSurvey) {
       setShowRegionSelection(true);
@@ -11152,6 +11216,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [spaces, activeSpaceId, regionSelectionPage]);
 
   const handleRegionComplete = useCallback((regions) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11217',message:'handleRegionComplete called',data:{activeSpaceId,regionSelectionPage,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
     if (!activeSpaceId || !regionSelectionPage) return;
 
     const space = spaces.find(s => s.id === activeSpaceId);
@@ -11175,9 +11242,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     handleSpaceUpdate(activeSpaceId, { assignedPages: updatedPages });
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11241',message:'Closing region selection, keeping selectedSpaceId',data:{activeSpaceId,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
     setShowRegionSelection(false);
     setRegionSelectionPage(null);
-  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate]);
+    // Keep selectedSpaceId set - don't clear it when region selection completes
+  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, selectedSpaceId]);
 
   // Templates are loaded from Supabase via Dashboard component
   // No need to load from localStorage here
@@ -13567,6 +13638,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           activeSpaceId={null}
           onSetActiveSpace={() => { }}
           onExitSpaceMode={() => { }}
+          selectedSpaceId={null}
           scale={1}
           onToggleCollapse={() => { }}
         />
@@ -13885,6 +13957,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             onPageDrop={onPageDrop}
             showBackgroundAnnotations={showBackgroundAnnotations}
             onToggleBackgroundAnnotations={handleToggleBackgroundAnnotations}
+            selectedSpaceId={selectedSpaceId}
             onToggleCollapse={(isCollapsed) => {
               setIsLeftSidebarCollapsed(isCollapsed);
               requestAnimationFrame(() => {

@@ -56,7 +56,8 @@ const PDFSidebar = ({
   onToggleCollapse,
   features,
   showBackgroundAnnotations = true,
-  onToggleBackgroundAnnotations = null
+  onToggleBackgroundAnnotations = null,
+  selectedSpaceId = null
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces'
@@ -257,6 +258,7 @@ const PDFSidebar = ({
                 features={features}
                 showBackgroundAnnotations={showBackgroundAnnotations}
                 onToggleBackgroundAnnotations={onToggleBackgroundAnnotations}
+                externalSelectedSpaceId={selectedSpaceId}
               />
             )}
           </div>
