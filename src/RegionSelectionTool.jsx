@@ -886,12 +886,23 @@ const RegionSelectionTool = ({
   }, [active, interactionState, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions]);
 
   const handleConfirm = useCallback(() => {
-    if (!onRegionComplete) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleConfirm',message:'handleConfirm called',data:{regionsCount:regions.length,hasOnRegionComplete:!!onRegionComplete,regions:regions.map(r=>({regionId:r.regionId,operation:r.operation,coordsLength:r.coordinates?.length}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    if (!onRegionComplete) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleConfirm',message:'Early return - no onRegionComplete',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
 
     // Consolidate regions before confirming
     // This ensures that any overlapping regions are merged into single polygons
     // and any subtractions are applied permanently.
     const consolidatedRegions = mergeOverlappingRegions(regions);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleConfirm',message:'After mergeOverlappingRegions',data:{originalCount:regions.length,consolidatedCount:consolidatedRegions.length,consolidated:consolidatedRegions.map(r=>({regionId:r.regionId,operation:r.operation,coordsLength:r.coordinates?.length}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
 
     // Preserve all metadata including sourceRegions and originCenter for unmerge capability
     const payload = consolidatedRegions.map(region => ({
@@ -907,6 +918,9 @@ const RegionSelectionTool = ({
       // Preserve originCenter if it exists
       originCenter: region.originCenter ? { ...region.originCenter } : undefined
     }));
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleConfirm',message:'Calling onRegionComplete',data:{payloadCount:payload.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
     onRegionComplete(payload);
     setRegions([]);
     setCurrentRect(null);

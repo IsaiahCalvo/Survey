@@ -11288,10 +11288,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [spaces, activeSpaceId, regionSelectionPage]);
 
   const handleRegionComplete = useCallback((regions) => {
-    if (!activeSpaceId || !regionSelectionPage) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'handleRegionComplete called',data:{regionsCount:regions?.length||0,activeSpaceId,regionSelectionPage,regions:regions?.map(r=>({regionId:r.regionId,operation:r.operation,coordsLength:r.coordinates?.length}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    if (!activeSpaceId || !regionSelectionPage) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'Early return - missing activeSpaceId or regionSelectionPage',data:{activeSpaceId,regionSelectionPage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
 
     const space = spaces.find(s => s.id === activeSpaceId);
-    if (!space) return;
+    if (!space) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'Space not found',data:{activeSpaceId,spacesCount:spaces.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
 
     const updatedPages = [...(space.assignedPages || [])];
     const pageIndex = updatedPages.findIndex(p => p.pageId === regionSelectionPage);
@@ -11300,6 +11313,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const normalizedRegions = Array.isArray(regions) && regions.length > 0 
       ? [regions[0]] // Only keep first region
       : [];
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'Normalized regions',data:{originalCount:regions?.length||0,normalizedCount:normalizedRegions.length,pageIndex},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     
     // Ensure region has showBackgroundAnnotations property (migration)
     const migratedRegions = normalizedRegions.map(region => ({
@@ -11321,10 +11338,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       });
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'Calling handleSpaceUpdate',data:{activeSpaceId,regionsCount:migratedRegions.length,pageIndex},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     handleSpaceUpdate(activeSpaceId, { assignedPages: updatedPages });
     setShowRegionSelection(false);
     setRegionSelectionPage(null);
     // Keep selectedSpaceId set - don't clear it when region selection completes
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleRegionComplete',message:'handleRegionComplete completed',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
   }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate]);
 
   // Templates are loaded from Supabase via Dashboard component
