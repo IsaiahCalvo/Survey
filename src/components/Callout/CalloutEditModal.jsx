@@ -43,48 +43,22 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
       // Check for color picker
       const isColorPicker = e.target.closest && e.target.closest('.compact-color-picker');
       
-      // #region agent log
-      console.log('[DEBUG] handleClickOutside called', { 
-        target: e.target?.tagName, 
-        targetClass: e.target?.className,
-        ignoreNextClick: ignoreNextClickRef.current,
-        isClickInsideModal,
-        isInsideByContains,
-        isColorPicker,
-        clickPathLength: clickPath.length
-      });
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutEditModal.jsx:24',message:'handleClickOutside called',data:{targetTag:e.target?.tagName,targetClass:e.target?.className,ignoreNextClick:ignoreNextClickRef.current,isClickInsideModal,isInsideByContains,isColorPicker:!!isColorPicker},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'F'})}).catch((e)=>console.error('Log error:',e));
-      // #endregion
-      
       // Ignore the first click after opening (from context menu click)
       if (ignoreNextClickRef.current) {
-        // #region agent log
-        console.log('[DEBUG] Ignoring click - still in ignore period');
-        // #endregion
         return;
       }
       
       // Don't close if clicking on modal or any element inside it
       if (isClickInsideModal || isInsideByContains) {
-        // #region agent log
-        console.log('[DEBUG] Click is inside modal - not closing');
-        // #endregion
         return;
       }
       
       // Don't close if clicking on color picker (which might render outside modal)
       if (isColorPicker) {
-        // #region agent log
-        console.log('[DEBUG] Click is on color picker - not closing');
-        // #endregion
         return;
       }
       
       // Only close if clicking truly outside
-      // #region agent log
-      console.log('[DEBUG] Closing modal - click outside');
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutEditModal.jsx:70',message:'Closing modal due to click outside',data:{targetTag:e.target?.tagName,targetClass:e.target?.className},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'F'})}).catch((e)=>console.error('Log error:',e));
-      // #endregion
       onClose();
     };
 
@@ -150,12 +124,7 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
     }
   }, [showTextColorPicker]);
 
-  // #region agent log
-  if (!visible || !callout) {
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutEditModal.jsx:47',message:'Modal not rendering - condition check failed',data:{visible,hasCallout:!!callout,calloutId:callout?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D,E'})}).catch(()=>{});
-    return null;
-  }
-  // #endregion
+  if (!visible || !callout) return null;
 
   const currentColor = colorMode === 'border' ? style.borderColor : style.fillColor;
   const currentOpacity = colorMode === 'border' ? style.borderOpacity : style.fillOpacity;
@@ -247,6 +216,9 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
           ...getModalPosition(),
           position: 'fixed',
           width: 320,
+          height: '368px',
+          paddingTop: '0px',
+          paddingBottom: '0px',
           backgroundColor: '#2b2b2b',
           border: '1px solid #444',
           borderRadius: '8px',
@@ -537,6 +509,58 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
 
           {activeTab === 'text' && (
             <div>
+              {/* Text Color */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase' }}>
+                    TEXT COLOR
+                  </label>
+                </div>
+
+                {/* Text Color Picker Button */}
+                <div style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => setShowTextColorPicker(!showTextColorPicker)}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      border: '1px solid #555',
+                      borderRadius: 4,
+                      background: '#333',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: '#ddd' }}>Select Color</span>
+                    <div
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 4,
+                        background: style.fontColor || '#000000',
+                        border: '1px solid #555',
+                      }}
+                    />
+                  </button>
+                  
+                  {showTextColorPicker && (
+                    <div 
+                      ref={textColorPickerRef}
+                      style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1002, marginTop: 4 }}
+                    >
+                      <CompactColorPicker
+                        color={style.fontColor || '#000000'}
+                        opacity={1}
+                        onChange={handleTextColorChange}
+                        onClose={() => setShowTextColorPicker(false)}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Font Family & Size */}
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <div style={{ flex: 1 }}>
@@ -702,58 +726,6 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
                   >
                     S
                   </button>
-                </div>
-              </div>
-
-              {/* Text Color */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: 10, fontWeight: 500, color: '#999', textTransform: 'uppercase' }}>
-                    TEXT COLOR
-                  </label>
-                </div>
-
-                {/* Text Color Picker Button */}
-                <div style={{ position: 'relative' }}>
-                  <button
-                    onClick={() => setShowTextColorPicker(!showTextColorPicker)}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      border: '1px solid #555',
-                      borderRadius: 4,
-                      background: '#333',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <span style={{ fontSize: 12, color: '#ddd' }}>Select Color</span>
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 4,
-                        background: style.fontColor || '#000000',
-                        border: '1px solid #555',
-                      }}
-                    />
-                  </button>
-                  
-                  {showTextColorPicker && (
-                    <div 
-                      ref={textColorPickerRef}
-                      style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1002, marginTop: 4 }}
-                    >
-                      <CompactColorPicker
-                        color={style.fontColor || '#000000'}
-                        opacity={1}
-                        onChange={handleTextColorChange}
-                        onClose={() => setShowTextColorPicker(false)}
-                      />
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

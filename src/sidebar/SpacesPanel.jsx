@@ -719,7 +719,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               return null;
                             })()}
                             {/* #endregion */}
-                            {isSelected && onToggleBackgroundAnnotations && (
+                            {(isSelected || isActive) && onToggleBackgroundAnnotations && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();

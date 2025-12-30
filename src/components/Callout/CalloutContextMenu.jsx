@@ -195,28 +195,16 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
       }} />
       <button
         onMouseDown={(e) => {
-          // Use onMouseDown to catch the event earlier, before click-outside handler
           e.stopPropagation();
           e.preventDefault();
         }}
         onClick={(e) => {
-          // #region agent log
-          console.log('[DEBUG] Edit button clicked', e);
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutContextMenu.jsx:193',message:'Edit button clicked',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'A,C'})}).catch((e)=>console.error('Log error:',e));
-          // #endregion
           e.stopPropagation();
           e.preventDefault();
-          // Call onEdit first, then close after a small delay to allow state update
-          console.log('[DEBUG] About to call onEdit');
           onEdit();
-          // #region agent log
-          console.log('[DEBUG] onEdit called, scheduling onClose');
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutContextMenu.jsx:201',message:'onEdit called, scheduling onClose',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'A,C'})}).catch((e)=>console.error('Log error:',e));
-          // #endregion
           // Use requestAnimationFrame to ensure state update happens before closing
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              console.log('[DEBUG] Calling onClose after animation frames');
               onClose();
             });
           });

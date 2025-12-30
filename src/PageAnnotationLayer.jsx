@@ -4892,16 +4892,19 @@ const PageAnnotationLayer = memo(({
           // If toggle is off, hide background annotations
           backgroundAnnotationVisible = false;
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4875', message: 'Toggle off - hiding background annotation', data: { objType: obj.type, objId: obj.id || 'no-id' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4887', message: 'Toggle off - hiding background annotation', data: { objType: obj.type, objId: obj.id || 'no-id', showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
           // #endregion
         } else {
           // If toggle is on, annotations remain visible (no region containment check needed per requirements)
           // The requirement says they "must remain visible by default"
           backgroundAnnotationVisible = true;
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4883', message: 'Toggle on - background annotations visible', data: { objType: obj.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4895', message: 'Toggle on - background annotations visible', data: { objType: obj.type, showBackgroundAnnotations }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: '2' }) }).catch(() => {});
           // #endregion
         }
+      } else if (!regions && !isScopedRegionAnnotation) {
+        // When no regions are active, background annotations should always be visible
+        backgroundAnnotationVisible = true;
       }
 
       // Object is visible if:

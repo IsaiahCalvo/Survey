@@ -154,17 +154,6 @@ const CalloutComponent = ({
   const handleTextBoxMouseDown = useCallback((e) => {
     e.stopPropagation();
 
-    // Check for Ctrl/Cmd+Click to show context menu
-    if ((e.ctrlKey || e.metaKey) && isInteractive) {
-      e.preventDefault();
-      setContextMenu({
-        visible: true,
-        x: e.clientX,
-        y: e.clientY,
-      });
-      return;
-    }
-
     // If eraser tool is active, delete the callout
     if (activeTool === 'eraser') {
       e.preventDefault();
@@ -179,6 +168,11 @@ const CalloutComponent = ({
 
       // Check if Control/Command is held to move the entire callout
       const isWholeMove = e.ctrlKey || e.metaKey;
+      const isCommandKey = e.ctrlKey || e.metaKey;
+
+      // Capture DOM references before creating closure
+      const targetElement = e.currentTarget;
+      const canvasElement = targetElement.closest('[data-callout-canvas]');
 
       const handleMouseMove = (moveEvent) => {
         if (mouseDownPositionRef.current && !hasDraggedRef.current) {
@@ -186,6 +180,26 @@ const CalloutComponent = ({
           const dy = Math.abs(moveEvent.clientY - mouseDownPositionRef.current.y);
           if (dx > 5 || dy > 5) {
             hasDraggedRef.current = true;
+            // If Command key is held and we've started dragging, start the drag operation
+            if (isCommandKey && isInteractive) {
+              // For whole callout movement, use mouse position relative to the canvas
+              let offset;
+              if (canvasElement) {
+                const canvasRect = canvasElement.getBoundingClientRect();
+                offset = {
+                  x: mouseDownPositionRef.current.x - canvasRect.left,
+                  y: mouseDownPositionRef.current.y - canvasRect.top,
+                };
+              } else {
+                // Fallback: calculate using text box position and page dimensions
+                const rect = targetElement.getBoundingClientRect();
+                offset = {
+                  x: textBoxPosition.x + (mouseDownPositionRef.current.x - rect.left),
+                  y: textBoxPosition.y + (mouseDownPositionRef.current.y - rect.top),
+                };
+              }
+              onStartDrag({ type: 'whole', calloutId: callout.id }, offset);
+            }
           }
         }
       };
@@ -201,6 +215,15 @@ const CalloutComponent = ({
       document.addEventListener('mousemove', handleMouseMove);
 
       const handleMouseUp = () => {
+        // If Command key was held and no drag occurred, show context menu
+        if (isCommandKey && isInteractive && !hasDraggedRef.current) {
+          setContextMenu({
+            visible: true,
+            x: mouseDownPositionRef.current.x,
+            y: mouseDownPositionRef.current.y,
+          });
+        }
+
         if (mouseMoveHandlerRef.current) {
           document.removeEventListener('mousemove', mouseMoveHandlerRef.current);
           mouseMoveHandlerRef.current = null;
@@ -218,26 +241,11 @@ const CalloutComponent = ({
       wasSelectedBeforeClickRef.current = isSelected;
       onSelect();
 
+      // Only start drag immediately if Command is NOT held (normal drag)
+      // If Command is held, wait to see if it's a drag or click
       if (isWholeMove) {
-        // For whole callout movement, use mouse position relative to the canvas
-        const canvasElement = e.currentTarget.closest('[data-callout-canvas]');
-        let offset;
-        if (canvasElement) {
-          const canvasRect = canvasElement.getBoundingClientRect();
-          offset = {
-            x: e.clientX - canvasRect.left,
-            y: e.clientY - canvasRect.top,
-          };
-        } else {
-          // Fallback: calculate using text box position and page dimensions
-          // This should rarely happen, but provides a backup
-          const rect = e.currentTarget.getBoundingClientRect();
-          offset = {
-            x: textBoxPosition.x + (e.clientX - rect.left),
-            y: textBoxPosition.y + (e.clientY - rect.top),
-          };
-        }
-        onStartDrag({ type: 'whole', calloutId: callout.id }, offset);
+        // Don't start drag immediately - wait to see if mouse moves
+        // If mouse moves, handleMouseMove will start the drag
       } else {
         // For text box only movement, use offset relative to text box
         const rect = e.currentTarget.getBoundingClientRect();
@@ -301,52 +309,98 @@ const CalloutComponent = ({
     e.stopPropagation();
     e.preventDefault();
     
-    // Check for Ctrl/Cmd+Click to show context menu (instead of drag)
-    if ((e.ctrlKey || e.metaKey) && isInteractive) {
-      setContextMenu({
-        visible: true,
-        x: e.clientX,
-        y: e.clientY,
-      });
-      return;
-    }
+    const isCommandKey = e.ctrlKey || e.metaKey;
+    const isWholeMove = isCommandKey;
     
-    // Check if Control/Command is held to move the entire callout
-    const isWholeMove = e.ctrlKey || e.metaKey;
+    // Track mouse position and drag state
+    hasDraggedRef.current = false;
+    mouseDownPositionRef.current = { x: e.clientX, y: e.clientY };
+    
+    // Capture DOM references before creating closure
+    const targetElement = e.currentTarget;
+    let canvasElement = targetElement.closest && targetElement.closest('[data-callout-canvas]');
+    if (!canvasElement) {
+      // Fallback: traverse up manually
+      canvasElement = targetElement;
+      while (canvasElement && canvasElement !== document.body) {
+        if (canvasElement.getAttribute && canvasElement.getAttribute('data-callout-canvas') === 'true') {
+          break;
+        }
+        canvasElement = canvasElement.parentElement || canvasElement.parentNode;
+      }
+    }
     
     onSelect();
     
-    if (isWholeMove) {
-      // For whole callout movement, use mouse position relative to the canvas
-      // Try closest() first, then traverse manually if needed
-      let canvasElement = e.currentTarget.closest && e.currentTarget.closest('[data-callout-canvas]');
-      if (!canvasElement) {
-        // Fallback: traverse up manually
-        canvasElement = e.currentTarget;
-        while (canvasElement && canvasElement !== document.body) {
-          if (canvasElement.getAttribute && canvasElement.getAttribute('data-callout-canvas') === 'true') {
-            break;
+    const handleMouseMove = (moveEvent) => {
+      if (mouseDownPositionRef.current && !hasDraggedRef.current) {
+        const dx = Math.abs(moveEvent.clientX - mouseDownPositionRef.current.x);
+        const dy = Math.abs(moveEvent.clientY - mouseDownPositionRef.current.y);
+        if (dx > 5 || dy > 5) {
+          hasDraggedRef.current = true;
+          // If Command key is held and we've started dragging, start the drag operation
+          if (isCommandKey && isInteractive) {
+            // For whole callout movement, use mouse position relative to the canvas
+            let offset;
+            if (canvasElement && canvasElement !== document.body && canvasElement.getBoundingClientRect) {
+              const canvasRect = canvasElement.getBoundingClientRect();
+              offset = {
+                x: mouseDownPositionRef.current.x - canvasRect.left,
+                y: mouseDownPositionRef.current.y - canvasRect.top,
+              };
+            } else {
+              // Fallback: use the handle position (arrowTip or knee) as offset
+              const handlePos = targetType === 'arrowTip' ? arrowTip : knee;
+              offset = {
+                x: handlePos.x,
+                y: handlePos.y,
+              };
+            }
+            onStartDrag({ type: 'whole', calloutId: callout.id }, offset);
           }
-          canvasElement = canvasElement.parentElement || canvasElement.parentNode;
         }
       }
-      
-      let offset;
-      if (canvasElement && canvasElement !== document.body && canvasElement.getBoundingClientRect) {
-        const canvasRect = canvasElement.getBoundingClientRect();
-        offset = {
-          x: e.clientX - canvasRect.left,
-          y: e.clientY - canvasRect.top,
-        };
-      } else {
-        // Fallback: use the handle position (arrowTip or knee) as offset
-        const handlePos = targetType === 'arrowTip' ? arrowTip : knee;
-        offset = {
-          x: handlePos.x,
-          y: handlePos.y,
-        };
+    };
+
+    const handleMouseUp = () => {
+      // If Command key was held and no drag occurred, show context menu
+      if (isCommandKey && isInteractive && !hasDraggedRef.current) {
+        setContextMenu({
+          visible: true,
+          x: mouseDownPositionRef.current.x,
+          y: mouseDownPositionRef.current.y,
+        });
       }
-      onStartDrag({ type: 'whole', calloutId: callout.id }, offset);
+
+      if (mouseMoveHandlerRef.current) {
+        document.removeEventListener('mousemove', mouseMoveHandlerRef.current);
+        mouseMoveHandlerRef.current = null;
+      }
+      if (mouseUpHandlerRef.current) {
+        document.removeEventListener('mouseup', mouseUpHandlerRef.current);
+        mouseUpHandlerRef.current = null;
+      }
+    };
+
+    // Set up mouse move and up handlers
+    if (mouseMoveHandlerRef.current) {
+      document.removeEventListener('mousemove', mouseMoveHandlerRef.current);
+    }
+    if (mouseUpHandlerRef.current) {
+      document.removeEventListener('mouseup', mouseUpHandlerRef.current);
+    }
+
+    mouseMoveHandlerRef.current = handleMouseMove;
+    document.addEventListener('mousemove', handleMouseMove);
+
+    mouseUpHandlerRef.current = handleMouseUp;
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    // Only start drag immediately if Command is NOT held (normal drag)
+    // If Command is held, wait to see if it's a drag or click
+    if (isWholeMove) {
+      // Don't start drag immediately - wait to see if mouse moves
+      // If mouse moves, handleMouseMove will start the drag
     } else {
       onStartDrag({ type: targetType, calloutId: callout.id }, { x: 0, y: 0 });
     }
@@ -356,53 +410,99 @@ const CalloutComponent = ({
     e.stopPropagation();
     e.preventDefault();
     
-    // Check for Ctrl/Cmd+Click to show context menu (instead of drag)
-    if ((e.ctrlKey || e.metaKey) && isInteractive) {
-      setContextMenu({
-        visible: true,
-        x: e.clientX,
-        y: e.clientY,
-      });
-      return;
-    }
-    
     // If eraser tool is active, delete the callout
     if (activeTool === 'eraser') {
       onDelete();
       return;
     }
     
-    // Check if Control/Command is held to move the entire callout
-    const isWholeMove = e.ctrlKey || e.metaKey;
+    const isCommandKey = e.ctrlKey || e.metaKey;
+    const isWholeMove = isCommandKey;
+    
+    // Track mouse position and drag state
+    hasDraggedRef.current = false;
+    mouseDownPositionRef.current = { x: e.clientX, y: e.clientY };
+    
+    // Capture DOM references before creating closure
+    // SVG elements might not support closest(), so traverse up manually
+    let canvasElement = e.currentTarget;
+    while (canvasElement && canvasElement !== document.body) {
+      if (canvasElement.getAttribute && canvasElement.getAttribute('data-callout-canvas') === 'true') {
+        break;
+      }
+      canvasElement = canvasElement.parentElement || canvasElement.parentNode;
+    }
     
     onSelect();
     
-    if (isWholeMove) {
-      // For whole callout movement, use mouse position relative to the canvas
-      // SVG elements might not support closest(), so traverse up manually
-      let canvasElement = e.currentTarget;
-      while (canvasElement && canvasElement !== document.body) {
-        if (canvasElement.getAttribute && canvasElement.getAttribute('data-callout-canvas') === 'true') {
-          break;
+    const handleMouseMove = (moveEvent) => {
+      if (mouseDownPositionRef.current && !hasDraggedRef.current) {
+        const dx = Math.abs(moveEvent.clientX - mouseDownPositionRef.current.x);
+        const dy = Math.abs(moveEvent.clientY - mouseDownPositionRef.current.y);
+        if (dx > 5 || dy > 5) {
+          hasDraggedRef.current = true;
+          // If Command key is held and we've started dragging, start the drag operation
+          if (isCommandKey && isInteractive) {
+            // For whole callout movement, use mouse position relative to the canvas
+            let offset;
+            if (canvasElement && canvasElement !== document.body && canvasElement.getBoundingClientRect) {
+              const canvasRect = canvasElement.getBoundingClientRect();
+              offset = {
+                x: mouseDownPositionRef.current.x - canvasRect.left,
+                y: mouseDownPositionRef.current.y - canvasRect.top,
+              };
+            } else {
+              // Fallback: use arrow tip position as offset
+              offset = {
+                x: arrowTip.x,
+                y: arrowTip.y,
+              };
+            }
+            onStartDrag({ type: 'whole', calloutId: callout.id }, offset);
+          }
         }
-        canvasElement = canvasElement.parentElement || canvasElement.parentNode;
       }
-      
-      let offset;
-      if (canvasElement && canvasElement !== document.body && canvasElement.getBoundingClientRect) {
-        const canvasRect = canvasElement.getBoundingClientRect();
-        offset = {
-          x: e.clientX - canvasRect.left,
-          y: e.clientY - canvasRect.top,
-        };
-      } else {
-        // Fallback: use arrow tip position as offset
-        offset = {
-          x: arrowTip.x,
-          y: arrowTip.y,
-        };
+    };
+
+    const handleMouseUp = () => {
+      // If Command key was held and no drag occurred, show context menu
+      if (isCommandKey && isInteractive && !hasDraggedRef.current) {
+        setContextMenu({
+          visible: true,
+          x: mouseDownPositionRef.current.x,
+          y: mouseDownPositionRef.current.y,
+        });
       }
-      onStartDrag({ type: 'whole', calloutId: callout.id }, offset);
+
+      if (mouseMoveHandlerRef.current) {
+        document.removeEventListener('mousemove', mouseMoveHandlerRef.current);
+        mouseMoveHandlerRef.current = null;
+      }
+      if (mouseUpHandlerRef.current) {
+        document.removeEventListener('mouseup', mouseUpHandlerRef.current);
+        mouseUpHandlerRef.current = null;
+      }
+    };
+
+    // Set up mouse move and up handlers
+    if (mouseMoveHandlerRef.current) {
+      document.removeEventListener('mousemove', mouseMoveHandlerRef.current);
+    }
+    if (mouseUpHandlerRef.current) {
+      document.removeEventListener('mouseup', mouseUpHandlerRef.current);
+    }
+
+    mouseMoveHandlerRef.current = handleMouseMove;
+    document.addEventListener('mousemove', handleMouseMove);
+
+    mouseUpHandlerRef.current = handleMouseUp;
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    // Only start drag immediately if Command is NOT held (normal drag)
+    // If Command is held, wait to see if it's a drag or click
+    if (isWholeMove) {
+      // Don't start drag immediately - wait to see if mouse moves
+      // If mouse moves, handleMouseMove will start the drag
     }
   }, [activeTool, callout.id, isInteractive, onDelete, onSelect, onStartDrag, arrowTip]);
 
@@ -520,10 +620,6 @@ const CalloutComponent = ({
   }, [onDelete]);
 
   const handleEdit = useCallback(() => {
-    // #region agent log
-    console.log('[DEBUG] handleEdit called', { calloutId: callout.id, showEditModalBefore: showEditModal, isSelected });
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:522',message:'handleEdit called',data:{calloutId:callout.id,showEditModalBefore:showEditModal,isSelected},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A,B'})}).catch((e)=>console.error('Log error:',e));
-    // #endregion
     // Calculate anchor position when opening modal
     let anchor = null;
     if (textareaRef.current) {
@@ -543,16 +639,9 @@ const CalloutComponent = ({
       };
     }
     setEditModalAnchor(anchor);
-    console.log('[DEBUG] About to setShowEditModal(true)', { anchor });
     setShowEditModal(true);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:543',message:'setShowEditModal(true) called',data:{anchor},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch((e)=>console.error('Log error:',e));
-    // #endregion
     setContextMenu(null);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:545',message:'handleEdit completed, contextMenu cleared',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch((e)=>console.error('Log error:',e));
-    // #endregion
-  }, [callout.id, showEditModal]);
+  }, []);
 
   // Close edit modal when callout is deleted
   useEffect(() => {
@@ -561,13 +650,6 @@ const CalloutComponent = ({
     }
   }, [isSelected, showEditModal]);
 
-  // Track showEditModal changes
-  useEffect(() => {
-    // #region agent log
-    console.log('[DEBUG] showEditModal changed', { showEditModal, calloutId: callout.id });
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:547',message:'showEditModal state changed',data:{showEditModal,calloutId:callout.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'B'})}).catch((e)=>console.error('Log error:',e));
-    // #endregion
-  }, [showEditModal, callout.id]);
 
   // Merge callout style with defaults to ensure all properties exist
   const style = { ...defaultCalloutStyle, ...callout.style };
@@ -1136,10 +1218,6 @@ const CalloutComponent = ({
         x={contextMenu?.x || 0}
         y={contextMenu?.y || 0}
         onClose={() => {
-          // #region agent log
-          console.log('[DEBUG] Context menu onClose called', { calloutId: callout.id, showEditModal });
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:1119',message:'Context menu onClose called',data:{calloutId:callout.id,showEditModal},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A,C'})}).catch((e)=>console.error('Log error:',e));
-          // #endregion
           setContextMenu(null);
         }}
         onCut={handleCut}
@@ -1151,22 +1229,11 @@ const CalloutComponent = ({
       />
 
       {/* Edit Modal */}
-      {/* #region agent log */}
-      {(() => {
-        console.log('[DEBUG] Edit modal render check', { showEditModal, hasCallout: !!callout, calloutId: callout?.id, isSelected });
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:1129',message:'Edit modal render check',data:{showEditModal,hasCallout:!!callout,calloutId:callout?.id,isSelected},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D,E'})}).catch((e)=>console.error('Log error:',e));
-        return null;
-      })()}
-      {/* #endregion */}
       <CalloutEditModal
         visible={showEditModal}
         callout={callout}
         onUpdate={onUpdate}
         onClose={() => {
-          // #region agent log
-          console.log('[DEBUG] Edit modal onClose called from CalloutComponent');
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:1165',message:'Edit modal onClose called',data:{calloutId:callout.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'F'})}).catch((e)=>console.error('Log error:',e));
-          // #endregion
           setShowEditModal(false);
           setEditModalAnchor(null);
         }}

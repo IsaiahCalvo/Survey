@@ -8541,10 +8541,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const liveSyncPollRef = useRef(null);
   const lastPollDataRef = useRef(null);
 
-  // Local file live sync state (uses CSV shadow file)
-  const [localLiveSyncEnabled, setLocalLiveSyncEnabled] = useState(false);
-  const [showPowerQueryInstructions, setShowPowerQueryInstructions] = useState(false);
-
   // Export/Sync modal states
   const [showExportLocationModal, setShowExportLocationModal] = useState(false);
   const [showMSLoginModal, setShowMSLoginModal] = useState(false);
@@ -10515,82 +10511,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [selectedTemplate?.id, selectedTemplate?.linkedExcelPath, handleAutoSyncFromExcel]);
 
-  // Generate CSV content from highlight annotations for local file live sync
-  const generateSurveyCSV = useCallback(() => {
-    if (!selectedTemplate) return '';
-
-    const modulesList = selectedTemplate.modules || selectedTemplate.spaces || [];
-    const rows = [];
-
-    // Header row
-    const headers = ['Module', 'Category', 'Item', 'Changed By', 'Changed Date', 'Ball in Court', 'Notes'];
-
-    // Get all checklist column names across all categories
-    const allChecklistItems = new Set();
-    modulesList.forEach(mod => {
-      (mod.categories || []).forEach(cat => {
-        (cat.checklist || []).forEach(item => {
-          allChecklistItems.add(item.text || item.id);
-        });
-      });
-    });
-    const checklistHeaders = Array.from(allChecklistItems);
-    headers.push(...checklistHeaders);
-
-    rows.push(headers.map(escapeCSVValue).join(','));
-
-    // Data rows
-    Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
-      const moduleId = highlight.moduleId || highlight.spaceId;
-      const module = modulesList.find(m => m.id === moduleId);
-      const moduleName = module?.name || '';
-
-      const category = (module?.categories || []).find(c => c.id === highlight.categoryId);
-      const categoryName = category?.name || '';
-
-      const checklistValues = checklistHeaders.map(header => {
-        const checklistItem = (category?.checklist || []).find(c => c.text === header || c.id === header);
-        if (!checklistItem) return '';
-        const response = highlight.checklistResponses?.[checklistItem.id];
-        return response?.selection || '';
-      });
-
-      const row = [
-        escapeCSVValue(moduleName),
-        escapeCSVValue(categoryName),
-        escapeCSVValue(highlight.name || ''),
-        escapeCSVValue(highlight.changedBy || ''),
-        escapeCSVValue(highlight.changedDate ? new Date(highlight.changedDate).toLocaleDateString() : ''),
-        escapeCSVValue(highlight.ballInCourtEntityName || ''),
-        escapeCSVValue(highlight.note?.text || ''),
-        ...checklistValues.map(escapeCSVValue)
-      ];
-
-      rows.push(row.join(','));
-    });
-
-    return rows.join('\n');
-  }, [selectedTemplate, highlightAnnotations]);
-
-  // Write CSV shadow file for local file live sync
-  const writeShadowCSV = useCallback(async () => {
-    if (!selectedTemplate?.linkedExcelPath || selectedTemplate?.isOneDrive || !window.electronAPI) {
-      return false;
-    }
-
-    try {
-      const csvContent = generateSurveyCSV();
-      const csvPath = selectedTemplate.linkedExcelPath.replace(/\.xlsx?$/i, '_sync.csv');
-
-      await window.electronAPI.writeFile(csvPath, new TextEncoder().encode(csvContent));
-      console.log('Shadow CSV written:', csvPath);
-      return true;
-    } catch (error) {
-      console.error('Failed to write shadow CSV:', error);
-      return false;
-    }
-  }, [selectedTemplate, generateSurveyCSV]);
-
   // Auto-push to Excel when highlight annotations change
   useEffect(() => {
     if (!autoPushToExcel || !selectedTemplate?.linkedExcelPath || !window.electronAPI) {
@@ -10622,29 +10542,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     };
   }, [autoPushToExcel, selectedTemplate?.linkedExcelPath, highlightAnnotations, handleExportSurveyToExcel]);
-
-  // Local file live sync - write CSV shadow file when annotations change
-  useEffect(() => {
-    // Only for local files with live sync enabled
-    if (!localLiveSyncEnabled || !selectedTemplate?.linkedExcelPath || selectedTemplate?.isOneDrive || !window.electronAPI) {
-      return;
-    }
-
-    // Debounce CSV writes
-    const csvTimeout = setTimeout(async () => {
-      console.log('Local live sync: Writing CSV shadow file...');
-      const success = await writeShadowCSV();
-      if (success) {
-        setLastPushMessage('CSV synced');
-        setTimeout(() => setLastPushMessage(''), 2000);
-      } else {
-        setLastPushMessage('CSV sync failed');
-        setTimeout(() => setLastPushMessage(''), 3000);
-      }
-    }, 1000);
-
-    return () => clearTimeout(csvTimeout);
-  }, [localLiveSyncEnabled, selectedTemplate?.linkedExcelPath, selectedTemplate?.isOneDrive, highlightAnnotations, writeShadowCSV]);
 
   // Live sync session lifecycle management (OneDrive only)
   useEffect(() => {
@@ -13562,7 +13459,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Get regions for a page in the active space
   const getPageRegions = useCallback((pageNumber) => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13268', message: 'getPageRegions called', data: { pageNumber, activeSpaceId, spacesCount: spaces.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13268', message: 'getPageRegions called', data: { pageNumber, activeSpaceId, spacesCount: spaces.length, showRegionSelection, regionSelectionPage }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
     // #endregion
     if (!activeSpaceId) {
       // #region agent log
@@ -13587,9 +13484,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return null;
     }
 
-    if (assignedPage.wholePageIncluded !== false) {
+    // FIX: When region selection is active for this page, preserve regions even if wholePageIncluded is true
+    // This ensures annotations remain visible during region editing
+    const isEditingThisPage = showRegionSelection && regionSelectionPage === pageNumber;
+    
+    if (assignedPage.wholePageIncluded !== false && !isEditingThisPage) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13279', message: 'getPageRegions: wholePageIncluded is true', data: { wholePageIncluded: assignedPage.wholePageIncluded }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13279', message: 'getPageRegions: wholePageIncluded is true', data: { wholePageIncluded: assignedPage.wholePageIncluded, isEditingThisPage }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
       // #endregion
       return null;
     }
@@ -13602,10 +13503,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13287', message: 'getPageRegions: returning regions', data: { regionsCount: assignedPage.regions.length, firstRegionId: assignedPage.regions[0]?.regionId || 'no-id' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13287', message: 'getPageRegions: returning regions', data: { regionsCount: assignedPage.regions.length, firstRegionId: assignedPage.regions[0]?.regionId || 'no-id', isEditingThisPage }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
     // #endregion
     return assignedPage.regions;
-  }, [activeSpaceId, spaces]);
+  }, [activeSpaceId, spaces, showRegionSelection, regionSelectionPage]);
 
   // Track active region ID when regions are active
   useEffect(() => {
@@ -16175,61 +16076,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   </span>
                                   <span>Live Sync</span>
                                 </button>
-                              )}
-                              {/* Local file live sync toggle - uses CSV shadow file */}
-                              {!selectedTemplate?.isOneDrive && (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      if (localLiveSyncEnabled) {
-                                        setLocalLiveSyncEnabled(false);
-                                      } else {
-                                        setAutoPushToExcel(false);
-                                        setLocalLiveSyncEnabled(true);
-                                        // Show Power Query instructions on first enable
-                                        setShowPowerQueryInstructions(true);
-                                      }
-                                    }}
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      fontSize: '11px',
-                                      color: localLiveSyncEnabled ? '#e67e22' : '#888',
-                                      padding: '4px 8px',
-                                      background: localLiveSyncEnabled ? 'rgba(230, 126, 34, 0.1)' : 'rgba(136, 136, 136, 0.1)',
-                                      borderRadius: '4px',
-                                      border: localLiveSyncEnabled ? '1px solid rgba(230, 126, 34, 0.3)' : '1px solid rgba(136, 136, 136, 0.3)',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.2s'
-                                    }}
-                                    title={
-                                      localLiveSyncEnabled
-                                        ? 'CSV live sync is active - Excel can auto-refresh from CSV file'
-                                        : 'Enable CSV live sync for local files (requires Power Query setup in Excel)'
-                                    }
-                                  >
-                                    <span style={{ fontSize: '14px' }}>{localLiveSyncEnabled ? '●' : '○'}</span>
-                                    <span>CSV Sync</span>
-                                  </button>
-                                  {localLiveSyncEnabled && (
-                                    <button
-                                      onClick={() => setShowPowerQueryInstructions(true)}
-                                      style={{
-                                        fontSize: '11px',
-                                        color: '#3498db',
-                                        padding: '2px 6px',
-                                        background: 'transparent',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        textDecoration: 'underline'
-                                      }}
-                                      title="Show Power Query setup instructions"
-                                    >
-                                      Setup
-                                    </button>
-                                  )}
-                                </>
                               )}
                             </>
                           )}
@@ -20674,140 +20520,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 }}
               >
                 Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Power Query Setup Instructions Modal */}
-      {showPowerQueryInstructions && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.75)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10000,
-          backdropFilter: 'blur(4px)',
-          animation: 'fadeIn 0.2s ease-out'
-        }}>
-          <div style={{
-            background: '#252525',
-            borderRadius: '12px',
-            padding: '32px',
-            maxWidth: '600px',
-            width: '90%',
-            maxHeight: '80vh',
-            overflowY: 'auto',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            animation: 'fadeIn 0.2s ease-out'
-          }}>
-            <h2 style={{
-              color: '#FFFFFF',
-              marginBottom: '8px',
-              fontSize: '20px',
-              fontWeight: 600,
-              letterSpacing: '-0.01em'
-            }}>
-              Set Up Excel Auto-Refresh
-            </h2>
-            <p style={{
-              color: '#e67e22',
-              marginBottom: '20px',
-              fontSize: '13px',
-              fontWeight: 500
-            }}>
-              One-time setup required for live sync with local files
-            </p>
-            <div style={{ color: '#C8C8C8', fontSize: '14px', lineHeight: '1.6' }}>
-              <p style={{ marginBottom: '16px' }}>
-                The app writes changes to a CSV file that Excel can auto-refresh from. Here's how to set it up:
-              </p>
-
-              <div style={{
-                background: '#1a1a1a',
-                borderRadius: '8px',
-                padding: '16px',
-                marginBottom: '16px',
-                border: '1px solid #333'
-              }}>
-                <p style={{ color: '#e67e22', fontWeight: 600, marginBottom: '12px' }}>
-                  CSV File Location:
-                </p>
-                <code style={{
-                  background: '#333',
-                  padding: '8px 12px',
-                  borderRadius: '4px',
-                  display: 'block',
-                  wordBreak: 'break-all',
-                  fontSize: '12px',
-                  color: '#4ecdc4'
-                }}>
-                  {selectedTemplate?.linkedExcelPath?.replace(/\.xlsx?$/i, '_sync.csv') || 'yourfile_sync.csv'}
-                </code>
-              </div>
-
-              <ol style={{ paddingLeft: '20px', marginBottom: '20px' }}>
-                <li style={{ marginBottom: '12px' }}>
-                  <strong style={{ color: '#fff' }}>Open your Excel workbook</strong>
-                </li>
-                <li style={{ marginBottom: '12px' }}>
-                  <strong style={{ color: '#fff' }}>Go to Data tab</strong> → Get Data → From File → From Text/CSV
-                </li>
-                <li style={{ marginBottom: '12px' }}>
-                  <strong style={{ color: '#fff' }}>Select the CSV file</strong> shown above and click Import
-                </li>
-                <li style={{ marginBottom: '12px' }}>
-                  <strong style={{ color: '#fff' }}>Click "Load"</strong> to import the data
-                </li>
-                <li style={{ marginBottom: '12px' }}>
-                  <strong style={{ color: '#fff' }}>Set up auto-refresh:</strong>
-                  <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
-                    <li>Right-click the imported table</li>
-                    <li>Select "Table" → "Edit Query Properties" (or go to Data → Queries & Connections)</li>
-                    <li>Click the refresh icon dropdown → "Connection Properties"</li>
-                    <li>Check "Refresh every" and set to 1 minute</li>
-                    <li>Check "Refresh data when opening the file"</li>
-                  </ul>
-                </li>
-              </ol>
-
-              <div style={{
-                background: 'rgba(52, 152, 219, 0.1)',
-                borderRadius: '8px',
-                padding: '12px 16px',
-                marginBottom: '16px',
-                border: '1px solid rgba(52, 152, 219, 0.3)'
-              }}>
-                <p style={{ color: '#3498db', margin: 0, fontSize: '13px' }}>
-                  <strong>Tip:</strong> You only need to do this setup once. Excel will remember the connection and auto-refresh whenever the CSV file changes.
-                </p>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button
-                onClick={() => setShowPowerQueryInstructions(false)}
-                style={{
-                  flex: 1,
-                  padding: '12px 20px',
-                  background: '#4A90E2',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: '#FFFFFF',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                Got it
               </button>
             </div>
           </div>

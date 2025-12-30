@@ -183,9 +183,6 @@ const CalloutCanvas = ({
       
       // If clicking on empty space (not within any callout bounds), deselect
       if (!isClickOnAnyCallout) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutCanvas.jsx:179',message:'Canvas click deselecting callout',data:{selectedCalloutId,isClickOnAnyCallout},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,E'})}).catch(()=>{});
-        // #endregion
         setSelectedCalloutId(null);
         setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
         // Don't return - let the event continue to Fabric canvas for pan/select behavior
