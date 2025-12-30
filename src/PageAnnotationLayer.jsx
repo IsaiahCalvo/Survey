@@ -1406,16 +1406,18 @@ const PageAnnotationLayer = memo(({
     calloutsRef.current = callouts;
     setCalloutsRef.current = setCallouts;
     selectedSpaceIdRef.current = selectedSpaceId;
+    activeSpaceIdRef.current = activeSpaceId;
     selectedModuleIdRef.current = selectedModuleId;
     showSurveyPanelRef.current = showSurveyPanel;
     activeRegionIdRef.current = activeRegionId;
-  }, [callouts, setCallouts, selectedSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, pageNumber]);
+  }, [callouts, setCallouts, selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, pageNumber]);
   const strokeWidthRef = useRef(strokeWidth);
   const justCreatedCalloutRef = useRef(false);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
   const onHighlightDeletedRef = useRef(onHighlightDeleted);
   const onHighlightClickedRef = useRef(onHighlightClicked);
   const selectedSpaceIdRef = useRef(selectedSpaceId);
+  const activeSpaceIdRef = useRef(activeSpaceId);
   const selectedModuleIdRef = useRef(selectedModuleId);
   const showSurveyPanelRef = useRef(showSurveyPanel);
   const activeRegionIdRef = useRef(activeRegionId);
@@ -2118,10 +2120,11 @@ const PageAnnotationLayer = memo(({
     onHighlightClickedRef.current = onHighlightClicked;
   }, [onHighlightClicked]);
 
-  // Keep selectedSpaceId ref in sync
+  // Keep selectedSpaceId and activeSpaceId refs in sync
   useEffect(() => {
     selectedSpaceIdRef.current = selectedSpaceId;
-  }, [selectedSpaceId]);
+    activeSpaceIdRef.current = activeSpaceId;
+  }, [selectedSpaceId, activeSpaceId]);
 
   useEffect(() => {
     selectedModuleIdRef.current = selectedModuleId;
@@ -3540,23 +3543,63 @@ const PageAnnotationLayer = memo(({
             if (obj === eraserStrokeVisualRef.current) continue;
 
             // Skip if not from current space
+            // Requirement: When a space is active, background annotations cannot be erased
             // Check both old spaceId (backward compatibility) and new regionId-based space relationship
             const objSpaceId = obj.spaceId || null; // Old annotations may still have spaceId
             const objRegionId = obj.regionId || null;
             let shouldSkip = false;
-            if (selectedSpaceIdRef.current !== null) {
-              if (objSpaceId !== null) {
-                // Old annotation with spaceId - check directly
-                shouldSkip = objSpaceId !== selectedSpaceIdRef.current;
-              } else if (objRegionId !== null) {
-                // New annotation with regionId - derive spaceId (if getSpaceIdForRegion is available)
-                // For now, if it has regionId but no spaceId, we'll allow erasing (visibility filter will handle it)
-                shouldSkip = false; // Let visibility filter handle it
+            
+            // When a space is active (activeSpaceIdRef.current !== null):
+            // - Background annotations (objRegionId === null) should NOT be erasable
+            // - Region-scoped annotations can only be erased if they belong to the active space
+            if (activeSpaceIdRef.current !== null) {
+              if (objRegionId !== null) {
+                // Region-scoped annotation - check if it belongs to the active space
+                // Look up the space directly from the spaces array
+                let derivedSpaceId = null;
+                if (spaces && spaces.length > 0) {
+                  for (const space of spaces) {
+                    const assignedPages = space.assignedPages || [];
+                    for (const page of assignedPages) {
+                      const regions = page.regions || [];
+                      for (const region of regions) {
+                        if (region.regionId === objRegionId) {
+                          derivedSpaceId = space.id;
+                          break;
+                        }
+                      }
+                      if (derivedSpaceId) break;
+                    }
+                    if (derivedSpaceId) break;
+                  }
+                }
+                if (derivedSpaceId !== activeSpaceIdRef.current) {
+                  // Region-scoped annotation from a different space - skip
+                  shouldSkip = true;
+                } else {
+                  // Region-scoped annotation from the active space - allow erasing
+                  shouldSkip = false;
+                }
+              } else if (objSpaceId !== null) {
+                // Old annotation with spaceId - check if it matches active space
+                shouldSkip = objSpaceId !== activeSpaceIdRef.current;
               } else {
-                // Background annotation - allow erasing
-                shouldSkip = false;
+                // Background annotation (no regionId, no spaceId) - NOT erasable when space is active
+                shouldSkip = true;
+              }
+            } else {
+              // No space active - all annotations can be erased (normal behavior)
+              if (selectedSpaceIdRef.current !== null) {
+                // Legacy check for selectedSpaceId (backward compatibility)
+                if (objSpaceId !== null) {
+                  shouldSkip = objSpaceId !== selectedSpaceIdRef.current;
+                } else {
+                  // No spaceId - allow erasing
+                  shouldSkip = false;
+                }
               }
             }
+            
             if (shouldSkip) {
               continue;
             }
@@ -4965,7 +5008,29 @@ const PageAnnotationLayer = memo(({
                        scopedRegionAnnotationVisible &&
                        (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
       
-      const isInteractive = isVisible && (selectedSpaceId === null || derivedSpaceId === selectedSpaceId) && (selectedModuleId === null || objModuleId === selectedModuleId);
+      // Interaction logic:
+      // - When a space is active (activeSpaceId !== null), background annotations (objRegionId === null) 
+      //   should NOT be interactive, regardless of visibility
+      // - Region-scoped annotations can be interactive when their space is active
+      // - Background annotations can only be interactive when no space is active
+      let isInteractive = false;
+      if (isVisible) {
+        if (activeSpaceId !== null) {
+          // Space is active: only region-scoped annotations can be interactive
+          // Background annotations (objRegionId === null) are NOT interactive
+          if (isScopedRegionAnnotation && derivedSpaceId === activeSpaceId) {
+            // Region-scoped annotation in the active space - can be interactive
+            isInteractive = (selectedModuleId === null || objModuleId === selectedModuleId);
+          } else {
+            // Background annotation or wrong space - not interactive
+            isInteractive = false;
+          }
+        } else {
+          // No space active: all visible annotations can be interactive
+          isInteractive = (selectedModuleId === null || objModuleId === selectedModuleId);
+        }
+      }
+      
       obj.set({
         visible: isVisible,
         selectable: isInteractive,
