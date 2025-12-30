@@ -695,39 +695,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 }}
                               />
                             ) : (
-                              <>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRegionEditClick(page.pageId, regionLabel);
-                                  }}
-                                  style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    padding: '4px',
-                                    cursor: 'pointer',
-                                    borderRadius: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: '#666'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.background = '#333';
-                                    e.currentTarget.style.color = '#ddd';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = 'transparent';
-                                    e.currentTarget.style.color = '#666';
-                                  }}
-                                  title="Rename Region"
-                                >
-                                  <Icon name="edit" size={12} />
-                                </button>
-                                <div style={{ color: '#ddd', fontWeight: 500 }}>
-                                  {regionLabel}
-                                </div>
-                              </>
+                              <div style={{ color: '#ddd', fontWeight: 500 }}>
+                                {regionLabel}
+                              </div>
                             )}
                           </div>
                           <div style={{ display: 'flex', gap: '4px' }}>
@@ -807,31 +777,31 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (isEditingRegion) {
-                                  commitRegionRename(page.pageId, true);
-                                } else {
-                                  // Only trigger geometry edit, NOT rename
-                                  onRequestRegionEdit?.(space.id, page.pageId);
-                                }
-                              }}
-                              onMouseDown={(e) => {
-                                if (isEditingRegion) {
-                                  e.preventDefault();
-                                }
+                                handleRegionEditClick(page.pageId, regionLabel);
+                                onRequestRegionEdit?.(space.id, page.pageId);
                               }}
                               style={{
-                                padding: '6px 10px',
-                                background: '#3a3a3a',
-                                color: '#fff',
-                                border: isEditingRegion ? '1px solid #4A90E2' : '1px solid transparent',
-                                borderRadius: '4px',
-                                fontSize: '11px',
+                                background: '#333333',
+                                border: 'none',
+                                padding: '4px',
                                 cursor: 'pointer',
-                                fontFamily: FONT_FAMILY,
-                                boxShadow: isEditingRegion ? '0 0 0 1px rgba(74, 144, 226, 0.35)' : 'none'
+                                borderRadius: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#dddddd'
                               }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#3a3a3a';
+                                e.currentTarget.style.color = '#fff';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#333333';
+                                e.currentTarget.style.color = '#dddddd';
+                              }}
+                              title="Rename Region"
                             >
-                              Edit
+                              <Icon name="edit" size={12} />
                             </button>
                             <button
                               title="Delete"
