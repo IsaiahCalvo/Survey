@@ -8128,7 +8128,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
   
   // Region annotation visibility state
-  const [showBackgroundAnnotations, setShowBackgroundAnnotations] = useState(true);
   const [activeRegionId, setActiveRegionId] = useState(null);
   const [showTemplateSelection, setShowTemplateSelection] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
@@ -8735,7 +8734,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const sidebarData = JSON.parse(localStorage.getItem(`pdfSidebar_${pdfId}`) || '{}');
       setPageNames(sidebarData.pageNames || {});
       setBookmarks(sidebarData.bookmarks || []);
-      setSpaces(sidebarData.spaces || []);
+      // Migrate spaces: ensure regions have showBackgroundAnnotations and enforce one region per page
+      const migratedSpaces = (sidebarData.spaces || []).map(space => ({
+        ...space,
+        assignedPages: (space.assignedPages || []).map(page => {
+          const regions = page.regions || [];
+          // Enforce one region per page - take only first region
+          const normalizedRegions = regions.length > 0 ? [regions[0]] : [];
+          // Migrate: ensure showBackgroundAnnotations property exists
+          const migratedRegions = normalizedRegions.map(region => ({
+            ...region,
+            showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
+          }));
+          return {
+            ...page,
+            regions: migratedRegions
+          };
+        })
+      }));
+      setSpaces(migratedSpaces);
       // Always start in regular mode when opening a PDF; do not restore an active space
       setActiveSpaceId(null);
       setPageTransformations(sidebarData.pageTransformations || {});
@@ -8807,7 +8824,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Restore previous state
     setAnnotationsByPage(stateToRestore.annotationsByPage);
     setHighlightAnnotations(stateToRestore.highlightAnnotations);
-    setSpaces(stateToRestore.spaces || []);
+    // Migrate spaces: ensure regions have showBackgroundAnnotations and enforce one region per page
+    const migratedSpaces = (stateToRestore.spaces || []).map(space => ({
+      ...space,
+      assignedPages: (space.assignedPages || []).map(page => {
+        const regions = page.regions || [];
+        // Enforce one region per page - take only first region
+        const normalizedRegions = regions.length > 0 ? [regions[0]] : [];
+        // Migrate: ensure showBackgroundAnnotations property exists
+        const migratedRegions = normalizedRegions.map(region => ({
+          ...region,
+          showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
+        }));
+        return {
+          ...page,
+          regions: migratedRegions
+        };
+      })
+    }));
+    setSpaces(migratedSpaces);
     lastSavedStateRef.current = JSON.stringify(stateToRestore);
 
     // Remove from undo history
@@ -8836,7 +8871,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Restore state
     setAnnotationsByPage(stateToRestore.annotationsByPage);
     setHighlightAnnotations(stateToRestore.highlightAnnotations);
-    setSpaces(stateToRestore.spaces || []);
+    // Migrate spaces: ensure regions have showBackgroundAnnotations and enforce one region per page
+    const migratedSpaces = (stateToRestore.spaces || []).map(space => ({
+      ...space,
+      assignedPages: (space.assignedPages || []).map(page => {
+        const regions = page.regions || [];
+        // Enforce one region per page - take only first region
+        const normalizedRegions = regions.length > 0 ? [regions[0]] : [];
+        // Migrate: ensure showBackgroundAnnotations property exists
+        const migratedRegions = normalizedRegions.map(region => ({
+          ...region,
+          showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
+        }));
+        return {
+          ...page,
+          regions: migratedRegions
+        };
+      })
+    }));
+    setSpaces(migratedSpaces);
     lastSavedStateRef.current = JSON.stringify(stateToRestore);
 
     // Remove from redo history
@@ -9162,6 +9215,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           return prev;
         }
         sanitizedUpdates = { ...sanitizedUpdates, name: trimmedName };
+      }
+
+      // If assignedPages are being updated, enforce one region per page and migrate
+      if (Object.prototype.hasOwnProperty.call(updates, 'assignedPages')) {
+        sanitizedUpdates.assignedPages = (updates.assignedPages || []).map(page => {
+          const regions = page.regions || [];
+          // Enforce one region per page - take only first region
+          const normalizedRegions = regions.length > 0 ? [regions[0]] : [];
+          // Migrate: ensure showBackgroundAnnotations property exists
+          const migratedRegions = normalizedRegions.map(region => ({
+            ...region,
+            showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
+          }));
+          return {
+            ...page,
+            regions: migratedRegions
+          };
+        });
       }
 
       return prev.map(space => space.id === id ? { ...space, ...sanitizedUpdates } : space);
@@ -11014,17 +11085,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const handleSetActiveSpace = useCallback((spaceId) => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11008',message:'Setting active space',data:{spaceId,previousActiveSpaceId:activeSpaceId,selectedSpaceId,showBackgroundAnnotations},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11008',message:'Setting active space',data:{spaceId,previousActiveSpaceId:activeSpaceId,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
     // #endregion
     setActiveSpaceId(spaceId);
-  }, [activeSpaceId, selectedSpaceId, showBackgroundAnnotations]);
+  }, [activeSpaceId, selectedSpaceId]);
 
   const handleExitSpaceMode = useCallback(() => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11012',message:'Exiting space mode',data:{activeSpaceId,selectedSpaceId,showBackgroundAnnotations},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11012',message:'Exiting space mode',data:{activeSpaceId,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
     // #endregion
     setActiveSpaceId(null);
-  }, [activeSpaceId, selectedSpaceId, showBackgroundAnnotations]);
+  }, [activeSpaceId, selectedSpaceId]);
 
   // Active space pages - compute which pages are included in the active space
   const activeSpacePages = useMemo(() => {
@@ -11225,17 +11296,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const updatedPages = [...(space.assignedPages || [])];
     const pageIndex = updatedPages.findIndex(p => p.pageId === regionSelectionPage);
 
+    // Enforce one region per page - take only the first region if multiple exist
+    const normalizedRegions = Array.isArray(regions) && regions.length > 0 
+      ? [regions[0]] // Only keep first region
+      : [];
+    
+    // Ensure region has showBackgroundAnnotations property (migration)
+    const migratedRegions = normalizedRegions.map(region => ({
+      ...region,
+      showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true if not set
+    }));
+
     if (pageIndex >= 0) {
       updatedPages[pageIndex] = {
         ...updatedPages[pageIndex],
         wholePageIncluded: false,
-        regions: Array.isArray(regions) ? regions : []
+        regions: migratedRegions
       };
     } else {
       updatedPages.push({
         pageId: regionSelectionPage,
         wholePageIncluded: false,
-        regions: Array.isArray(regions) ? regions : []
+        regions: migratedRegions
       });
     }
 
@@ -13564,7 +13646,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (!assignedPage.regions || assignedPage.regions.length === 0) {
       return null;
     }
-    return assignedPage.regions;
+    // Enforce one region per page - return only the first region
+    return [assignedPage.regions[0]];
   }, [activeSpaceId, spaces, showRegionSelection, regionSelectionPage]);
 
   // Track active region ID when regions are active
@@ -13588,13 +13671,72 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setActiveRegionId(null);
   }, [activeSpaceId, spaces]);
 
-  // Handler for toggling background annotations visibility
-  const handleToggleBackgroundAnnotations = useCallback((value) => {
+  // Helper function to get region lightbulb state for a specific region
+  const getRegionLightbulbState = useCallback((spaceId, pageId) => {
+    const space = spaces.find(s => s.id === spaceId);
+    if (!space) return true; // Default to true if space not found
+    
+    const page = space.assignedPages?.find(p => p.pageId === pageId);
+    if (!page) return true; // Default to true if page not found
+    
+    const region = page.regions?.[0]; // Get first (and only) region
+    if (!region) return true; // Default to true if no region
+    
+    // Return region's lightbulb state, defaulting to true if not set
+    return region.showBackgroundAnnotations !== false;
+  }, [spaces]);
+
+  // Helper function to set region lightbulb state
+  const setRegionLightbulbState = useCallback((spaceId, pageId, value) => {
+    setSpaces(prev => prev.map(space => {
+      if (space.id !== spaceId) {
+        return space;
+      }
+      
+      const assignedPages = space.assignedPages || [];
+      const updatedPages = assignedPages.map(page => {
+        if (page.pageId !== pageId) {
+          return page;
+        }
+        
+        // Ensure regions array exists and has at least one region
+        const regions = page.regions || [];
+        if (regions.length === 0) {
+          // If no region exists, create one with default values
+          return {
+            ...page,
+            regions: [{
+              regionId: `region-${pageId}-${Date.now()}`,
+              coordinates: [],
+              showBackgroundAnnotations: value
+            }]
+          };
+        }
+        
+        // Update the first (and only) region's lightbulb state
+        return {
+          ...page,
+          regions: [{
+            ...regions[0],
+            showBackgroundAnnotations: value
+          }]
+        };
+      });
+      
+      return {
+        ...space,
+        assignedPages: updatedPages
+      };
+    }));
+  }, []);
+
+  // Handler for toggling background annotations visibility (per-region)
+  const handleToggleBackgroundAnnotations = useCallback((spaceId, pageId, value) => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13579',message:'Toggling background annotations',data:{newValue:value,previousValue:showBackgroundAnnotations,activeSpaceId,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,D'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13579',message:'Toggling background annotations',data:{newValue:value,spaceId,pageId,activeSpaceId,selectedSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,D'})}).catch(()=>{});
     // #endregion
-    setShowBackgroundAnnotations(value);
-  }, [activeSpaceId, selectedSpaceId, showBackgroundAnnotations]);
+    setRegionLightbulbState(spaceId, pageId, value);
+  }, [activeSpaceId, selectedSpaceId, setRegionLightbulbState]);
 
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {
@@ -13953,8 +14095,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             scale={scale}
             tabId={tabId}
             onPageDrop={onPageDrop}
-            showBackgroundAnnotations={showBackgroundAnnotations}
+            getRegionLightbulbState={getRegionLightbulbState}
             onToggleBackgroundAnnotations={handleToggleBackgroundAnnotations}
+            activeSpaceId={activeSpaceId}
             selectedSpaceId={selectedSpaceId}
             onToggleCollapse={(isCollapsed) => {
               setIsLeftSidebarCollapsed(isCollapsed);
@@ -14064,7 +14207,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               activeRegions={(() => {
                                 return pageRegions;
                               })()}
-                              showBackgroundAnnotations={showBackgroundAnnotations}
+                              spaces={spaces}
+                              getRegionLightbulbState={getRegionLightbulbState}
                               activeRegionId={activeRegionId}
                               isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNumber}
                               eraserMode={eraserMode}
@@ -14213,7 +14357,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               selectedModuleId={selectedModuleId}
                               selectedCategoryId={selectedCategoryId}
                               activeRegions={pageRegions}
-                              showBackgroundAnnotations={showBackgroundAnnotations}
+                              spaces={spaces}
+                              getRegionLightbulbState={getRegionLightbulbState}
                               activeRegionId={activeRegionId}
                               isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNum}
                               eraserMode={eraserMode}

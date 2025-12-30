@@ -76,8 +76,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onExitSpace,
   isRegionSelectionActive = false,
   features,
-  showBackgroundAnnotations = true,
-  onToggleBackgroundAnnotations = null
+  getRegionLightbulbState = null,
+  onToggleBackgroundAnnotations = null,
+  activeSpaceId = null
 }) {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isExportHovered, setIsExportHovered] = useState(false);
@@ -714,40 +715,52 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           </div>
                           <div style={{ display: 'flex', gap: '4px' }}>
                             {/* Background Annotations Toggle - Always visible when expanded */}
-                            {isExpanded && onToggleBackgroundAnnotations && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  // #region agent log
-                                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:719',message:'Button clicked',data:{currentValue:showBackgroundAnnotations,newValue:!showBackgroundAnnotations,spaceId:space.id,isActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                                  // #endregion
-                                  onToggleBackgroundAnnotations(!showBackgroundAnnotations);
-                                }}
-                                style={{
-                                  background: 'transparent',
-                                  border: '1px solid transparent',
-                                  padding: '4px 8px',
-                                  cursor: 'pointer',
-                                  borderRadius: '4px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '10px',
-                                  color: showBackgroundAnnotations ? '#4A90E2' : '#999',
-                                  fontFamily: FONT_FAMILY,
-                                  transition: 'color 0.15s ease',
-                                  width: '18px',
-                                  height: '27px'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = 'transparent';
-                                }}
-                                title={showBackgroundAnnotations ? 'Hide Background Annotations' : 'Show Background Annotations'}
-                              >
-                                {showBackgroundAnnotations ? (
+                            {isExpanded && onToggleBackgroundAnnotations && getRegionLightbulbState && (() => {
+                              const regionLightbulbState = getRegionLightbulbState(space.id, page.pageId);
+                              const isDisabled = !isActive || activeSpaceId === null;
+                              
+                              return (
+                                <button
+                                  onClick={(e) => {
+                                    if (isDisabled) return;
+                                    e.stopPropagation();
+                                    // #region agent log
+                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:719',message:'Button clicked',data:{currentValue:regionLightbulbState,newValue:!regionLightbulbState,spaceId:space.id,pageId:page.pageId,isActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                                    // #endregion
+                                    onToggleBackgroundAnnotations(space.id, page.pageId, !regionLightbulbState);
+                                  }}
+                                  style={{
+                                    background: 'transparent',
+                                    border: '1px solid transparent',
+                                    padding: '4px 8px',
+                                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                    borderRadius: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '10px',
+                                    color: isDisabled ? '#666' : (regionLightbulbState ? '#4A90E2' : '#999'),
+                                    opacity: isDisabled ? 0.5 : 1,
+                                    fontFamily: FONT_FAMILY,
+                                    transition: 'color 0.15s ease, opacity 0.15s ease',
+                                    width: '18px',
+                                    height: '27px',
+                                    pointerEvents: isDisabled ? 'none' : 'auto'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isDisabled) {
+                                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'transparent';
+                                  }}
+                                  title={isDisabled 
+                                    ? 'Lightbulb is only available when a space is active' 
+                                    : (regionLightbulbState ? 'Hide Background Annotations' : 'Show Background Annotations')
+                                  }
+                                >
+                                  {regionLightbulbState ? (
                                   <svg 
                                     width="12" 
                                     height="12" 
@@ -770,9 +783,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   >
                                     <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke="currentColor" strokeWidth="1.5"/>
                                   </svg>
-                                )}
-                              </button>
-                            )}
+                                  )}
+                                </button>
+                              );
+                            })()}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -852,7 +866,7 @@ const SpacesPanel = ({
   isRegionSelectionActive = false,
   numPages,
   features,
-  showBackgroundAnnotations = true,
+  getRegionLightbulbState = null,
   onToggleBackgroundAnnotations = null,
   externalSelectedSpaceId = null
 }) => {
@@ -1223,8 +1237,9 @@ const SpacesPanel = ({
                     onRemovePage={handleRemovePage}
                     isRegionSelectionActive={isRegionSelectionActive}
                     features={features}
-                    showBackgroundAnnotations={showBackgroundAnnotations}
+                    getRegionLightbulbState={getRegionLightbulbState}
                     onToggleBackgroundAnnotations={onToggleBackgroundAnnotations}
+                    activeSpaceId={activeSpaceId}
                   />
                 );
               })}

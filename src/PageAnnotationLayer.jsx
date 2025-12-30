@@ -1361,7 +1361,8 @@ const PageAnnotationLayer = memo(({
   selectedModuleId = null, // Module ID to filter annotations by
   selectedCategoryId = null, // Category ID to keep highlights visible when panel is hidden
   activeRegions = null,
-  showBackgroundAnnotations = true, // NEW: Toggle for background annotations visibility
+  spaces = [], // Array of spaces to look up region-to-space relationships
+  getRegionLightbulbState = null, // Function to get lightbulb state for a region: (spaceId, pageId) => boolean
   activeRegionId = null, // NEW: ID of currently active region for scoping
   isRegionSelectionActive = false, // NEW: Whether region selection/editing is currently active
   eraserMode = 'partial', // 'partial' | 'entire'
@@ -2520,10 +2521,7 @@ const PageAnnotationLayer = memo(({
           lockUniScaling: false,   // Allow free scaling on corner handles
           centeredRotation: true  // Ensure rotation happens around center point
         });
-        // Store current selectedSpaceId on the path
-        if (selectedSpaceIdRef.current) {
-          e.path.set({ spaceId: selectedSpaceIdRef.current });
-        }
+        // Store current moduleId on the path
         if (selectedModuleIdRef.current) {
           e.path.set({ moduleId: selectedModuleIdRef.current });
         }
@@ -3290,10 +3288,7 @@ const PageAnnotationLayer = memo(({
           editable: true,
           backgroundColor: 'transparent'
         });
-        // Store current selectedSpaceId on the textbox
-        if (selectedSpaceIdRef.current) {
-          tb.set({ spaceId: selectedSpaceIdRef.current });
-        }
+        // Store current moduleId on the textbox
         if (selectedModuleIdRef.current) {
           tb.set({ moduleId: selectedModuleIdRef.current });
         }
@@ -3360,9 +3355,6 @@ const PageAnnotationLayer = memo(({
         ], { left: x, top: y, hasControls: false, hasBorders: false });
         note.set('noteText', '');
         // Store current selectedSpaceId on the note
-        if (selectedSpaceIdRef.current) {
-          note.set({ spaceId: selectedSpaceIdRef.current });
-        }
         if (selectedModuleIdRef.current) {
           note.set({ moduleId: selectedModuleIdRef.current });
         }
@@ -3385,8 +3377,6 @@ const PageAnnotationLayer = memo(({
       if (temp) {
         // Store current selectedSpaceId on the shape
         if (selectedSpaceIdRef.current) {
-          temp.set({ spaceId: selectedSpaceIdRef.current });
-        }
         if (selectedModuleIdRef.current) {
           temp.set({ moduleId: selectedModuleIdRef.current });
         }
@@ -3550,8 +3540,24 @@ const PageAnnotationLayer = memo(({
             if (obj === eraserStrokeVisualRef.current) continue;
 
             // Skip if not from current space
-            const objSpaceId = obj.spaceId || null;
-            if (selectedSpaceIdRef.current !== null && objSpaceId !== selectedSpaceIdRef.current) {
+            // Check both old spaceId (backward compatibility) and new regionId-based space relationship
+            const objSpaceId = obj.spaceId || null; // Old annotations may still have spaceId
+            const objRegionId = obj.regionId || null;
+            let shouldSkip = false;
+            if (selectedSpaceIdRef.current !== null) {
+              if (objSpaceId !== null) {
+                // Old annotation with spaceId - check directly
+                shouldSkip = objSpaceId !== selectedSpaceIdRef.current;
+              } else if (objRegionId !== null) {
+                // New annotation with regionId - derive spaceId (if getSpaceIdForRegion is available)
+                // For now, if it has regionId but no spaceId, we'll allow erasing (visibility filter will handle it)
+                shouldSkip = false; // Let visibility filter handle it
+              } else {
+                // Background annotation - allow erasing
+                shouldSkip = false;
+              }
+            }
+            if (shouldSkip) {
               continue;
             }
 
@@ -3790,8 +3796,6 @@ const PageAnnotationLayer = memo(({
 
         // Store current selectedSpaceId on the arrow group
         if (selectedSpaceIdRef.current) {
-          group.set({ spaceId: selectedSpaceIdRef.current });
-        }
         if (selectedModuleIdRef.current) {
           group.set({ moduleId: selectedModuleIdRef.current });
         }
@@ -3810,10 +3814,7 @@ const PageAnnotationLayer = memo(({
           currentStrokeWidth,
           canvas
         );
-        // Store current selectedSpaceId on the callout group
-        if (selectedSpaceIdRef.current) {
-          calloutGroup.set({ spaceId: selectedSpaceIdRef.current });
-        }
+        // Store current moduleId on the callout group
         if (selectedModuleIdRef.current) {
           calloutGroup.set({ moduleId: selectedModuleIdRef.current });
         }
@@ -4435,7 +4436,7 @@ const PageAnnotationLayer = memo(({
         fabricRef.current = null;
       }
     };
-  }, [pageNumber, width, height]); // Only depend on essential props
+  }, [pageNumber, width, height]);
 
   // Handle scale changes with throttling to avoid excessive renders
   const scaleUpdateTimerRef = useRef(null);
@@ -4678,8 +4679,6 @@ const PageAnnotationLayer = memo(({
           rect.set({ highlightId: highlight.highlightId, needsBIC: true });
           // Store current selectedSpaceId on the highlight
           if (selectedSpaceIdRef.current) {
-            rect.set({ spaceId: selectedSpaceIdRef.current });
-          }
           const objModuleId = highlight.moduleId || selectedModuleIdRef.current;
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
@@ -4726,8 +4725,6 @@ const PageAnnotationLayer = memo(({
           }
           // Store current selectedSpaceId on the highlight
           if (selectedSpaceIdRef.current) {
-            rect.set({ spaceId: selectedSpaceIdRef.current });
-          }
           const objModuleId = highlight.moduleId || selectedModuleIdRef.current;
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
@@ -4836,6 +4833,24 @@ const PageAnnotationLayer = memo(({
     }
   }, [highlightsToRemove, pageNumber, onSaveAnnotations, scale]);
 
+  // Helper function to get spaceId from regionId
+  const getSpaceIdForRegion = useCallback((regionId) => {
+    if (!regionId || !spaces || spaces.length === 0) return null;
+    
+    for (const space of spaces) {
+      const assignedPages = space.assignedPages || [];
+      for (const page of assignedPages) {
+        const regions = page.regions || [];
+        for (const region of regions) {
+          if (region.regionId === regionId) {
+            return space.id;
+          }
+        }
+      }
+    }
+    return null;
+  }, [spaces]);
+
   // Filter objects by selected space and regions
   useEffect(() => {
     if (!canvasRef.current || !fabric) return;
@@ -4851,7 +4866,7 @@ const PageAnnotationLayer = memo(({
     const hasActiveRegions = regions !== null; // null = no regions mode, [] or [...] = regions mode active
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4770',message:'Visibility filter effect entry',data:{pageNumber,selectedSpaceId,showBackgroundAnnotations,hasActiveRegions,activeRegionsLength:activeRegions?.length||0,isRegionSelectionActive,objectCount:objects.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4770',message:'Visibility filter effect entry',data:{pageNumber,selectedSpaceId,hasActiveRegions,activeRegionsLength:activeRegions?.length||0,isRegionSelectionActive,objectCount:objects.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
     // #endregion
 
     let visibleCount = 0;
@@ -4866,43 +4881,37 @@ const PageAnnotationLayer = memo(({
         return; // Skip further visibility checks
       }
       
-      const objSpaceId = obj.spaceId || null;
       const objModuleId = obj.moduleId || null;
-      const objRegionId = obj.regionId || null; // NEW: Get region ID from annotation
+      const objRegionId = obj.regionId || null; // Get region ID from annotation
 
       // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
       const isSurveyAnnotation = objModuleId !== null;
       
-      // NEW: Check if this is a scoped region annotation
+      // Check if this is a scoped region annotation
       const isScopedRegionAnnotation = objRegionId !== null;
 
-      // NEW: When regions are active, background annotations should remain visible by default
-      // Only apply space/module filtering if regions are NOT active, or for scoped region annotations
-      // hasActiveRegions is already computed above
+      // Derive spaceId from regionId for region-scoped annotations
+      let derivedSpaceId = null;
+      if (isScopedRegionAnnotation && objRegionId !== null) {
+        derivedSpaceId = getSpaceIdForRegion(objRegionId);
+      }
       
       // Filter by space:
-      // - Annotations with a spaceId should only be visible when that specific space is active (hidden when no space is active)
-      // - Background annotations (objSpaceId === null) should always pass space filter and be controlled by toggle
+      // - Region-scoped annotations: derive spaceId from regionId and check if that space is active
+      // - Background annotations (objRegionId === null): always pass space filter and be controlled by per-region lightbulb
       let matchesSpace = true;
       if (hasActiveRegions && !isScopedRegionAnnotation) {
         // When regions are active, don't filter background annotations by space
         matchesSpace = true;
       } else {
-        // For annotations with a spaceId: only visible when that specific space is active
-        if (objSpaceId !== null) {
-          // Annotation belongs to a space: only visible when that space is active
-          // When no space is active (selectedSpaceId === null), hide space-specific annotations
-          matchesSpace = selectedSpaceId !== null && objSpaceId === selectedSpaceId;
+        // For region-scoped annotations: only visible when their derived space is active
+        if (isScopedRegionAnnotation && derivedSpaceId !== null) {
+          matchesSpace = selectedSpaceId !== null && derivedSpaceId === selectedSpaceId;
         } else {
-          // Background annotations (objSpaceId === null): always pass space filter check
-          // Visibility will be controlled by showBackgroundAnnotations toggle
+          // Background annotations (objRegionId === null): always pass space filter check
+          // Visibility will be controlled by per-region lightbulb toggle
           matchesSpace = true;
         }
-        // #region agent log
-        if (objSpaceId === null && selectedSpaceId !== null && matchesSpace === false) {
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4815',message:'Background annotation filtered out by space',data:{pageNumber,selectedSpaceId,objSpaceId,matchesSpace,isScopedRegionAnnotation,hasActiveRegions},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        }
-        // #endregion
       }
 
       // Filter by module: if selectedModuleId is set, object must match
@@ -4912,8 +4921,8 @@ const PageAnnotationLayer = memo(({
       // Survey annotations require: survey panel open AND matching module selected
       const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanel && selectedModuleId !== null && objModuleId === selectedModuleId);
 
-      // NEW: Scoped region annotations should only be visible when their region is active
-      // FIX: Annotations created while a region is active should persist after region edits,
+      // Scoped region annotations should only be visible when their region is active
+      // Annotations created while a region is active should persist after region edits,
       // regardless of whether they remain within the updated region geometry
       let scopedRegionAnnotationVisible = true;
       if (isScopedRegionAnnotation && objRegionId !== null) {
@@ -4930,55 +4939,35 @@ const PageAnnotationLayer = memo(({
         }
       }
 
-      // NEW: Background annotations visibility logic
-      // Background annotations (objSpaceId === null and not scoped) should respect the toggle
+      // Background annotations visibility logic
+      // Background annotations (objRegionId === null) should respect the per-region lightbulb toggle
       // when a space is active, or be visible when no space is active
-      let withinRegions = true;
       let backgroundAnnotationVisible = true;
       
-      // Only apply to background annotations (not scoped region annotations, not space-specific annotations)
-      if (!isScopedRegionAnnotation && objSpaceId === null) {
-        // This is a background annotation (made outside any space)
-        if (selectedSpaceId !== null) {
-          // A space is active: respect the toggle
-          backgroundAnnotationVisible = showBackgroundAnnotations;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4861',message:'Toggle applied for background annotations',data:{pageNumber,selectedSpaceId,showBackgroundAnnotations,hasActiveRegions,objSpaceId,backgroundAnnotationVisible,isScopedRegionAnnotation},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
+      // Only apply to background annotations (not scoped region annotations)
+      if (!isScopedRegionAnnotation && objRegionId === null) {
+        // This is a background annotation (made outside any space/region)
+        if (selectedSpaceId !== null && getRegionLightbulbState) {
+          // A space is active: check the per-region lightbulb state for this page
+          backgroundAnnotationVisible = getRegionLightbulbState(selectedSpaceId, pageNumber);
         } else {
           // No space is active: background annotations should always be visible
           backgroundAnnotationVisible = true;
         }
-      } else if (hasActiveRegions && !isScopedRegionAnnotation && objSpaceId === null) {
-        // When regions are active, also apply toggle for background annotations only
-        backgroundAnnotationVisible = showBackgroundAnnotations;
-      } else if (objSpaceId !== null) {
-        // Space-specific annotations should always be visible (not affected by toggle)
-        backgroundAnnotationVisible = true;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4875',message:'Space-specific annotation - toggle not applied',data:{pageNumber,selectedSpaceId,objSpaceId,showBackgroundAnnotations,backgroundAnnotationVisible},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
       }
 
       // Object is visible if:
       // 1. It matches space and module filters
       // 2. Survey annotations are visible (if applicable)
       // 3. Scoped region annotations are visible (if applicable)
-      // 4. Background annotations respect the toggle and region containment
-      // For space-specific annotations, always use true (not affected by toggle)
-      const finalBackgroundVisible = (objSpaceId !== null) ? true : backgroundAnnotationVisible;
+      // 4. Background annotations respect the per-region lightbulb toggle
       const isVisible = matchesSpace && 
                        matchesModule && 
                        surveyAnnotationVisible && 
                        scopedRegionAnnotationVisible &&
-                       (isScopedRegionAnnotation ? true : finalBackgroundVisible);
-      // #region agent log
-      if (selectedSpaceId !== null) {
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4887',message:'Visibility calculated',data:{pageNumber,selectedSpaceId,objSpaceId,matchesSpace,matchesModule,surveyAnnotationVisible,scopedRegionAnnotationVisible,backgroundAnnotationVisible,finalBackgroundVisible,isVisible,showBackgroundAnnotations,isScopedRegionAnnotation},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-      }
-      // #endregion
+                       (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
       
-      const isInteractive = isVisible && (selectedSpaceId === null || objSpaceId === selectedSpaceId) && (selectedModuleId === null || objModuleId === selectedModuleId);
+      const isInteractive = isVisible && (selectedSpaceId === null || derivedSpaceId === selectedSpaceId) && (selectedModuleId === null || objModuleId === selectedModuleId);
       obj.set({
         visible: isVisible,
         selectable: isInteractive,
@@ -4991,26 +4980,8 @@ const PageAnnotationLayer = memo(({
       }
     });
 
-    /* console.log('[Survey Debug] Canvas visibility update', {
-      pageNumber,
-      selectedSpaceId,
-      selectedModuleId,
-      showSurveyPanel,
-      regionCount: regions ? regions.length : 0,
-      totalObjects: objects.length,
-      visibleObjects: visibleCount,
-      hiddenObjects: hiddenCount,
-      objectBreakdown: objects.map(obj => ({
-        type: obj.type,
-        spaceId: obj.spaceId || null,
-        moduleId: obj.moduleId || null,
-        visible: obj.visible,
-        selectable: obj.selectable
-      }))
-    }); */
-
     canvas.renderAll();
-  }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, showBackgroundAnnotations, activeRegionId, isRegionSelectionActive, layerVisibility, tool]);
+  }, [selectedSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, activeRegionId, isRegionSelectionActive, layerVisibility, tool, pageNumber, spaces, getSpaceIdForRegion, getRegionLightbulbState]);
 
   // Keyboard handler for deleting selected annotations
   useEffect(() => {
@@ -5629,7 +5600,8 @@ const PageAnnotationLayer = memo(({
     prevProps.selectedModuleId === nextProps.selectedModuleId &&
     prevProps.selectedCategoryId === nextProps.selectedCategoryId &&
     prevProps.activeRegions === nextProps.activeRegions &&
-    prevProps.showBackgroundAnnotations === nextProps.showBackgroundAnnotations &&
+    prevProps.getRegionLightbulbState === nextProps.getRegionLightbulbState &&
+    prevProps.spaces === nextProps.spaces &&
     prevProps.activeRegionId === nextProps.activeRegionId &&
     prevProps.isRegionSelectionActive === nextProps.isRegionSelectionActive &&
     prevProps.showSurveyPanel === nextProps.showSurveyPanel &&

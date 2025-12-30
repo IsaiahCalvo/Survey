@@ -55,7 +55,7 @@ const PDFSidebar = ({
   onPageDrop,
   onToggleCollapse,
   features,
-  showBackgroundAnnotations = true,
+  getRegionLightbulbState = null,
   onToggleBackgroundAnnotations = null,
   selectedSpaceId = null
 }) => {
@@ -256,8 +256,9 @@ const PDFSidebar = ({
                 isRegionSelectionActive={isRegionSelectionActive}
                 numPages={numPages}
                 features={features}
-                showBackgroundAnnotations={showBackgroundAnnotations}
+                getRegionLightbulbState={getRegionLightbulbState}
                 onToggleBackgroundAnnotations={onToggleBackgroundAnnotations}
+                activeSpaceId={activeSpaceId}
                 externalSelectedSpaceId={selectedSpaceId}
               />
             )}
