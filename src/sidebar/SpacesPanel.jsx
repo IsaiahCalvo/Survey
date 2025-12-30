@@ -75,7 +75,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onRemovePage,
   onExitSpace,
   isRegionSelectionActive = false,
-  features
+  features,
+  showBackgroundAnnotations = true,
+  onToggleBackgroundAnnotations = null
 }) {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isExportHovered, setIsExportHovered] = useState(false);

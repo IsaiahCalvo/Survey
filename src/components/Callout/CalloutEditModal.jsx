@@ -22,16 +22,56 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
     }, 100);
 
     const handleClickOutside = (e) => {
+      // #region agent log
+      console.log('[DEBUG] handleClickOutside called', { 
+        target: e.target?.tagName, 
+        targetClass: e.target?.className,
+        ignoreNextClick: ignoreNextClickRef.current,
+        modalContains: modalRef.current?.contains(e.target),
+        isColorPicker: !!e.target?.closest('.compact-color-picker'),
+        isModalElement: !!e.target?.closest('[data-callout-edit-modal]')
+      });
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutEditModal.jsx:24',message:'handleClickOutside called',data:{targetTag:e.target?.tagName,targetClass:e.target?.className,ignoreNextClick:ignoreNextClickRef.current,modalContains:modalRef.current?.contains(e.target),isColorPicker:!!e.target?.closest('.compact-color-picker'),isModalElement:!!e.target?.closest('[data-callout-edit-modal]')},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'F'})}).catch((e)=>console.error('Log error:',e));
+      // #endregion
+      
       // Ignore the first click after opening (from context menu click)
       if (ignoreNextClickRef.current) {
+        // #region agent log
+        console.log('[DEBUG] Ignoring click - still in ignore period');
+        // #endregion
         return;
       }
       
+      // Don't close if clicking on modal or any element inside it
+      if (modalRef.current && modalRef.current.contains(e.target)) {
+        // #region agent log
+        console.log('[DEBUG] Click is inside modal - not closing');
+        // #endregion
+        return;
+      }
+      
+      // Don't close if clicking on color picker (which might render outside modal)
+      if (e.target.closest('.compact-color-picker')) {
+        // #region agent log
+        console.log('[DEBUG] Click is on color picker - not closing');
+        // #endregion
+        return;
+      }
+      
+      // Don't close if clicking on any element with data-callout-edit-modal attribute
+      if (e.target.closest('[data-callout-edit-modal]')) {
+        // #region agent log
+        console.log('[DEBUG] Click is on modal element - not closing');
+        // #endregion
+        return;
+      }
+      
+      // Only close if clicking truly outside
       if (modalRef.current && !modalRef.current.contains(e.target)) {
-        // Don't close if clicking on color picker
-        if (e.target.closest('.compact-color-picker')) {
-          return;
-        }
+        // #region agent log
+        console.log('[DEBUG] Closing modal - click outside');
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutEditModal.jsx:55',message:'Closing modal due to click outside',data:{targetTag:e.target?.tagName,targetClass:e.target?.className},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'F'})}).catch((e)=>console.error('Log error:',e));
+        // #endregion
         onClose();
       }
     };
@@ -110,6 +150,7 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
 
   return (
     <div
+      data-callout-modal-overlay
       style={{
         position: 'fixed',
         top: 0,
@@ -127,9 +168,11 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
           onClose();
         }
       }}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <div
         ref={modalRef}
+        data-callout-edit-modal
         style={{
           ...getModalPosition(),
           position: 'fixed',
@@ -143,7 +186,11 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
           flexDirection: 'column',
           overflow: 'hidden'
         }}
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => {
+          // Only stop propagation to prevent canvas from handling the click
+          // Don't prevent default - allow normal interactions inside modal
+          e.stopPropagation();
+        }}
       >
         {/* Header */}
         <div

@@ -285,26 +285,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
         {/* Header */}
         <div className="account-settings-header">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
-            <h2>Settings</h2>
-            {/* Subscription View Tabs - only show when subscription tab is active */}
-            {activeTab === 'subscription' && (
-              <div className="account-subscription-tabs">
-                <button
-                  onClick={() => setSubscriptionViewTab('manage')}
-                  className={`account-subscription-tab ${subscriptionViewTab === 'manage' ? 'active' : ''}`}
-                >
-                  Manage Subscription
-                </button>
-                <button
-                  onClick={() => setSubscriptionViewTab('usage')}
-                  className={`account-subscription-tab ${subscriptionViewTab === 'usage' ? 'active' : ''}`}
-                >
-                  Usage
-                </button>
-              </div>
-            )}
-          </div>
+          <h2>Settings</h2>
           <button className="account-settings-close" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -548,8 +529,14 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
             {activeTab === 'subscription' && (
               <>
+                {/* #region agent log */}
+                {fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountSettings.jsx:530',message:'Subscription tab active, checking subscriptionViewTab state',data:{activeTab,subscriptionViewTab},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{})}
+                {/* #endregion */}
                 {subscriptionViewTab === 'manage' && (
                   <section className="account-section">
+                    {/* #region agent log */}
+                    {fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountSettings.jsx:533',message:'Rendering manage section with tabs inside',data:{subscriptionViewTab},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{})}
+                    {/* #endregion */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                       <h3 style={{ margin: 0 }}>Manage Subscription</h3>
                       <button
@@ -577,6 +564,35 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       >
                         <Icon name="refresh" size={14} />
                         {loadingSubscription ? 'Refreshing...' : 'Refresh'}
+                      </button>
+                    </div>
+
+                    {/* Subscription View Tabs */}
+                    {/* #region agent log */}
+                    {fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountSettings.jsx:565',message:'Rendering tabs - should be outside conditional',data:{subscriptionViewTab,insideManageBlock:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{})}
+                    {/* #endregion */}
+                    <div className="account-subscription-tabs" style={{ marginBottom: '16px' }}>
+                      <button
+                        onClick={() => {
+                          // #region agent log
+                          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountSettings.jsx:568',message:'Manage tab clicked, setting subscriptionViewTab to manage',data:{previousTab:subscriptionViewTab},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                          // #endregion
+                          setSubscriptionViewTab('manage');
+                        }}
+                        className={`account-subscription-tab ${subscriptionViewTab === 'manage' ? 'active' : ''}`}
+                      >
+                        Manage Subscription
+                      </button>
+                      <button
+                        onClick={() => {
+                          // #region agent log
+                          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountSettings.jsx:575',message:'Usage tab clicked, setting subscriptionViewTab to usage',data:{previousTab:subscriptionViewTab},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                          // #endregion
+                          setSubscriptionViewTab('usage');
+                        }}
+                        className={`account-subscription-tab ${subscriptionViewTab === 'usage' ? 'active' : ''}`}
+                      >
+                        Usage
                       </button>
                     </div>
 
@@ -893,6 +909,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                 {subscriptionViewTab === 'usage' && (
                   <section className="account-section">
+                    {/* #region agent log */}
+                    {fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountSettings.jsx:892',message:'Rendering usage section - tabs not visible because they are inside manage block',data:{subscriptionViewTab,manageBlockRendered:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{})}
+                    {/* #endregion */}
                     <UsageIndicator />
                   </section>
                 )}

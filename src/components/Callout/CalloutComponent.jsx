@@ -1163,7 +1163,10 @@ const CalloutComponent = ({
         callout={callout}
         onUpdate={onUpdate}
         onClose={() => {
-          console.log('[DEBUG] Edit modal onClose called');
+          // #region agent log
+          console.log('[DEBUG] Edit modal onClose called from CalloutComponent');
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CalloutComponent.jsx:1165',message:'Edit modal onClose called',data:{calloutId:callout.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'F'})}).catch((e)=>console.error('Log error:',e));
+          // #endregion
           setShowEditModal(false);
           setEditModalAnchor(null);
         }}

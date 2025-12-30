@@ -13266,22 +13266,49 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Get regions for a page in the active space
   const getPageRegions = useCallback((pageNumber) => {
-    if (!activeSpaceId) return null;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13268', message: 'getPageRegions called', data: { pageNumber, activeSpaceId, spacesCount: spaces.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+    // #endregion
+    if (!activeSpaceId) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13270', message: 'getPageRegions: no activeSpaceId', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+      // #endregion
+      return null;
+    }
 
     const space = spaces.find(s => s.id === activeSpaceId);
-    if (!space) return null;
+    if (!space) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13273', message: 'getPageRegions: space not found', data: { activeSpaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+      // #endregion
+      return null;
+    }
 
     const assignedPage = space.assignedPages?.find(p => p.pageId === pageNumber);
-    if (!assignedPage) return null;
+    if (!assignedPage) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13276', message: 'getPageRegions: assignedPage not found', data: { pageNumber, assignedPagesCount: space.assignedPages?.length || 0, assignedPageIds: space.assignedPages?.map(p => p.pageId) || [] }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+      // #endregion
+      return null;
+    }
 
     if (assignedPage.wholePageIncluded !== false) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13279', message: 'getPageRegions: wholePageIncluded is true', data: { wholePageIncluded: assignedPage.wholePageIncluded }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+      // #endregion
       return null;
     }
 
     if (!assignedPage.regions || assignedPage.regions.length === 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13283', message: 'getPageRegions: no regions found', data: { regionsCount: assignedPage.regions?.length || 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+      // #endregion
       return null;
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13287', message: 'getPageRegions: returning regions', data: { regionsCount: assignedPage.regions.length, firstRegionId: assignedPage.regions[0]?.regionId || 'no-id' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+    // #endregion
     return assignedPage.regions;
   }, [activeSpaceId, spaces]);
 

@@ -113,6 +113,12 @@ const CalloutCanvas = ({
   }, []);
 
   const handleMouseDown = useCallback((e) => {
+    // Don't process clicks if they're on the edit modal or any modal overlay
+    const target = e.target;
+    if (target && (target.closest && (target.closest('[data-callout-edit-modal]') || target.closest('[data-callout-modal-overlay]')))) {
+      return; // Ignore clicks on modal
+    }
+    
     const pos = getMousePosition(e);
 
     // If select or pan tool is active and a callout is selected, check if clicking on empty space
@@ -529,7 +535,40 @@ const CalloutCanvas = ({
   }, [setSelectedCalloutId, setCallouts]);
 
   const updateCallout = useCallback((id, updates) => {
-    setCallouts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    setCallouts(prev => prev.map(c => {
+      if (c.id === id) {
+        // If updates contain style properties, merge them into the style object
+        const styleUpdates = {};
+        const otherUpdates = {};
+        
+        // List of style properties
+        const styleProps = [
+          'borderColor', 'borderOpacity', 'fillColor', 'fillOpacity', 'lineThickness',
+          'arrowheadStyle', 'fontFamily', 'fontSize', 'fontColor', 'textAlign',
+          'bold', 'italic', 'underline', 'strikethrough'
+        ];
+        
+        Object.keys(updates).forEach(key => {
+          if (styleProps.includes(key)) {
+            styleUpdates[key] = updates[key];
+          } else {
+            otherUpdates[key] = updates[key];
+          }
+        });
+        
+        // Merge style updates into existing style
+        const updatedStyle = styleUpdates && Object.keys(styleUpdates).length > 0
+          ? { ...c.style, ...styleUpdates }
+          : c.style;
+        
+        return {
+          ...c,
+          ...otherUpdates,
+          style: updatedStyle
+        };
+      }
+      return c;
+    }));
   }, [setCallouts]);
 
   const deleteCallout = useCallback((id) => {

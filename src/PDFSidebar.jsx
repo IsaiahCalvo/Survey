@@ -55,7 +55,9 @@ const PDFSidebar = ({
   tabId,
   onPageDrop,
   onToggleCollapse,
-  features
+  features,
+  showBackgroundAnnotations = true,
+  onToggleBackgroundAnnotations = null
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces'
@@ -254,6 +256,8 @@ const PDFSidebar = ({
                 isRegionSelectionActive={isRegionSelectionActive}
                 numPages={numPages}
                 features={features}
+                showBackgroundAnnotations={showBackgroundAnnotations}
+                onToggleBackgroundAnnotations={onToggleBackgroundAnnotations}
               />
             )}
           </div>

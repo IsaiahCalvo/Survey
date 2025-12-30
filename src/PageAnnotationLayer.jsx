@@ -4853,8 +4853,20 @@ const PageAnnotationLayer = memo(({
       // NEW: Check if this is a scoped region annotation
       const isScopedRegionAnnotation = objRegionId !== null;
 
+      // NEW: When regions are active, background annotations should remain visible by default
+      // Only apply space/module filtering if regions are NOT active, or for scoped region annotations
+      const hasActiveRegions = regions !== null;
+      
       // Filter by space: if selectedSpaceId is set, object must match
-      const matchesSpace = selectedSpaceId === null || objSpaceId === selectedSpaceId;
+      // BUT: Skip space filtering for background annotations when regions are active
+      let matchesSpace = true;
+      if (hasActiveRegions && !isScopedRegionAnnotation) {
+        // When regions are active, don't filter background annotations by space
+        matchesSpace = true;
+      } else {
+        // Normal space filtering when no regions or for scoped annotations
+        matchesSpace = selectedSpaceId === null || objSpaceId === selectedSpaceId;
+      }
 
       // Filter by module: if selectedModuleId is set, object must match
       const matchesModule = selectedModuleId === null || objModuleId === selectedModuleId;
@@ -4876,17 +4888,14 @@ const PageAnnotationLayer = memo(({
           // If toggle is off, hide background annotations
           backgroundAnnotationVisible = false;
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4864', message: 'Toggle off - hiding background annotation', data: { objType: obj.type, objId: obj.id || 'no-id' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4875', message: 'Toggle off - hiding background annotation', data: { objType: obj.type, objId: obj.id || 'no-id' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
           // #endregion
         } else {
-          // If toggle is on, check if annotation is within any region
-          const bounds = obj.getBoundingRect(true, true);
-          const centerX = bounds.left + (bounds.width || 0) / 2;
-          const centerY = bounds.top + (bounds.height || 0) / 2;
-          withinRegions = regions.some(region => regionContainsPoint(centerX, centerY, region, scale));
-          backgroundAnnotationVisible = withinRegions;
+          // If toggle is on, annotations remain visible (no region containment check needed per requirements)
+          // The requirement says they "must remain visible by default"
+          backgroundAnnotationVisible = true;
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4872', message: 'Toggle on - checking region containment', data: { objType: obj.type, withinRegions, centerX, centerY, regionsCount: regions.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'PageAnnotationLayer.jsx:4883', message: 'Toggle on - background annotations visible', data: { objType: obj.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
           // #endregion
         }
       }
