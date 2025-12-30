@@ -1443,6 +1443,7 @@ const PageAnnotationLayer = memo(({
   // Context Menu State
   const [contextMenu, setContextMenu] = useState(null); // { x, y, type: 'annotation' | 'canvas', target: object }
   const contextMenuJustOpenedRef = useRef(false); // Track if context menu was just opened to prevent immediate closing
+  const contextMenuRef = useRef(null); // Ref for the context menu element
   // Clipboard for Cut/Copy/Paste - using Ref to persist across renders without triggering them
   const clipboardRef = useRef(null);
   // Edit Modal State
@@ -2021,6 +2022,86 @@ const PageAnnotationLayer = memo(({
     };
   }, [editModal, cancelEdit]);
 
+  // Click outside handler for context menu and selected annotations
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      // Skip if context menu was just opened (prevent immediate closing)
+      if (contextMenuJustOpenedRef.current) return;
+
+      // Skip if it's a right-click (context menu)
+      if (event.button === 2 || event.which === 3) return;
+
+      const canvasElement = canvasRef.current;
+      if (!canvasElement) return;
+
+      // Check if click is outside the context menu element
+      const isOutsideContextMenu = contextMenuRef.current && 
+        !contextMenuRef.current.contains(event.target);
+
+      // Check if click is on the canvas or its container
+      const containerElement = canvasElement.parentElement;
+      const isOnCanvasArea = canvasElement.contains(event.target) || 
+                             (containerElement && containerElement.contains(event.target));
+
+      // Check if there's a selected annotation
+      const activeObject = canvas.getActiveObject();
+      const hasSelectedAnnotation = activeObject !== null;
+
+      // If click is outside canvas area
+      if (!isOnCanvasArea) {
+        // If context menu is open and click is outside it, close it
+        if (contextMenu && isOutsideContextMenu) {
+          closeContextMenu();
+        }
+        // If there's a selected annotation and we're clicking outside canvas, deselect
+        if (hasSelectedAnnotation) {
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+        }
+        return;
+      }
+
+      // For clicks on canvas area, check if click is on an annotation
+      // Find what object (if any) is at the click position
+      // Use the event directly - Fabric.js will extract what it needs
+      const target = canvas.findTarget(event, false);
+
+      // If context menu is open and click is outside it
+      if (contextMenu && isOutsideContextMenu) {
+        // If click is not on an annotation, also deselect
+        if (!target && hasSelectedAnnotation) {
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+        }
+        closeContextMenu();
+      } 
+      // If no context menu but there's a selected annotation, deselect if clicking outside annotation
+      else if (!contextMenu && hasSelectedAnnotation) {
+        // Check if click is on the selected annotation itself
+        const isOnSelectedAnnotation = target && (
+          target === activeObject || 
+          (activeObject.type === 'activeSelection' && activeObject.getObjects().includes(target)) ||
+          (activeObject.type === 'group' && activeObject.getObjects().includes(target))
+        );
+        
+        // If click is not on the selected annotation, deselect
+        if (!isOnSelectedAnnotation) {
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+        }
+      }
+    };
+
+    // Add event listener for mousedown (works for all tools)
+    document.addEventListener('mousedown', handleClickOutside, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside, true);
+    };
+  }, [contextMenu, closeContextMenu]);
 
   // Keep highlight callback refs in sync
   useEffect(() => {
@@ -5074,6 +5155,7 @@ const PageAnnotationLayer = memo(({
       {/* Context Menu */}
       {contextMenu && contextMenu.visible && (
         <div
+          ref={contextMenuRef}
           style={{
             position: 'fixed',
             top: contextMenu.y,
