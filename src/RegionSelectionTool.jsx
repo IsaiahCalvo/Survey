@@ -1794,7 +1794,7 @@ const RegionSelectionTool = ({
       {canvasRect && (() => {
         const handlersAttached = activeTool !== 'pan';
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:render',message:'Rendering overlay div',data:{activeTool,handlersAttached,canvasRectExists:!!canvasRect},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:render',message:'Rendering overlay div',data:{activeTool,handlersAttached,canvasRectExists:!!canvasRect},timestamp:Date.now(),sessionId:'debug-session',runId:'run12',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
         return (
           <div
@@ -1807,7 +1807,8 @@ const RegionSelectionTool = ({
               width: `${canvasRect.width}px`,
               height: `${canvasRect.height}px`,
               zIndex: 1000,
-              cursor: effectiveToolType === 'move' ? 'default' : (isCursorOverCanvas ? 'crosshair' : 'default')
+              cursor: effectiveToolType === 'move' ? 'default' : (isCursorOverCanvas ? 'crosshair' : 'default'),
+              pointerEvents: activeTool === 'pan' ? 'none' : 'auto' // Allow events to pass through when pan is active
             }}
             {...(activeTool === 'pan' ? {} : {
               onMouseDown: handleMouseDown,
@@ -1968,7 +1969,8 @@ const RegionSelectionTool = ({
                 boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
                 zIndex: 1004,
                 padding: '4px 0',
-                minWidth: '120px'
+                minWidth: '120px',
+                pointerEvents: 'auto' // Ensure context menu is always interactive
               }}
               onClick={(e) => e.stopPropagation()}
             >

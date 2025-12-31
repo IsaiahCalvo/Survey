@@ -8738,10 +8738,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // When region selection is activated, set activeTool to 'select' if it's 'pan'
   // This ensures that spacebar pan can save/restore the correct tool
+  // BUT: Don't override if spacebar is currently held (isPanningRef.current is true)
   useEffect(() => {
-    if (showRegionSelection && activeTool === 'pan') {
+    if (showRegionSelection && activeTool === 'pan' && !isPanningRef.current) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:useEffect',message:'Setting activeTool to select for region selection',data:{showRegionSelection,activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:useEffect',message:'Setting activeTool to select for region selection',data:{showRegionSelection,activeTool,isPanning:isPanningRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run14',hypothesisId:'F'})}).catch(()=>{});
       // #endregion
       setActiveTool('select');
     }
@@ -12686,16 +12687,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleMouseDown',message:'Mouse down in container',data:{activeTool,canPan,button:e.button,showRegionSelection,targetTag:e.target?.tagName},timestamp:Date.now(),sessionId:'debug-session',runId:'run10',hypothesisId:'B'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleMouseDown',message:'Mouse down in container',data:{activeTool,canPan,button:e.button,showRegionSelection,targetTag:e.target?.tagName,containerScrollHeight:containerRef.current?.scrollHeight,containerClientHeight:containerRef.current?.clientHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run13',hypothesisId:'D'})}).catch(()=>{});
     // #endregion
     // Only allow pan when:
     // 1. Pan tool is active (spacebar pan should work even when region selection is active)
-    // 2. Can pan (content exceeds viewport)
+    // 2. Can pan (content exceeds viewport) OR showRegionSelection is true (allow panning in region selection mode)
     // 3. Left mouse button
     // Note: Allow pan even when showRegionSelection is true (spacebar pan override)
-    if (activeTool === 'pan' && canPan && e.button === 0) {
+    // Also allow panning in region selection mode even if canPan is false (content might not exceed viewport but user wants to pan)
+    if (activeTool === 'pan' && (canPan || showRegionSelection) && e.button === 0) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleMouseDown',message:'Starting pan',data:{activeTool,canPan},timestamp:Date.now(),sessionId:'debug-session',runId:'run10',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleMouseDown',message:'Starting pan',data:{activeTool,canPan,showRegionSelection},timestamp:Date.now(),sessionId:'debug-session',runId:'run13',hypothesisId:'D'})}).catch(()=>{});
       // #endregion
       // Check if click is on an annotation layer canvas
       // Annotation layers use canvas elements for Fabric.js
@@ -12735,7 +12737,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         container.scrollLeft = panStart.x - e.clientX;
         container.scrollTop = panStart.y - e.clientY;
       }
-    } else if (activeTool === 'pan' && canPan && canvasMouseDownRef.current) {
+    } else if (activeTool === 'pan' && (canPan || showRegionSelection) && canvasMouseDownRef.current) {
       // Check if mouse has moved enough to start panning (empty space drag on canvas)
       const start = canvasMouseDownRef.current;
       const moveDistance = Math.sqrt(
@@ -12754,7 +12756,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         canvasMouseDownRef.current = null; // Clear after starting pan
       }
     }
-  }, [isPanning, panStart, activeTool, canPan]);
+  }, [isPanning, panStart, activeTool, canPan, showRegionSelection]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
@@ -12768,6 +12770,51 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setIsPanning(false);
     }
   }, [activeTool]);
+
+  // Add native event listener as backup for panning when overlay has pointerEvents: none
+  // This ensures events are caught even when they pass through the overlay
+  useEffect(() => {
+    if (!showRegionSelection || activeTool !== 'pan') return;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const nativeMouseDown = (e) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:nativeMouseDown',message:'Native mousedown on container',data:{activeTool,canPan,showRegionSelection,button:e.button,targetTag:e.target?.tagName},timestamp:Date.now(),sessionId:'debug-session',runId:'run13',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      if (activeTool === 'pan' && (canPan || showRegionSelection) && e.button === 0) {
+        // Check if event is within container bounds
+        const rect = container.getBoundingClientRect();
+        const isWithinContainer = (
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom
+        );
+
+        if (isWithinContainer) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:nativeMouseDown',message:'Starting pan via native listener',data:{activeTool,canPan,showRegionSelection},timestamp:Date.now(),sessionId:'debug-session',runId:'run13',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
+          setIsPanning(true);
+          setPanStart({
+            x: e.clientX + container.scrollLeft,
+            y: e.clientY + container.scrollTop
+          });
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    };
+
+    // Use capture phase to catch events before they reach other handlers
+    container.addEventListener('mousedown', nativeMouseDown, { capture: true, passive: false });
+
+    return () => {
+      container.removeEventListener('mousedown', nativeMouseDown, { capture: true });
+    };
+  }, [showRegionSelection, activeTool, canPan]);
 
   // Track eraser cursor position when eraser tool is active
   useEffect(() => {
