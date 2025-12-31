@@ -2572,18 +2572,28 @@ const PageAnnotationLayer = memo(({
 
         const canvas = fabricRef.current;
         if (!canvas) return;
-        const activeObj = canvas.getActiveObject();
+        
+        // Get all active objects to support multiple selection
+        const activeObjects = canvas.getActiveObjects();
+        if (activeObjects.length === 0) return;
 
-        // Check for Callout (Checking data.type OR internal structure as fallback)
-        const isCallout = (activeObj?.data?.type === 'callout') ||
-          (activeObj?.type === 'group' && activeObj.getObjects().some(o => o.name === 'calloutText'));
+        // Filter to only callouts and check if any are being edited
+        const callouts = activeObjects.filter(activeObj => {
+          const isCallout = (activeObj?.data?.type === 'callout') ||
+            (activeObj?.type === 'group' && activeObj.getObjects().some(o => o.name === 'calloutText'));
+          return isCallout;
+        });
 
-        if (isCallout) {
-          // Ensure we are not editing the text inside the callout
-          const isEditing = activeObj.isEditing || (activeObj.getObjects && activeObj.getObjects().some(o => o.isEditing));
+        if (callouts.length > 0) {
+          // Check if any callout is being edited
+          const isEditing = callouts.some(callout => 
+            callout.isEditing || (callout.getObjects && callout.getObjects().some(o => o.isEditing))
+          );
 
           if (!isEditing) {
-            canvas.remove(activeObj);
+            // Remove all selected callouts
+            canvas.remove(...callouts);
+            canvas.discardActiveObject();
             canvas.requestRenderAll();
             triggerSave();
             e.preventDefault();
@@ -5268,40 +5278,46 @@ const PageAnnotationLayer = memo(({
       const canvas = fabricRef.current;
       if (!canvas) return;
 
-      // Get the active object (selected annotation)
-      const activeObject = canvas.getActiveObject();
-      if (!activeObject) return;
+      // Get all active objects (supports both single and multiple selections)
+      const activeObjects = canvas.getActiveObjects();
+      if (activeObjects.length === 0) return;
 
       // Prevent default browser behavior (e.g., going back in history)
       e.preventDefault();
       e.stopPropagation();
 
-      // Check if this is a highlight that needs special handling
-      const isHighlight = activeObject.highlightId != null;
+      // Process each selected object for deletion
+      const highlightsToDelete = [];
 
-      if (isHighlight && onHighlightDeletedRef.current) {
-        // Get bounds for highlight deletion callback
-        const bounds = activeObject.getBoundingRect(true);
-        const highlightId = activeObject.highlightId;
+      activeObjects.forEach(activeObject => {
+        // Check if this is a highlight that needs special handling
+        const isHighlight = activeObject.highlightId != null;
 
-        // Remove from canvas first
-        canvas.remove(activeObject);
-        canvas.discardActiveObject();
-        canvas.requestRenderAll();
+        if (isHighlight && onHighlightDeletedRef.current) {
+          // Collect highlight info for callback after removal
+          const bounds = activeObject.getBoundingRect(true);
+          const highlightId = activeObject.highlightId;
+          highlightsToDelete.push({ pageNumber, bounds, highlightId, object: activeObject });
+        }
+      });
 
+      // Remove all selected objects from canvas
+      canvas.remove(...activeObjects);
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+
+      // Clean up highlight refs and call callbacks
+      highlightsToDelete.forEach(({ bounds, highlightId, object }) => {
         // Clean up refs
         renderedHighlightsRef.current.delete(highlightId);
-        const key = highlightId || `${activeObject.left}-${activeObject.top}-${activeObject.width}-${activeObject.height}`;
+        const key = highlightId || `${object.left}-${object.top}-${object.width}-${object.height}`;
         processedHighlightsRef.current.delete(key);
 
         // Call highlight deletion callback
-        onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
-      } else {
-        // Regular annotation deletion
-        canvas.remove(activeObject);
-        canvas.discardActiveObject();
-        canvas.requestRenderAll();
-      }
+        if (onHighlightDeletedRef.current) {
+          onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
+        }
+      });
 
       // Save the canvas state
       try {
