@@ -2643,12 +2643,22 @@ const PageAnnotationLayer = memo(({
           let isVisible = true;
           let isInteractive = true;
 
-          // Survey annotations require survey panel open AND matching module
+          // Three-layer visibility logic:
+          // - Base layer (no moduleId, no regionId): hidden when survey mode is active with a module selected
+          // - Middle layer (has moduleId, no regionId): visible only when survey mode is active AND module matches
+          // - Top layer (has regionId): visible when space is active
           if (isSurveyAnnotation) {
+            // Survey annotation: visible only when survey panel is open AND module matches
             if (!showSurveyPanelRef.current || currentModuleId !== objModuleId) {
               isVisible = false;
             }
+          } else if (!isRegionScoped) {
+            // Regular annotation (base layer): hidden when survey mode is active with a module selected
+            if (showSurveyPanelRef.current && currentModuleId !== null) {
+              isVisible = false;
+            }
           }
+          // Region-scoped annotations (top layer) always pass the survey check
 
           // Region-scoped annotations: only visible when their space is active
           if (isRegionScoped && isVisible) {
@@ -2658,7 +2668,7 @@ const PageAnnotationLayer = memo(({
             }
           }
 
-          // Lightbulb check for non-region-scoped annotations (survey highlights and background annotations)
+          // Lightbulb check for non-region-scoped annotations (survey highlights without regionId, and background annotations)
           // when a space is active
           if (!isRegionScoped && isVisible && currentSpaceId && getRegionLightbulbStateRef?.current) {
             const lightbulbOn = getRegionLightbulbStateRef.current(currentSpaceId, pageNumber) !== false;
@@ -2667,8 +2677,9 @@ const PageAnnotationLayer = memo(({
             }
           }
 
-          // Interactivity: survey annotations are non-interactive when space is active
-          if (isSurveyAnnotation && currentActiveSpaceId) {
+          // Interactivity: survey annotations without regionId are non-interactive when space is active
+          // Survey annotations WITH regionId (top layer) can be interactive
+          if (isSurveyAnnotation && !isRegionScoped && currentActiveSpaceId) {
             isInteractive = false;
           }
 
@@ -5150,10 +5161,8 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
-          // Store current activeRegionId on the highlight if a region is active AND it's NOT a survey annotation
-          // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
-          // This ensures they remain controlled by the lightbulb toggle
-          if (activeRegionIdRef.current && !objModuleId) {
+          // Store current activeRegionId on the highlight if a region is active
+          if (activeRegionIdRef.current) {
             rect.set({ regionId: activeRegionIdRef.current });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
@@ -5197,10 +5206,8 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
-          // Store current activeRegionId on the highlight if a region is active AND it's NOT a survey annotation
-          // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
-          // This ensures they remain controlled by the lightbulb toggle
-          if (activeRegionIdRef.current && !objModuleId) {
+          // Store current activeRegionId on the highlight if a region is active
+          if (activeRegionIdRef.current) {
             rect.set({ regionId: activeRegionIdRef.current });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
@@ -5386,9 +5393,19 @@ const PageAnnotationLayer = memo(({
       // Filter by module: if selectedModuleId is set, object must match
       const matchesModule = selectedModuleId === null || objModuleId === selectedModuleId;
 
-      // Survey annotations (highlights, callouts, etc.) should only be visible when survey mode is active AND a module is selected
-      // Survey annotations require: survey panel open AND matching module selected
-      const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanel && selectedModuleId !== null && objModuleId === selectedModuleId);
+      // Three-layer visibility logic:
+      // - Base layer (no moduleId, no regionId): hidden when survey mode is active with a module selected
+      // - Middle layer (has moduleId, no regionId): visible only when survey mode is active AND module matches
+      // - Top layer (has regionId): handled by scopedRegionAnnotationVisible below
+      let surveyAnnotationVisible = true;
+      if (isSurveyAnnotation) {
+        // Survey annotation: visible only when survey panel is open AND module matches
+        surveyAnnotationVisible = showSurveyPanel && selectedModuleId !== null && objModuleId === selectedModuleId;
+      } else if (!isScopedRegionAnnotation) {
+        // Regular annotation (base layer): hidden when survey mode is active with a module selected
+        surveyAnnotationVisible = !(showSurveyPanel && selectedModuleId !== null);
+      }
+      // Region-scoped annotations (top layer) always pass this check - visibility controlled by scopedRegionAnnotationVisible
 
       // Scoped region annotations should only be visible when their region is active
       // Annotations created while a region is active should persist after region edits,
