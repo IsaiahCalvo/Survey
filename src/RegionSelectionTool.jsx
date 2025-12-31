@@ -2185,8 +2185,9 @@ const RegionSelectionTool = ({
               );
             }
           })()}
-        </div>
-      )}
+          </div>
+        );
+      })()}
 
       {/* Floating Plus Sign Indicator for Additive Mode */}
       {effectiveSelectionMode === REGION_OPERATIONS.ADD && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (
