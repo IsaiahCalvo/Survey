@@ -8339,17 +8339,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [activeTool]);
 
-  // When region selection is activated, set activeTool to 'select' if it's 'pan'
-  // This ensures that spacebar pan can save/restore the correct tool
-  useEffect(() => {
-    if (showRegionSelection && activeTool === 'pan') {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:useEffect',message:'Setting activeTool to select for region selection',data:{showRegionSelection,activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      setActiveTool('select');
-    }
-  }, [showRegionSelection, activeTool]);
-
   const [pendingLocationItem, setPendingLocationItem] = useState(null);
   const topToolbarRef = useRef(null);
   const bottomToolbarRef = useRef(null);
@@ -8746,6 +8735,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [activeSpaceId, setActiveSpaceId] = useState(null); // Currently active space for filtering
   const [showRegionSelection, setShowRegionSelection] = useState(false); // Show region selection tool
   const [regionSelectionPage, setRegionSelectionPage] = useState(null); // Page for region selection
+
+  // When region selection is activated, set activeTool to 'select' if it's 'pan'
+  // This ensures that spacebar pan can save/restore the correct tool
+  useEffect(() => {
+    if (showRegionSelection && activeTool === 'pan') {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:useEffect',message:'Setting activeTool to select for region selection',data:{showRegionSelection,activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      setActiveTool('select');
+    }
+  }, [showRegionSelection, activeTool]);
 
   // Region overlay visibility state - persists across sessions
   // Key format: `${spaceId}-${pageId}`, value: true = disabled, false/undefined/null = enabled (default)
