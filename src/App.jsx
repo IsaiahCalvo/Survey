@@ -11022,12 +11022,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   useEffect(() => {
     if (!surveySession || !user?.id) return;
 
-    const templateSupabaseId = selectedTemplate?.supabaseId;
+    // Try supabaseId first, fall back to id (which may be the same as supabaseId for templates from Supabase)
+    const templateSupabaseId = selectedTemplate?.supabaseId || selectedTemplate?.id;
 
     if (templateSupabaseId && selectedTemplate?.linkedExcelPath) {
-      console.log('[MultiUserSync] Enabling sync for template:', templateSupabaseId);
+      console.log('[MultiUserSync] Enabling sync for template:', templateSupabaseId, 'linkedExcelPath:', selectedTemplate.linkedExcelPath);
       surveySession.enableSync(templateSupabaseId);
     } else {
+      console.log('[MultiUserSync] Sync disabled - templateId:', templateSupabaseId, 'linkedExcelPath:', selectedTemplate?.linkedExcelPath);
       surveySession.disableSync();
     }
 
@@ -11036,7 +11038,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         surveySession.disableSync();
       }
     };
-  }, [selectedTemplate?.supabaseId, selectedTemplate?.linkedExcelPath, user?.id, surveySession]);
+  }, [selectedTemplate?.supabaseId, selectedTemplate?.id, selectedTemplate?.linkedExcelPath, user?.id, surveySession]);
 
   // Load initial data from Supabase when sync becomes enabled
   useEffect(() => {
@@ -11058,16 +11060,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Sync local annotation changes to Supabase (debounced)
   useEffect(() => {
-    if (!surveySession?.syncEnabled || !selectedTemplate?.supabaseId) return;
+    const templateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+    if (!surveySession?.syncEnabled || !templateId) return;
     if (Object.keys(highlightAnnotations).length === 0) return;
 
     const syncTimeout = setTimeout(() => {
-      console.log('[MultiUserSync] Syncing annotations to Supabase...');
+      console.log('[MultiUserSync] Syncing', Object.keys(highlightAnnotations).length, 'modules to Supabase...');
       surveySession.syncAllNow(highlightAnnotations);
     }, 2000);
 
     return () => clearTimeout(syncTimeout);
-  }, [highlightAnnotations, surveySession?.syncEnabled, selectedTemplate?.supabaseId, surveySession]);
+  }, [highlightAnnotations, surveySession?.syncEnabled, selectedTemplate?.supabaseId, selectedTemplate?.id, surveySession]);
 
   // Apply incoming remote changes from other users
   useEffect(() => {
