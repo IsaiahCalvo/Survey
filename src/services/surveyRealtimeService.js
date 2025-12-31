@@ -23,6 +23,8 @@ export async function createSurveySession(templateId, userId, documentId = null,
     throw new Error('Supabase not available');
   }
 
+  console.log('[SurveyRealtimeService] Creating session for template:', templateId, 'user:', userId);
+
   const sessionData = {
     template_id: templateId,
     user_id: userId,
@@ -38,7 +40,16 @@ export async function createSurveySession(templateId, userId, documentId = null,
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('[SurveyRealtimeService] Failed to create session:', error);
+    // Check if this is a foreign key violation (template doesn't exist in Supabase)
+    if (error.code === '23503' || error.message?.includes('foreign key')) {
+      throw new Error(`Template not found in Supabase. Please save your template to the cloud first. (Template ID: ${templateId})`);
+    }
+    throw error;
+  }
+
+  console.log('[SurveyRealtimeService] Session created:', data.id);
   return data;
 }
 
