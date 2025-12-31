@@ -1713,11 +1713,27 @@ const PageAnnotationLayer = memo(({
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
+    contextMenuPositionAdjustedRef.current = false;
   }, []);
 
   const closeEditModal = useCallback(() => {
     setEditModal(null);
+    editModalPositionAdjustedRef.current = false;
   }, []);
+
+  // Reset position adjustment flag when context menu becomes visible
+  useEffect(() => {
+    if (contextMenu?.visible) {
+      contextMenuPositionAdjustedRef.current = false;
+    }
+  }, [contextMenu?.visible]);
+
+  // Reset position adjustment flag when edit modal becomes visible
+  useEffect(() => {
+    if (editModal?.visible) {
+      editModalPositionAdjustedRef.current = false;
+    }
+  }, [editModal?.visible]);
 
   // Fine-tune context menu position after render using actual dimensions
   useEffect(() => {
@@ -1751,13 +1767,7 @@ const PageAnnotationLayer = memo(({
       
       // Check bottom edge overflow
       if (rect.bottom + padding > viewportHeight) {
-        // Try positioning above cursor if there's space (use original y from contextMenu)
-        const originalY = contextMenu.y;
-        if (originalY - rect.height - padding >= padding) {
-          adjustedY = originalY - rect.height;
-        } else {
-          adjustedY = viewportHeight - rect.height - padding;
-        }
+        adjustedY = viewportHeight - rect.height - padding;
         needsUpdate = true;
       }
       
@@ -1778,51 +1788,54 @@ const PageAnnotationLayer = memo(({
 
   // Fine-tune edit modal position after render using actual dimensions
   useEffect(() => {
-    if (!editModal || !editModalRef.current) return;
+    if (!editModal?.visible || !editModalRef.current || editModalPositionAdjustedRef.current) return;
     
-    const element = editModalRef.current;
-    const rect = element.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const padding = 10;
-    
-    let adjustedX = editModal.x;
-    let adjustedY = editModal.y;
-    let needsUpdate = false;
-    
-    // Check right edge overflow
-    if (rect.right + padding > viewportWidth) {
-      adjustedX = viewportWidth - rect.width - padding;
-      needsUpdate = true;
-    }
-    
-    // Check left edge overflow
-    if (rect.left < padding) {
-      adjustedX = padding;
-      needsUpdate = true;
-    }
-    
-    // Check bottom edge overflow
-    if (rect.bottom + padding > viewportHeight) {
-      // Try positioning above cursor if there's space
-      if (editModal.y - rect.height - padding >= padding) {
-        adjustedY = editModal.y - rect.height;
-      } else {
-        adjustedY = viewportHeight - rect.height - padding;
+    // Use requestAnimationFrame to ensure the element is fully rendered
+    const frameId = requestAnimationFrame(() => {
+      if (!editModalRef.current) return;
+      
+      const element = editModalRef.current;
+      const rect = element.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const padding = 10;
+      
+      let adjustedX = editModal.x;
+      let adjustedY = editModal.y;
+      let needsUpdate = false;
+      
+      // Check right edge overflow
+      if (rect.right + padding > viewportWidth) {
+        adjustedX = viewportWidth - rect.width - padding;
+        needsUpdate = true;
       }
-      needsUpdate = true;
-    }
+      
+      // Check left edge overflow
+      if (rect.left < padding) {
+        adjustedX = padding;
+        needsUpdate = true;
+      }
+      
+      // Check bottom edge overflow
+      if (rect.bottom + padding > viewportHeight) {
+        adjustedY = viewportHeight - rect.height - padding;
+        needsUpdate = true;
+      }
+      
+      // Check top edge overflow
+      if (rect.top < padding) {
+        adjustedY = padding;
+        needsUpdate = true;
+      }
+      
+      if (needsUpdate) {
+        setEditModal(prev => prev ? { ...prev, x: adjustedX, y: adjustedY } : null);
+      }
+      editModalPositionAdjustedRef.current = true;
+    });
     
-    // Check top edge overflow
-    if (rect.top < padding) {
-      adjustedY = padding;
-      needsUpdate = true;
-    }
-    
-    if (needsUpdate) {
-      setEditModal(prev => prev ? { ...prev, x: adjustedX, y: adjustedY } : null);
-    }
-  }, [editModal?.visible, editModal?.x, editModal?.y]);
+    return () => cancelAnimationFrame(frameId);
+  }, [editModal?.visible]);
 
   // Action Handlers
   const handleCut = useCallback(() => {

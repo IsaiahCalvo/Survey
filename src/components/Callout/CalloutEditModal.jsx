@@ -282,13 +282,14 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
           height: '368px',
           paddingTop: '0px',
           paddingBottom: '0px',
+          marginTop: '175px',
           backgroundColor: '#2b2b2b',
           border: '1px solid #444',
           borderRadius: '8px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden',
+          overflow: 'visible',
           cursor: isDragging ? 'grabbing' : 'default'
         }}
         onMouseDown={(e) => {

@@ -13304,6 +13304,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return;
       }
 
+      // 'Shift+E' key to switch to Partial Erase Tool
+      if ((e.key === 'e' || e.key === 'E') && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Don't trigger if user is focused on an input field, textbox, or callout
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+
+        // Prevent default behavior, switch to eraser tool, and set mode to partial
+        e.preventDefault();
+        setActiveTool('eraser');
+        setEraserMode('partial');
+        return;
+      }
+
       // 'T' key to switch to Text Tool (only when no modifiers are pressed)
       if ((e.key === 't' || e.key === 'T') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         // Don't trigger if user is focused on an input field, textbox, or callout
@@ -13317,16 +13331,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return;
       }
 
-      // 'Q' key to switch to Text Tool (only when no modifiers are pressed)
+      // 'Q' key to switch to Callout Tool (only when no modifiers are pressed)
       if ((e.key === 'q' || e.key === 'Q') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         // Don't trigger if user is focused on an input field, textbox, or callout
         if (isFormField) {
           return; // Don't trigger tool switch if focused on input
         }
 
-        // Prevent default behavior and switch to text tool
+        // Prevent default behavior and switch to callout tool
         e.preventDefault();
-        setActiveTool('text');
+        setActiveTool('callout');
         return;
       }
 
@@ -13384,7 +13398,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool]);
+  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode]);
 
   // Mode toggle
   const toggleScrollMode = useCallback(() => {
