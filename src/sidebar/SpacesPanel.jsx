@@ -415,9 +415,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   title="Delete"
                 >
-                  {/* #region agent log */}
-                  {(()=>{fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:418',message:'Trash icon header area rendered',data:{size:12},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});return null})()}
-                  {/* #endregion */}
                   <Icon name="trash" size={12} color="#d32f2f" />
                 </button>
               </div>
@@ -943,10 +940,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               onMouseEnter={(e) => e.currentTarget.style.background = '#ffebee'}
                               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                             >
-                              {/* #region agent log */}
-                              {(()=>{fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:943',message:'Trash icon page list rendered',data:{size:18},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});return null})()}
-                              {/* #endregion */}
-                              <Icon name="trash" size={18} color="#d32f2f" />
+                              <Icon name="trash" size={12} color="#d32f2f" />
                             </button>
                           </div>
                         </li>
