@@ -3020,6 +3020,9 @@ const PageAnnotationLayer = memo(({
         if (shouldAssignRegionId()) {
           e.path.set({ regionId: activeRegionIdRef.current });
         }
+        // Automatically select the path so handles appear
+        canvas.setActiveObject(e.path);
+        canvas.requestRenderAll();
       }
       saveCanvas();
     };
@@ -3860,6 +3863,8 @@ const PageAnnotationLayer = memo(({
           }
         });
         canvas.add(note);
+        // Automatically select the note so handles appear
+        canvas.setActiveObject(note);
         canvas.requestRenderAll();
         saveCanvas();
         return;
@@ -4337,6 +4342,9 @@ const PageAnnotationLayer = memo(({
         }
         canvas.add(group);
         canvas.remove(ds.tempObj);
+        // Automatically select the arrow group so handles appear
+        canvas.setActiveObject(group);
+        canvas.requestRenderAll();
       } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
         const { x1, y1, x2, y2 } = ds.tempObj;
         const calloutGroup = createCalloutGroup(
@@ -4363,6 +4371,17 @@ const PageAnnotationLayer = memo(({
           textObj.enterEditing();
           textObj.selectAll();
         }
+        canvas.requestRenderAll();
+      } else if (ds.tempObj) {
+        // For other shapes (rect, ellipse, line, squiggly), the temp object is the final object
+        // Automatically select it so handles appear
+        // Make sure it's selectable and has controls
+        ds.tempObj.set({
+          selectable: true,
+          hasControls: true,
+          hasBorders: true
+        });
+        canvas.setActiveObject(ds.tempObj);
         canvas.requestRenderAll();
       }
       ds.isDrawingShape = false;
