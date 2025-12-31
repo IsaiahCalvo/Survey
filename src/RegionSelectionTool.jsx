@@ -44,36 +44,6 @@ const RegionSelectionTool = ({
   const [isToolDropdownOpen, setIsToolDropdownOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, regionId, type: 'merge' | 'separate' }
 
-  // Log when activeTool prop changes (Hypothesis A, D)
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:useEffect',message:'activeTool prop changed',data:{activeTool,active},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-  }, [activeTool, active]);
-
-  // Log handlers attachment and add native listeners to test if events reach overlay (Hypothesis B, C, E)
-  useEffect(() => {
-    if (!containerRef.current || !canvasRect) return;
-
-    const hasHandlers = activeTool !== 'pan';
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:useEffect',message:'Handlers attachment state',data:{activeTool,hasHandlers,canvasRectExists:!!canvasRect},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-
-    // Add native mousedown listener to see if events reach overlay even without React handlers (Hypothesis C)
-    const nativeMouseDown = (e) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:nativeMouseDown',message:'Native mousedown on overlay',data:{activeTool,hasHandlers,button:e.button,clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-    };
-
-    containerRef.current.addEventListener('mousedown', nativeMouseDown, true);
-    return () => {
-      if (containerRef.current) {
-        containerRef.current.removeEventListener('mousedown', nativeMouseDown, true);
-      }
-    };
-  }, [activeTool, canvasRect]);
 
   // Calculate effective tool type (override with Cmd/Ctrl for quick select)
   const effectiveToolType = useMemo(() => {
@@ -145,25 +115,34 @@ const RegionSelectionTool = ({
   // No wheel listener needed - allow all wheel events to pass through to underlying canvas
   // The App.jsx document-level listener will handle zoom/scroll
 
+  // Track if we've initialized regions from initialRegions to avoid overwriting user-drawn regions
+  const hasInitializedRegionsRef = useRef(false);
+
   useEffect(() => {
     if (active) {
-      // Deep clone regions preserving all metadata including sourceRegions and originCenter
-      const clonedRegions = (initialRegions || []).map(region => ({
-        ...region,
-        coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
-        // Preserve sourceRegions for unmerge capability
-        sourceRegions: Array.isArray(region.sourceRegions)
-          ? region.sourceRegions.map(sourceRegion => ({
-              ...sourceRegion,
-              coordinates: Array.isArray(sourceRegion.coordinates) ? [...sourceRegion.coordinates] : []
-            }))
-          : undefined,
-        // Preserve originCenter for unmerge offset calculation
-        originCenter: region.originCenter ? { ...region.originCenter } : undefined
-      }));
-      setRegions(clonedRegions);
+      // Only initialize from initialRegions on first activation, not on every initialRegions change
+      // This prevents overwriting user-drawn regions when activeTool changes
+      if (!hasInitializedRegionsRef.current) {
+        // Deep clone regions preserving all metadata including sourceRegions and originCenter
+        const clonedRegions = (initialRegions || []).map(region => ({
+          ...region,
+          coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
+          // Preserve sourceRegions for unmerge capability
+          sourceRegions: Array.isArray(region.sourceRegions)
+            ? region.sourceRegions.map(sourceRegion => ({
+                ...sourceRegion,
+                coordinates: Array.isArray(sourceRegion.coordinates) ? [...sourceRegion.coordinates] : []
+              }))
+            : undefined,
+          // Preserve originCenter for unmerge offset calculation
+          originCenter: region.originCenter ? { ...region.originCenter } : undefined
+        }));
+        setRegions(clonedRegions);
+        hasInitializedRegionsRef.current = true;
+      }
     } else {
       setRegions([]);
+      hasInitializedRegionsRef.current = false;
     }
     setSelectedRegionIds(new Set());
     setInteractionState(null);
@@ -607,16 +586,9 @@ const RegionSelectionTool = ({
   const handleMouseDown = useCallback((event) => {
     if (!active || !targetElement) return;
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleMouseDown',message:'Mouse down on overlay',data:{activeTool,button:event.button},timestamp:Date.now(),sessionId:'debug-session',runId:'run10',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-
     // Allow pan to work: if pan tool is active (space is held), don't handle the event
     // This allows the event to bubble to the container's pan handler
     if (activeTool === 'pan') {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleMouseDown',message:'Allowing event to pass through for pan',data:{activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run10',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       // Don't handle the event - let it bubble to container's pan handler
       // Don't call preventDefault or stopPropagation
       return;
@@ -681,9 +653,6 @@ const RegionSelectionTool = ({
 
     // Allow pan to work: if pan tool is active and not drawing/interacting, don't handle the event
     if (activeTool === 'pan' && !isDrawing && !interactionState) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleMouseMove',message:'Allowing mouse move to pass through for pan',data:{activeTool,isDrawing,hasInteractionState:!!interactionState},timestamp:Date.now(),sessionId:'debug-session',runId:'run9',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return; // Let the event pass through for pan
     }
 
@@ -1450,9 +1419,6 @@ const RegionSelectionTool = ({
       }
       // Release Space
       if (event.key === ' ' || event.code === 'Space') {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleKeyUp',message:'Space key released',data:{key:event.key,code:event.code},timestamp:Date.now(),sessionId:'debug-session',runId:'run8',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         setIsSpacePressed(false);
       }
     };
@@ -1791,12 +1757,7 @@ const RegionSelectionTool = ({
       </div>
 
       {/* Canvas Interaction Layer */}
-      {canvasRect && (() => {
-        const handlersAttached = activeTool !== 'pan';
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:render',message:'Rendering overlay div',data:{activeTool,handlersAttached,canvasRectExists:!!canvasRect},timestamp:Date.now(),sessionId:'debug-session',runId:'run12',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        return (
+      {canvasRect && (
           <div
             ref={containerRef}
             onContextMenu={handleContextMenu}
@@ -2188,8 +2149,7 @@ const RegionSelectionTool = ({
             }
           })()}
           </div>
-        );
-      })()}
+      )}
 
       {/* Floating Plus Sign Indicator for Additive Mode */}
       {effectiveSelectionMode === REGION_OPERATIONS.ADD && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (

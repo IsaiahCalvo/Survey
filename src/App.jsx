@@ -8232,10 +8232,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return;
       }
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleKeyDown',message:'Space key down',data:{key:e.key,code:e.code,repeat:e.repeat,activeTool,isPanning:isPanningRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-
       // Check if user is focused on an input, textarea, or contenteditable element
       const activeElement = document.activeElement;
       const isInputFocused = activeElement && (
@@ -8246,9 +8242,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       );
 
       if (isInputFocused) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleKeyDown',message:'Input focused - skipping',data:{activeElementTag:activeElement?.tagName},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return; // Don't trigger tool switch if focused on input
       }
 
@@ -8260,9 +8253,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Prevent re-firing tool switch logic if key is being held (event.repeat)
       // But we still prevent default above to stop scrolling
       if (e.repeat) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleKeyDown',message:'Key repeat - skipping',data:{activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return;
       }
 
@@ -8271,14 +8261,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // Save current tool and switch to pan
         previousToolRef.current = activeTool;
         isPanningRef.current = true;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleKeyDown',message:'Setting activeTool to pan',data:{previousTool:previousToolRef.current,newTool:'pan'},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         setActiveTool('pan');
-      } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleKeyDown',message:'Already panning - not switching',data:{activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
       }
     };
 
@@ -8288,28 +8271,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return;
       }
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleKeyUp',message:'Space key up',data:{key:e.key,code:e.code,activeTool,isPanning:isPanningRef.current,previousTool:previousToolRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-
       // Restore previous tool if panning was active
       if (isPanningRef.current) {
         isPanningRef.current = false;
         if (previousToolRef.current !== null) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleKeyUp',message:'Restoring previous tool',data:{previousTool:previousToolRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
           setActiveTool(previousToolRef.current);
           previousToolRef.current = null;
-        } else {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleKeyUp',message:'No previous tool to restore',data:{activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
         }
-      } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleKeyUp',message:'Not panning - no restore needed',data:{activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
       }
     };
 
@@ -8741,9 +8709,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // BUT: Don't override if spacebar is currently held (isPanningRef.current is true)
   useEffect(() => {
     if (showRegionSelection && activeTool === 'pan' && !isPanningRef.current) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:useEffect',message:'Setting activeTool to select for region selection',data:{showRegionSelection,activeTool,isPanning:isPanningRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run14',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
       setActiveTool('select');
     }
   }, [showRegionSelection, activeTool]);
@@ -11407,14 +11372,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [spaces, goToPage, features]);
 
   const handleCancelRegionEdit = useCallback(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11258',message:'handleCancelRegionEdit called',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     setShowRegionSelection(false);
     setRegionSelectionPage(null);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:11261',message:'handleCancelRegionEdit state updated',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
   }, []);
 
   const handleRegionSetFullPage = useCallback(() => {
@@ -12591,13 +12550,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Using smaller increments and minimal throttle for fluid feel
   const wheelTimerRef = useRef(null);
   const handleWheel = useCallback((e) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12549',message:'handleWheel called',data:{ctrlKey:e.ctrlKey,metaKey:e.metaKey,deltaY:e.deltaY,hasContainer:!!containerRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     if (e.ctrlKey || e.metaKey) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12551',message:'handleWheel processing zoom',data:{deltaY:e.deltaY,currentScale:scaleRef.current,manualZoomScale:manualZoomScaleRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       e.preventDefault();
 
       // Minimal throttle (16ms = 1 frame) for smooth but not overwhelming updates
@@ -12628,9 +12581,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // This is needed because the overlay div blocks events from reaching the container
       const container = containerRef.current;
       if (container) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12585',message:'handleWheel processing scroll',data:{deltaY:e.deltaY,deltaX:e.deltaX},timestamp:Date.now(),sessionId:'debug-session',runId:'run7',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
         // Prevent default to avoid double scrolling, then manually scroll
         e.preventDefault();
         container.scrollTop += e.deltaY;
@@ -12642,9 +12592,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Attach wheel event listener with passive: false to allow preventDefault
   useEffect(() => {
     const wheelHandler = (e) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12581',message:'Wheel handler called',data:{targetTag:e.target?.tagName,targetId:e.target?.id,hasContainer:!!containerRef.current,isContained:containerRef.current?.contains(e.target),deltaY:e.deltaY,ctrlKey:e.ctrlKey,metaKey:e.metaKey},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       // Check if event target is within container OR if event coordinates are within container bounds
       // This handles cases where overlay divs (like region selection tool) are positioned over the container
       const container = containerRef.current;
@@ -12665,14 +12612,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       
       if (isTargetContained || isCoordInContainer) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12595',message:'Calling handleWheel - event is within container',data:{isTargetContained,isCoordInContainer},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         handleWheel(e);
-      } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12600',message:'Wheel event NOT within container - skipping',data:{targetTag:e.target?.tagName,targetId:e.target?.id,clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
       }
     };
 
@@ -12686,9 +12626,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleMouseDown',message:'Mouse down in container',data:{activeTool,canPan,button:e.button,showRegionSelection,targetTag:e.target?.tagName,containerScrollHeight:containerRef.current?.scrollHeight,containerClientHeight:containerRef.current?.clientHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run13',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     // Only allow pan when:
     // 1. Pan tool is active (spacebar pan should work even when region selection is active)
     // 2. Can pan (content exceeds viewport) OR showRegionSelection is true (allow panning in region selection mode)
@@ -12696,9 +12633,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Note: Allow pan even when showRegionSelection is true (spacebar pan override)
     // Also allow panning in region selection mode even if canPan is false (content might not exceed viewport but user wants to pan)
     if (activeTool === 'pan' && (canPan || showRegionSelection) && e.button === 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleMouseDown',message:'Starting pan',data:{activeTool,canPan,showRegionSelection},timestamp:Date.now(),sessionId:'debug-session',runId:'run13',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       // Check if click is on an annotation layer canvas
       // Annotation layers use canvas elements for Fabric.js
       const target = e.target;
@@ -12780,9 +12714,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (!container) return;
 
     const nativeMouseDown = (e) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:nativeMouseDown',message:'Native mousedown on container',data:{activeTool,canPan,showRegionSelection,button:e.button,targetTag:e.target?.tagName},timestamp:Date.now(),sessionId:'debug-session',runId:'run13',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       if (activeTool === 'pan' && (canPan || showRegionSelection) && e.button === 0) {
         // Check if event is within container bounds
         const rect = container.getBoundingClientRect();
@@ -12794,9 +12725,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         );
 
         if (isWithinContainer) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:nativeMouseDown',message:'Starting pan via native listener',data:{activeTool,canPan,showRegionSelection},timestamp:Date.now(),sessionId:'debug-session',runId:'run13',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
           setIsPanning(true);
           setPanStart({
             x: e.clientX + container.scrollLeft,
