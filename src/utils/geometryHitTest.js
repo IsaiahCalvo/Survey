@@ -807,14 +807,29 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
     { x: selRect.left, y: selRect.bottom }
   ];
 
-  for (const corner of corners) {
-    if (hasFill) {
+  if (hasFill) {
+    // Check if any corner is inside ellipse
+    for (const corner of corners) {
       if (isPointInEllipse(corner, cx, cy, outerRx, outerRy)) {
         return true;
       }
-    } else if (strokeWidth > 0) {
-      const innerRx = Math.max(0, rx - halfStroke);
-      const innerRy = Math.max(0, ry - halfStroke);
+    }
+
+    // Check if all corners are inside ellipse (selection rect fully inside ellipse)
+    let allCornersInside = true;
+    for (const corner of corners) {
+      if (!isPointInEllipse(corner, cx, cy, outerRx, outerRy)) {
+        allCornersInside = false;
+        break;
+      }
+    }
+    if (allCornersInside) {
+      return true;
+    }
+  } else if (strokeWidth > 0) {
+    const innerRx = Math.max(0, rx - halfStroke);
+    const innerRy = Math.max(0, ry - halfStroke);
+    for (const corner of corners) {
       if (isPointInEllipse(corner, cx, cy, outerRx, outerRy) &&
           !isPointInEllipse(corner, cx, cy, innerRx, innerRy)) {
         return true;
@@ -839,6 +854,48 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
     if (x >= selRect.left && x <= selRect.right &&
         y >= selRect.top && y <= selRect.bottom) {
       return true;
+    }
+  }
+
+  // Check if selection rect edges intersect ellipse boundary
+  // This catches cases where edges cross without corners/center being inside
+  const selRectEdges = [
+    [{ x: selRect.left, y: selRect.top }, { x: selRect.right, y: selRect.top }],
+    [{ x: selRect.right, y: selRect.top }, { x: selRect.right, y: selRect.bottom }],
+    [{ x: selRect.right, y: selRect.bottom }, { x: selRect.left, y: selRect.bottom }],
+    [{ x: selRect.left, y: selRect.bottom }, { x: selRect.left, y: selRect.top }]
+  ];
+
+  // For each edge, check if it intersects the ellipse
+  // Sample the edge and check distance to ellipse boundary
+  for (const [edgeStart, edgeEnd] of selRectEdges) {
+    const edgeLength = Math.sqrt(
+      Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
+    );
+    const samplesPerEdge = Math.max(8, Math.ceil(edgeLength / 5)); // Sample every ~5px
+    
+    for (let i = 0; i <= samplesPerEdge; i++) {
+      const t = i / samplesPerEdge;
+      const point = {
+        x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
+        y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
+      };
+      
+      // Check if this point on the edge is on or inside the ellipse
+      if (hasFill) {
+        if (isPointInEllipse(point, cx, cy, outerRx, outerRy)) {
+          return true;
+        }
+      } else if (strokeWidth > 0) {
+        const innerRx = Math.max(0, rx - halfStroke);
+        const innerRy = Math.max(0, ry - halfStroke);
+        // For stroke-only, check if point is on the stroke (between inner and outer)
+        const distSq = Math.pow(point.x - cx, 2) / (outerRx * outerRx) + 
+                      Math.pow(point.y - cy, 2) / (outerRy * outerRy);
+        if (distSq >= Math.pow(innerRx / outerRx, 2) && distSq <= 1) {
+          return true;
+        }
+      }
     }
   }
 
@@ -1030,11 +1087,58 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
       return true;
     }
 
+    // Check if selection rect is completely inside the object (all 4 corners of selRect inside object)
+    const selRectCorners = [
+      { x: selRect.left, y: selRect.top },
+      { x: selRect.right, y: selRect.top },
+      { x: selRect.right, y: selRect.bottom },
+      { x: selRect.left, y: selRect.bottom }
+    ];
+    let allCornersInside = true;
+    for (const corner of selRectCorners) {
+      if (!isPointInPolygon(corner, canvasVertices)) {
+        allCornersInside = false;
+        break;
+      }
+    }
+    if (allCornersInside) {
+      return true;
+    }
+
+    // Check if object is completely inside selection rect (all 4 corners of object inside selRect)
+    let allVerticesInside = true;
+    for (const v of canvasVertices) {
+      if (v.x < selRect.left || v.x > selRect.right ||
+          v.y < selRect.top || v.y > selRect.bottom) {
+        allVerticesInside = false;
+        break;
+      }
+    }
+    if (allVerticesInside) {
+      return true;
+    }
+
     // Check if any edge intersects
     for (let i = 0; i < canvasVertices.length; i++) {
       const next = (i + 1) % canvasVertices.length;
       if (doesRectIntersectLineSegment(selRect, canvasVertices[i], canvasVertices[next], 0)) {
         return true;
+      }
+    }
+
+    // Also check if selection rect edges intersect object edges (bidirectional)
+    const selRectEdges = [
+      [{ x: selRect.left, y: selRect.top }, { x: selRect.right, y: selRect.top }],
+      [{ x: selRect.right, y: selRect.top }, { x: selRect.right, y: selRect.bottom }],
+      [{ x: selRect.right, y: selRect.bottom }, { x: selRect.left, y: selRect.bottom }],
+      [{ x: selRect.left, y: selRect.bottom }, { x: selRect.left, y: selRect.top }]
+    ];
+    for (const [selStart, selEnd] of selRectEdges) {
+      for (let i = 0; i < canvasVertices.length; i++) {
+        const next = (i + 1) % canvasVertices.length;
+        if (doLineSegmentsIntersect(selStart, selEnd, canvasVertices[i], canvasVertices[next])) {
+          return true;
+        }
       }
     }
   }

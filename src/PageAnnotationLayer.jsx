@@ -5216,12 +5216,19 @@ const PageAnnotationLayer = memo(({
       // Use highlightId if available, otherwise use coordinates
       const highlightKey = highlight.highlightId || `${highlight.x}-${highlight.y}-${highlight.width}-${highlight.height}`;
 
+      // Track the existing regionId to preserve when re-adding
+      // This prevents highlights created outside a region from getting regionId when re-rendered
+      let preservedRegionId = null;
+
       // Check if we already have this highlight rendered
       if (highlight.highlightId && renderedHighlightsRef.current.has(highlight.highlightId)) {
         const existingRect = renderedHighlightsRef.current.get(highlight.highlightId);
 
         // Verify it's still on the canvas
         if (canvas.getObjects().includes(existingRect)) {
+          // Capture the existing regionId BEFORE any removal
+          preservedRegionId = existingRect.regionId || null;
+
           // Check if properties match (color, needsBIC, bounds)
           const rawColor = highlight.color || highlightColor;
           const color = normalizeHighlightColor(rawColor) || highlightColor;
@@ -5349,9 +5356,21 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
-          // Store current activeRegionId on the highlight if a region is active AND toggle is ON
-          if (shouldAssignRegionId()) {
+          // Preserve existing regionId from canvas object, or assign new one if appropriate
+          // This ensures highlights created outside a region don't get regionId when re-rendered
+          // Priority: preservedRegionId (from existing canvas object) > highlight.regionId > new assignment
+          const existingRegionId = preservedRegionId || highlight.regionId || null;
+          if (existingRegionId) {
+            // Preserve the original regionId from when this highlight was created
+            rect.set({ regionId: existingRegionId });
+          } else if (shouldAssignRegionId()) {
+            // Only assign new regionId if highlight doesn't already have one AND conditions are met
             rect.set({ regionId: activeRegionIdRef.current });
+          }
+          // If no regionId to assign, explicitly set to null to ensure it's not assigned
+          // This is important for highlights created outside of regions
+          if (!existingRegionId && !shouldAssignRegionId()) {
+            rect.set({ regionId: null });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
           const isSurveyAnnotation = objModuleId !== null;
@@ -5394,9 +5413,21 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
-          // Store current activeRegionId on the highlight if a region is active AND toggle is ON
-          if (shouldAssignRegionId()) {
+          // Preserve existing regionId from canvas object, or assign new one if appropriate
+          // This ensures highlights created outside a region don't get regionId when re-rendered
+          // Priority: preservedRegionId (from existing canvas object) > highlight.regionId > new assignment
+          const existingRegionId = preservedRegionId || highlight.regionId || null;
+          if (existingRegionId) {
+            // Preserve the original regionId from when this highlight was created
+            rect.set({ regionId: existingRegionId });
+          } else if (shouldAssignRegionId()) {
+            // Only assign new regionId if highlight doesn't already have one AND conditions are met
             rect.set({ regionId: activeRegionIdRef.current });
+          }
+          // If no regionId to assign, explicitly set to null to ensure it's not assigned
+          // This is important for highlights created outside of regions
+          if (!existingRegionId && !shouldAssignRegionId()) {
+            rect.set({ regionId: null });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
           const isSurveyAnnotation = objModuleId !== null;
