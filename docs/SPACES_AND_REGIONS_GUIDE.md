@@ -317,3 +317,4 @@ This system allows users to:
 
 The key principle is that **when a space is active, background annotations are view-only** (controlled by lightbulbs) but **cannot be interacted with**, while **region-scoped annotations are fully interactive**.
 
+
