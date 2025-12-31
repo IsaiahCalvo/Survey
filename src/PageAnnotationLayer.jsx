@@ -1433,6 +1433,21 @@ const PageAnnotationLayer = memo(({
   const activeRegionIdRef = useRef(activeRegionId);
   const spacesRef = useRef(spaces);
   const getRegionLightbulbStateRef = useRef(getRegionLightbulbState);
+
+  // Helper function to determine if regionId should be assigned to new annotations
+  // Only assign regionId if:
+  // 1. A region is active (activeRegionIdRef.current is set)
+  // 2. The region toggle is ON (showBackgroundAnnotations !== false)
+  // This ensures annotations created while the toggle is OFF remain "global" and respond to the toggle
+  const shouldAssignRegionId = useCallback(() => {
+    if (!activeRegionIdRef.current) return false;
+    if (!selectedSpaceIdRef.current) return false;
+    if (!getRegionLightbulbStateRef.current) return true; // Default to assigning if no function available
+
+    // Check if the region toggle is ON for this page
+    const isToggleOn = getRegionLightbulbStateRef.current(selectedSpaceIdRef.current, pageNumber);
+    return isToggleOn;
+  }, [pageNumber]);
   const calloutsRef = useRef(callouts);
   const setCalloutsRef = useRef(setCallouts);
   const eraserModeRef = useRef(eraserMode);
@@ -2963,8 +2978,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           e.path.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the path if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the path if a region is active AND toggle is ON
+        if (shouldAssignRegionId()) {
           e.path.set({ regionId: activeRegionIdRef.current });
         }
       }
@@ -3729,8 +3744,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           tb.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the textbox if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the textbox if a region is active AND toggle is ON
+        if (shouldAssignRegionId()) {
           tb.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(tb);
@@ -3767,8 +3782,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           temp.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the shape if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the shape if a region is active AND toggle is ON
+        if (shouldAssignRegionId()) {
           temp.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(temp);
@@ -3795,8 +3810,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           note.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the note if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the note if a region is active AND toggle is ON
+        if (shouldAssignRegionId()) {
           note.set({ regionId: activeRegionIdRef.current });
         }
         note.on('mousedblclick', () => {
@@ -3816,8 +3831,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           temp.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the shape if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the shape if a region is active AND toggle is ON
+        if (shouldAssignRegionId()) {
           temp.set({ regionId: activeRegionIdRef.current });
         }
         ds.isDrawingShape = true;
@@ -4278,8 +4293,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           group.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the arrow group if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the arrow group if a region is active AND toggle is ON
+        if (shouldAssignRegionId()) {
           group.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(group);
@@ -4297,8 +4312,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           calloutGroup.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the callout group if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the callout group if a region is active AND toggle is ON
+        if (shouldAssignRegionId()) {
           calloutGroup.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(calloutGroup);
@@ -5161,8 +5176,8 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
-          // Store current activeRegionId on the highlight if a region is active
-          if (activeRegionIdRef.current) {
+          // Store current activeRegionId on the highlight if a region is active AND toggle is ON
+          if (shouldAssignRegionId()) {
             rect.set({ regionId: activeRegionIdRef.current });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
@@ -5206,8 +5221,8 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
-          // Store current activeRegionId on the highlight if a region is active
-          if (activeRegionIdRef.current) {
+          // Store current activeRegionId on the highlight if a region is active AND toggle is ON
+          if (shouldAssignRegionId()) {
             rect.set({ regionId: activeRegionIdRef.current });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
