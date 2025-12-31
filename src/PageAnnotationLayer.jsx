@@ -1398,6 +1398,7 @@ const PageAnnotationLayer = memo(({
   const processedHighlightsRef = useRef(new Set());
   const isInitializedRef = useRef(false);
   const drawingStateRef = useRef({ isDrawingShape: false, startX: 0, startY: 0, tempObj: null });
+  const justFinishedDrawingRef = useRef(false);
   const toolRef = useRef(tool);
   const strokeColorRef = useRef(strokeColor);
   const arrowheadStyleRef = useRef(arrowheadStyle);
@@ -2931,11 +2932,19 @@ const PageAnnotationLayer = memo(({
 
     const saveCanvas = () => {
       if (!fabricRef.current) return;
+      // #region agent log
+      const activeBeforeSave = canvas.getActiveObject();
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2933',message:'saveCanvas ENTRY',data:{activeObjectType:activeBeforeSave?.type,activeObjectId:activeBeforeSave?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
       try {
         // Include spaceId in the saved JSON to preserve space associations
         const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON);
+        // #region agent log
+        const activeAfterSave = canvas.getActiveObject();
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2940',message:'saveCanvas EXIT',data:{activeObjectType:activeAfterSave?.type,activeObjectId:activeAfterSave?.id,wasCleared:activeBeforeSave!==null&&activeAfterSave===null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+        // #endregion
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
       }
@@ -3020,9 +3029,15 @@ const PageAnnotationLayer = memo(({
         if (shouldAssignRegionId()) {
           e.path.set({ regionId: activeRegionIdRef.current });
         }
+        // Set flag to prevent deselection in handleMouseUpForSelection
+        justFinishedDrawingRef.current = true;
         // Automatically select the path so handles appear
         canvas.setActiveObject(e.path);
         canvas.requestRenderAll();
+        // Clear flag after a brief delay
+        setTimeout(() => {
+          justFinishedDrawingRef.current = false;
+        }, 100);
       }
       saveCanvas();
     };
@@ -3863,9 +3878,15 @@ const PageAnnotationLayer = memo(({
           }
         });
         canvas.add(note);
+        // Set flag to prevent deselection in handleMouseUpForSelection
+        justFinishedDrawingRef.current = true;
         // Automatically select the note so handles appear
         canvas.setActiveObject(note);
         canvas.requestRenderAll();
+        // Clear flag after a brief delay
+        setTimeout(() => {
+          justFinishedDrawingRef.current = false;
+        }, 100);
         saveCanvas();
         return;
       }
@@ -4279,9 +4300,15 @@ const PageAnnotationLayer = memo(({
       const currentStrokeColor = strokeColorRef.current;
       const ds = drawingStateRef.current;
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4280',message:'handleMouseUp entry',data:{currentTool:toolRef.current,isDrawingShape:ds?.isDrawingShape,hasTempObj:!!ds?.tempObj,tempObjType:ds?.tempObj?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      const activeOnEntry = canvas.getActiveObject();
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4280',message:'handleMouseUp ENTRY',data:{currentTool:toolRef.current,isDrawingShape:ds?.isDrawingShape,hasTempObj:!!ds?.tempObj,tempObjType:ds?.tempObj?.type,tempObjSelectable:ds?.tempObj?.selectable,tempObjHasControls:ds?.tempObj?.hasControls,activeObjectType:activeOnEntry?.type,justFinishedDrawing:justFinishedDrawingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
       // #endregion
-      if (!ds.isDrawingShape || !ds.tempObj) return;
+      if (!ds.isDrawingShape || !ds.tempObj) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4284',message:'handleMouseUp EXIT (not drawing shape)',data:{isDrawingShape:ds?.isDrawingShape,hasTempObj:!!ds?.tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        return;
+      }
 
       // Handle highlight tool: create rectangle and call callback
       if (currentTool === 'highlight' && ds.tempObj.type === 'rect') {
@@ -4345,9 +4372,15 @@ const PageAnnotationLayer = memo(({
         }
         canvas.add(group);
         canvas.remove(ds.tempObj);
+        // Set flag to prevent deselection in handleMouseUpForSelection
+        justFinishedDrawingRef.current = true;
         // Automatically select the arrow group so handles appear
         canvas.setActiveObject(group);
         canvas.requestRenderAll();
+        // Clear flag after a brief delay
+        setTimeout(() => {
+          justFinishedDrawingRef.current = false;
+        }, 100);
       } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
         const { x1, y1, x2, y2 } = ds.tempObj;
         const calloutGroup = createCalloutGroup(
@@ -4367,6 +4400,8 @@ const PageAnnotationLayer = memo(({
         }
         canvas.add(calloutGroup);
         canvas.remove(ds.tempObj);
+        // Set flag to prevent deselection in handleMouseUpForSelection
+        justFinishedDrawingRef.current = true;
         canvas.setActiveObject(calloutGroup);
         // Enter text editing mode
         const textObj = calloutGroup.getObjects().find(o => o.name === 'calloutText');
@@ -4375,6 +4410,10 @@ const PageAnnotationLayer = memo(({
           textObj.selectAll();
         }
         canvas.requestRenderAll();
+        // Clear flag after a brief delay
+        setTimeout(() => {
+          justFinishedDrawingRef.current = false;
+        }, 100);
       } else if (ds.tempObj) {
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4375',message:'Entering else if ds.tempObj block',data:{currentTool:toolRef.current,tempObjType:ds.tempObj.type,tempObjSelectable:ds.tempObj.selectable,tempObjHasControls:ds.tempObj.hasControls,tempObjOnCanvas:canvas.getObjects().includes(ds.tempObj)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
@@ -4383,6 +4422,9 @@ const PageAnnotationLayer = memo(({
         // Automatically select it so handles appear
         // Make sure it's selectable and has controls
         const tempObj = ds.tempObj; // Store reference before clearing
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4410',message:'BEFORE setting object properties',data:{tempObjType:tempObj.type,tempObjSelectable:tempObj.selectable,tempObjHasControls:tempObj.hasControls,tempObjHasBorders:tempObj.hasBorders},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         tempObj.set({
           selectable: true,
           hasControls: true,
@@ -4390,32 +4432,42 @@ const PageAnnotationLayer = memo(({
         });
         tempObj.setCoords(); // Ensure coordinates are updated
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4384',message:'Before setActiveObject',data:{tempObjSelectable:tempObj.selectable,tempObjHasControls:tempObj.hasControls,tempObjHasBorders:tempObj.hasBorders,currentActiveObject:canvas.getActiveObject()?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4416',message:'AFTER setting object properties',data:{tempObjSelectable:tempObj.selectable,tempObjHasControls:tempObj.hasControls,tempObjHasBorders:tempObj.hasBorders},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
         // #endregion
-        // Use setTimeout to defer selection until after all mouse event handlers have completed
-        // This ensures selection happens after handleMouseUpForSelection and other handlers
+        
+        // Set flag to prevent deselection in handleMouseUpForSelection
+        justFinishedDrawingRef.current = true;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4419',message:'BEFORE setActiveObject - flag set',data:{justFinishedDrawing:justFinishedDrawingRef.current,activeObjectBefore:canvas.getActiveObject()?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+        
+        // Select immediately so handles appear right away
+        canvas.setActiveObject(tempObj);
+        canvas.requestRenderAll();
+        
+        // #region agent log
+        const activeAfterSet = canvas.getActiveObject();
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4422',message:'AFTER setActiveObject',data:{activeObjectType:activeAfterSet?.type,activeObjectIsTempObj:activeAfterSet===tempObj,activeObjectSelectable:activeAfterSet?.selectable,activeObjectHasControls:activeAfterSet?.hasControls,activeObjectHasBorders:activeAfterSet?.hasBorders,justFinishedDrawing:justFinishedDrawingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+        
+        // Clear flag after a brief delay to allow other handlers to see it
         setTimeout(() => {
-          // Verify object is still on canvas before selecting
-          if (canvas.getObjects().includes(tempObj) && tempObj.selectable) {
-            canvas.setActiveObject(tempObj);
-            canvas.requestRenderAll();
-            // #region agent log
-            const activeAfterSet = canvas.getActiveObject();
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4393',message:'After setActiveObject (deferred)',data:{activeObjectType:activeAfterSet?.type,activeObjectIsTempObj:activeAfterSet===tempObj,activeObjectSelectable:activeAfterSet?.selectable,activeObjectHasControls:activeAfterSet?.hasControls},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
-          }
-        }, 0);
+          justFinishedDrawingRef.current = false;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4427',message:'Flag cleared after timeout',data:{justFinishedDrawing:justFinishedDrawingRef.current,activeObjectType:canvas.getActiveObject()?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+          // #endregion
+        }, 100);
       }
       ds.isDrawingShape = false;
       ds.tempObj = null;
       // #region agent log
       const activeBeforeSave = canvas.getActiveObject();
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4387',message:'Before saveCanvas',data:{activeObjectType:activeBeforeSave?.type,activeObjectSelectable:activeBeforeSave?.selectable},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4435',message:'BEFORE saveCanvas',data:{activeObjectType:activeBeforeSave?.type,activeObjectId:activeBeforeSave?.id,activeObjectSelectable:activeBeforeSave?.selectable,activeObjectHasControls:activeBeforeSave?.hasControls,justFinishedDrawing:justFinishedDrawingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
       // #endregion
       saveCanvas();
       // #region agent log
       const activeAfterSave = canvas.getActiveObject();
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4389',message:'After saveCanvas',data:{activeObjectType:activeAfterSave?.type,activeObjectSelectable:activeAfterSave?.selectable,wasCleared:activeBeforeSave!==null&&activeAfterSave===null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4438',message:'AFTER saveCanvas',data:{activeObjectType:activeAfterSave?.type,activeObjectId:activeAfterSave?.id,activeObjectSelectable:activeAfterSave?.selectable,activeObjectHasControls:activeAfterSave?.hasControls,wasCleared:activeBeforeSave!==null&&activeAfterSave===null,objectsMatch:activeBeforeSave===activeAfterSave},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
       // #endregion
     };
 
@@ -4692,10 +4744,14 @@ const PageAnnotationLayer = memo(({
     // Track mouse up to perform AutoCAD-style selection based on drag direction
     const handleMouseUpForSelection = (e) => {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4684',message:'handleMouseUpForSelection entry',data:{currentTool:toolRef.current,hasSelectionRect:!!selectionRectRef.current,activeObjectType:canvas.getActiveObject()?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      const activeOnEntry = canvas.getActiveObject();
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4693',message:'handleMouseUpForSelection ENTRY',data:{currentTool:toolRef.current,hasSelectionRect:!!selectionRectRef.current,activeObjectType:activeOnEntry?.type,activeObjectId:activeOnEntry?.id,justFinishedDrawing:justFinishedDrawingRef.current,drawingState:drawingStateRef.current.isDrawingShape},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
       if (toolRef.current !== 'select') {
         selectionRectRef.current = null;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4700',message:'handleMouseUpForSelection EXIT (not select tool)',data:{currentTool:toolRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         return;
       }
 
@@ -4747,6 +4803,18 @@ const PageAnnotationLayer = memo(({
           }
           canvas.requestRenderAll();
         } else {
+          // Don't deselect if we just finished drawing a shape
+          // #region agent log
+          const activeBeforeCheck = canvas.getActiveObject();
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4776',message:'handleMouseUpForSelection no hit - checking flag',data:{justFinishedDrawing:justFinishedDrawingRef.current,activeObjectType:activeBeforeCheck?.type,activeObjectId:activeBeforeCheck?.id,drawingState:drawingStateRef.current.isDrawingShape},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+          if (justFinishedDrawingRef.current) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4778',message:'handleMouseUpForSelection SKIP deselection (justFinishedDrawing=true)',data:{activeObjectType:activeBeforeCheck?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+            return;
+          }
+          
           // FIX: Before deselecting, check if click is inside the bounding box of the currently selected object
           const activeObject = canvas.getActiveObject();
           if (activeObject) {
@@ -4762,7 +4830,7 @@ const PageAnnotationLayer = memo(({
           // Clicked on empty space (outside bounding box) - deselect all
           // #region agent log
           const activeBeforeDiscard = canvas.getActiveObject();
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4751',message:'About to discardActiveObject in handleMouseUpForSelection',data:{activeObjectType:activeBeforeDiscard?.type,currentTool:toolRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4793',message:'handleMouseUpForSelection DISCARDING active object',data:{activeObjectType:activeBeforeDiscard?.type,activeObjectId:activeBeforeDiscard?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
           // #endregion
           canvas.discardActiveObject();
           canvas.requestRenderAll();
