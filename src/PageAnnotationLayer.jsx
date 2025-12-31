@@ -1384,6 +1384,13 @@ const PageAnnotationLayer = memo(({
   middleAreaBounds = { top: 0, height: 500 }, // Bounds of the middle area ({top, height})
   surveyPanelWidth = 0, // Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
   // Note: selectedSpaceId, selectedModuleId, and showSurveyPanel are already defined above
+  // Page operation props for context menu
+  onDuplicatePage = () => { },
+  onRotatePageCW = () => { },
+  onRotatePageCCW = () => { },
+  onInsertBlankPage = () => { },
+  pageClipboard = null, // { pageNumber, type: 'cut' | 'copy' } | null
+  onPastePageHere = () => { },
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
@@ -1514,6 +1521,80 @@ const PageAnnotationLayer = memo(({
     onSaveAnnotations(pageNumber, canvasJSON);
   }, [pageNumber, onSaveAnnotations]);
 
+  // Helper to calculate distance from point to line segment
+  const distanceToLineSegment = useCallback((point, lineStart, lineEnd) => {
+    const A = point.x - lineStart.x;
+    const B = point.y - lineStart.y;
+    const C = lineEnd.x - lineStart.x;
+    const D = lineEnd.y - lineStart.y;
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+
+    if (lenSq !== 0) param = dot / lenSq;
+
+    let xx, yy;
+    if (param < 0) {
+      xx = lineStart.x;
+      yy = lineStart.y;
+    } else if (param > 1) {
+      xx = lineEnd.x;
+      yy = lineEnd.y;
+    } else {
+      xx = lineStart.x + param * C;
+      yy = lineStart.y + param * D;
+    }
+
+    const dx = point.x - xx;
+    const dy = point.y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }, []);
+
+  // Helper to detect if a point is on a callout (for context menu)
+  const isPointOnCallout = useCallback((clickPos, callout, pageWidth, pageHeight) => {
+    const toPixels = (pt) => ({ x: pt.x * pageWidth, y: pt.y * pageHeight });
+
+    // Check text box bounds
+    const tbLeft = callout.textBoxPosition.x * pageWidth;
+    const tbTop = callout.textBoxPosition.y * pageHeight;
+    const tbRight = tbLeft + callout.textBoxWidth * pageWidth;
+    const tbBottom = tbTop + callout.textBoxHeight * pageHeight;
+    if (clickPos.x >= tbLeft && clickPos.x <= tbRight &&
+        clickPos.y >= tbTop && clickPos.y <= tbBottom) {
+      return true;
+    }
+
+    // Check arrow tip (20px radius)
+    const tip = toPixels(callout.arrowTip);
+    if (Math.hypot(clickPos.x - tip.x, clickPos.y - tip.y) < 20) {
+      return true;
+    }
+
+    // Check knee (20px radius)
+    const knee = toPixels(callout.knee);
+    if (Math.hypot(clickPos.x - knee.x, clickPos.y - knee.y) < 20) {
+      return true;
+    }
+
+    // Check line segments (10px threshold)
+    // Line from text box edge to knee
+    const textBoxCenter = {
+      x: (tbLeft + tbRight) / 2,
+      y: (tbTop + tbBottom) / 2
+    };
+    if (distanceToLineSegment(clickPos, textBoxCenter, knee) < 10) {
+      return true;
+    }
+
+    // Line from knee to arrow tip
+    if (distanceToLineSegment(clickPos, knee, tip) < 10) {
+      return true;
+    }
+
+    return false;
+  }, [distanceToLineSegment]);
+
   // Context Menu Handlers
   const handleContextMenu = useCallback((e, fabricTarget = null) => {
     // Only show context menu if not in drawing mode or other active interaction
@@ -1537,7 +1618,7 @@ const PageAnnotationLayer = memo(({
       target = target.group;
     }
 
-    // If we clicked on an object, select it (if not already selected)
+    // 1. Check if we clicked on a Fabric annotation
     if (target) {
       if (!canvas.getActiveObjects().includes(target)) {
         canvas.setActiveObject(target);
@@ -1556,25 +1637,61 @@ const PageAnnotationLayer = memo(({
       setTimeout(() => {
         contextMenuJustOpenedRef.current = false;
       }, 100); // Allow clicks after 100ms
-    } else {
-      // Empty space click - check if we have something to paste
-      if (clipboardRef.current) {
-        setContextMenu({
-          visible: true,
-          x: e.clientX,
-          y: e.clientY,
-          type: 'canvas',
-          target: null
-        });
-        // Mark that context menu was just opened to prevent immediate closing
-        contextMenuJustOpenedRef.current = true;
-        setTimeout(() => {
-          contextMenuJustOpenedRef.current = false;
-        }, 100); // Allow clicks after 100ms
-      } else {
+      return;
+    }
+
+    // 2. Check if we clicked on a React callout
+    const canvasElement = canvasRef.current;
+    if (canvasElement) {
+      const rect = canvasElement.getBoundingClientRect();
+      const clickPos = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+
+      // Get page dimensions at current scale
+      const pageWidth = width * scale;
+      const pageHeight = height * scale;
+
+      // Filter callouts for this page
+      const pageCallouts = calloutsRef.current.filter(c => c.pageNumber === pageNumber);
+
+      for (const callout of pageCallouts) {
+        if (isPointOnCallout(clickPos, callout, pageWidth, pageHeight)) {
+          // Select the callout
+          setSelectedCalloutId(callout.id);
+          setContextMenu({
+            visible: true,
+            x: e.clientX,
+            y: e.clientY,
+            type: 'callout',
+            target: null,
+            calloutId: callout.id
+          });
+          // Mark that context menu was just opened to prevent immediate closing
+          contextMenuJustOpenedRef.current = true;
+          setTimeout(() => {
+            contextMenuJustOpenedRef.current = false;
+          }, 100); // Allow clicks after 100ms
+          return;
+        }
       }
     }
-  }, []);
+
+    // 3. Page background click - always show page operations menu
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      type: 'page',
+      target: null
+    });
+    // Mark that context menu was just opened to prevent immediate closing
+    contextMenuJustOpenedRef.current = true;
+    setTimeout(() => {
+      contextMenuJustOpenedRef.current = false;
+    }, 100); // Allow clicks after 100ms
+  }, [pageNumber, width, height, scale, isPointOnCallout, setSelectedCalloutId]);
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
@@ -1671,6 +1788,79 @@ const PageAnnotationLayer = memo(({
     }
     closeContextMenu();
   }, [triggerSave, closeContextMenu]);
+
+  // Delete annotation handler
+  const handleDeleteAnnotation = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const activeObjects = canvas.getActiveObjects();
+    if (activeObjects.length > 0) {
+      canvas.remove(...activeObjects);
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+      triggerSave();
+    }
+    closeContextMenu();
+  }, [triggerSave, closeContextMenu]);
+
+  // Callout context menu handlers (using existing props)
+  const handleCutCalloutFromMenu = useCallback(() => {
+    if (contextMenu?.calloutId) {
+      onCutCallout(contextMenu.calloutId);
+    }
+    closeContextMenu();
+  }, [contextMenu, onCutCallout, closeContextMenu]);
+
+  const handleCopyCalloutFromMenu = useCallback(() => {
+    if (contextMenu?.calloutId) {
+      onCopyCallout(contextMenu.calloutId);
+    }
+    closeContextMenu();
+  }, [contextMenu, onCopyCallout, closeContextMenu]);
+
+  const handlePasteCalloutFromMenu = useCallback(() => {
+    if (clipboardCallout) {
+      onPasteCallout(pageNumber);
+    }
+    closeContextMenu();
+  }, [clipboardCallout, onPasteCallout, pageNumber, closeContextMenu]);
+
+  const handleDeleteCalloutFromMenu = useCallback(() => {
+    if (contextMenu?.calloutId) {
+      setCallouts(prev => prev.filter(c => c.id !== contextMenu.calloutId));
+      setSelectedCalloutId(null);
+    }
+    closeContextMenu();
+  }, [contextMenu, setCallouts, setSelectedCalloutId, closeContextMenu]);
+
+  const handleEditCalloutFromMenu = useCallback(() => {
+    // For callouts, we'll open the edit modal with callout-specific values
+    if (contextMenu?.calloutId) {
+      const callout = calloutsRef.current.find(c => c.id === contextMenu.calloutId);
+      if (callout) {
+        setEditValues({
+          stroke: callout.style?.borderColor || '#000000',
+          strokeWidth: callout.style?.lineThickness || 1,
+          opacity: callout.style?.borderOpacity !== undefined ? callout.style.borderOpacity : 1,
+          arrowheadStyle: callout.style?.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE,
+          fill: callout.style?.fontColor || '#000000',
+          fontSize: callout.style?.fontSize || 16,
+          fontWeight: callout.style?.bold ? 'bold' : 'normal',
+          fontStyle: callout.style?.italic ? 'italic' : 'normal',
+          textAlign: callout.style?.textAlign || 'left',
+          fontFamily: callout.style?.fontFamily || 'Arial',
+          fillColor: callout.style?.fillColor || 'rgba(255,255,255,0.9)'
+        });
+        setEditModal({
+          visible: true,
+          x: contextMenu.x,
+          y: contextMenu.y,
+          object: { data: { type: 'callout', calloutId: contextMenu.calloutId } }
+        });
+      }
+    }
+    closeContextMenu();
+  }, [contextMenu, closeContextMenu]);
 
   const handleEdit = useCallback(() => {
     const canvas = fabricRef.current;
@@ -5135,6 +5325,20 @@ const PageAnnotationLayer = memo(({
     <div
       onContextMenu={(e) => {
         handleContextMenu(e);
+      }}
+      onMouseDown={(e) => {
+        // Detect Command+Click (Mac) or Control+Click (Windows) as context menu trigger
+        // This should fire before Fabric.js processes the event
+        const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+        const isModifierContextClick = e.button === 0 && (
+          isMac ? (e.metaKey && !e.ctrlKey) : (e.ctrlKey && !e.metaKey)
+        );
+
+        if (isModifierContextClick) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleContextMenu(e);
+        }
       }}
       onClick={(e) => {
         // Don't close context menu if:

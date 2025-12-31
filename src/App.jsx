@@ -2,7 +2,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, degrees } from 'pdf-lib';
 import * as XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -9138,6 +9138,89 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return newTransformations;
     });
   }, []);
+
+  // PDF-lib based rotation handlers (persistent - modifies actual PDF)
+  const handleRotatePageCW = useCallback(async (pageNumber) => {
+    if (!pdfFile || !onUpdatePDFFile) {
+      alert('PDF file not available for manipulation');
+      return;
+    }
+
+    try {
+      const arrayBuffer = await pdfFile.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      const page = pdfDoc.getPage(pageNumber - 1);
+
+      // Get current rotation and add 90 degrees clockwise
+      const currentRotation = page.getRotation().angle;
+      const newRotation = (currentRotation + 90) % 360;
+      page.setRotation(degrees(newRotation));
+
+      // Save the modified PDF
+      const pdfBytes = await pdfDoc.save();
+      const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
+
+      onUpdatePDFFile(newFile);
+    } catch (error) {
+      console.error('Error rotating page clockwise:', error);
+      alert(`Error rotating page: ${error.message}`);
+    }
+  }, [pdfFile, onUpdatePDFFile]);
+
+  const handleRotatePageCCW = useCallback(async (pageNumber) => {
+    if (!pdfFile || !onUpdatePDFFile) {
+      alert('PDF file not available for manipulation');
+      return;
+    }
+
+    try {
+      const arrayBuffer = await pdfFile.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      const page = pdfDoc.getPage(pageNumber - 1);
+
+      // Get current rotation and subtract 90 degrees (counter-clockwise)
+      const currentRotation = page.getRotation().angle;
+      const newRotation = (currentRotation - 90 + 360) % 360;
+      page.setRotation(degrees(newRotation));
+
+      // Save the modified PDF
+      const pdfBytes = await pdfDoc.save();
+      const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
+
+      onUpdatePDFFile(newFile);
+    } catch (error) {
+      console.error('Error rotating page counter-clockwise:', error);
+      alert(`Error rotating page: ${error.message}`);
+    }
+  }, [pdfFile, onUpdatePDFFile]);
+
+  const handleInsertBlankPage = useCallback(async (afterPageNumber) => {
+    if (!pdfFile || !onUpdatePDFFile) {
+      alert('PDF file not available for manipulation');
+      return;
+    }
+
+    try {
+      const arrayBuffer = await pdfFile.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+
+      // Get dimensions from the reference page
+      const refPage = pdfDoc.getPage(afterPageNumber - 1);
+      const { width, height } = refPage.getSize();
+
+      // Insert blank page after the specified page (afterPageNumber is 1-based)
+      pdfDoc.insertPage(afterPageNumber, [width, height]);
+
+      // Save the modified PDF
+      const pdfBytes = await pdfDoc.save();
+      const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
+
+      onUpdatePDFFile(newFile);
+    } catch (error) {
+      console.error('Error inserting blank page:', error);
+      alert(`Error inserting page: ${error.message}`);
+    }
+  }, [pdfFile, onUpdatePDFFile]);
 
   const handleBookmarkCreate = useCallback((bookmark) => {
     setBookmarks(prev => {
