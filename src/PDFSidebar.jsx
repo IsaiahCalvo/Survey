@@ -263,7 +263,6 @@ const PDFSidebar = ({
                 features={features}
                 getRegionLightbulbState={getRegionLightbulbState}
                 onToggleBackgroundAnnotations={onToggleBackgroundAnnotations}
-                activeSpaceId={activeSpaceId}
                 externalSelectedSpaceId={selectedSpaceId}
                 onToggleRegionOverlay={onToggleRegionOverlay}
                 getRegionOverlayEnabled={getRegionOverlayEnabled}

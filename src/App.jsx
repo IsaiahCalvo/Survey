@@ -73,7 +73,8 @@ import { useZoomState } from './hooks/useZoomState';
 // Set up the PDF.js worker
 // Set up the PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
-pdfjsLib.verbosity = pdfjsLib.VerbosityLevel.ERRORS;
+// Note: verbosity cannot be set directly on imports in ES modules
+// PDF.js will use default verbosity level
 
 // Consistent font stack for the entire application
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -12137,8 +12138,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const docName = pdfFile.name || 'unknown';
       perfLoad.start(docName);
       try {
-        // Suppress PDF.js warnings
-        pdfjsLib.verbosity = pdfjsLib.VerbosityLevel.ERRORS;
+        // Note: verbosity cannot be set directly on imports in ES modules
+        // PDF.js will use default verbosity level
 
         setIsLoadingPDF(true);
 
@@ -14782,11 +14783,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             onPageDrop={onPageDrop}
             getRegionLightbulbState={getRegionLightbulbState}
             onToggleBackgroundAnnotations={handleToggleBackgroundAnnotations}
-            activeSpaceId={activeSpaceId}
             selectedSpaceId={selectedSpaceId}
-            onToggleRegionOverlay={handleToggleRegionOverlay}
-            getRegionOverlayEnabled={isRegionOverlayEnabled}
-            isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
             onToggleRegionOverlay={handleToggleRegionOverlay}
             getRegionOverlayEnabled={isRegionOverlayEnabled}
             isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}

@@ -5,7 +5,7 @@
   "main": "src/electron-main.js",
   "scripts": {
     "dev:ui": "vite",
-    "dev:electron": "wait-on -t 30000 http://localhost:5173 && NODE_ENV=development electron .",
+    "dev:electron": "wait-on -t 30000 http://localhost:5173 http://localhost:5174 && NODE_ENV=development electron .",
     "dev": "concurrently -k \"npm:dev:ui\" \"npm:dev:electron\"",
     "build": "vite build",
     "dist": "npm run build && electron-builder"
@@ -53,12 +53,18 @@
   "build": {
     "appId": "com.example.survey",
     "icon": "build/icon.png",
+    "extraMetadata": {
+      "main": "src/electron-main.js"
+    },
     "files": [
       "dist/**/*",
-      "electron-main.js",
-      "preload.js",
-      "package.json"
+      "src/electron-main.js",
+      "src/preload.js",
+      "package.json",
+      "build/icon.icns",
+      "build/icon.png"
     ],
+    "asar": true,
     "mac": {
       "target": "dmg",
       "icon": "build/icon.icns"

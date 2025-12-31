@@ -13,26 +13,43 @@ if (process.env.NODE_ENV === 'development') {
 
 function createWindow() {
   // Set icon path based on platform and environment
+  // Use app.getAppPath() to get the actual app directory, which works in both dev and production
+  const appPath = app.getAppPath();
   let iconPath;
+  
   if (process.platform === 'darwin') {
     // macOS - use .icns if available, otherwise fall back to .png
-    const icnsPath = path.join(__dirname, '..', 'build', 'icon.icns');
-    const pngPath = path.join(__dirname, '..', 'build', 'icon.png');
-    iconPath = fs.existsSync(icnsPath) ? icnsPath : pngPath;
+    const icnsPath = path.join(appPath, 'build', 'icon.icns');
+    const pngPath = path.join(appPath, 'build', 'icon.png');
+    if (fs.existsSync(icnsPath)) {
+      iconPath = icnsPath;
+      console.log('Using macOS icon:', iconPath);
+    } else if (fs.existsSync(pngPath)) {
+      iconPath = pngPath;
+      console.log('Using macOS icon (PNG fallback):', iconPath);
+    }
   } else if (process.platform === 'win32') {
     // Windows - use .ico if available, otherwise .png
-    const icoPath = path.join(__dirname, '..', 'build', 'icon.ico');
-    const pngPath = path.join(__dirname, '..', 'build', 'icon.png');
-    iconPath = fs.existsSync(icoPath) ? icoPath : pngPath;
+    const icoPath = path.join(appPath, 'build', 'icon.ico');
+    const pngPath = path.join(appPath, 'build', 'icon.png');
+    if (fs.existsSync(icoPath)) {
+      iconPath = icoPath;
+    } else if (fs.existsSync(pngPath)) {
+      iconPath = pngPath;
+    }
   } else {
     // Linux - use .png
-    iconPath = path.join(__dirname, '..', 'build', 'icon.png');
+    iconPath = path.join(appPath, 'build', 'icon.png');
+  }
+
+  if (!iconPath || !fs.existsSync(iconPath)) {
+    console.warn('Icon file not found. Expected at:', path.join(appPath, 'build', 'icon.icns'));
   }
 
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
-    icon: fs.existsSync(iconPath) ? iconPath : undefined,
+    icon: iconPath,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -41,7 +58,23 @@ function createWindow() {
   });
 
   if (process.env.NODE_ENV === 'development') {
-    win.loadURL('http://localhost:5173');
+    // Try port 5173 first, then 5174 if that fails
+    const tryLoadDev = async () => {
+      try {
+        await win.loadURL('http://localhost:5173');
+        console.log('Connected to dev server on port 5173');
+      } catch (err) {
+        console.log('Port 5173 not available, trying 5174...');
+        try {
+          await win.loadURL('http://localhost:5174');
+          console.log('Connected to dev server on port 5174');
+        } catch (err2) {
+          console.error('Could not connect to dev server on either port');
+          win.loadURL('http://localhost:5173'); // Fallback
+        }
+      }
+    };
+    tryLoadDev();
   } else {
     win.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
