@@ -13318,21 +13318,40 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       // 'E' key to switch to Eraser Tool (only when no modifiers are pressed)
       if ((e.key === 'e' || e.key === 'E') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13320',message:'E key handler triggered',data:{key:e.key,shiftKey:e.shiftKey,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,isFormField:!!isFormField,activeToolBefore:activeTool,eraserModeBefore:eraserMode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+        // #endregion
+        
         // Don't trigger if user is focused on an input field, textbox, or callout
         if (isFormField) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13323',message:'E key handler blocked by isFormField',data:{tagName:activeElement?.tagName,isContentEditable:!!activeElement?.isContentEditable},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
           return; // Don't trigger tool switch if focused on input
         }
 
-        // Prevent default behavior and switch to eraser tool
+        // Prevent default behavior and switch to eraser tool, set mode to entire
         e.preventDefault();
         setActiveTool('eraser');
+        setEraserMode('entire');
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13335',message:'E key handler executed - set to entire eraser',data:{activeToolAfter:'eraser',eraserModeAfter:'entire'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         return;
       }
 
       // 'Shift+E' key to switch to Partial Erase Tool
       if ((e.key === 'e' || e.key === 'E') && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13340',message:'Shift+E key handler triggered',data:{key:e.key,shiftKey:e.shiftKey,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,isFormField:!!isFormField,activeToolBefore:activeTool,eraserModeBefore:eraserMode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+        // #endregion
+        
         // Don't trigger if user is focused on an input field, textbox, or callout
         if (isFormField) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13343',message:'Shift+E key handler blocked by isFormField',data:{tagName:activeElement?.tagName,isContentEditable:!!activeElement?.isContentEditable},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
           return; // Don't trigger tool switch if focused on input
         }
 
@@ -13340,6 +13359,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         e.preventDefault();
         setActiveTool('eraser');
         setEraserMode('partial');
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13355',message:'Shift+E key handler executed - set to partial eraser',data:{activeToolAfter:'eraser',eraserModeAfter:'partial'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         return;
       }
 
@@ -13423,7 +13446,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode]);
+  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode]);
 
   // Mode toggle
   const toggleScrollMode = useCallback(() => {
