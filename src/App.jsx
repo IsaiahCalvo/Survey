@@ -16891,26 +16891,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   {lastSyncMessage}
                                 </div>
                               )}
-                              <button
-                                onClick={() => setAutoPushToExcel(!autoPushToExcel)}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  fontSize: '11px',
-                                  color: autoPushToExcel ? '#2ecc71' : '#888',
-                                  padding: '4px 8px',
-                                  background: autoPushToExcel ? 'rgba(46, 204, 113, 0.1)' : 'rgba(136, 136, 136, 0.1)',
-                                  borderRadius: '4px',
-                                  border: autoPushToExcel ? '1px solid rgba(46, 204, 113, 0.3)' : '1px solid rgba(136, 136, 136, 0.3)',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s'
-                                }}
-                                title={autoPushToExcel ? 'Auto-push to Excel is ON' : 'Auto-push to Excel is OFF'}
-                              >
-                                <span style={{ fontSize: '14px' }}>{autoPushToExcel ? '●' : '○'}</span>
-                                <span>Auto-push</span>
-                              </button>
                               {lastPushMessage && (
                                 <div style={{
                                   fontSize: '11px',
@@ -16922,73 +16902,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 }}>
                                   {lastPushMessage}
                                 </div>
-                              )}
-                              {/* Live Sync toggle - only for OneDrive files */}
-                              {selectedTemplate?.isOneDrive && (
-                                <button
-                                  onClick={() => {
-                                    if (liveSyncEnabled) {
-                                      setLiveSyncEnabled(false);
-                                    } else {
-                                      // Disable auto-push when enabling live sync to avoid conflicts
-                                      setAutoPushToExcel(false);
-                                      setLiveSyncEnabled(true);
-                                    }
-                                  }}
-                                  disabled={liveSyncSupported === false}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    fontSize: '11px',
-                                    color: liveSyncEnabled && liveSyncStatus === 'connected'
-                                      ? '#3498db'
-                                      : liveSyncStatus === 'connecting'
-                                        ? '#f39c12'
-                                        : liveSyncStatus === 'error' || liveSyncSupported === false
-                                          ? '#e74c3c'
-                                          : '#888',
-                                    padding: '4px 8px',
-                                    background: liveSyncEnabled && liveSyncStatus === 'connected'
-                                      ? 'rgba(52, 152, 219, 0.1)'
-                                      : liveSyncStatus === 'connecting'
-                                        ? 'rgba(243, 156, 18, 0.1)'
-                                        : liveSyncStatus === 'error' || liveSyncSupported === false
-                                          ? 'rgba(231, 76, 60, 0.1)'
-                                          : 'rgba(136, 136, 136, 0.1)',
-                                    borderRadius: '4px',
-                                    border: liveSyncEnabled && liveSyncStatus === 'connected'
-                                      ? '1px solid rgba(52, 152, 219, 0.3)'
-                                      : liveSyncStatus === 'connecting'
-                                        ? '1px solid rgba(243, 156, 18, 0.3)'
-                                        : liveSyncStatus === 'error' || liveSyncSupported === false
-                                          ? '1px solid rgba(231, 76, 60, 0.3)'
-                                          : '1px solid rgba(136, 136, 136, 0.3)',
-                                    cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
-                                    opacity: liveSyncSupported === false ? 0.6 : 1,
-                                    transition: 'all 0.2s'
-                                  }}
-                                  title={
-                                    liveSyncSupported === false
-                                      ? 'Live sync requires Microsoft 365 Business account'
-                                      : liveSyncEnabled && liveSyncStatus === 'connected'
-                                        ? 'Live sync is active - changes sync in real-time'
-                                        : liveSyncStatus === 'connecting'
-                                          ? 'Connecting to Excel...'
-                                          : liveSyncStatus === 'error'
-                                            ? 'Live sync error - click to retry'
-                                            : 'Enable live sync for real-time Excel updates'
-                                  }
-                                >
-                                  <span style={{ fontSize: '14px' }}>
-                                    {liveSyncStatus === 'connecting'
-                                      ? '...'
-                                      : liveSyncEnabled && liveSyncStatus === 'connected'
-                                        ? '●'
-                                        : '○'}
-                                  </span>
-                                  <span>Live Sync</span>
-                                </button>
                               )}
                             </>
                           )}
@@ -19193,6 +19106,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               color: '#fff',
                               fontSize: '14px',
                               cursor: 'pointer',
+                              borderBottom: '1px solid #444',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
@@ -19203,6 +19117,85 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             <Icon name="download" size={16} />
                             Pull from Excel
                           </div>
+                          <div
+                            onClick={() => {
+                              setAutoPushToExcel(!autoPushToExcel);
+                            }}
+                            style={{
+                              padding: '12px 16px',
+                              color: autoPushToExcel ? '#2ecc71' : '#fff',
+                              fontSize: '14px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #444',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                            title={autoPushToExcel ? 'Auto-push to Excel is ON' : 'Auto-push to Excel is OFF'}
+                          >
+                            <span style={{ fontSize: '14px' }}>{autoPushToExcel ? '●' : '○'}</span>
+                            Auto-push
+                          </div>
+                          {selectedTemplate?.isOneDrive && (
+                            <div
+                              onClick={() => {
+                                if (liveSyncSupported === false) return;
+                                if (liveSyncEnabled) {
+                                  setLiveSyncEnabled(false);
+                                } else {
+                                  // Disable auto-push when enabling live sync to avoid conflicts
+                                  setAutoPushToExcel(false);
+                                  setLiveSyncEnabled(true);
+                                }
+                              }}
+                              style={{
+                                padding: '12px 16px',
+                                color: liveSyncEnabled && liveSyncStatus === 'connected'
+                                  ? '#3498db'
+                                  : liveSyncStatus === 'connecting'
+                                    ? '#f39c12'
+                                    : liveSyncStatus === 'error' || liveSyncSupported === false
+                                      ? '#e74c3c'
+                                      : '#fff',
+                                fontSize: '14px',
+                                cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
+                                opacity: liveSyncSupported === false ? 0.6 : 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (liveSyncSupported !== false) {
+                                  e.currentTarget.style.background = '#444';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'transparent';
+                              }}
+                              title={
+                                liveSyncSupported === false
+                                  ? 'Live sync requires Microsoft 365 Business account'
+                                  : liveSyncEnabled && liveSyncStatus === 'connected'
+                                    ? 'Live sync is active - changes sync in real-time'
+                                    : liveSyncStatus === 'connecting'
+                                      ? 'Connecting to Excel...'
+                                      : liveSyncStatus === 'error'
+                                        ? 'Live sync error - click to retry'
+                                        : 'Enable live sync for real-time Excel updates'
+                              }
+                            >
+                              <span style={{ fontSize: '14px' }}>
+                                {liveSyncStatus === 'connecting'
+                                  ? '...'
+                                  : liveSyncEnabled && liveSyncStatus === 'connected'
+                                    ? '●'
+                                    : '○'}
+                              </span>
+                              Live Sync
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
