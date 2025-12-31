@@ -9,6 +9,7 @@ import { useKeyPress } from '../utils/hooks';
  */
 const KeyboardShortcutsOverlay = () => {
   const [isOpen, setIsOpen] = React.useState(false);
+  const modalContentRef = React.useRef(null);
 
   useKeyPress('?', () => {
     setIsOpen((prev) => !prev);
@@ -84,6 +85,7 @@ const KeyboardShortcutsOverlay = () => {
 
   return (
     <div
+      data-keyboard-shortcuts-modal="true"
       style={{
         position: 'fixed',
         top: 0,
@@ -100,18 +102,31 @@ const KeyboardShortcutsOverlay = () => {
       onClick={() => setIsOpen(false)}
     >
       <div
+        ref={modalContentRef}
         style={{
           background: COLORS.background.secondary,
           borderRadius: BORDERS.radius.xl,
           padding: '32px',
           maxWidth: '700px',
-          width: '90%',
+          width: '420px',
           maxHeight: '80vh',
           overflow: 'auto',
           boxShadow: SHADOWS.xl,
           border: `1px solid ${COLORS.border.default}`,
+          scrollBehavior: 'smooth',
+          WebkitOverflowScrolling: 'touch',
         }}
         onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KeyboardShortcutsOverlay.jsx:118',message:'Modal onWheel called',data:{targetTag:e.target.tagName,deltaY:e.deltaY,scrollTop:modalContentRef.current?.scrollTop,scrollHeight:modalContentRef.current?.scrollHeight,clientHeight:modalContentRef.current?.clientHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'smooth'})}).catch(()=>{});
+          // #endregion
+          // Stop event from bubbling to PDF handler, but allow native smooth scrolling
+          e.stopPropagation();
+          // Don't preventDefault - let native browser scrolling work smoothly
+          // The PDF handler already checks for modal and returns early, so this is safe
+        }}
+        onTouchMove={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div

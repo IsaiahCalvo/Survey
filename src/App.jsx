@@ -12931,6 +12931,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const container = containerRef.current;
       if (!container) return;
       
+      // #region agent log
+      const targetTag = e.target ? e.target.tagName : 'null';
+      const targetClass = e.target ? (e.target.className || '') : '';
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12928',message:'wheelHandler called (capture phase)',data:{targetTag,targetClass,clientX:e.clientX,clientY:e.clientY,deltaY:e.deltaY,eventPhase:e.eventPhase},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,E'})}).catch(()=>{});
+      // #endregion
+      
+      // Check if event target is inside a modal overlay (keyboard shortcuts modal)
+      const modalOverlay = document.querySelector('[data-keyboard-shortcuts-modal="true"]');
+      const isInModal = modalOverlay && modalOverlay.contains(e.target);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12935',message:'Modal check result',data:{isInModal:!!isInModal,modalFound:!!modalOverlay},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      
+      if (isInModal) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12938',message:'Skipping wheelHandler - event is in modal',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        return; // Don't handle wheel events inside modal
+      }
+      
       const isTargetContained = container.contains(e.target);
       let isCoordInContainer = false;
       
@@ -12944,6 +12965,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           e.clientY <= rect.bottom
         );
       }
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12952',message:'Container check result',data:{isTargetContained,isCoordInContainer,willHandle:isTargetContained||isCoordInContainer},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       
       if (isTargetContained || isCoordInContainer) {
         handleWheel(e);
