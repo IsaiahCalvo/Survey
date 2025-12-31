@@ -5418,6 +5418,7 @@ const PageAnnotationLayer = memo(({
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
+          {/* Annotation Menu */}
           {contextMenu.type === 'annotation' && (
             <>
               <button
@@ -5439,7 +5440,6 @@ const PageAnnotationLayer = memo(({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <Icon name="scissors" size={14} color="#999" />
                 Cut
               </button>
               <button
@@ -5461,43 +5461,32 @@ const PageAnnotationLayer = memo(({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <Icon name="copy" size={14} color="#999" />
                 Copy
               </button>
-            </>
-          )}
-
-          {/* Paste is available if clipboard has something */}
-          {clipboardRef.current && (
-            <button
-              onClick={handlePaste}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                background: 'transparent',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '13px',
-                textAlign: 'left',
-                cursor: 'pointer',
-                color: '#ddd',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <Icon name="paste" size={14} color="#999" />
-              Paste
-            </button>
-          )}
-
-          {contextMenu.type === 'annotation' && (
-            <>
+              {clipboardRef.current && (
+                <button
+                  onClick={handlePaste}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '13px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    color: '#ddd',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  Paste
+                </button>
+              )}
               <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
-
-              {/* Group/Ungroup */}
               {contextMenu.target && contextMenu.target.type === 'activeSelection' && (
                 <button
                   onClick={handleGroup}
@@ -5544,7 +5533,6 @@ const PageAnnotationLayer = memo(({
                   Ungroup
                 </button>
               )}
-
               <button
                 onClick={handleEdit}
                 style={{
@@ -5564,8 +5552,288 @@ const PageAnnotationLayer = memo(({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <Icon name="edit" size={14} color="#999" />
-                Edit...
+                Properties
+              </button>
+              <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
+              <button
+                onClick={handleDeleteAnnotation}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ff6b6b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Delete
+              </button>
+            </>
+          )}
+
+          {/* Callout Menu */}
+          {contextMenu.type === 'callout' && (
+            <>
+              <button
+                onClick={handleCutCalloutFromMenu}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Cut
+              </button>
+              <button
+                onClick={handleCopyCalloutFromMenu}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Copy
+              </button>
+              {clipboardCallout && (
+                <button
+                  onClick={handlePasteCalloutFromMenu}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '13px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    color: '#ddd',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  Paste
+                </button>
+              )}
+              <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
+              <button
+                onClick={handleEditCalloutFromMenu}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Properties
+              </button>
+              <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
+              <button
+                onClick={handleDeleteCalloutFromMenu}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ff6b6b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Delete
+              </button>
+            </>
+          )}
+
+          {/* Page Menu */}
+          {contextMenu.type === 'page' && (
+            <>
+              {(clipboardRef.current || clipboardCallout) && (
+                <>
+                  <button
+                    onClick={clipboardRef.current ? handlePaste : handlePasteCalloutFromMenu}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      color: '#ddd',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    Paste
+                  </button>
+                  <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
+                </>
+              )}
+              {pageClipboard && (
+                <>
+                  <button
+                    onClick={() => { onPastePageHere(pageNumber); closeContextMenu(); }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      color: '#ddd',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    Paste Page
+                  </button>
+                  <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
+                </>
+              )}
+              <button
+                onClick={() => { onDuplicatePage(pageNumber); closeContextMenu(); }}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Duplicate Page
+              </button>
+              <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
+              <button
+                onClick={() => { onRotatePageCW(pageNumber); closeContextMenu(); }}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Rotate Clockwise
+              </button>
+              <button
+                onClick={() => { onRotatePageCCW(pageNumber); closeContextMenu(); }}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Rotate Counter-Clockwise
+              </button>
+              <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
+              <button
+                onClick={() => { onInsertBlankPage(pageNumber); closeContextMenu(); }}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Insert Blank Page
               </button>
             </>
           )}

@@ -14528,6 +14528,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   onPasteCallout={handlePasteCallout}
                                   middleAreaBounds={middleAreaBounds}
                                   surveyPanelWidth={surveyPanelWidth}
+                                  onDuplicatePage={handleDuplicatePage}
+                                  onRotatePageCW={handleRotatePageCW}
+                                  onRotatePageCCW={handleRotatePageCCW}
+                                  onInsertBlankPage={handleInsertBlankPage}
+                                  pageClipboard={clipboardPage ? { pageNumber: clipboardPage, type: clipboardType } : null}
+                                  onPastePageHere={(targetPage) => handlePastePage(targetPage, clipboardPage, clipboardType)}
                                 />
                               )}
                               {/* Space Region Dimming Overlay */}
@@ -14701,6 +14707,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               onPasteCallout={handlePasteCallout}
                               middleAreaBounds={middleAreaBounds}
                               surveyPanelWidth={surveyPanelWidth}
+                              onDuplicatePage={handleDuplicatePage}
+                              onRotatePageCW={handleRotatePageCW}
+                              onRotatePageCCW={handleRotatePageCCW}
+                              onInsertBlankPage={handleInsertBlankPage}
+                              pageClipboard={clipboardPage ? { pageNumber: clipboardPage, type: clipboardType } : null}
+                              onPastePageHere={(targetPage) => handlePastePage(targetPage, clipboardPage, clipboardType)}
                             />
                           )}
                         </div>
