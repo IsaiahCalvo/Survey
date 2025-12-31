@@ -59,6 +59,7 @@ import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNot
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { supabase } from './supabaseClient';
+import { useSurveySessionOptional } from './contexts/SurveySessionContext';
 import { perfUpload, perfLoad, perfRender, perfZoom, setDebugEnabled, isDebugEnabled } from './utils/performanceLogger';
 import { useZoomState } from './hooks/useZoomState';
 
@@ -7961,6 +7962,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const { updateDocument: updateSupabaseDocument } = useDocuments(null);
   const { features } = useAuth();
 
+  // Multi-user real-time sync context (optional)
+  const surveySession = useSurveySessionOptional();
+
   const initialZoomPrefsRef = useRef(null);
   if (!initialZoomPrefsRef.current) {
     const storedPrefs = loadZoomPreferences();
@@ -11009,6 +11013,106 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     return () => clearTimeout(pushTimeout);
   }, [liveSyncEnabled, excelSessionId, oneDriveFileId, graphClient, liveSyncStatus, autoPushToExcel, highlightAnnotations, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
+
+  // ============================================
+  // MULTI-USER SUPABASE REAL-TIME SYNC
+  // ============================================
+
+  // Enable/disable Supabase sync based on template selection
+  useEffect(() => {
+    if (!surveySession || !user?.id) return;
+
+    const templateSupabaseId = selectedTemplate?.supabaseId;
+
+    if (templateSupabaseId && selectedTemplate?.linkedExcelPath) {
+      console.log('[MultiUserSync] Enabling sync for template:', templateSupabaseId);
+      surveySession.enableSync(templateSupabaseId);
+    } else {
+      surveySession.disableSync();
+    }
+
+    return () => {
+      if (surveySession.syncEnabled) {
+        surveySession.disableSync();
+      }
+    };
+  }, [selectedTemplate?.supabaseId, selectedTemplate?.linkedExcelPath, user?.id, surveySession]);
+
+  // Load initial data from Supabase when sync becomes enabled
+  useEffect(() => {
+    if (!surveySession?.syncEnabled || !surveySession?.remoteItems?.length) return;
+
+    // Only load if we don't have local annotations yet
+    if (Object.keys(highlightAnnotations).length > 0) {
+      console.log('[MultiUserSync] Local annotations exist, skipping remote load');
+      return;
+    }
+
+    console.log('[MultiUserSync] Loading', surveySession.remoteItems.length, 'items from Supabase');
+    const remoteAnnotations = surveySession.getHighlightAnnotationsFromRemote();
+
+    if (Object.keys(remoteAnnotations).length > 0) {
+      setHighlightAnnotations(remoteAnnotations);
+    }
+  }, [surveySession?.syncEnabled, surveySession?.remoteItems?.length]);
+
+  // Sync local annotation changes to Supabase (debounced)
+  useEffect(() => {
+    if (!surveySession?.syncEnabled || !selectedTemplate?.supabaseId) return;
+    if (Object.keys(highlightAnnotations).length === 0) return;
+
+    const syncTimeout = setTimeout(() => {
+      console.log('[MultiUserSync] Syncing annotations to Supabase...');
+      surveySession.syncAllNow(highlightAnnotations);
+    }, 2000);
+
+    return () => clearTimeout(syncTimeout);
+  }, [highlightAnnotations, surveySession?.syncEnabled, selectedTemplate?.supabaseId, surveySession]);
+
+  // Apply incoming remote changes from other users
+  useEffect(() => {
+    if (!surveySession?.pendingRemoteChanges?.length) return;
+
+    const pendingChanges = surveySession.consumePendingChanges();
+    if (pendingChanges.length === 0) return;
+
+    console.log('[MultiUserSync] Applying', pendingChanges.length, 'remote changes');
+
+    pendingChanges.forEach(change => {
+      const { type, item } = change;
+      const { moduleId, categoryId, highlightId } = item;
+
+      if (type === 'insert' || type === 'update') {
+        setHighlightAnnotations(prev => {
+          const moduleAnnotations = prev[moduleId] || {};
+          const categoryAnnotations = moduleAnnotations[categoryId] || [];
+          const existingIndex = categoryAnnotations.findIndex(h => h.id === highlightId);
+
+          let updatedCategory;
+          if (existingIndex >= 0) {
+            updatedCategory = [...categoryAnnotations];
+            updatedCategory[existingIndex] = { ...updatedCategory[existingIndex], ...item, id: highlightId };
+          } else {
+            updatedCategory = [...categoryAnnotations, { ...item, id: highlightId }];
+          }
+
+          return {
+            ...prev,
+            [moduleId]: { ...moduleAnnotations, [categoryId]: updatedCategory },
+          };
+        });
+      } else if (type === 'delete') {
+        setHighlightAnnotations(prev => {
+          const moduleAnnotations = prev[moduleId] || {};
+          const categoryAnnotations = moduleAnnotations[categoryId] || [];
+          return {
+            ...prev,
+            [moduleId]: { ...moduleAnnotations, [categoryId]: categoryAnnotations.filter(h => h.id !== highlightId) },
+          };
+        });
+      }
+    });
+  }, [surveySession?.pendingRemoteChanges, surveySession]);
 
   const handleExportSpaceToCSV = useCallback((spaceId) => {
     if (!features?.excelExport) {
