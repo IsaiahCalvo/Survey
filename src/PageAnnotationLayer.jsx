@@ -1465,6 +1465,9 @@ const PageAnnotationLayer = memo(({
   const [calloutSelectionRect, setCalloutSelectionRect] = useState(null);
   const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1, arrowheadStyle: ARROWHEAD_STYLES.SOLID_TRIANGLE });
   const editModalRef = useRef(null);
+  // Edit Modal Drag State
+  const isDraggingModalRef = useRef(false);
+  const modalDragStartRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
 
 
 
@@ -2174,6 +2177,8 @@ const PageAnnotationLayer = memo(({
   // Click outside listener for Edit Modal
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // Don't close if we're dragging the modal
+      if (isDraggingModalRef.current) return;
       // Check if click is outside the modal
       // We check for both mousedown (left/right start) and contextmenu
       if (editModal && editModalRef.current && !editModalRef.current.contains(event.target)) {
@@ -2199,6 +2204,8 @@ const PageAnnotationLayer = memo(({
   // Click outside listener for Edit Modal
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // Don't close if we're dragging the modal
+      if (isDraggingModalRef.current) return;
       // Check if click is outside the modal
       if (editModal && editModalRef.current && !editModalRef.current.contains(event.target)) {
         // Prevent context menu from opening if we are just dismissing the modal
@@ -2222,6 +2229,39 @@ const PageAnnotationLayer = memo(({
       document.removeEventListener('contextmenu', handleClickOutside, true);
     };
   }, [editModal, cancelEdit]);
+
+  // Edit Modal Drag Handlers
+  useEffect(() => {
+    if (!editModal) return;
+
+    const handleMouseMove = (e) => {
+      if (!isDraggingModalRef.current) return;
+      
+      const deltaX = e.clientX - modalDragStartRef.current.startX;
+      const deltaY = e.clientY - modalDragStartRef.current.startY;
+      
+      setEditModal(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          x: modalDragStartRef.current.x + deltaX,
+          y: modalDragStartRef.current.y + deltaY
+        };
+      });
+    };
+
+    const handleMouseUp = () => {
+      isDraggingModalRef.current = false;
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [editModal]);
 
   // Click outside handler for context menu and selected annotations
   useEffect(() => {
@@ -5377,6 +5417,8 @@ const PageAnnotationLayer = memo(({
         left: 0,
         width: '100%',
         height: '100%',
+        marginTop: '0px',
+        paddingTop: '12px',
         pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'pan' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'callout' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight') ? 'auto' : 'none',
         zIndex: 10,
       }}
@@ -5880,7 +5922,29 @@ const PageAnnotationLayer = memo(({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={{ marginBottom: '12px', fontSize: '14px', fontWeight: '500', color: '#333' }}>Edit Property</div>
+          <div 
+            style={{ 
+              marginBottom: '12px', 
+              fontSize: '14px', 
+              fontWeight: '500', 
+              color: '#333',
+              cursor: 'move',
+              userSelect: 'none'
+            }}
+            onMouseDown={(e) => {
+              if (!editModal) return;
+              e.stopPropagation();
+              isDraggingModalRef.current = true;
+              modalDragStartRef.current = {
+                x: editModal.x,
+                y: editModal.y,
+                startX: e.clientX,
+                startY: e.clientY
+              };
+            }}
+          >
+            Edit Property
+          </div>
 
           <div style={{ marginBottom: '8px' }}>
             <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Color</label>

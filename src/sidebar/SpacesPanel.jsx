@@ -127,23 +127,23 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
 
   const commitRegionRename = useCallback((pageId, triggerRegionEdit = false) => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:123',message:'commitRegionRename called',data:{pageId,triggerRegionEdit,editingRegionId,editingRegionValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:123', message: 'commitRegionRename called', data: { pageId, triggerRegionEdit, editingRegionId, editingRegionValue }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
     // #endregion
     if (editingRegionId !== pageId) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:126',message:'commitRegionRename early return - editingRegionId mismatch',data:{pageId,editingRegionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:126', message: 'commitRegionRename early return - editingRegionId mismatch', data: { pageId, editingRegionId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
       // #endregion
       return;
     }
     const labelToSave = editingRegionValue.trim();
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:130',message:'commitRegionRename saving',data:{pageId,labelToSave,spaceId:space.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:130', message: 'commitRegionRename saving', data: { pageId, labelToSave, spaceId: space.id }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
     // #endregion
     onRenameRegion?.(space.id, pageId, labelToSave);
     setEditingRegionId(null);
     setEditingRegionValue('');
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:135',message:'commitRegionRename state cleared',data:{pageId,triggerRegionEdit},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:135', message: 'commitRegionRename state cleared', data: { pageId, triggerRegionEdit }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
     // #endregion
     if (triggerRegionEdit) {
       onRequestRegionEdit?.(space.id, pageId);
@@ -682,7 +682,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             const isOverlayEnabled = hasProps && getRegionOverlayEnabled ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
                             const isToggleEnabled = hasProps && isRegionOverlayToggleEnabled ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
                             const isSpaceActive = isActive;
-                            
+
                             return (
                               <div
                                 onClick={(e) => {
@@ -720,11 +720,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 title={
                                   !hasProps
                                     ? 'Overlay toggle'
-                                    : !isSpaceActive 
-                                    ? 'Enable space to toggle overlay' 
-                                    : !isToggleEnabled
-                                    ? 'Define regions first to enable overlay'
-                                    : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region')
+                                    : !isSpaceActive
+                                      ? 'Enable space to toggle overlay'
+                                      : !isToggleEnabled
+                                        ? 'Define regions first to enable overlay'
+                                        : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region')
                                 }
                               >
                                 <div
@@ -767,7 +767,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 }}
                                 onKeyDown={(e) => {
                                   // #region agent log
-                                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:684',message:'Input onKeyDown event',data:{key:e.key,pageId:page.pageId,spaceId:space.id,editingRegionId,isRegionSelectionActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:684', message: 'Input onKeyDown event', data: { key: e.key, pageId: page.pageId, spaceId: space.id, editingRegionId, isRegionSelectionActive }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
                                   // #endregion
                                   if (e.key === 'Enter') {
                                     e.preventDefault();
@@ -820,7 +820,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     if (isDisabled) return;
                                     e.stopPropagation();
                                     // #region agent log
-                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpacesPanel.jsx:719',message:'Button clicked',data:{currentValue:regionLightbulbState,newValue:!regionLightbulbState,spaceId:space.id,pageId:page.pageId,isActive,isSurveyContext},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:719', message: 'Button clicked', data: { currentValue: regionLightbulbState, newValue: !regionLightbulbState, spaceId: space.id, pageId: page.pageId, isActive, isSurveyContext }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
                                     // #endregion
                                     onToggleBackgroundAnnotations(space.id, page.pageId, !regionLightbulbState);
                                   }}
@@ -855,17 +855,12 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   {/* Survey icon when in survey context, otherwise lightbulb */}
                                   {isSurveyContext ? (
                                     // Survey/Clipboard icon
-                                    <svg
-                                      width="12"
-                                      height="12"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      xmlns="http://www.w3.org/2000/svg"
+
+                                    <Icon
+                                      name="survey"
+                                      size={12}
                                       style={{ width: '12px', height: '12px', flexShrink: 0 }}
-                                    >
-                                      <path d="M9 6H15M9 6C8.06812 6 7.60218 6 7.23463 6.15224C6.74458 6.35523 6.35523 6.74458 6.15224 7.23463C6 7.60218 6 8.06812 6 9V18C6 18.9319 6 19.3978 6.15224 19.7654C6.35523 20.2554 6.74458 20.6448 7.23463 20.8478C7.60218 21 8.06812 21 9 21H15C15.9319 21 16.3978 21 16.7654 20.8478C17.2554 20.6448 17.6448 20.2554 17.8478 19.7654C18 19.3978 18 18.9319 18 18V9C18 8.06812 18 7.60218 17.8478 7.23463C17.6448 6.74458 17.2554 6.35523 16.7654 6.15224C16.3978 6 15.9319 6 15 6M9 6C9 4.89543 9.89543 4 11 4H13C14.1046 4 15 4.89543 15 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                                      <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
+                                    />
                                   ) : regionLightbulbState ? (
                                     // Lightbulb ON icon
                                     <svg
@@ -876,8 +871,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                       xmlns="http://www.w3.org/2000/svg"
                                       style={{ width: '12px', height: '12px', flexShrink: 0 }}
                                     >
-                                      <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke="currentColor" strokeWidth="1.5"/>
-                                      <path d="M12.7857 8.5L10.6429 11.5H13.6429L11.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                      <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke="currentColor" strokeWidth="1.5" />
+                                      <path d="M12.7857 8.5L10.6429 11.5H13.6429L11.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>
                                   ) : (
                                     // Lightbulb OFF icon
@@ -889,7 +884,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                       xmlns="http://www.w3.org/2000/svg"
                                       style={{ width: '12px', height: '12px', flexShrink: 0 }}
                                     >
-                                      <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke="currentColor" strokeWidth="1.5"/>
+                                      <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke="currentColor" strokeWidth="1.5" />
                                     </svg>
                                   )}
                                 </button>
@@ -989,7 +984,7 @@ const SpacesPanel = ({
   const [editingName, setEditingName] = useState('');
   const [expandedSpaces, setExpandedSpaces] = useState(new Set());
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
-  
+
   // Sync external selectedSpaceId prop with internal state
   React.useEffect(() => {
     // Always sync when external changes, even if it's the same value (handles re-renders)
@@ -1001,7 +996,7 @@ const SpacesPanel = ({
     // Don't clear internal state when external becomes null - user might have manually selected
     // This ensures the exit button stays visible during region editing even if external state is cleared
   }, [externalSelectedSpaceId]); // Only depend on externalSelectedSpaceId to avoid infinite loop
-  
+
   // Additional effect to restore state if it gets cleared but external is still set
   // This handles cases where internal state is cleared by other means (e.g., space updates)
   React.useEffect(() => {
