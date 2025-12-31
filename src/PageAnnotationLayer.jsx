@@ -1419,7 +1419,8 @@ const PageAnnotationLayer = memo(({
     showSurveyPanelRef.current = showSurveyPanel;
     activeRegionIdRef.current = activeRegionId;
     spacesRef.current = spaces;
-  }, [callouts, setCallouts, selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, spaces, pageNumber]);
+    getRegionLightbulbStateRef.current = getRegionLightbulbState;
+  }, [callouts, setCallouts, selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, spaces, getRegionLightbulbState, pageNumber]);
   const strokeWidthRef = useRef(strokeWidth);
   const justCreatedCalloutRef = useRef(false);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
@@ -1431,6 +1432,7 @@ const PageAnnotationLayer = memo(({
   const showSurveyPanelRef = useRef(showSurveyPanel);
   const activeRegionIdRef = useRef(activeRegionId);
   const spacesRef = useRef(spaces);
+  const getRegionLightbulbStateRef = useRef(getRegionLightbulbState);
   const calloutsRef = useRef(callouts);
   const setCalloutsRef = useRef(setCallouts);
   const eraserModeRef = useRef(eraserMode);
@@ -1523,7 +1525,7 @@ const PageAnnotationLayer = memo(({
   const triggerSave = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+    const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
     onSaveAnnotations(pageNumber, canvasJSON);
   }, [pageNumber, onSaveAnnotations]);
 
@@ -2592,9 +2594,10 @@ const PageAnnotationLayer = memo(({
             centeredRotation: true
           });
 
-          // Restore space/module association
+          // Restore space/module/region association
           if (!obj.spaceId) obj.spaceId = objData.spaceId || null;
           if (!obj.moduleId) obj.moduleId = objData.moduleId || null;
+          if (!obj.regionId) obj.regionId = objData.regionId || null;
 
           // Preserve imported PDF annotation properties
           if (objData.isPdfImported) {
@@ -2616,24 +2619,60 @@ const PageAnnotationLayer = memo(({
             obj.set({ globalCompositeOperation: 'multiply' });
           }
 
-          // Apply visibility filter
+          // Apply visibility filter using the same three-layer logic as the main visibility useEffect
           const objLayer = obj.layer || 'native';
           const layerVisible = layerVisibilityRef.current[objLayer] !== false;
+          if (!layerVisible) {
+            obj.set({ visible: false, selectable: false, evented: false });
+            canvas.add(obj);
+            obj.setCoords();
+            return; // Skip to next object
+          }
 
-          const objSpaceId = obj.spaceId || null;
           const objModuleId = obj.moduleId || null;
+          const objRegionId = obj.regionId || null;
           const currentSpaceId = selectedSpaceIdRef.current;
+          const currentActiveSpaceId = activeSpaceIdRef.current;
           const currentModuleId = selectedModuleIdRef.current;
-          const matchesSpace = currentSpaceId === null || objSpaceId === currentSpaceId;
-          const matchesModule = currentModuleId === null || objModuleId === currentModuleId;
 
-          // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
+          // Check if this is a survey annotation (has moduleId)
           const isSurveyAnnotation = objModuleId !== null;
-          // Survey annotations (highlights, callouts, etc.) should only be visible when survey mode is active AND a module is selected
-          const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && currentModuleId !== null && objModuleId === currentModuleId);
+          // Check if this is a region-scoped annotation (has regionId)
+          const isRegionScoped = objRegionId !== null;
 
-          const isVisible = matchesSpace && matchesModule && layerVisible && surveyAnnotationVisible;
-          obj.set({ visible: isVisible, selectable: isVisible, evented: isVisible });
+          let isVisible = true;
+          let isInteractive = true;
+
+          // Survey annotations require survey panel open AND matching module
+          if (isSurveyAnnotation) {
+            if (!showSurveyPanelRef.current || currentModuleId !== objModuleId) {
+              isVisible = false;
+            }
+          }
+
+          // Region-scoped annotations: only visible when their space is active
+          if (isRegionScoped && isVisible) {
+            // Get space for this regionId (simplified check - rely on main useEffect for full logic)
+            if (!currentActiveSpaceId) {
+              isVisible = false;
+            }
+          }
+
+          // Lightbulb check for non-region-scoped annotations (survey highlights and background annotations)
+          // when a space is active
+          if (!isRegionScoped && isVisible && currentSpaceId && getRegionLightbulbStateRef?.current) {
+            const lightbulbOn = getRegionLightbulbStateRef.current(currentSpaceId, pageNumber) !== false;
+            if (!lightbulbOn) {
+              isVisible = false;
+            }
+          }
+
+          // Interactivity: survey annotations are non-interactive when space is active
+          if (isSurveyAnnotation && currentActiveSpaceId) {
+            isInteractive = false;
+          }
+
+          obj.set({ visible: isVisible, selectable: isVisible && isInteractive, evented: isVisible && isInteractive });
 
           canvas.add(obj);
           obj.setCoords();
@@ -2830,7 +2869,7 @@ const PageAnnotationLayer = memo(({
       if (!fabricRef.current) return;
       try {
         // Include spaceId in the saved JSON to preserve space associations
-        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
@@ -2913,10 +2952,10 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           e.path.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the path if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the path if a region is active AND it's NOT a survey annotation
+        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
+        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
           e.path.set({ regionId: activeRegionIdRef.current });
-        } else {
         }
       }
       saveCanvas();
@@ -3680,8 +3719,9 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           tb.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the textbox if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the textbox if a region is active AND it's NOT a survey annotation
+        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
+        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
           tb.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(tb);
@@ -3718,8 +3758,9 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           temp.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the shape if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the shape if a region is active AND it's NOT a survey annotation
+        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
+        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
           temp.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(temp);
@@ -3746,8 +3787,9 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           note.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the note if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the note if a region is active AND it's NOT a survey annotation
+        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
+        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
           note.set({ regionId: activeRegionIdRef.current });
         }
         note.on('mousedblclick', () => {
@@ -3767,8 +3809,9 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           temp.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the shape if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the shape if a region is active AND it's NOT a survey annotation
+        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
+        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
           temp.set({ regionId: activeRegionIdRef.current });
         }
         ds.isDrawingShape = true;
@@ -4229,8 +4272,9 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           group.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the arrow group if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the arrow group if a region is active AND it's NOT a survey annotation
+        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
+        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
           group.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(group);
@@ -4248,8 +4292,9 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           calloutGroup.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the callout group if a region is active
-        if (activeRegionIdRef.current) {
+        // Store current activeRegionId on the callout group if a region is active AND it's NOT a survey annotation
+        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
+        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
           calloutGroup.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(calloutGroup);
@@ -5112,8 +5157,10 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
-          // Store current activeRegionId on the highlight if a region is active
-          if (activeRegionIdRef.current) {
+          // Store current activeRegionId on the highlight if a region is active AND it's NOT a survey annotation
+          // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
+          // This ensures they remain controlled by the lightbulb toggle
+          if (activeRegionIdRef.current && !objModuleId) {
             rect.set({ regionId: activeRegionIdRef.current });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
@@ -5157,8 +5204,10 @@ const PageAnnotationLayer = memo(({
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
-          // Store current activeRegionId on the highlight if a region is active
-          if (activeRegionIdRef.current) {
+          // Store current activeRegionId on the highlight if a region is active AND it's NOT a survey annotation
+          // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
+          // This ensures they remain controlled by the lightbulb toggle
+          if (activeRegionIdRef.current && !objModuleId) {
             rect.set({ regionId: activeRegionIdRef.current });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
@@ -5177,7 +5226,7 @@ const PageAnnotationLayer = memo(({
 
       // Save annotations
       try {
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'highlightId', 'needsBIC', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
@@ -5255,7 +5304,7 @@ const PageAnnotationLayer = memo(({
 
       // Save annotations
       try {
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error after removal:`, e);
@@ -5503,7 +5552,7 @@ const PageAnnotationLayer = memo(({
 
       // Save the canvas state
       try {
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (error) {
         console.error(`[Page ${pageNumber}] Error saving after deletion:`, error);
