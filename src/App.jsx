@@ -13526,6 +13526,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Immediately add highlight to canvas (always show selection feedback)
     // This ensures the user sees their selection regardless of category selection state
     setNewHighlightsByPage(prev => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13528',message:'Adding highlight to newHighlightsByPage',data:{highlightId,pageNumber,bounds,effectiveModuleId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
       // Filter previous highlights to only keep ones from the current module
       const filteredPrev = {};
       Object.entries(prev).forEach(([page, highlights]) => {
@@ -13535,17 +13539,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       });
 
+      const newHighlight = {
+        ...bounds,
+        highlightId: highlightId,
+        moduleId: effectiveModuleId,
+        needsCategory: !selectedCategoryId, // Flag to indicate it needs category selection
+        needsBIC: true // Use needsBIC rendering style (transparent with dashed outline) initially
+      };
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13551',message:'Created newHighlight object structure',data:{newHighlight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+
       return {
         ...filteredPrev,
         [pageNumber]: [
           ...(filteredPrev[pageNumber] || []),
-          {
-            ...bounds,
-            highlightId: highlightId,
-            moduleId: effectiveModuleId,
-            needsCategory: !selectedCategoryId, // Flag to indicate it needs category selection
-            needsBIC: true // Use needsBIC rendering style (transparent with dashed outline) initially
-          }
+          newHighlight
         ]
       };
     });
@@ -13585,6 +13595,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     } else {
       // No category selected, show category selection modal (only if survey panel is visible)
       if (showSurveyPanel) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13588',message:'Setting pendingHighlight',data:{highlightId,pageNumber,bounds,moduleId:effectiveModuleId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        
         setPendingHighlight({
           id: highlightId,
           pageNumber,
@@ -18766,7 +18780,71 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           pendingHighlight && selectedTemplate && selectedModuleId && (
             <>
               <div
-                onClick={() => setPendingHighlight(null)}
+                onClick={() => {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18769',message:'Modal backdrop clicked - dismissal handler entered',data:{pendingHighlight:pendingHighlight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                  // #endregion
+                  
+                  // Remove the pending highlight from the canvas
+                  const highlightToRemove = pendingHighlight;
+                  
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18772',message:'Before cleanup - checking highlight structure',data:{highlightToRemoveId:highlightToRemove?.id,highlightToRemoveBounds:highlightToRemove?.bounds,pageNumber:highlightToRemove?.pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                  // #endregion
+                  
+                  setNewHighlightsByPage(prev => {
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18773',message:'Inside setNewHighlightsByPage - before filter',data:{prevPageHighlights:prev[highlightToRemove.pageNumber]?.map(h=>({highlightId:h.highlightId,hasBounds:!!h.bounds,x:h.x,y:h.y}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                    // #endregion
+                    
+                    const updated = { ...prev };
+                    if (updated[highlightToRemove.pageNumber]) {
+                      const beforeLength = updated[highlightToRemove.pageNumber].length;
+                      updated[highlightToRemove.pageNumber] = updated[highlightToRemove.pageNumber].filter(
+                        h => {
+                          const matches = h.highlightId !== highlightToRemove.id;
+                          // #region agent log
+                          if (!matches) fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18793',message:'Filter match found - removing highlight',data:{hHighlightId:h.highlightId,highlightToRemoveId:highlightToRemove.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                          // #endregion
+                          return matches;
+                        }
+                      );
+                      const afterLength = updated[highlightToRemove.pageNumber].length;
+                      
+                      // #region agent log
+                      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18785',message:'After filter operation',data:{beforeLength,afterLength,removedCount:beforeLength-afterLength,remainingHighlights:updated[highlightToRemove.pageNumber]?.map(h=>({highlightId:h.highlightId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                      // #endregion
+                      
+                      // Clean up empty arrays
+                      if (updated[highlightToRemove.pageNumber].length === 0) {
+                        delete updated[highlightToRemove.pageNumber];
+                      }
+                    }
+                    return updated;
+                  });
+                  
+                  // Add to removal list to ensure canvas cleanup
+                  if (highlightToRemove.bounds) {
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18797',message:'Adding to highlightsToRemoveByPage',data:{bounds:highlightToRemove.bounds,pageNumber:highlightToRemove.pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+                    // #endregion
+                    
+                    setHighlightsToRemoveByPage(prev => ({
+                      ...prev,
+                      [highlightToRemove.pageNumber]: [...(prev[highlightToRemove.pageNumber] || []), highlightToRemove.bounds]
+                    }));
+                  } else {
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18802',message:'No bounds found in highlightToRemove',data:{highlightToRemove},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+                    // #endregion
+                  }
+                  
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18808',message:'Clearing pendingHighlight',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                  // #endregion
+                  
+                  setPendingHighlight(null);
+                }}
                 style={{
                   position: 'fixed',
                   top: 0,
@@ -18812,7 +18890,71 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       Categorize Highlight
                     </h3>
                     <button
-                      onClick={() => setPendingHighlight(null)}
+                      onClick={() => {
+                        // #region agent log
+                        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18841',message:'Close button clicked - dismissal handler entered',data:{pendingHighlight:pendingHighlight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                        // #endregion
+                        
+                        // Remove the pending highlight from the canvas
+                        const highlightToRemove = pendingHighlight;
+                        
+                        // #region agent log
+                        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18844',message:'Before cleanup - checking highlight structure',data:{highlightToRemoveId:highlightToRemove?.id,highlightToRemoveBounds:highlightToRemove?.bounds,pageNumber:highlightToRemove?.pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                        // #endregion
+                        
+                        setNewHighlightsByPage(prev => {
+                          // #region agent log
+                          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18845',message:'Inside setNewHighlightsByPage - before filter',data:{prevPageHighlights:prev[highlightToRemove.pageNumber]?.map(h=>({highlightId:h.highlightId,hasBounds:!!h.bounds,x:h.x,y:h.y}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                          // #endregion
+                          
+                          const updated = { ...prev };
+                          if (updated[highlightToRemove.pageNumber]) {
+                            const beforeLength = updated[highlightToRemove.pageNumber].length;
+                            updated[highlightToRemove.pageNumber] = updated[highlightToRemove.pageNumber].filter(
+                              h => {
+                                const matches = h.highlightId !== highlightToRemove.id;
+                                // #region agent log
+                                if (!matches) fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18849',message:'Filter match found - removing highlight',data:{hHighlightId:h.highlightId,highlightToRemoveId:highlightToRemove.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                                // #endregion
+                                return matches;
+                              }
+                            );
+                            const afterLength = updated[highlightToRemove.pageNumber].length;
+                            
+                            // #region agent log
+                            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18857',message:'After filter operation',data:{beforeLength,afterLength,removedCount:beforeLength-afterLength,remainingHighlights:updated[highlightToRemove.pageNumber]?.map(h=>({highlightId:h.highlightId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                            // #endregion
+                            
+                            // Clean up empty arrays
+                            if (updated[highlightToRemove.pageNumber].length === 0) {
+                              delete updated[highlightToRemove.pageNumber];
+                            }
+                          }
+                          return updated;
+                        });
+                        
+                        // Add to removal list to ensure canvas cleanup
+                        if (highlightToRemove.bounds) {
+                          // #region agent log
+                          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18869',message:'Adding to highlightsToRemoveByPage',data:{bounds:highlightToRemove.bounds,pageNumber:highlightToRemove.pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+                          // #endregion
+                          
+                          setHighlightsToRemoveByPage(prev => ({
+                            ...prev,
+                            [highlightToRemove.pageNumber]: [...(prev[highlightToRemove.pageNumber] || []), highlightToRemove.bounds]
+                          }));
+                        } else {
+                          // #region agent log
+                          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18874',message:'No bounds found in highlightToRemove',data:{highlightToRemove},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+                          // #endregion
+                        }
+                        
+                        // #region agent log
+                        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:18880',message:'Clearing pendingHighlight',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                        // #endregion
+                        
+                        setPendingHighlight(null);
+                      }}
                       className="btn btn-icon btn-icon-sm"
                       style={{
                         background: 'transparent',
