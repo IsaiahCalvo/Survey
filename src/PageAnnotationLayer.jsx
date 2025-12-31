@@ -1857,9 +1857,14 @@ const PageAnnotationLayer = memo(({
           y: contextMenu.y,
           object: { data: { type: 'callout', calloutId: contextMenu.calloutId } }
         });
+        // Delay closing context menu to allow modal to render first
+        setTimeout(() => {
+          closeContextMenu();
+        }, 0);
       }
+    } else {
+      closeContextMenu();
     }
-    closeContextMenu();
   }, [contextMenu, closeContextMenu]);
 
   const handleEdit = useCallback(() => {
@@ -5665,7 +5670,15 @@ const PageAnnotationLayer = memo(({
               )}
               <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
               <button
-                onClick={handleEditCalloutFromMenu}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  handleEditCalloutFromMenu();
+                }}
                 style={{
                   width: '100%',
                   padding: '8px 12px',

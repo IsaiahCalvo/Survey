@@ -10,9 +10,52 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
   const [colorMode, setColorMode] = useState('border');
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showTextColorPicker, setShowTextColorPicker] = useState(false);
+  
+  // Drag state
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [modalPosition, setModalPosition] = useState({ top: 0, left: 0 });
 
   // Merge callout style with defaults
   const style = callout ? { ...defaultCalloutStyle, ...callout.style } : defaultCalloutStyle;
+
+  // Initialize modal position when it becomes visible
+  useEffect(() => {
+    if (!visible) return;
+    
+    const modalWidth = 320;
+    const padding = 20;
+    const headerHeight = 48;
+    const tabHeight = 40;
+    const maxContentHeight = window.innerHeight - padding * 2 - headerHeight - tabHeight;
+    
+    let left, top;
+    
+    if (!anchorPosition) {
+      left = (window.innerWidth - modalWidth) / 2;
+      top = padding;
+    } else {
+      left = anchorPosition.x;
+      top = anchorPosition.y;
+      
+      if (left + modalWidth > window.innerWidth) {
+        left = window.innerWidth - modalWidth - padding;
+      }
+      if (left < padding) {
+        left = padding;
+      }
+      
+      const totalHeight = maxContentHeight + headerHeight + tabHeight;
+      if (top + totalHeight > window.innerHeight - padding) {
+        top = window.innerHeight - totalHeight - padding;
+      }
+      if (top < padding) {
+        top = padding;
+      }
+    }
+    
+    setModalPosition({ top, left });
+  }, [visible, anchorPosition]);
 
   useEffect(() => {
     if (!visible) return;
@@ -124,6 +167,38 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
     }
   }, [showTextColorPicker]);
 
+  // Drag handlers
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e) => {
+      const newLeft = e.clientX - dragOffset.x;
+      const newTop = e.clientY - dragOffset.y;
+      
+      const modalWidth = 320;
+      const padding = 20;
+      const maxLeft = window.innerWidth - modalWidth - padding;
+      const maxTop = window.innerHeight - padding;
+      
+      setModalPosition({
+        left: Math.max(padding, Math.min(newLeft, maxLeft)),
+        top: Math.max(padding, Math.min(newTop, maxTop))
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragOffset]);
+
   if (!visible || !callout) return null;
 
   const currentColor = colorMode === 'border' ? style.borderColor : style.fillColor;
@@ -141,6 +216,22 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
     onUpdate({ fontColor: hex });
   };
 
+  const handleHeaderMouseDown = (e) => {
+    // Don't start drag if clicking on the close button
+    if (e.target.closest('button')) {
+      return;
+    }
+    
+    if (modalRef.current) {
+      const rect = modalRef.current.getBoundingClientRect();
+      setDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      });
+      setIsDragging(true);
+    }
+  };
+
   // Calculate modal position and size (anchor near callout, but ensure it's visible and fits viewport)
   const getModalPosition = () => {
     const modalWidth = 320;
@@ -149,38 +240,10 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
     const tabHeight = 40; // Approximate tab height
     // Use most of viewport height, leaving padding for color picker overflow
     const maxContentHeight = window.innerHeight - padding * 2 - headerHeight - tabHeight;
-    
-    let left, top;
-    
-    if (!anchorPosition) {
-      // Center the modal
-      left = (window.innerWidth - modalWidth) / 2;
-      top = padding;
-    } else {
-      left = anchorPosition.x;
-      top = anchorPosition.y;
-      
-      // Ensure modal stays within viewport horizontally
-      if (left + modalWidth > window.innerWidth) {
-        left = window.innerWidth - modalWidth - padding;
-      }
-      if (left < padding) {
-        left = padding;
-      }
-      
-      // Ensure modal stays within viewport vertically - position from top
-      const totalHeight = maxContentHeight + headerHeight + tabHeight;
-      if (top + totalHeight > window.innerHeight - padding) {
-        top = window.innerHeight - totalHeight - padding;
-      }
-      if (top < padding) {
-        top = padding;
-      }
-    }
 
     return { 
-      top: `${top}px`, 
-      left: `${left}px`, 
+      top: `${modalPosition.top}px`, 
+      left: `${modalPosition.left}px`, 
       transform: 'none',
       height: `${maxContentHeight + headerHeight + tabHeight}px`,
       maxHeight: `${window.innerHeight - padding * 2}px`
@@ -225,7 +288,8 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
           boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          cursor: isDragging ? 'grabbing' : 'default'
         }}
         onMouseDown={(e) => {
           // Stop propagation to prevent canvas and document handlers from receiving the event
@@ -238,6 +302,7 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
       >
         {/* Header */}
         <div
+          onMouseDown={handleHeaderMouseDown}
           style={{
             padding: '12px 16px',
             borderBottom: '1px solid #444',
@@ -245,11 +310,17 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
             alignItems: 'center',
             justifyContent: 'space-between',
             background: '#252525',
+            cursor: isDragging ? 'grabbing' : 'grab',
+            userSelect: 'none'
           }}
         >
           <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#ddd' }}>Edit Callout</h3>
           <button
             onClick={onClose}
+            onMouseDown={(e) => {
+              // Stop propagation to prevent drag from starting when clicking close button
+              e.stopPropagation();
+            }}
             style={{
               background: 'none',
               border: 'none',

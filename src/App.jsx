@@ -9457,12 +9457,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, []);
 
   const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
-    // First, remove all highlight annotations associated with this space and page
+    // Get regionId BEFORE deletion so we can cascade delete annotations
+    const space = spaces.find(s => s.id === spaceId);
+    const page = space?.assignedPages?.find(p => p.pageId === pageId);
+    const regionId = page?.regions?.[0]?.regionId;
+
+    // Delete region-scoped annotations from annotationsByPage
+    if (regionId) {
+      setAnnotationsByPage(prev => {
+        const updated = { ...prev };
+        if (updated[pageId] && updated[pageId].objects) {
+          updated[pageId] = {
+            ...updated[pageId],
+            objects: updated[pageId].objects.filter(obj => obj.regionId !== regionId)
+          };
+        }
+        return updated;
+      });
+    }
+
+    // Remove all highlight annotations associated with this space and page (or regionId)
     setHighlightAnnotations(prev => {
       const updated = { ...prev };
       Object.keys(updated).forEach(highlightId => {
         const highlight = updated[highlightId];
-        if (highlight.spaceId === spaceId && highlight.pageNumber === pageId) {
+        // Delete if matches spaceId+pageNumber OR regionId
+        if ((highlight.spaceId === spaceId && highlight.pageNumber === pageId) ||
+            (regionId && highlight.regionId === regionId)) {
           delete updated[highlightId];
         }
       });
@@ -9492,7 +9513,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       return nextSpaces;
     });
-  }, [activeSpaceId]);
+  }, [activeSpaceId, spaces]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     const trimmedLabel = typeof newLabel === 'string' ? newLabel.trim() : '';
@@ -14630,6 +14651,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             onToggleRegionOverlay={handleToggleRegionOverlay}
             getRegionOverlayEnabled={isRegionOverlayEnabled}
             isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
+            showSurveyPanel={showSurveyPanel}
+            selectedModuleId={selectedModuleId}
             onToggleCollapse={(isCollapsed) => {
               setIsLeftSidebarCollapsed(isCollapsed);
               requestAnimationFrame(() => {

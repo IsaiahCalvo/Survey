@@ -60,7 +60,9 @@ const PDFSidebar = ({
   selectedSpaceId = null,
   onToggleRegionOverlay = null,
   getRegionOverlayEnabled = null,
-  isRegionOverlayToggleEnabled = null
+  isRegionOverlayToggleEnabled = null,
+  showSurveyPanel = false,
+  selectedModuleId = null
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces'
@@ -266,6 +268,8 @@ const PDFSidebar = ({
                 onToggleRegionOverlay={onToggleRegionOverlay}
                 getRegionOverlayEnabled={getRegionOverlayEnabled}
                 isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
+                showSurveyPanel={showSurveyPanel}
+                selectedModuleId={selectedModuleId}
               />
             )}
           </div>
