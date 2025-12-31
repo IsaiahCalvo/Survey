@@ -12,9 +12,27 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 function createWindow() {
+  // Set icon path based on platform and environment
+  let iconPath;
+  if (process.platform === 'darwin') {
+    // macOS - use .icns if available, otherwise fall back to .png
+    const icnsPath = path.join(__dirname, '..', 'build', 'icon.icns');
+    const pngPath = path.join(__dirname, '..', 'build', 'icon.png');
+    iconPath = fs.existsSync(icnsPath) ? icnsPath : pngPath;
+  } else if (process.platform === 'win32') {
+    // Windows - use .ico if available, otherwise .png
+    const icoPath = path.join(__dirname, '..', 'build', 'icon.ico');
+    const pngPath = path.join(__dirname, '..', 'build', 'icon.png');
+    iconPath = fs.existsSync(icoPath) ? icoPath : pngPath;
+  } else {
+    // Linux - use .png
+    iconPath = path.join(__dirname, '..', 'build', 'icon.png');
+  }
+
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

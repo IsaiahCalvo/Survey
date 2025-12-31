@@ -41,7 +41,9 @@
     "electron": "^25.2.1",
     "electron-builder": "^24.8.0",
     "events": "^3.3.0",
+    "sharp": "^0.34.5",
     "stream-browserify": "^3.0.0",
+    "to-ico": "^1.1.5",
     "util": "^0.12.5",
     "vite": "^5.2.0",
     "vite-plugin-node-polyfills": "^0.24.0",
@@ -50,6 +52,7 @@
   },
   "build": {
     "appId": "com.example.survey",
+    "icon": "build/icon.png",
     "files": [
       "dist/**/*",
       "electron-main.js",
@@ -57,10 +60,15 @@
       "package.json"
     ],
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "build/icon.icns"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "icon": "build/icon.png"
     }
   }
 }

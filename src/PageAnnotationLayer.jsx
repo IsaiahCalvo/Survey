@@ -1435,18 +1435,56 @@ const PageAnnotationLayer = memo(({
   const getRegionLightbulbStateRef = useRef(getRegionLightbulbState);
 
   // Helper function to determine if regionId should be assigned to new annotations
-  // Only assign regionId if:
-  // 1. A region is active (activeRegionIdRef.current is set)
-  // 2. The region toggle is ON (showBackgroundAnnotations !== false)
-  // This ensures annotations created while the toggle is OFF remain "global" and respond to the toggle
+  // Only assign regionId if ALL of the following are true:
+  // 1. A space is active
+  // 2. The CURRENT PAGE is assigned to that space
+  // 3. The current page HAS a region
+  // 4. The region's toggle is ON (showBackgroundAnnotations !== false)
+  // This ensures annotations created on pages without regions, or with toggle OFF, remain "global"
   const shouldAssignRegionId = useCallback(() => {
-    if (!activeRegionIdRef.current) return false;
-    if (!selectedSpaceIdRef.current) return false;
-    if (!getRegionLightbulbStateRef.current) return true; // Default to assigning if no function available
+    // Must have an active space
+    const spaceId = selectedSpaceIdRef.current;
+    if (!spaceId) {
+      console.log('[RegionIdDebug] No active space, not assigning regionId');
+      return false;
+    }
 
-    // Check if the region toggle is ON for this page
-    const isToggleOn = getRegionLightbulbStateRef.current(selectedSpaceIdRef.current, pageNumber);
-    return isToggleOn;
+    // Find the active space in our spaces data
+    const space = spacesRef.current?.find(s => s.id === spaceId);
+    if (!space) {
+      console.log('[RegionIdDebug] Space not found in spacesRef, not assigning regionId');
+      return false;
+    }
+
+    // Check if current page is assigned to this space
+    const assignedPage = space.assignedPages?.find(p => p.pageId === pageNumber);
+    if (!assignedPage) {
+      console.log(`[RegionIdDebug] Page ${pageNumber} not assigned to space ${spaceId}, not assigning regionId`);
+      return false;
+    }
+
+    // Check if the page has a region
+    const region = assignedPage.regions?.[0];
+    if (!region) {
+      console.log(`[RegionIdDebug] Page ${pageNumber} has no region, not assigning regionId`);
+      return false;
+    }
+
+    // Check if the region's toggle is ON
+    const isToggleOn = region.showBackgroundAnnotations !== false;
+    if (!isToggleOn) {
+      console.log(`[RegionIdDebug] Page ${pageNumber} region toggle is OFF, not assigning regionId`);
+      return false;
+    }
+
+    // Also need an activeRegionId to actually assign
+    if (!activeRegionIdRef.current) {
+      console.log('[RegionIdDebug] No activeRegionId available, not assigning regionId');
+      return false;
+    }
+
+    console.log(`[RegionIdDebug] Page ${pageNumber} - WILL assign regionId: ${activeRegionIdRef.current}`);
+    return true;
   }, [pageNumber]);
   const calloutsRef = useRef(callouts);
   const setCalloutsRef = useRef(setCallouts);
