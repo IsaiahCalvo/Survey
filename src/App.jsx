@@ -14347,16 +14347,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Helper function to get region lightbulb state for a specific region
   const getRegionLightbulbState = useCallback((spaceId, pageId) => {
     const space = spaces.find(s => s.id === spaceId);
-    if (!space) return true; // Default to true if space not found
-    
+    if (!space) {
+      console.log(`[LightbulbDebug] Space not found: ${spaceId}`);
+      return true; // Default to true if space not found
+    }
+
     const page = space.assignedPages?.find(p => p.pageId === pageId);
-    if (!page) return true; // Default to true if page not found
-    
+    if (!page) {
+      console.log(`[LightbulbDebug] Page not found: spaceId=${spaceId}, pageId=${pageId}, assignedPages=`, space.assignedPages?.map(p => ({ pageId: p.pageId, type: typeof p.pageId })));
+      return true; // Default to true if page not found
+    }
+
     const region = page.regions?.[0]; // Get first (and only) region
-    if (!region) return true; // Default to true if no region
-    
+    if (!region) {
+      console.log(`[LightbulbDebug] No region for page: spaceId=${spaceId}, pageId=${pageId}`);
+      return true; // Default to true if no region
+    }
+
+    const result = region.showBackgroundAnnotations !== false;
+    console.log(`[LightbulbDebug] Result: spaceId=${spaceId}, pageId=${pageId}, showBackgroundAnnotations=${region.showBackgroundAnnotations}, result=${result}`);
     // Return region's lightbulb state, defaulting to true if not set
-    return region.showBackgroundAnnotations !== false;
+    return result;
   }, [spaces]);
 
   // Helper function to set region lightbulb state
@@ -14406,6 +14417,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Handler for toggling background annotations visibility (per-region)
   const handleToggleBackgroundAnnotations = useCallback((spaceId, pageId, value) => {
+    console.log(`[ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=${spaceId}, pageId=${pageId}, value=${value}`);
     setRegionLightbulbState(spaceId, pageId, value);
   }, [activeSpaceId, selectedSpaceId, setRegionLightbulbState]);
 

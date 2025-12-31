@@ -2459,12 +2459,12 @@ const PageAnnotationLayer = memo(({
         closeContextMenu();
       }
       // If no context menu but there's a selected annotation, deselect if clicking outside annotation
-      else if (!contextMenu && hasSelectedAnnotation) {
+      else if (!contextMenu && hasSelectedAnnotation && activeObject) {
         // Check if click is on the selected annotation itself
         const isOnSelectedAnnotation = target && (
           target === activeObject ||
-          (activeObject.type === 'activeSelection' && activeObject.getObjects().includes(target)) ||
-          (activeObject.type === 'group' && activeObject.getObjects().includes(target))
+          (activeObject.type === 'activeSelection' && activeObject.getObjects?.().includes(target)) ||
+          (activeObject.type === 'group' && activeObject.getObjects?.().includes(target))
         );
 
         // If click is not on the selected annotation, deselect
@@ -5334,6 +5334,14 @@ const PageAnnotationLayer = memo(({
   useEffect(() => {
     if (!canvasRef.current || !fabric) return;
 
+    console.log(`[VisibilityDebug] Page ${pageNumber}: Visibility useEffect triggered`, {
+      selectedSpaceId,
+      activeSpaceId,
+      selectedModuleId,
+      showSurveyPanel,
+      getRegionLightbulbState: !!getRegionLightbulbState
+    });
+
     const canvas = fabricRef.current;
     const objects = canvas.getObjects();
     // FIX: When region selection is active, preserve regions even if activeRegions is null temporarily
@@ -5439,10 +5447,29 @@ const PageAnnotationLayer = memo(({
         // This is a background annotation (made outside any space/region)
         if (selectedSpaceId !== null && getRegionLightbulbState) {
           // A space is active: check the per-region lightbulb state for this page
-          backgroundAnnotationVisible = getRegionLightbulbState(selectedSpaceId, pageNumber);
+          const lightbulbResult = getRegionLightbulbState(selectedSpaceId, pageNumber);
+          backgroundAnnotationVisible = lightbulbResult;
+
+          // Debug logging for survey annotation toggle
+          if (isSurveyAnnotation) {
+            console.log(`[VisibilityDebug] Page ${pageNumber}: Survey annotation toggle check`, {
+              selectedSpaceId,
+              pageNumber,
+              objModuleId,
+              objRegionId,
+              lightbulbResult,
+              backgroundAnnotationVisible
+            });
+          }
         } else {
           // No space is active: background annotations should always be visible
           backgroundAnnotationVisible = true;
+          if (isSurveyAnnotation) {
+            console.log(`[VisibilityDebug] Page ${pageNumber}: Survey annotation - no space active, showing by default`, {
+              selectedSpaceId,
+              getRegionLightbulbState: !!getRegionLightbulbState
+            });
+          }
         }
       }
 
@@ -5456,6 +5483,21 @@ const PageAnnotationLayer = memo(({
         surveyAnnotationVisible &&
         scopedRegionAnnotationVisible &&
         (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
+
+      // Debug logging for survey annotations
+      if (isSurveyAnnotation && !isScopedRegionAnnotation) {
+        console.log(`[VisibilityDebug] Page ${pageNumber}: Survey annotation (no regionId) visibility calc`, {
+          matchesSpace,
+          matchesModule,
+          surveyAnnotationVisible,
+          scopedRegionAnnotationVisible,
+          backgroundAnnotationVisible,
+          isVisible,
+          objModuleId,
+          selectedModuleId,
+          showSurveyPanel
+        });
+      }
 
       // Interaction logic:
       // - When a space is active (activeSpaceId !== null), background annotations (objRegionId === null) 
