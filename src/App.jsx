@@ -3026,6 +3026,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     try {
       // 1. Check if we have a local file object (e.g. from optimistic upload)
       if (doc.file) {
+        // Attach Supabase metadata to the file for sync
+        if (doc.id && !doc.file.id) {
+          doc.file.id = doc.id;
+          doc.file.projectId = doc.projectId || doc.project_id;
+        }
         onDocumentSelect(doc.file);
         return;
       }
@@ -3046,8 +3051,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         const blob = await downloadFromStorage(filePath);
         const file = new File([blob], doc.name, { type: 'application/pdf' });
 
-        // Add path/size properties to match what handleDocumentSelect expects for uniqueness check
-        // (File object already has name and size, but we ensure they match doc)
+        // CRITICAL: Attach Supabase document metadata for real-time sync
+        // Without this, pdfFile.id is undefined and sync won't work
+        file.id = doc.id;  // Supabase document ID
+        file.projectId = doc.projectId || doc.project_id;  // Project ID
+        file.supabaseFilePath = filePath;  // Storage path
+
+        console.log('[DocumentSync] Opening document with Supabase ID:', doc.id, 'projectId:', file.projectId);
 
         onDocumentSelect(file);
       } else if (doc.dataUrl) {
@@ -3055,6 +3065,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         const response = await fetch(doc.dataUrl);
         const blob = await response.blob();
         const file = new File([blob], doc.name, { type: 'application/pdf' });
+
+        // Attach Supabase metadata
+        file.id = doc.id;
+        file.projectId = doc.projectId || doc.project_id;
+
         onDocumentSelect(file);
       } else {
         console.error('Document structure:', doc);
@@ -15450,30 +15465,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 title="Width"
               />
 
-              {/* Arrowhead Style Dropdown - only show for arrow tool */}
-              {activeTool === 'arrow' && (
-                <select
-                  value={arrowheadStyle}
-                  onChange={(e) => setArrowheadStyle(e.target.value)}
-                  style={{
-                    height: "32px",
-                    padding: "0 8px",
-                    background: "#444",
-                    color: "#ddd",
-                    border: "1px solid transparent",
-                    borderRadius: "5px",
-                    fontSize: "12px",
-                    fontFamily: FONT_FAMILY,
-                    cursor: "pointer",
-                    outline: "none"
-                  }}
-                  title="Arrowhead Style"
-                >
-                  {Object.entries(ARROWHEAD_STYLE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-              )}
             </div>
           </div>
 
