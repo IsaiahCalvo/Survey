@@ -4278,6 +4278,9 @@ const PageAnnotationLayer = memo(({
 
       const currentStrokeColor = strokeColorRef.current;
       const ds = drawingStateRef.current;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4280',message:'handleMouseUp entry',data:{currentTool:toolRef.current,isDrawingShape:ds?.isDrawingShape,hasTempObj:!!ds?.tempObj,tempObjType:ds?.tempObj?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       if (!ds.isDrawingShape || !ds.tempObj) return;
 
       // Handle highlight tool: create rectangle and call callback
@@ -4373,20 +4376,47 @@ const PageAnnotationLayer = memo(({
         }
         canvas.requestRenderAll();
       } else if (ds.tempObj) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4375',message:'Entering else if ds.tempObj block',data:{currentTool:toolRef.current,tempObjType:ds.tempObj.type,tempObjSelectable:ds.tempObj.selectable,tempObjHasControls:ds.tempObj.hasControls,tempObjOnCanvas:canvas.getObjects().includes(ds.tempObj)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         // For other shapes (rect, ellipse, line, squiggly), the temp object is the final object
         // Automatically select it so handles appear
         // Make sure it's selectable and has controls
-        ds.tempObj.set({
+        const tempObj = ds.tempObj; // Store reference before clearing
+        tempObj.set({
           selectable: true,
           hasControls: true,
           hasBorders: true
         });
-        canvas.setActiveObject(ds.tempObj);
-        canvas.requestRenderAll();
+        tempObj.setCoords(); // Ensure coordinates are updated
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4384',message:'Before setActiveObject',data:{tempObjSelectable:tempObj.selectable,tempObjHasControls:tempObj.hasControls,tempObjHasBorders:tempObj.hasBorders,currentActiveObject:canvas.getActiveObject()?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        // Use setTimeout to defer selection until after all mouse event handlers have completed
+        // This ensures selection happens after handleMouseUpForSelection and other handlers
+        setTimeout(() => {
+          // Verify object is still on canvas before selecting
+          if (canvas.getObjects().includes(tempObj) && tempObj.selectable) {
+            canvas.setActiveObject(tempObj);
+            canvas.requestRenderAll();
+            // #region agent log
+            const activeAfterSet = canvas.getActiveObject();
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4393',message:'After setActiveObject (deferred)',data:{activeObjectType:activeAfterSet?.type,activeObjectIsTempObj:activeAfterSet===tempObj,activeObjectSelectable:activeAfterSet?.selectable,activeObjectHasControls:activeAfterSet?.hasControls},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+          }
+        }, 0);
       }
       ds.isDrawingShape = false;
       ds.tempObj = null;
+      // #region agent log
+      const activeBeforeSave = canvas.getActiveObject();
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4387',message:'Before saveCanvas',data:{activeObjectType:activeBeforeSave?.type,activeObjectSelectable:activeBeforeSave?.selectable},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       saveCanvas();
+      // #region agent log
+      const activeAfterSave = canvas.getActiveObject();
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4389',message:'After saveCanvas',data:{activeObjectType:activeAfterSave?.type,activeObjectSelectable:activeAfterSave?.selectable,wasCleared:activeBeforeSave!==null&&activeAfterSave===null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
     };
 
     const handleDblClick = (opt) => {
@@ -4661,6 +4691,9 @@ const PageAnnotationLayer = memo(({
 
     // Track mouse up to perform AutoCAD-style selection based on drag direction
     const handleMouseUpForSelection = (e) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4684',message:'handleMouseUpForSelection entry',data:{currentTool:toolRef.current,hasSelectionRect:!!selectionRectRef.current,activeObjectType:canvas.getActiveObject()?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       if (toolRef.current !== 'select') {
         selectionRectRef.current = null;
         return;
@@ -4727,6 +4760,10 @@ const PageAnnotationLayer = memo(({
           }
 
           // Clicked on empty space (outside bounding box) - deselect all
+          // #region agent log
+          const activeBeforeDiscard = canvas.getActiveObject();
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4751',message:'About to discardActiveObject in handleMouseUpForSelection',data:{activeObjectType:activeBeforeDiscard?.type,currentTool:toolRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
           canvas.discardActiveObject();
           canvas.requestRenderAll();
         }
