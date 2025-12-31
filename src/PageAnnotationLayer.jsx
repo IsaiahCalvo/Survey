@@ -4829,9 +4829,11 @@ const PageAnnotationLayer = memo(({
       const boundsCanvasHeight = boundsToRemove.height;
       const objectsToRemove = [];
       canvas.getObjects('rect').forEach(obj => {
-        // Check if this is a highlight rectangle (has fill with rgba)
-        const isHighlight = obj.fill && typeof obj.fill === 'string' &&
-          (obj.fill.includes('rgba') || obj.fill.startsWith('#'));
+        // Check if this is a highlight rectangle
+        // All highlights have a highlightId property (normal highlights and needsBIC dashed outlines)
+        // The needsBIC highlights have fill: 'transparent', so we need to check for highlightId
+        // instead of just checking fill color
+        const isHighlight = obj.highlightId !== undefined;
 
         if (isHighlight) {
           // Match by bounds with tolerance for floating point and scaling
