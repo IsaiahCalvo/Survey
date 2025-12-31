@@ -38,6 +38,7 @@ const RegionSelectionTool = ({
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [isOptionAltPressed, setIsOptionAltPressed] = useState(false);
   const [isCmdCtrlPressed, setIsCmdCtrlPressed] = useState(false);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [lastDrawingTool, setLastDrawingTool] = useState('rectangular');
   const [isToolDropdownOpen, setIsToolDropdownOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, regionId, type: 'merge' | 'separate' }
@@ -574,6 +575,12 @@ const RegionSelectionTool = ({
   const handleMouseDown = useCallback((event) => {
     if (!active || !targetElement) return;
 
+    // Allow pan to work: if space is held, don't handle the event
+    // This allows the event to bubble to the container's pan handler
+    if (isSpacePressed) {
+      return; // Let the event pass through for pan
+    }
+
     const rect = targetElement.getBoundingClientRect();
     const isWithinCanvas =
       event.clientX >= rect.left &&
@@ -626,10 +633,15 @@ const RegionSelectionTool = ({
       setIsDrawing(true);
       setPolygonPoints([{ x, y }]);
     }
-  }, [active, targetElement, effectiveToolType, scale, selectedRegionIds, regions, getRegionBounds]);
+  }, [active, targetElement, effectiveToolType, scale, selectedRegionIds, regions, getRegionBounds, isSpacePressed]);
 
   const handleMouseMove = useCallback((event) => {
     if (!active || !targetElement) return;
+
+    // Allow pan to work: if space is held and not drawing/interacting, don't handle the event
+    if (isSpacePressed && !isDrawing && !interactionState) {
+      return; // Let the event pass through for pan
+    }
 
     const rect = targetElement.getBoundingClientRect();
     const isWithinCanvas =
@@ -799,7 +811,7 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, scale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions]);
+  }, [active, targetElement, scale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, isSpacePressed]);
 
   const handleMouseUp = useCallback(() => {
     if (!active) return;
@@ -1356,7 +1368,7 @@ const RegionSelectionTool = ({
     return () => window.removeEventListener('click', handleClick);
   }, []);
 
-  // Track keyboard modifiers (Shift, Option/Alt) for mode override
+  // Track keyboard modifiers (Shift, Option/Alt, Space) for mode override
   useEffect(() => {
     if (!active) return;
 
@@ -1373,6 +1385,10 @@ const RegionSelectionTool = ({
       if (event.metaKey || event.ctrlKey) {
         setIsCmdCtrlPressed(true);
       }
+      // Space for pan - allow mouse events to pass through
+      if (event.key === ' ' || event.code === 'Space') {
+        setIsSpacePressed(true);
+      }
     };
 
     const handleKeyUp = (event) => {
@@ -1388,6 +1404,10 @@ const RegionSelectionTool = ({
       if (!event.metaKey && !event.ctrlKey) {
         setIsCmdCtrlPressed(false);
       }
+      // Release Space
+      if (event.key === ' ' || event.code === 'Space') {
+        setIsSpacePressed(false);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -1398,6 +1418,8 @@ const RegionSelectionTool = ({
       window.removeEventListener('keyup', handleKeyUp);
       setIsShiftPressed(false);
       setIsOptionAltPressed(false);
+      setIsCmdCtrlPressed(false);
+      setIsSpacePressed(false);
     };
   }, [active]);
 
