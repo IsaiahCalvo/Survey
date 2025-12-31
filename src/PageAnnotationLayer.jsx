@@ -2426,9 +2426,9 @@ const PageAnnotationLayer = memo(({
       const isOnCanvasArea = canvasElement.contains(event.target) ||
         (containerElement && containerElement.contains(event.target));
 
-      // Check if there's a selected annotation
+      // Check if there's a selected annotation (use != null to catch both null and undefined)
       const activeObject = canvas.getActiveObject();
-      const hasSelectedAnnotation = activeObject !== null;
+      const hasSelectedAnnotation = activeObject != null;
 
       // If click is outside canvas area
       if (!isOnCanvasArea) {
@@ -2952,9 +2952,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           e.path.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the path if a region is active AND it's NOT a survey annotation
-        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
-        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
+        // Store current activeRegionId on the path if a region is active
+        if (activeRegionIdRef.current) {
           e.path.set({ regionId: activeRegionIdRef.current });
         }
       }
@@ -3719,9 +3718,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           tb.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the textbox if a region is active AND it's NOT a survey annotation
-        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
-        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
+        // Store current activeRegionId on the textbox if a region is active
+        if (activeRegionIdRef.current) {
           tb.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(tb);
@@ -3758,9 +3756,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           temp.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the shape if a region is active AND it's NOT a survey annotation
-        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
-        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
+        // Store current activeRegionId on the shape if a region is active
+        if (activeRegionIdRef.current) {
           temp.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(temp);
@@ -3787,9 +3784,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           note.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the note if a region is active AND it's NOT a survey annotation
-        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
-        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
+        // Store current activeRegionId on the note if a region is active
+        if (activeRegionIdRef.current) {
           note.set({ regionId: activeRegionIdRef.current });
         }
         note.on('mousedblclick', () => {
@@ -3809,9 +3805,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           temp.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the shape if a region is active AND it's NOT a survey annotation
-        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
-        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
+        // Store current activeRegionId on the shape if a region is active
+        if (activeRegionIdRef.current) {
           temp.set({ regionId: activeRegionIdRef.current });
         }
         ds.isDrawingShape = true;
@@ -4272,9 +4267,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           group.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the arrow group if a region is active AND it's NOT a survey annotation
-        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
-        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
+        // Store current activeRegionId on the arrow group if a region is active
+        if (activeRegionIdRef.current) {
           group.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(group);
@@ -4292,9 +4286,8 @@ const PageAnnotationLayer = memo(({
         if (selectedModuleIdRef.current) {
           calloutGroup.set({ moduleId: selectedModuleIdRef.current });
         }
-        // Store current activeRegionId on the callout group if a region is active AND it's NOT a survey annotation
-        // Survey annotations (moduleId present) belong to middle layer and should NOT have regionId
-        if (activeRegionIdRef.current && !selectedModuleIdRef.current) {
+        // Store current activeRegionId on the callout group if a region is active
+        if (activeRegionIdRef.current) {
           calloutGroup.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(calloutGroup);

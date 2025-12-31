@@ -7,49 +7,61 @@ An iframe which has both allow-scripts and allow-same-origin for its sandbox att
 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-AuthContext.jsx:102 Window focused, refetching subscription tier...
-App.jsx?t=1766960787119:12114 PDF load check: Object
-App.jsx?t=1766960787119:12122 PDF Header Check: %PDF-
-AuthContext.jsx:102 Window focused, refetching subscription tier...
-App.jsx?t=1767046350032:12114 PDF load check: Object
-App.jsx?t=1767046350032:12122 PDF Header Check: %PDF-
-main.jsx:24 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:24
-App.jsx?t=1767046354959:12115 PDF load check: Object
-App.jsx?t=1767046354959:12123 PDF Header Check: %PDF-
-App.jsx?t=1767046373068:12115 PDF load check: Object
-App.jsx?t=1767046373068:12123 PDF Header Check: %PDF-
-main.jsx:24 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:24
-App.jsx?t=1767046393219:12115 PDF load check: Object
-App.jsx?t=1767046393219:12123 PDF Header Check: %PDF-
-main.jsx:24 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:24
-App.jsx:11268 PDF load check: Object
-App.jsx:11277 PDF Header Check: %PDF-
-main.jsx:24 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:24
-App.jsx:11268 PDF load check: Object
-App.jsx:11277 PDF Header Check: %PDF-
-main.jsx:24 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:24
-App.jsx:11268 PDF load check: Object
-App.jsx:11277 PDF Header Check: %PDF-
-main.jsx:24 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:24
-App.jsx:11268 PDF load check: Object
-App.jsx:11277 PDF Header Check: %PDF-
-main.jsx:24 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:24
+App.jsx:3060 [DocumentSync] Opening document with Supabase ID: 55a07183-b6eb-4bb2-acf1-4f4194d0841e projectId: undefined
+App.jsx:11078 [DocumentSync] Document opened, loading annotations from Supabase: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
+App.jsx:12163 PDF load check: Object
+App.jsx:12172 PDF Header Check: %PDF-
+documentAnnotationService.js:207 [AnnotationSync] Loaded 0 annotations from Supabase
+App.jsx:11135 [DocumentSync] Subscribing to real-time changes for document: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
+cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type:1     Failed to load resource: the server responded with a status of 403 ()
+cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type:1     Failed to load resource: the server responded with a status of 403 ()
+documentAnnotationService.js:341 [AnnotationSync] Error updating presence: Object
+updateDocumentPresence @ documentAnnotationService.js:341
+documentAnnotationService.js:341 [AnnotationSync] Error updating presence: Object
+updateDocumentPresence @ documentAnnotationService.js:341
+documentAnnotationService.js:271 [AnnotationSync] Subscribed to real-time changes for document: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
+App.jsx:11237 [DocumentSync] Syncing 2 annotations to Supabase...
+documentAnnotationService.js:160 [AnnotationSync] Syncing 2 annotations to Supabase...
+cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=*:1     Failed to load resource: the server responded with a status of 403 ()
+documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: Object
+upsertAnnotations @ documentAnnotationService.js:71
+App.jsx:11245 [DocumentSync] Sync failed: Object
+(anonymous) @ App.jsx:11245
+App.jsx:10812 File watcher started for: /Documents/Security_export.xlsx
+PageAnnotationLayer.jsx:2466 Uncaught TypeError: Cannot read properties of undefined (reading 'type')
+    at HTMLDocument.handleClickOutside (PageAnnotationLayer.jsx:2466:25)
+App.jsx:13695 [App] handleHighlightDeleted called Object
+App.jsx:10812 File watcher started for: /Documents/Security_export.xlsx
+App.jsx:11237 [DocumentSync] Syncing 1 annotations to Supabase...
+documentAnnotationService.js:160 [AnnotationSync] Syncing 1 annotations to Supabase...
+cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=*:1     Failed to load resource: the server responded with a status of 403 ()
+documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: Object
+upsertAnnotations @ documentAnnotationService.js:71
+App.jsx:11245 [DocumentSync] Sync failed: Object
+(anonymous) @ App.jsx:11245
 AuthContext.jsx:102 Window focused, refetching subscription tier...
 AuthContext.jsx:102 Window focused, refetching subscription tier...
+App.jsx:10812 File watcher started for: /Documents/Security_export.xlsx
+App.jsx:10812 File watcher started for: /Documents/Security_export.xlsx
+App.jsx:11237 [DocumentSync] Syncing 2 annotations to Supabase...
+documentAnnotationService.js:160 [AnnotationSync] Syncing 2 annotations to Supabase...
+cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=*:1     Failed to load resource: the server responded with a status of 403 ()
+documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: Object
+upsertAnnotations @ documentAnnotationService.js:71
+App.jsx:11245 [DocumentSync] Sync failed: Object
+(anonymous) @ App.jsx:11245
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_NETWORK_CHANGED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_NETWORK_CHANGED
 AuthContext.jsx:102 Window focused, refetching subscription tier...
 AuthContext.jsx:102 Window focused, refetching subscription tier...
 AuthContext.jsx:102 Window focused, refetching subscription tier...
+App.jsx:10812 File watcher started for: /Documents/Security_export.xlsx
+App.jsx:10812 File watcher started for: /Documents/Security_export.xlsx
+App.jsx:11237 [DocumentSync] Syncing 3 annotations to Supabase...
+documentAnnotationService.js:160 [AnnotationSync] Syncing 3 annotations to Supabase...
+cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=*:1     Failed to load resource: the server responded with a status of 403 ()
+documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: Object
+upsertAnnotations @ documentAnnotationService.js:71
+App.jsx:11245 [DocumentSync] Sync failed: Object
+(anonymous) @ App.jsx:11245
 AuthContext.jsx:102 Window focused, refetching subscription tier...
