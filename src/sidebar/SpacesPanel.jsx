@@ -838,8 +838,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     opacity: isDisabled ? 0.5 : 1,
                                     fontFamily: FONT_FAMILY,
                                     transition: 'color 0.15s ease, opacity 0.15s ease',
-                                    width: '18px',
-                                    height: '27px',
+                                    width: '20px',
+                                    height: '20px',
                                     pointerEvents: isDisabled ? 'none' : 'auto'
                                   }}
                                   onMouseEnter={(e) => {
@@ -859,17 +859,17 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     <Icon
                                       name="survey"
                                       size={12}
-                                      style={{ width: '12px', height: '12px', flexShrink: 0 }}
+                                      style={{ width: '15px', height: '15px', flexShrink: 0 }}
                                     />
                                   ) : regionLightbulbState ? (
                                     // Lightbulb ON icon
                                     <svg
-                                      width="12"
-                                      height="12"
+                                      width="14"
+                                      height="14"
                                       viewBox="0 0 24 24"
                                       fill="none"
                                       xmlns="http://www.w3.org/2000/svg"
-                                      style={{ width: '12px', height: '12px', flexShrink: 0 }}
+                                      style={{ width: '14px', height: '14px', flexShrink: 0 }}
                                     >
                                       <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke="currentColor" strokeWidth="1.5" />
                                       <path d="M12.7857 8.5L10.6429 11.5H13.6429L11.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -877,12 +877,12 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   ) : (
                                     // Lightbulb OFF icon
                                     <svg
-                                      width="12"
-                                      height="12"
+                                      width="14"
+                                      height="14"
                                       viewBox="0 0 24 24"
                                       fill="none"
                                       xmlns="http://www.w3.org/2000/svg"
-                                      style={{ width: '12px', height: '12px', flexShrink: 0 }}
+                                      style={{ width: '14px', height: '14px', flexShrink: 0 }}
                                     >
                                       <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke="currentColor" strokeWidth="1.5" />
                                     </svg>

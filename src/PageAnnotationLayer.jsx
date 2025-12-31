@@ -5911,10 +5911,10 @@ const PageAnnotationLayer = memo(({
             position: 'fixed',
             top: editModal.y,
             left: editModal.x,
-            background: '#ffffff',
-            border: '1px solid #e0e0e0',
-            borderRadius: '6px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            background: '#2b2b2b',
+            border: '1px solid #444',
+            borderRadius: '8px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
             zIndex: 10001,
             padding: '12px',
             minWidth: '200px',
@@ -5926,8 +5926,8 @@ const PageAnnotationLayer = memo(({
             style={{ 
               marginBottom: '12px', 
               fontSize: '14px', 
-              fontWeight: '500', 
-              color: '#333',
+              fontWeight: '600', 
+              color: '#ddd',
               cursor: 'move',
               userSelect: 'none'
             }}
@@ -5946,14 +5946,14 @@ const PageAnnotationLayer = memo(({
             Edit Property
           </div>
 
-          <div style={{ marginBottom: '8px' }}>
-            <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Color</label>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>COLOR</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type="color"
                 value={editValues.stroke}
                 onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
-                style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
+                style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
               />
               <input
                 type="text"
@@ -5963,17 +5963,19 @@ const PageAnnotationLayer = memo(({
                   width: '80px',
                   height: '30px',
                   borderRadius: '4px',
-                  border: '1px solid #ddd',
+                  border: '1px solid #555',
                   padding: '0 8px',
                   fontSize: '12px',
-                  fontFamily: 'monospace'
+                  fontFamily: 'monospace',
+                  background: '#333',
+                  color: '#ddd'
                 }}
               />
             </div>
           </div>
 
           <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Line Weight</label>
+            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>LINE WEIGHT</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type="range"
@@ -5994,20 +5996,22 @@ const PageAnnotationLayer = memo(({
                   width: '50px',
                   height: '30px',
                   borderRadius: '4px',
-                  border: '1px solid #ddd',
+                  border: '1px solid #555',
                   padding: '0 4px',
                   fontSize: '12px',
-                  textAlign: 'center'
+                  textAlign: 'right',
+                  background: '#333',
+                  color: '#ddd'
                 }}
               />
-              <span style={{ fontSize: '12px', color: '#666' }}>px</span>
+              <span style={{ fontSize: '12px', color: '#999' }}>px</span>
             </div>
           </div>
 
           {/* Arrowhead Style - only show for arrow objects */}
           {editModal.object.data?.type === 'arrow' && (
             <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Arrowhead Style</label>
+              <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>ARROWHEAD STYLE</label>
               <select
                 value={editValues.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE}
                 onChange={(e) => setEditValues(prev => ({ ...prev, arrowheadStyle: e.target.value }))}
@@ -6015,11 +6019,12 @@ const PageAnnotationLayer = memo(({
                   width: '100%',
                   height: '32px',
                   borderRadius: '4px',
-                  border: '1px solid #ddd',
+                  border: '1px solid #555',
                   padding: '0 8px',
                   fontSize: '12px',
                   cursor: 'pointer',
-                  backgroundColor: 'white'
+                  backgroundColor: '#333',
+                  color: '#ddd'
                 }}
               >
                 {Object.entries(ARROWHEAD_STYLE_LABELS).map(([value, label]) => (
@@ -6032,7 +6037,7 @@ const PageAnnotationLayer = memo(({
           {(editModal.object.data?.type === 'callout' || editModal.object.data?.reactCalloutId) && (
             <>
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Text Style</label>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>TEXT STYLE</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                   {/* Text Color */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -6040,7 +6045,7 @@ const PageAnnotationLayer = memo(({
                       type="color"
                       value={editValues.fill || '#000000'}
                       onChange={(e) => setEditValues(prev => ({ ...prev, fill: e.target.value }))}
-                      style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
+                      style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
                       title="Text Color"
                     />
                   </div>
@@ -6049,7 +6054,7 @@ const PageAnnotationLayer = memo(({
                   <select
                     value={editValues.fontFamily || 'Arial'}
                     onChange={(e) => setEditValues(prev => ({ ...prev, fontFamily: e.target.value }))}
-                    style={{ height: '24px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px', cursor: 'pointer' }}
+                    style={{ height: '24px', borderRadius: '4px', border: '1px solid #555', fontSize: '12px', cursor: 'pointer', background: '#333', color: '#ddd' }}
                     title="Font Family"
                   >
                     <option value="Arial">Arial</option>
@@ -6067,7 +6072,7 @@ const PageAnnotationLayer = memo(({
                     max="72"
                     value={editValues.fontSize || 16}
                     onChange={(e) => setEditValues(prev => ({ ...prev, fontSize: parseInt(e.target.value, 10) }))}
-                    style={{ width: '50px', height: '24px', borderRadius: '4px', border: '1px solid #ddd', padding: '0 4px', fontSize: '12px' }}
+                    style={{ width: '50px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: '0 4px', fontSize: '12px', background: '#333', color: '#ddd' }}
                     title="Font Size"
                   />
 
@@ -6075,9 +6080,10 @@ const PageAnnotationLayer = memo(({
                   <button
                     onClick={() => setEditValues(prev => ({ ...prev, fontWeight: prev.fontWeight === 'bold' ? 'normal' : 'bold' }))}
                     style={{
-                      padding: '2px 8px', borderRadius: '4px', border: '1px solid #ddd',
-                      background: editValues.fontWeight === 'bold' ? '#e6f7ff' : 'white',
-                      fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
+                      padding: '6px 10px', borderRadius: '4px', border: editValues.fontWeight === 'bold' ? '1px solid #4A90E2' : '1px solid #555',
+                      background: editValues.fontWeight === 'bold' ? '#4A90E2' : '#333',
+                      color: editValues.fontWeight === 'bold' ? 'white' : '#ddd',
+                      fontWeight: 'bold', cursor: 'pointer', fontSize: '14px'
                     }}
                   >B</button>
 
@@ -6085,9 +6091,10 @@ const PageAnnotationLayer = memo(({
                   <button
                     onClick={() => setEditValues(prev => ({ ...prev, fontStyle: prev.fontStyle === 'italic' ? 'normal' : 'italic' }))}
                     style={{
-                      padding: '2px 8px', borderRadius: '4px', border: '1px solid #ddd',
-                      background: editValues.fontStyle === 'italic' ? '#e6f7ff' : 'white',
-                      fontStyle: 'italic', cursor: 'pointer', fontSize: '12px'
+                      padding: '6px 10px', borderRadius: '4px', border: editValues.fontStyle === 'italic' ? '1px solid #4A90E2' : '1px solid #555',
+                      background: editValues.fontStyle === 'italic' ? '#4A90E2' : '#333',
+                      color: editValues.fontStyle === 'italic' ? 'white' : '#ddd',
+                      fontStyle: 'italic', cursor: 'pointer', fontSize: '14px'
                     }}
                   >I</button>
                 </div>
@@ -6099,9 +6106,11 @@ const PageAnnotationLayer = memo(({
                       key={align}
                       onClick={() => setEditValues(prev => ({ ...prev, textAlign: align }))}
                       style={{
-                        flex: 1, padding: '4px', borderRadius: '4px', border: '1px solid #ddd',
-                        background: editValues.textAlign === align ? '#e6f7ff' : 'white',
-                        cursor: 'pointer', fontSize: '10px', textTransform: 'capitalize'
+                        flex: 1, padding: '6px 12px', borderRadius: '4px', border: editValues.textAlign === align ? '1px solid #4A90E2' : '1px solid #555',
+                        background: editValues.textAlign === align ? '#4A90E2' : '#333',
+                        color: editValues.textAlign === align ? 'white' : '#ddd',
+                        cursor: 'pointer', fontSize: '12px', textTransform: 'capitalize',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
                       }}
                     >
                       {align}
@@ -6112,13 +6121,13 @@ const PageAnnotationLayer = memo(({
 
               {/* Fill Color (Background) */}
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Fill Color</label>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>FILL COLOR</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input
                     type="color"
                     value={editValues.fillColor === 'transparent' || !editValues.fillColor ? '#ffffff' : editValues.fillColor}
                     onChange={(e) => setEditValues(prev => ({ ...prev, fillColor: e.target.value }))}
-                    style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #ddd', padding: 0, cursor: 'pointer' }}
+                    style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
                     disabled={editValues.fillColor === 'transparent'}
                   />
                   <input
@@ -6135,17 +6144,20 @@ const PageAnnotationLayer = memo(({
                       width: '80px',
                       height: '30px',
                       borderRadius: '4px',
-                      border: '1px solid #ddd',
+                      border: '1px solid #555',
                       padding: '0 8px',
                       fontSize: '12px',
-                      fontFamily: 'monospace'
+                      fontFamily: 'monospace',
+                      background: '#333',
+                      color: '#ddd'
                     }}
                   />
                   <button
                     onClick={() => setEditValues(prev => ({ ...prev, fillColor: 'transparent' }))}
                     style={{
-                      padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd',
-                      background: editValues.fillColor === 'transparent' ? '#e6f7ff' : 'white',
+                      padding: '4px 8px', borderRadius: '4px', border: editValues.fillColor === 'transparent' ? '1px solid #4A90E2' : '1px solid #555',
+                      background: editValues.fillColor === 'transparent' ? '#4A90E2' : '#333',
+                      color: editValues.fillColor === 'transparent' ? 'white' : '#ddd',
                       cursor: 'pointer', fontSize: '11px'
                     }}
                   >No Fill</button>
@@ -6155,7 +6167,7 @@ const PageAnnotationLayer = memo(({
           )}
 
           <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Opacity</label>
+            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>OPACITY</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type="range"
@@ -6181,26 +6193,28 @@ const PageAnnotationLayer = memo(({
                   width: '50px',
                   height: '30px',
                   borderRadius: '4px',
-                  border: '1px solid #ddd',
+                  border: '1px solid #555',
                   padding: '0 4px',
                   fontSize: '12px',
-                  textAlign: 'center'
+                  textAlign: 'right',
+                  background: '#333',
+                  color: '#ddd'
                 }}
               />
-              <span style={{ fontSize: '12px', color: '#666' }}>%</span>
+              <span style={{ fontSize: '12px', color: '#999' }}>%</span>
             </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
             <button
               onClick={cancelEdit}
-              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', background: 'white', cursor: 'pointer', fontSize: '12px' }}
+              style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #555', background: '#333', color: '#ddd', cursor: 'pointer', fontSize: '12px' }}
             >
               Cancel
             </button>
             <button
               onClick={saveEdit}
-              style={{ padding: '4px 8px', borderRadius: '4px', border: 'none', background: '#007bff', color: 'white', cursor: 'pointer', fontSize: '12px' }}
+              style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', background: '#4A90E2', color: 'white', cursor: 'pointer', fontSize: '12px' }}
             >
               Save
             </button>
