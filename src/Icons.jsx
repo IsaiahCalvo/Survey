@@ -2,6 +2,13 @@
 import React from 'react';
 
 const Icon = ({ name, size = 16, color = 'currentColor', style, className }) => {
+  // Merge size into style to ensure it overrides any external styles
+  const mergedStyle = { ...style, width: `${size}px`, height: `${size}px` };
+  // #region agent log
+  if (name === 'trash') {
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Icons.jsx:11',message:'Icon trash rendered with mergedStyle',data:{name,size,color,hasStyle:!!style,styleKeys:style?Object.keys(style):[],mergedStyleWidth:mergedStyle.width,mergedStyleHeight:mergedStyle.height,mergedStyleKeys:Object.keys(mergedStyle)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+  }
+  // #endregion
   const icons = {
     // Document/File icons
     document: (
@@ -314,7 +321,7 @@ const Icon = ({ name, size = 16, color = 'currentColor', style, className }) => 
 
     // Trash/Delete icon
     trash: (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={mergedStyle} className={className}>
         <path d="M3 6H5H21" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
         <path d="M10 11V17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

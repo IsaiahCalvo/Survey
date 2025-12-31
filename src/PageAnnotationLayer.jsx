@@ -1620,9 +1620,15 @@ const PageAnnotationLayer = memo(({
 
     // 1. Check if we clicked on a Fabric annotation
     if (target) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1622',message:'Annotation context menu opening',data:{targetExists:!!target,targetType:target?.type,isAlreadyActive:canvas.getActiveObjects().includes(target)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       if (!canvas.getActiveObjects().includes(target)) {
         canvas.setActiveObject(target);
         canvas.requestRenderAll();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1624',message:'Set active object',data:{activeObjectAfter:!!canvas.getActiveObject()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
       }
 
       setContextMenu({
@@ -1857,20 +1863,24 @@ const PageAnnotationLayer = memo(({
           y: contextMenu.y,
           object: { data: { type: 'callout', calloutId: contextMenu.calloutId } }
         });
-        // Delay closing context menu to allow modal to render first
-        setTimeout(() => {
-          closeContextMenu();
-        }, 0);
       }
-    } else {
-      closeContextMenu();
     }
+    closeContextMenu();
   }, [contextMenu, closeContextMenu]);
 
   const handleEdit = useCallback(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1865',message:'handleEdit called',data:{hasCanvas:!!fabricRef.current,contextMenuExists:!!contextMenu,contextMenuX:contextMenu?.x,contextMenuY:contextMenu?.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     const canvas = fabricRef.current;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1867',message:'Canvas check',data:{canvasExists:!!canvas},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     if (!canvas) return;
     const activeObject = canvas.getActiveObject();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1868',message:'ActiveObject check',data:{activeObjectExists:!!activeObject,activeObjectType:activeObject?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
 
     if (activeObject) {
       // Get initial values from first object if selection
@@ -1933,6 +1943,9 @@ const PageAnnotationLayer = memo(({
         opacity: obj.opacity
       }));
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1931',message:'Setting editModal',data:{contextMenuX:contextMenu?.x,contextMenuY:contextMenu?.y,hasContextMenu:!!contextMenu},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       setEditModal({
         visible: true,
         x: contextMenu.x,
@@ -1940,6 +1953,13 @@ const PageAnnotationLayer = memo(({
         object: activeObject,
         initialStates: initialStates
       });
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1937',message:'editModal set complete',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+    } else {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1939',message:'activeObject is null, skipping editModal',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     }
     closeContextMenu();
   }, [contextMenu, closeContextMenu, calloutsRef]);
@@ -2150,6 +2170,13 @@ const PageAnnotationLayer = memo(({
     canvas.requestRenderAll();
   }, [editValues, editModal]);
 
+  // Debug: Log editModal changes
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2148',message:'editModal state changed',data:{editModalExists:!!editModal,editModalVisible:editModal?.visible,editModalX:editModal?.x,editModalY:editModal?.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+  }, [editModal]);
+
   const cancelEdit = useCallback(() => {
     if (!editModal) return;
     const canvas = fabricRef.current;
@@ -2359,6 +2386,9 @@ const PageAnnotationLayer = memo(({
     // Disable Fabric.js built-in selection for Pan tool (we want drag-to-pan)
     // Enable selection for Select tool (we have custom selection handler but need Fabric's selection enabled for it to work)
     canvas.selection = tool === 'select';
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2388',message:'Canvas selection state',data:{tool:tool,canvasSelection:canvas.selection,isDrawingMode:canvas.isDrawingMode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
 
     // Deselect active object when switching away from select tool to prevent interference
     if (tool !== 'select') {
@@ -5348,6 +5378,9 @@ const PageAnnotationLayer = memo(({
         handleContextMenu(e);
       }}
       onMouseDown={(e) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:5377',message:'MouseDown event',data:{tool:tool,button:e.button,hasModifier:e.ctrlKey||e.metaKey,canvasSelection:fabricRef.current?.selection},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
         // Detect Command+Click (Mac) or Control+Click (Windows) as context menu trigger
         // This should fire before Fabric.js processes the event
         const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
@@ -5670,15 +5703,7 @@ const PageAnnotationLayer = memo(({
               )}
               <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
               <button
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  handleEditCalloutFromMenu();
-                }}
+                onClick={handleEditCalloutFromMenu}
                 style={{
                   width: '100%',
                   padding: '8px 12px',
