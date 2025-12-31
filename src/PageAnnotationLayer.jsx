@@ -5617,6 +5617,7 @@ const PageAnnotationLayer = memo(({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
+                <Icon name="scissors" size={14} color="#999" />
                 Cut
               </button>
               <button
@@ -5638,31 +5639,62 @@ const PageAnnotationLayer = memo(({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
+                <Icon name="copy" size={14} color="#999" />
                 Copy
               </button>
-              {clipboardCallout && (
-                <button
-                  onClick={handlePasteCalloutFromMenu}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    background: 'transparent',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontSize: '13px',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    color: '#ddd',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  Paste
-                </button>
-              )}
+              <button
+                onClick={handlePasteCalloutFromMenu}
+                disabled={!clipboardCallout}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: clipboardCallout ? 'pointer' : 'not-allowed',
+                  color: clipboardCallout ? '#ddd' : '#666',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  opacity: clipboardCallout ? 1 : 0.5
+                }}
+                onMouseEnter={(e) => {
+                  if (clipboardCallout) {
+                    e.currentTarget.style.background = '#3a3a3a';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <Icon name="paste" size={14} color={clipboardCallout ? "#999" : "#555"} />
+                Paste
+              </button>
+              <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
+              <button
+                onClick={handleDeleteCalloutFromMenu}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#ddd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <Icon name="trash" size={14} color="#999" />
+                Delete
+              </button>
               <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
               <button
                 onClick={handleEditCalloutFromMenu}
@@ -5683,29 +5715,8 @@ const PageAnnotationLayer = memo(({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                Properties
-              </button>
-              <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
-              <button
-                onClick={handleDeleteCalloutFromMenu}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'transparent',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  color: '#ff6b6b',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              >
-                Delete
+                <Icon name="edit" size={14} color="#999" />
+                Edit...
               </button>
             </>
           )}
