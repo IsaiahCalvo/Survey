@@ -46,6 +46,10 @@ function createWindow() {
     console.warn('Icon file not found. Expected at:', path.join(appPath, 'build', 'icon.icns'));
   }
 
+  // Preload path - in production, __dirname is app.asar/src, so preload.js is in the same directory
+  // In development, __dirname is the src directory
+  const preloadPath = path.join(__dirname, 'preload.js');
+  
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -53,7 +57,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
     },
   });
 
@@ -76,7 +80,11 @@ function createWindow() {
     };
     tryLoadDev();
   } else {
-    win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+    // In production, __dirname is app.asar/src, so we need to go up one level to app.asar
+    // then into dist. Use app.getAppPath() which gives us the app.asar directory
+    const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
+    console.log('Loading production file from:', distPath);
+    win.loadFile(distPath);
   }
 }
 
