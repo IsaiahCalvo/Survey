@@ -19,7 +19,8 @@ const RegionSelectionTool = ({
   scale = 1,
   onSetFullPage,
   canSetFullPage = false,
-  initialRegions = []
+  initialRegions = [],
+  activeTool = null // Active tool from parent (e.g., 'pan' when space is held)
 }) => {
   const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'freehand' | 'move'
   const [selectionMode, setSelectionMode] = useState(REGION_OPERATIONS.ADD); // 'add' | 'subtract'
@@ -42,6 +43,37 @@ const RegionSelectionTool = ({
   const [lastDrawingTool, setLastDrawingTool] = useState('rectangular');
   const [isToolDropdownOpen, setIsToolDropdownOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, regionId, type: 'merge' | 'separate' }
+
+  // Log when activeTool prop changes (Hypothesis A, D)
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:useEffect',message:'activeTool prop changed',data:{activeTool,active},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+  }, [activeTool, active]);
+
+  // Log handlers attachment and add native listeners to test if events reach overlay (Hypothesis B, C, E)
+  useEffect(() => {
+    if (!containerRef.current || !canvasRect) return;
+
+    const hasHandlers = activeTool !== 'pan';
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:useEffect',message:'Handlers attachment state',data:{activeTool,hasHandlers,canvasRectExists:!!canvasRect},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+
+    // Add native mousedown listener to see if events reach overlay even without React handlers (Hypothesis C)
+    const nativeMouseDown = (e) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:nativeMouseDown',message:'Native mousedown on overlay',data:{activeTool,hasHandlers,button:e.button,clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+    };
+
+    containerRef.current.addEventListener('mousedown', nativeMouseDown, true);
+    return () => {
+      if (containerRef.current) {
+        containerRef.current.removeEventListener('mousedown', nativeMouseDown, true);
+      }
+    };
+  }, [activeTool, canvasRect]);
 
   // Calculate effective tool type (override with Cmd/Ctrl for quick select)
   const effectiveToolType = useMemo(() => {
@@ -575,10 +607,19 @@ const RegionSelectionTool = ({
   const handleMouseDown = useCallback((event) => {
     if (!active || !targetElement) return;
 
-    // Allow pan to work: if space is held, don't handle the event
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleMouseDown',message:'Mouse down on overlay',data:{activeTool,button:event.button},timestamp:Date.now(),sessionId:'debug-session',runId:'run10',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
+    // Allow pan to work: if pan tool is active (space is held), don't handle the event
     // This allows the event to bubble to the container's pan handler
-    if (isSpacePressed) {
-      return; // Let the event pass through for pan
+    if (activeTool === 'pan') {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleMouseDown',message:'Allowing event to pass through for pan',data:{activeTool},timestamp:Date.now(),sessionId:'debug-session',runId:'run10',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      // Don't handle the event - let it bubble to container's pan handler
+      // Don't call preventDefault or stopPropagation
+      return;
     }
 
     const rect = targetElement.getBoundingClientRect();
@@ -633,13 +674,16 @@ const RegionSelectionTool = ({
       setIsDrawing(true);
       setPolygonPoints([{ x, y }]);
     }
-  }, [active, targetElement, effectiveToolType, scale, selectedRegionIds, regions, getRegionBounds, isSpacePressed]);
+  }, [active, targetElement, effectiveToolType, scale, selectedRegionIds, regions, getRegionBounds, activeTool]);
 
   const handleMouseMove = useCallback((event) => {
     if (!active || !targetElement) return;
 
-    // Allow pan to work: if space is held and not drawing/interacting, don't handle the event
-    if (isSpacePressed && !isDrawing && !interactionState) {
+    // Allow pan to work: if pan tool is active and not drawing/interacting, don't handle the event
+    if (activeTool === 'pan' && !isDrawing && !interactionState) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleMouseMove',message:'Allowing mouse move to pass through for pan',data:{activeTool,isDrawing,hasInteractionState:!!interactionState},timestamp:Date.now(),sessionId:'debug-session',runId:'run9',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       return; // Let the event pass through for pan
     }
 
@@ -811,7 +855,7 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, scale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, isSpacePressed]);
+  }, [active, targetElement, scale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool]);
 
   const handleMouseUp = useCallback(() => {
     if (!active) return;
@@ -1406,6 +1450,9 @@ const RegionSelectionTool = ({
       }
       // Release Space
       if (event.key === ' ' || event.code === 'Space') {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:handleKeyUp',message:'Space key released',data:{key:event.key,code:event.code},timestamp:Date.now(),sessionId:'debug-session',runId:'run8',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         setIsSpacePressed(false);
       }
     };
@@ -1744,24 +1791,31 @@ const RegionSelectionTool = ({
       </div>
 
       {/* Canvas Interaction Layer */}
-      {canvasRect && (
-        <div
-          ref={containerRef}
-          onContextMenu={handleContextMenu}
-          style={{
-            position: 'fixed',
-            left: `${canvasRect.left}px`,
-            top: `${canvasRect.top}px`,
-            width: `${canvasRect.width}px`,
-            height: `${canvasRect.height}px`,
-            zIndex: 1000,
-            cursor: effectiveToolType === 'move' ? 'default' : (isCursorOverCanvas ? 'crosshair' : 'default')
-          }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-        >
+      {canvasRect && (() => {
+        const handlersAttached = activeTool !== 'pan';
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RegionSelectionTool.jsx:render',message:'Rendering overlay div',data:{activeTool,handlersAttached,canvasRectExists:!!canvasRect},timestamp:Date.now(),sessionId:'debug-session',runId:'run11',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        return (
+          <div
+            ref={containerRef}
+            onContextMenu={handleContextMenu}
+            style={{
+              position: 'fixed',
+              left: `${canvasRect.left}px`,
+              top: `${canvasRect.top}px`,
+              width: `${canvasRect.width}px`,
+              height: `${canvasRect.height}px`,
+              zIndex: 1000,
+              cursor: effectiveToolType === 'move' ? 'default' : (isCursorOverCanvas ? 'crosshair' : 'default')
+            }}
+            {...(activeTool === 'pan' ? {} : {
+              onMouseDown: handleMouseDown,
+              onMouseMove: handleMouseMove,
+              onMouseUp: handleMouseUp,
+              onMouseLeave: handleMouseUp
+            })}
+          >
           <svg
             width={canvasRect.width}
             height={canvasRect.height}
