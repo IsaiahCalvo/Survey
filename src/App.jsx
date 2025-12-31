@@ -14997,7 +14997,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           <div
             style={{
               width: '100%',
-              height: '52px',
+              height: '34px',
               background: 'transparent',
               borderBottom: '1px solid #3a3a3a',
               borderTop: '1px solid #3a3a3a',

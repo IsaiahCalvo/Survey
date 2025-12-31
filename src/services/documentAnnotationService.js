@@ -423,6 +423,59 @@ export function subscribeToDocumentPresence(documentId, onPresenceChange) {
 // ============================================
 
 /**
+ * Get a user's subscription tier
+ * @returns {Promise<{tier: string, error: any}>}
+ */
+export async function getUserSubscriptionTier(userId) {
+  if (!userId) return { tier: 'free', error: null };
+
+  const { data, error } = await supabase
+    .from('user_subscriptions')
+    .select('tier, status')
+    .eq('user_id', userId)
+    .single();
+
+  if (error) {
+    // If no subscription found, default to free
+    if (error.code === 'PGRST116') {
+      return { tier: 'free', error: null };
+    }
+    console.error('[AnnotationSync] Error fetching user subscription:', error);
+    return { tier: 'free', error };
+  }
+
+  // Only return active subscriptions as their tier
+  if (data.status !== 'active' && data.status !== 'trialing') {
+    return { tier: 'free', error: null };
+  }
+
+  return { tier: data.tier || 'free', error: null };
+}
+
+/**
+ * Check if a user can be added as a collaborator
+ * Free tier users cannot be collaborators
+ * @returns {Promise<{allowed: boolean, reason?: string, tier?: string}>}
+ */
+export async function canUserBeCollaborator(userId) {
+  const { tier, error } = await getUserSubscriptionTier(userId);
+
+  if (error) {
+    return { allowed: false, reason: 'Unable to verify user subscription status.' };
+  }
+
+  if (tier === 'free') {
+    return {
+      allowed: false,
+      tier: 'free',
+      reason: 'This user is on the Free plan and cannot be added as a collaborator. They need to upgrade to Pro or higher to collaborate on documents.'
+    };
+  }
+
+  return { allowed: true, tier };
+}
+
+/**
  * Get collaborators for a document
  */
 export async function getDocumentCollaborators(documentId) {
@@ -447,43 +500,82 @@ export async function getDocumentCollaborators(documentId) {
 
 /**
  * Add a collaborator to a document
+ * @param {string} documentId - The document to add collaborator to
+ * @param {string} userIdOrEmail - User ID or email of the collaborator
+ * @param {string} role - Role: 'viewer', 'commenter', 'editor'
+ * @param {string} invitedBy - User ID of who is inviting
+ * @returns {Promise<{success: boolean, data?: any, error?: string, requiresUpgrade?: boolean}>}
  */
 export async function addDocumentCollaborator(documentId, userIdOrEmail, role = 'editor', invitedBy = null) {
   // Check if it's an email or user ID
   const isEmail = userIdOrEmail.includes('@');
 
-  const collaboratorData = {
-    document_id: documentId,
-    role,
-    status: isEmail ? 'pending' : 'active',
-    invited_by: invitedBy
-  };
+  let eligibilityResult;
 
   if (isEmail) {
-    collaboratorData.email = userIdOrEmail;
-    // Try to find user by email
-    const { data: userData } = await supabase
-      .from('auth.users')
-      .select('id')
-      .eq('email', userIdOrEmail)
-      .single();
+    // Use combined RPC function for email lookup + eligibility check
+    const { data, error } = await supabase
+      .rpc('check_collaborator_by_email', { email_address: userIdOrEmail });
 
-    if (userData) {
-      collaboratorData.user_id = userData.id;
-      collaboratorData.status = 'active';
+    if (error) {
+      console.error('[AnnotationSync] Error checking collaborator by email:', error);
+      return {
+        success: false,
+        error: 'Unable to verify user. Please try again.',
+        requiresUpgrade: false
+      };
     }
+
+    eligibilityResult = data?.[0];
   } else {
-    collaboratorData.user_id = userIdOrEmail;
+    // Use RPC function for user ID eligibility check
+    const { data, error } = await supabase
+      .rpc('check_user_collaborator_eligibility', { target_user_id: userIdOrEmail });
+
+    if (error) {
+      console.error('[AnnotationSync] Error checking collaborator eligibility:', error);
+      return {
+        success: false,
+        error: 'Unable to verify user. Please try again.',
+        requiresUpgrade: false
+      };
+    }
+
+    eligibilityResult = data?.[0];
   }
 
-  // Can't insert without a user_id due to NOT NULL constraint
-  // For pending invites, we'd need to modify the schema or use a different approach
-  if (!collaboratorData.user_id) {
+  // Check if user was found
+  if (!eligibilityResult || !eligibilityResult.user_id) {
     return {
       success: false,
-      error: 'User not found. They need to create an account first.'
+      error: eligibilityResult?.reason || 'User not found. They need to create an account first.',
+      requiresUpgrade: false
     };
   }
+
+  // Check if user can collaborate (not free tier)
+  if (!eligibilityResult.can_collaborate) {
+    console.log('[AnnotationSync] User cannot be collaborator:', {
+      userId: eligibilityResult.user_id,
+      tier: eligibilityResult.tier,
+      reason: eligibilityResult.reason
+    });
+    return {
+      success: false,
+      error: eligibilityResult.reason,
+      requiresUpgrade: true,
+      userTier: eligibilityResult.tier
+    };
+  }
+
+  const collaboratorData = {
+    document_id: documentId,
+    user_id: eligibilityResult.user_id,
+    email: eligibilityResult.email,
+    role,
+    status: 'active',
+    invited_by: invitedBy
+  };
 
   const { data, error } = await supabase
     .from('document_collaborators')
@@ -495,7 +587,7 @@ export async function addDocumentCollaborator(documentId, userIdOrEmail, role = 
 
   if (error) {
     console.error('[AnnotationSync] Error adding collaborator:', error);
-    return { success: false, error };
+    return { success: false, error: error.message, requiresUpgrade: false };
   }
 
   return { success: true, data };
@@ -531,6 +623,161 @@ export async function updateCollaboratorRole(documentId, userId, newRole) {
 
   if (error) {
     console.error('[AnnotationSync] Error updating collaborator role:', error);
+    return { success: false, error };
+  }
+
+  return { success: true };
+}
+
+// ============================================
+// PROJECT COLLABORATOR OPERATIONS
+// ============================================
+
+/**
+ * Get collaborators for a project
+ */
+export async function getProjectCollaborators(projectId) {
+  if (!projectId) return { data: [], error: null };
+
+  const { data, error } = await supabase
+    .from('project_collaborators')
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('status', 'active');
+
+  if (error) {
+    console.error('[AnnotationSync] Error fetching project collaborators:', error);
+    return { data: [], error };
+  }
+
+  return { data: data || [], error: null };
+}
+
+/**
+ * Add a collaborator to a project
+ * @param {string} projectId - The project to add collaborator to
+ * @param {string} userIdOrEmail - User ID or email of the collaborator
+ * @param {string} role - Role: 'viewer', 'commenter', 'editor'
+ * @param {string} invitedBy - User ID of who is inviting
+ * @returns {Promise<{success: boolean, data?: any, error?: string, requiresUpgrade?: boolean}>}
+ */
+export async function addProjectCollaborator(projectId, userIdOrEmail, role = 'editor', invitedBy = null) {
+  // Check if it's an email or user ID
+  const isEmail = userIdOrEmail.includes('@');
+
+  let eligibilityResult;
+
+  if (isEmail) {
+    // Use combined RPC function for email lookup + eligibility check
+    const { data, error } = await supabase
+      .rpc('check_collaborator_by_email', { email_address: userIdOrEmail });
+
+    if (error) {
+      console.error('[AnnotationSync] Error checking collaborator by email:', error);
+      return {
+        success: false,
+        error: 'Unable to verify user. Please try again.',
+        requiresUpgrade: false
+      };
+    }
+
+    eligibilityResult = data?.[0];
+  } else {
+    // Use RPC function for user ID eligibility check
+    const { data, error } = await supabase
+      .rpc('check_user_collaborator_eligibility', { target_user_id: userIdOrEmail });
+
+    if (error) {
+      console.error('[AnnotationSync] Error checking collaborator eligibility:', error);
+      return {
+        success: false,
+        error: 'Unable to verify user. Please try again.',
+        requiresUpgrade: false
+      };
+    }
+
+    eligibilityResult = data?.[0];
+  }
+
+  // Check if user was found
+  if (!eligibilityResult || !eligibilityResult.user_id) {
+    return {
+      success: false,
+      error: eligibilityResult?.reason || 'User not found. They need to create an account first.',
+      requiresUpgrade: false
+    };
+  }
+
+  // Check if user can collaborate (not free tier)
+  if (!eligibilityResult.can_collaborate) {
+    console.log('[AnnotationSync] User cannot be project collaborator:', {
+      userId: eligibilityResult.user_id,
+      tier: eligibilityResult.tier,
+      reason: eligibilityResult.reason
+    });
+    return {
+      success: false,
+      error: eligibilityResult.reason,
+      requiresUpgrade: true,
+      userTier: eligibilityResult.tier
+    };
+  }
+
+  const collaboratorData = {
+    project_id: projectId,
+    user_id: eligibilityResult.user_id,
+    email: eligibilityResult.email,
+    role,
+    status: 'active',
+    invited_by: invitedBy
+  };
+
+  const { data, error } = await supabase
+    .from('project_collaborators')
+    .upsert(collaboratorData, {
+      onConflict: 'project_id,user_id'
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[AnnotationSync] Error adding project collaborator:', error);
+    return { success: false, error: error.message, requiresUpgrade: false };
+  }
+
+  return { success: true, data };
+}
+
+/**
+ * Remove a collaborator from a project
+ */
+export async function removeProjectCollaborator(projectId, userId) {
+  const { error } = await supabase
+    .from('project_collaborators')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[AnnotationSync] Error removing project collaborator:', error);
+    return { success: false, error };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Update project collaborator role
+ */
+export async function updateProjectCollaboratorRole(projectId, userId, newRole) {
+  const { error } = await supabase
+    .from('project_collaborators')
+    .update({ role: newRole })
+    .eq('project_id', projectId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[AnnotationSync] Error updating project collaborator role:', error);
     return { success: false, error };
   }
 
