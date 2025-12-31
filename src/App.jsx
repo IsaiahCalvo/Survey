@@ -13265,6 +13265,71 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return;
       }
 
+      // 'P' key to switch to Pen Tool (only when no modifiers are pressed)
+      if ((e.key === 'p' || e.key === 'P') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        // Don't trigger if user is focused on an input field, textbox, or callout
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+
+        // Prevent default behavior and switch to pen tool
+        e.preventDefault();
+        setActiveTool('pen');
+        return;
+      }
+
+      // 'H' key to switch to Highlighter Tool (only when no modifiers are pressed)
+      if ((e.key === 'h' || e.key === 'H') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        // Don't trigger if user is focused on an input field, textbox, or callout
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+
+        // Prevent default behavior and switch to highlighter tool
+        e.preventDefault();
+        setActiveTool('highlighter');
+        return;
+      }
+
+      // 'E' key to switch to Eraser Tool (only when no modifiers are pressed)
+      if ((e.key === 'e' || e.key === 'E') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        // Don't trigger if user is focused on an input field, textbox, or callout
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+
+        // Prevent default behavior and switch to eraser tool
+        e.preventDefault();
+        setActiveTool('eraser');
+        return;
+      }
+
+      // 'T' key to switch to Text Tool (only when no modifiers are pressed)
+      if ((e.key === 't' || e.key === 'T') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        // Don't trigger if user is focused on an input field, textbox, or callout
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+
+        // Prevent default behavior and switch to text tool
+        e.preventDefault();
+        setActiveTool('text');
+        return;
+      }
+
+      // 'Q' key to switch to Text Tool (only when no modifiers are pressed)
+      if ((e.key === 'q' || e.key === 'Q') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        // Don't trigger if user is focused on an input field, textbox, or callout
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+
+        // Prevent default behavior and switch to text tool
+        e.preventDefault();
+        setActiveTool('text');
+        return;
+      }
+
       if (!isFormField && (e.metaKey || e.ctrlKey)) {
         const key = e.key.toLowerCase();
 

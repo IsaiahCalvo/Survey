@@ -27,6 +27,7 @@ import {
 } from './utils/geometryHitTest';
 import { splitPathDataByEraser, booleanErasePath } from './utils/geometryEraser';
 import { configureFabricOverrides } from './utils/fabricCustomization';
+import { calculateViewportSafePosition } from './utils/menuPositioning';
 
 // Apply custom Drawboard-style controls and selection visuals
 configureFabricOverrides();
@@ -1457,6 +1458,7 @@ const PageAnnotationLayer = memo(({
   const [contextMenu, setContextMenu] = useState(null); // { x, y, type: 'annotation' | 'canvas', target: object }
   const contextMenuJustOpenedRef = useRef(false); // Track if context menu was just opened to prevent immediate closing
   const contextMenuRef = useRef(null); // Ref for the context menu element
+  const contextMenuPositionAdjustedRef = useRef(false); // Track if context menu position has been adjusted
   // Clipboard for Cut/Copy/Paste - using Ref to persist across renders without triggering them
   const clipboardRef = useRef(null);
   // Edit Modal State
@@ -1465,6 +1467,7 @@ const PageAnnotationLayer = memo(({
   const [calloutSelectionRect, setCalloutSelectionRect] = useState(null);
   const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1, arrowheadStyle: ARROWHEAD_STYLES.SOLID_TRIANGLE });
   const editModalRef = useRef(null);
+  const editModalPositionAdjustedRef = useRef(false); // Track if edit modal position has been adjusted
   // Edit Modal Drag State
   const isDraggingModalRef = useRef(false);
   const modalDragStartRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
@@ -1628,10 +1631,14 @@ const PageAnnotationLayer = memo(({
         canvas.requestRenderAll();
       }
 
+      const safePosition = calculateViewportSafePosition(e.clientX, e.clientY, {
+        estimatedWidth: 200,
+        estimatedHeight: 300
+      });
       setContextMenu({
         visible: true,
-        x: e.clientX,
-        y: e.clientY,
+        x: safePosition.x,
+        y: safePosition.y,
         type: 'annotation',
         target: target
       });
@@ -1663,10 +1670,14 @@ const PageAnnotationLayer = memo(({
         if (isPointOnCallout(clickPos, callout, pageWidth, pageHeight)) {
           // Select the callout
           setSelectedCalloutId(callout.id);
+          const safePosition = calculateViewportSafePosition(e.clientX, e.clientY, {
+            estimatedWidth: 200,
+            estimatedHeight: 300
+          });
           setContextMenu({
             visible: true,
-            x: e.clientX,
-            y: e.clientY,
+            x: safePosition.x,
+            y: safePosition.y,
             type: 'callout',
             target: null,
             calloutId: callout.id
@@ -1682,10 +1693,14 @@ const PageAnnotationLayer = memo(({
     }
 
     // 3. Page background click - always show page operations menu
+    const safePosition = calculateViewportSafePosition(e.clientX, e.clientY, {
+      estimatedWidth: 200,
+      estimatedHeight: 450
+    });
     setContextMenu({
       visible: true,
-      x: e.clientX,
-      y: e.clientY,
+      x: safePosition.x,
+      y: safePosition.y,
       type: 'page',
       target: null
     });
@@ -1703,6 +1718,111 @@ const PageAnnotationLayer = memo(({
   const closeEditModal = useCallback(() => {
     setEditModal(null);
   }, []);
+
+  // Fine-tune context menu position after render using actual dimensions
+  useEffect(() => {
+    if (!contextMenu?.visible || !contextMenuRef.current || contextMenuPositionAdjustedRef.current) return;
+    
+    // Use requestAnimationFrame to ensure the element is fully rendered
+    const frameId = requestAnimationFrame(() => {
+      if (!contextMenuRef.current) return;
+      
+      const element = contextMenuRef.current;
+      const rect = element.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const padding = 10;
+      
+      let adjustedX = contextMenu.x;
+      let adjustedY = contextMenu.y;
+      let needsUpdate = false;
+      
+      // Check right edge overflow
+      if (rect.right + padding > viewportWidth) {
+        adjustedX = viewportWidth - rect.width - padding;
+        needsUpdate = true;
+      }
+      
+      // Check left edge overflow
+      if (rect.left < padding) {
+        adjustedX = padding;
+        needsUpdate = true;
+      }
+      
+      // Check bottom edge overflow
+      if (rect.bottom + padding > viewportHeight) {
+        // Try positioning above cursor if there's space (use original y from contextMenu)
+        const originalY = contextMenu.y;
+        if (originalY - rect.height - padding >= padding) {
+          adjustedY = originalY - rect.height;
+        } else {
+          adjustedY = viewportHeight - rect.height - padding;
+        }
+        needsUpdate = true;
+      }
+      
+      // Check top edge overflow
+      if (rect.top < padding) {
+        adjustedY = padding;
+        needsUpdate = true;
+      }
+      
+      if (needsUpdate) {
+        setContextMenu(prev => prev ? { ...prev, x: adjustedX, y: adjustedY } : null);
+      }
+      contextMenuPositionAdjustedRef.current = true;
+    });
+    
+    return () => cancelAnimationFrame(frameId);
+  }, [contextMenu?.visible]);
+
+  // Fine-tune edit modal position after render using actual dimensions
+  useEffect(() => {
+    if (!editModal || !editModalRef.current) return;
+    
+    const element = editModalRef.current;
+    const rect = element.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const padding = 10;
+    
+    let adjustedX = editModal.x;
+    let adjustedY = editModal.y;
+    let needsUpdate = false;
+    
+    // Check right edge overflow
+    if (rect.right + padding > viewportWidth) {
+      adjustedX = viewportWidth - rect.width - padding;
+      needsUpdate = true;
+    }
+    
+    // Check left edge overflow
+    if (rect.left < padding) {
+      adjustedX = padding;
+      needsUpdate = true;
+    }
+    
+    // Check bottom edge overflow
+    if (rect.bottom + padding > viewportHeight) {
+      // Try positioning above cursor if there's space
+      if (editModal.y - rect.height - padding >= padding) {
+        adjustedY = editModal.y - rect.height;
+      } else {
+        adjustedY = viewportHeight - rect.height - padding;
+      }
+      needsUpdate = true;
+    }
+    
+    // Check top edge overflow
+    if (rect.top < padding) {
+      adjustedY = padding;
+      needsUpdate = true;
+    }
+    
+    if (needsUpdate) {
+      setEditModal(prev => prev ? { ...prev, x: adjustedX, y: adjustedY } : null);
+    }
+  }, [editModal?.visible, editModal?.x, editModal?.y]);
 
   // Action Handlers
   const handleCut = useCallback(() => {
@@ -1936,10 +2056,14 @@ const PageAnnotationLayer = memo(({
         opacity: obj.opacity
       }));
 
+      const safePosition = calculateViewportSafePosition(contextMenu.x, contextMenu.y, {
+        estimatedWidth: 300,
+        estimatedHeight: 400
+      });
       setEditModal({
         visible: true,
-        x: contextMenu.x,
-        y: contextMenu.y,
+        x: safePosition.x,
+        y: safePosition.y,
         object: activeObject,
         initialStates: initialStates
       });
@@ -5916,22 +6040,21 @@ const PageAnnotationLayer = memo(({
             borderRadius: '8px',
             boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
             zIndex: 10001,
-            padding: '12px',
             minWidth: '200px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div 
-            style={{ 
-              marginBottom: '12px', 
-              fontSize: '14px', 
-              fontWeight: '600', 
-              color: '#ddd',
-              cursor: 'move',
-              userSelect: 'none'
-            }}
+          {/* Header */}
+          <div
             onMouseDown={(e) => {
+              // Don't start drag if clicking on the close button
+              if (e.target.closest('button')) {
+                return;
+              }
               if (!editModal) return;
               e.stopPropagation();
               isDraggingModalRef.current = true;
@@ -5942,12 +6065,44 @@ const PageAnnotationLayer = memo(({
                 startY: e.clientY
               };
             }}
+            style={{
+              padding: '12px 16px',
+              borderBottom: '1px solid #444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#252525',
+              cursor: 'move',
+              userSelect: 'none'
+            }}
           >
-            Edit Property
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#ddd' }}>Edit Property</h3>
+            <button
+              onClick={cancelEdit}
+              onMouseDown={(e) => {
+                // Stop propagation to prevent drag from starting when clicking close button
+                e.stopPropagation();
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 4,
+                fontSize: 18,
+                color: '#999',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.color = '#ddd'}
+              onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
+            >
+              ×
+            </button>
           </div>
 
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>COLOR</label>
+          {/* Content */}
+          <div style={{ padding: '12px', background: '#2b2b2b' }}>
+
+          <div style={{ marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Color</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type="color"
@@ -5975,7 +6130,7 @@ const PageAnnotationLayer = memo(({
           </div>
 
           <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>LINE WEIGHT</label>
+            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Line Weight</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type="range"
@@ -5999,7 +6154,7 @@ const PageAnnotationLayer = memo(({
                   border: '1px solid #555',
                   padding: '0 4px',
                   fontSize: '12px',
-                  textAlign: 'right',
+                  textAlign: 'center',
                   background: '#333',
                   color: '#ddd'
                 }}
@@ -6011,7 +6166,7 @@ const PageAnnotationLayer = memo(({
           {/* Arrowhead Style - only show for arrow objects */}
           {editModal.object.data?.type === 'arrow' && (
             <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>ARROWHEAD STYLE</label>
+              <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Arrowhead Style</label>
               <select
                 value={editValues.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE}
                 onChange={(e) => setEditValues(prev => ({ ...prev, arrowheadStyle: e.target.value }))}
@@ -6037,7 +6192,7 @@ const PageAnnotationLayer = memo(({
           {(editModal.object.data?.type === 'callout' || editModal.object.data?.reactCalloutId) && (
             <>
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>TEXT STYLE</label>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Text Style</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                   {/* Text Color */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -6109,8 +6264,7 @@ const PageAnnotationLayer = memo(({
                         flex: 1, padding: '6px 12px', borderRadius: '4px', border: editValues.textAlign === align ? '1px solid #4A90E2' : '1px solid #555',
                         background: editValues.textAlign === align ? '#4A90E2' : '#333',
                         color: editValues.textAlign === align ? 'white' : '#ddd',
-                        cursor: 'pointer', fontSize: '12px', textTransform: 'capitalize',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        cursor: 'pointer', fontSize: '12px', textTransform: 'capitalize'
                       }}
                     >
                       {align}
@@ -6121,7 +6275,7 @@ const PageAnnotationLayer = memo(({
 
               {/* Fill Color (Background) */}
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>FILL COLOR</label>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Fill Color</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input
                     type="color"
@@ -6167,7 +6321,7 @@ const PageAnnotationLayer = memo(({
           )}
 
           <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>OPACITY</label>
+            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Opacity</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type="range"
@@ -6196,7 +6350,7 @@ const PageAnnotationLayer = memo(({
                   border: '1px solid #555',
                   padding: '0 4px',
                   fontSize: '12px',
-                  textAlign: 'right',
+                  textAlign: 'center',
                   background: '#333',
                   color: '#ddd'
                 }}
@@ -6218,6 +6372,7 @@ const PageAnnotationLayer = memo(({
             >
               Save
             </button>
+          </div>
           </div>
         </div>
       )}

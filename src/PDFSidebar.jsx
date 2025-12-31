@@ -87,7 +87,7 @@ const PDFSidebar = ({
 
   return (
     <div style={{
-      width: isCollapsed ? '48px' : '280px',
+      width: isCollapsed ? '48px' : '272px',
       height: '100%',
       background: '#252525',
       borderRight: '1px solid #3a3a3a',

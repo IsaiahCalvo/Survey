@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import Icon from './Icons';
 import { diff, union, intersection } from 'martinez-polygon-clipping';
 import { REGION_OPERATIONS, simplifyPolygon, mergeOverlappingRegions, subtractRegionFromRegion } from './utils/regionMath';
+import { calculateViewportSafePosition } from './utils/menuPositioning';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
@@ -1115,9 +1116,13 @@ const RegionSelectionTool = ({
           console.error('Error checking merge capability', e);
         }
 
+        const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
+          estimatedWidth: 200,
+          estimatedHeight: 250
+        });
         setContextMenu({
-          x: event.clientX,
-          y: event.clientY,
+          x: safePosition.x,
+          y: safePosition.y,
           type: 'merge',
           canMerge
         });
@@ -1125,18 +1130,26 @@ const RegionSelectionTool = ({
       // If single region is selected (or clicked), and it has sourceRegions, show "Separate" option
       else if (clickedRegion.sourceRegions && clickedRegion.sourceRegions.length > 0) {
         setSelectedRegionIds(new Set([clickedRegion.regionId]));
+        const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
+          estimatedWidth: 200,
+          estimatedHeight: 250
+        });
         setContextMenu({
-          x: event.clientX,
-          y: event.clientY,
+          x: safePosition.x,
+          y: safePosition.y,
           type: 'separate',
           regionId: clickedRegion.regionId
         });
       }
     } else {
       // Clicked on background/canvas
+      const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
+        estimatedWidth: 200,
+        estimatedHeight: 250
+      });
       setContextMenu({
-        x: event.clientX,
-        y: event.clientY,
+        x: safePosition.x,
+        y: safePosition.y,
         type: 'canvas'
       });
     }
