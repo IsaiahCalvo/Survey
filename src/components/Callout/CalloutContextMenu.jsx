@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import Icon from '../../Icons';
 
 const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, onDelete, onEdit, hasClipboard, onDeselect }) => {
   const menuRef = useRef(null);
@@ -110,7 +109,6 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
         onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
       >
-        <Icon name="scissors" size={14} color="#999" />
         Cut
       </button>
       <button
@@ -132,71 +130,32 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
         onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
       >
-        <Icon name="copy" size={14} color="#999" />
         Copy
       </button>
-      <button
-        onClick={() => { onPaste(); onClose(); }}
-        disabled={!hasClipboard}
-        style={{
-          width: '100%',
-          padding: '8px 12px',
-          background: 'transparent',
-          border: 'none',
-          borderRadius: '4px',
-          fontSize: '13px',
-          textAlign: 'left',
-          cursor: hasClipboard ? 'pointer' : 'not-allowed',
-          color: hasClipboard ? '#ddd' : '#666',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          opacity: hasClipboard ? 1 : 0.5
-        }}
-        onMouseEnter={(e) => {
-          if (hasClipboard) {
-            e.currentTarget.style.background = '#3a3a3a';
-          }
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
-        }}
-      >
-        <Icon name="paste" size={14} color={hasClipboard ? "#999" : "#555"} />
-        Paste
-      </button>
-      <div style={{
-        height: '1px',
-        background: '#444',
-        margin: '4px 0'
-      }} />
-      <button
-        onClick={() => { onDelete(); onClose(); }}
-        style={{
-          width: '100%',
-          padding: '8px 12px',
-          background: 'transparent',
-          border: 'none',
-          borderRadius: '4px',
-          fontSize: '13px',
-          textAlign: 'left',
-          cursor: 'pointer',
-          color: '#ddd',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
-        }}
-        onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
-        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-      >
-        <Icon name="trash" size={14} color="#999" />
-        Delete
-      </button>
-      <div style={{
-        height: '1px',
-        background: '#444',
-        margin: '4px 0'
-      }} />
+      {hasClipboard && (
+        <button
+          onClick={() => { onPaste(); onClose(); }}
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            background: 'transparent',
+            border: 'none',
+            borderRadius: '4px',
+            fontSize: '13px',
+            textAlign: 'left',
+            cursor: 'pointer',
+            color: '#ddd',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+        >
+          Paste
+        </button>
+      )}
+      <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
       <button
         onMouseDown={(e) => {
           e.stopPropagation();
@@ -230,8 +189,29 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
         onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
       >
-        <Icon name="edit" size={14} color="#999" />
-        Edit...
+        Properties
+      </button>
+      <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
+      <button
+        onClick={() => { onDelete(); onClose(); }}
+        style={{
+          width: '100%',
+          padding: '8px 12px',
+          background: 'transparent',
+          border: 'none',
+          borderRadius: '4px',
+          fontSize: '13px',
+          textAlign: 'left',
+          cursor: 'pointer',
+          color: '#ff6b6b',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+      >
+        Delete
       </button>
     </div>
   );
