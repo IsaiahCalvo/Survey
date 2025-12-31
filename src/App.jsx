@@ -60,6 +60,13 @@ import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPre
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { supabase } from './supabaseClient';
 import { useSurveySessionOptional } from './contexts/SurveySessionContext';
+import {
+  syncAnnotationsToSupabase,
+  loadAnnotationsFromSupabase,
+  subscribeToDocumentAnnotations,
+  updateDocumentPresence,
+  removeDocumentPresence
+} from './services/documentAnnotationService';
 import { perfUpload, perfLoad, perfRender, perfZoom, setDebugEnabled, isDebugEnabled } from './utils/performanceLogger';
 import { useZoomState } from './hooks/useZoomState';
 
@@ -11015,107 +11022,208 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [liveSyncEnabled, excelSessionId, oneDriveFileId, graphClient, liveSyncStatus, autoPushToExcel, highlightAnnotations, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
 
   // ============================================
-  // MULTI-USER SUPABASE REAL-TIME SYNC
+  // DOCUMENT-BASED SUPABASE REAL-TIME SYNC
   // ============================================
 
-  // Enable/disable Supabase sync based on template selection
+  // Track sync state for current document
+  const [documentSyncEnabled, setDocumentSyncEnabled] = useState(false);
+  const [isLoadingRemoteAnnotations, setIsLoadingRemoteAnnotations] = useState(false);
+  const documentSyncUnsubscribeRef = useRef(null);
+  const lastSyncedAnnotationsRef = useRef({});
+
+  // Load annotations from Supabase when document is opened
   useEffect(() => {
-    if (!surveySession || !user?.id) return;
-
-    // Try supabaseId first, fall back to id (which may be the same as supabaseId for templates from Supabase)
-    const templateSupabaseId = selectedTemplate?.supabaseId || selectedTemplate?.id;
-
-    if (templateSupabaseId && selectedTemplate?.linkedExcelPath) {
-      console.log('[MultiUserSync] Enabling sync for template:', templateSupabaseId, 'linkedExcelPath:', selectedTemplate.linkedExcelPath);
-      surveySession.enableSync(templateSupabaseId);
-    } else {
-      console.log('[MultiUserSync] Sync disabled - templateId:', templateSupabaseId, 'linkedExcelPath:', selectedTemplate?.linkedExcelPath);
-      surveySession.disableSync();
-    }
-
-    return () => {
-      if (surveySession.syncEnabled) {
-        surveySession.disableSync();
-      }
-    };
-  }, [selectedTemplate?.supabaseId, selectedTemplate?.id, selectedTemplate?.linkedExcelPath, user?.id, surveySession]);
-
-  // Load initial data from Supabase when sync becomes enabled
-  useEffect(() => {
-    if (!surveySession?.syncEnabled || !surveySession?.remoteItems?.length) return;
-
-    // Only load if we don't have local annotations yet
-    if (Object.keys(highlightAnnotations).length > 0) {
-      console.log('[MultiUserSync] Local annotations exist, skipping remote load');
+    const documentId = pdfFile?.id;
+    if (!documentId || !user?.id) {
+      setDocumentSyncEnabled(false);
       return;
     }
 
-    console.log('[MultiUserSync] Loading', surveySession.remoteItems.length, 'items from Supabase');
-    const remoteAnnotations = surveySession.getHighlightAnnotationsFromRemote();
+    console.log('[DocumentSync] Document opened, loading annotations from Supabase:', documentId);
+    setIsLoadingRemoteAnnotations(true);
 
-    if (Object.keys(remoteAnnotations).length > 0) {
-      setHighlightAnnotations(remoteAnnotations);
+    loadAnnotationsFromSupabase(documentId)
+      .then(({ highlightAnnotations: remoteAnnotations, error }) => {
+        if (error) {
+          console.error('[DocumentSync] Error loading annotations:', error);
+          return;
+        }
+
+        if (Object.keys(remoteAnnotations).length > 0) {
+          console.log('[DocumentSync] Loaded', Object.keys(remoteAnnotations).length, 'annotations from Supabase');
+          setHighlightAnnotations(prev => {
+            // Merge remote annotations with local, preferring remote
+            const merged = { ...prev };
+            for (const [highlightId, annotation] of Object.entries(remoteAnnotations)) {
+              // If local version is newer (based on lastSyncedAt), keep local
+              if (!prev[highlightId] || !prev[highlightId].lastSyncedAt) {
+                merged[highlightId] = annotation;
+              } else {
+                const localTime = new Date(prev[highlightId].lastSyncedAt || 0).getTime();
+                const remoteTime = new Date(annotation.lastSyncedAt || 0).getTime();
+                if (remoteTime >= localTime) {
+                  merged[highlightId] = annotation;
+                }
+              }
+            }
+            return merged;
+          });
+        }
+
+        setDocumentSyncEnabled(true);
+
+        // Update presence
+        updateDocumentPresence(documentId, user.id, {
+          clientType: 'app',
+          displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
+          currentPage: pageNum
+        });
+      })
+      .finally(() => {
+        setIsLoadingRemoteAnnotations(false);
+      });
+
+    // Cleanup: remove presence when leaving document
+    return () => {
+      removeDocumentPresence(documentId, user.id, 'app');
+    };
+  }, [pdfFile?.id, user?.id]);
+
+  // Subscribe to real-time annotation changes
+  useEffect(() => {
+    const documentId = pdfFile?.id;
+    if (!documentId || !user?.id || !documentSyncEnabled) {
+      return;
     }
-  }, [surveySession?.syncEnabled, surveySession?.remoteItems?.length]);
+
+    console.log('[DocumentSync] Subscribing to real-time changes for document:', documentId);
+
+    // Unsubscribe from previous subscription if any
+    if (documentSyncUnsubscribeRef.current) {
+      documentSyncUnsubscribeRef.current();
+    }
+
+    const unsubscribe = subscribeToDocumentAnnotations(documentId, {
+      onInsert: (annotation) => {
+        // Don't apply our own changes
+        if (annotation.lastModifiedBy === user.id) return;
+
+        console.log('[DocumentSync] Remote INSERT:', annotation.highlightId);
+        setHighlightAnnotations(prev => ({
+          ...prev,
+          [annotation.highlightId]: {
+            pageNumber: annotation.pageNumber,
+            bounds: annotation.bounds,
+            categoryId: annotation.categoryId,
+            moduleId: annotation.moduleId,
+            spaceId: annotation.spaceId,
+            name: annotation.name,
+            notes: annotation.notes,
+            note: annotation.notes,
+            ballInCourtEntityId: annotation.ballInCourtEntityId,
+            ballInCourtName: annotation.ballInCourtName,
+            checklistResponses: annotation.checklistResponses || {},
+            changedBy: annotation.changedBy,
+            changedDate: annotation.changedDate,
+            color: annotation.color,
+            opacity: annotation.opacity,
+            version: annotation.version,
+            supabaseId: annotation.supabaseId,
+            lastSyncedAt: annotation.lastSyncedAt
+          }
+        }));
+      },
+      onUpdate: (annotation) => {
+        // Don't apply our own changes
+        if (annotation.lastModifiedBy === user.id) return;
+
+        console.log('[DocumentSync] Remote UPDATE:', annotation.highlightId);
+        setHighlightAnnotations(prev => ({
+          ...prev,
+          [annotation.highlightId]: {
+            ...prev[annotation.highlightId],
+            pageNumber: annotation.pageNumber,
+            bounds: annotation.bounds,
+            categoryId: annotation.categoryId,
+            moduleId: annotation.moduleId,
+            spaceId: annotation.spaceId,
+            name: annotation.name,
+            notes: annotation.notes,
+            note: annotation.notes,
+            ballInCourtEntityId: annotation.ballInCourtEntityId,
+            ballInCourtName: annotation.ballInCourtName,
+            checklistResponses: annotation.checklistResponses || {},
+            changedBy: annotation.changedBy,
+            changedDate: annotation.changedDate,
+            color: annotation.color,
+            opacity: annotation.opacity,
+            version: annotation.version,
+            supabaseId: annotation.supabaseId,
+            lastSyncedAt: annotation.lastSyncedAt
+          }
+        }));
+      },
+      onDelete: (highlightId) => {
+        console.log('[DocumentSync] Remote DELETE:', highlightId);
+        setHighlightAnnotations(prev => {
+          const next = { ...prev };
+          delete next[highlightId];
+          return next;
+        });
+      },
+      onError: (error) => {
+        console.error('[DocumentSync] Subscription error:', error);
+      }
+    });
+
+    documentSyncUnsubscribeRef.current = unsubscribe;
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [pdfFile?.id, user?.id, documentSyncEnabled]);
 
   // Sync local annotation changes to Supabase (debounced)
   useEffect(() => {
-    const templateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
-    if (!surveySession?.syncEnabled || !templateId) return;
+    const documentId = pdfFile?.id;
+    if (!documentId || !user?.id || !documentSyncEnabled) return;
     if (Object.keys(highlightAnnotations).length === 0) return;
 
-    const syncTimeout = setTimeout(() => {
-      console.log('[MultiUserSync] Syncing', Object.keys(highlightAnnotations).length, 'modules to Supabase...');
-      surveySession.syncAllNow(highlightAnnotations);
+    // Check if annotations actually changed (avoid syncing our own remote updates)
+    const annotationsString = JSON.stringify(highlightAnnotations);
+    if (lastSyncedAnnotationsRef.current === annotationsString) {
+      return;
+    }
+
+    const syncTimeout = setTimeout(async () => {
+      console.log('[DocumentSync] Syncing', Object.keys(highlightAnnotations).length, 'annotations to Supabase...');
+
+      const { success, synced, error } = await syncAnnotationsToSupabase(documentId, user.id, highlightAnnotations);
+
+      if (success) {
+        console.log('[DocumentSync] Successfully synced', synced, 'annotations');
+        lastSyncedAnnotationsRef.current = annotationsString;
+      } else {
+        console.error('[DocumentSync] Sync failed:', error);
+      }
     }, 2000);
 
     return () => clearTimeout(syncTimeout);
-  }, [highlightAnnotations, surveySession?.syncEnabled, selectedTemplate?.supabaseId, selectedTemplate?.id, surveySession]);
+  }, [highlightAnnotations, pdfFile?.id, user?.id, documentSyncEnabled]);
 
-  // Apply incoming remote changes from other users
+  // Update presence when page changes
   useEffect(() => {
-    if (!surveySession?.pendingRemoteChanges?.length) return;
+    const documentId = pdfFile?.id;
+    if (!documentId || !user?.id || !documentSyncEnabled) return;
 
-    const pendingChanges = surveySession.consumePendingChanges();
-    if (pendingChanges.length === 0) return;
-
-    console.log('[MultiUserSync] Applying', pendingChanges.length, 'remote changes');
-
-    pendingChanges.forEach(change => {
-      const { type, item } = change;
-      const { moduleId, categoryId, highlightId } = item;
-
-      if (type === 'insert' || type === 'update') {
-        setHighlightAnnotations(prev => {
-          const moduleAnnotations = prev[moduleId] || {};
-          const categoryAnnotations = moduleAnnotations[categoryId] || [];
-          const existingIndex = categoryAnnotations.findIndex(h => h.id === highlightId);
-
-          let updatedCategory;
-          if (existingIndex >= 0) {
-            updatedCategory = [...categoryAnnotations];
-            updatedCategory[existingIndex] = { ...updatedCategory[existingIndex], ...item, id: highlightId };
-          } else {
-            updatedCategory = [...categoryAnnotations, { ...item, id: highlightId }];
-          }
-
-          return {
-            ...prev,
-            [moduleId]: { ...moduleAnnotations, [categoryId]: updatedCategory },
-          };
-        });
-      } else if (type === 'delete') {
-        setHighlightAnnotations(prev => {
-          const moduleAnnotations = prev[moduleId] || {};
-          const categoryAnnotations = moduleAnnotations[categoryId] || [];
-          return {
-            ...prev,
-            [moduleId]: { ...moduleAnnotations, [categoryId]: categoryAnnotations.filter(h => h.id !== highlightId) },
-          };
-        });
-      }
+    updateDocumentPresence(documentId, user.id, {
+      clientType: 'app',
+      displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
+      currentPage: pageNum
     });
-  }, [surveySession?.pendingRemoteChanges, surveySession]);
+  }, [pageNum, pdfFile?.id, user?.id, documentSyncEnabled]);
 
   const handleExportSpaceToCSV = useCallback((spaceId) => {
     if (!features?.excelExport) {
