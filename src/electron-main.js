@@ -58,7 +58,65 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: preloadPath,
+      webSecurity: true, // Keep web security enabled for OAuth
     },
+  });
+
+  // Handle OAuth redirects - Supabase redirects back to the app
+  win.webContents.on('will-navigate', (event, navigationUrl) => {
+    try {
+      const parsedUrl = new URL(navigationUrl);
+      
+      // Check if this is an OAuth callback (contains hash with access_token or code)
+      if (parsedUrl.hash && (parsedUrl.hash.includes('access_token') || parsedUrl.hash.includes('code') || parsedUrl.hash.includes('error'))) {
+        event.preventDefault();
+        console.log('OAuth callback detected:', navigationUrl);
+        
+        // Reload the app to process the OAuth token
+        if (process.env.NODE_ENV === 'development') {
+          win.loadURL('http://localhost:5173' + parsedUrl.hash);
+        } else {
+          const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
+          win.loadFile(distPath).then(() => {
+            // Wait for the page to load, then inject the hash
+            win.webContents.once('did-finish-load', () => {
+              const hash = parsedUrl.hash.replace(/"/g, '\\"'); // Escape quotes
+              win.webContents.executeJavaScript(`window.location.hash = "${hash}";`).catch(err => {
+                console.error('Error setting OAuth hash:', err);
+              });
+            });
+          }).catch(err => {
+            console.error('Error loading OAuth callback:', err);
+          });
+        }
+      }
+    } catch (err) {
+      // If URL parsing fails, allow navigation (might be a relative path)
+      console.warn('Navigation URL parse error:', err);
+    }
+  });
+
+  // Handle navigation errors to prevent blank screens
+  win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('Navigation failed:', errorCode, errorDescription, validatedURL);
+    // If it's a network error and we're in production, reload the app
+    if (errorCode === -106 && process.env.NODE_ENV !== 'development') {
+      const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
+      win.loadFile(distPath).catch(err => {
+        console.error('Failed to reload app after navigation error:', err);
+      });
+    }
+  });
+
+  // Also handle external links (like OAuth providers)
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    // Allow OAuth URLs to open in the same window
+    if (url.includes('oauth') || url.includes('google') || url.includes('supabase')) {
+      return { action: 'allow' };
+    }
+    // Open other external links in the default browser
+    shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   if (process.env.NODE_ENV === 'development') {

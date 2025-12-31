@@ -63,12 +63,24 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
 
   const handleGoogleSignIn = async () => {
     setError('');
+    setMessage('');
     setLoading(true);
     try {
-      await signInWithGoogle();
-      // OAuth will redirect, modal will close on return
+      const result = await signInWithGoogle();
+      // OAuth will redirect - if we get a URL, it means we need to navigate
+      if (result?.url) {
+        // In Electron, the navigation is handled by the main process
+        // Just wait a moment for the redirect to happen
+        console.log('OAuth redirect initiated');
+        // Don't set loading to false - let the redirect happen
+        // The modal will close when auth state changes
+      } else {
+        // No redirect URL means it might have completed immediately (unlikely for OAuth)
+        setLoading(false);
+      }
     } catch (err) {
-      setError(err.message || 'Failed to sign in with Google');
+      console.error('Google sign-in error:', err);
+      setError(err.message || 'Failed to sign in with Google. Please try again.');
       setLoading(false);
     }
   };

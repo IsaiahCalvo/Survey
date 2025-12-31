@@ -147,15 +147,32 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase is not configured');
     }
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
+    // For Electron, use a proper redirect URL
+    // In Electron, window.location.origin might be file:// which doesn't work for OAuth
+    // Use the current window location or a custom protocol
+    let redirectTo = window.location.origin;
+    
+    // If we're in Electron (detected by checking for electronAPI)
+    if (window.electronAPI) {
+      // Use the current location - Electron will handle the redirect
+      redirectTo = window.location.href.split('#')[0]; // Remove any existing hash
+    }
 
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectTo,
+          skipBrowserRedirect: false, // Let the browser/Electron handle the redirect
+        },
+      });
+
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('OAuth error:', err);
+      throw err;
+    }
   };
 
   // Sign in with SSO
