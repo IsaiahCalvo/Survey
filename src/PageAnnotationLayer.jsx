@@ -4747,10 +4747,21 @@ const PageAnnotationLayer = memo(({
       const activeOnEntry = canvas.getActiveObject();
       fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4693',message:'handleMouseUpForSelection ENTRY',data:{currentTool:toolRef.current,hasSelectionRect:!!selectionRectRef.current,activeObjectType:activeOnEntry?.type,activeObjectId:activeOnEntry?.id,justFinishedDrawing:justFinishedDrawingRef.current,drawingState:drawingStateRef.current.isDrawingShape},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
+      
+      // CRITICAL: Don't interfere if we're currently drawing a shape or just finished drawing
+      // This handler runs BEFORE handleMouseUp (due to LIFO event order), so we need to check
+      // the drawing state to avoid deselecting shapes that are about to be selected in handleMouseUp
+      if (drawingStateRef.current.isDrawingShape || justFinishedDrawingRef.current) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4700',message:'handleMouseUpForSelection EXIT (drawing shape)',data:{isDrawingShape:drawingStateRef.current.isDrawingShape,justFinishedDrawing:justFinishedDrawingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        return;
+      }
+      
       if (toolRef.current !== 'select') {
         selectionRectRef.current = null;
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4700',message:'handleMouseUpForSelection EXIT (not select tool)',data:{currentTool:toolRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4707',message:'handleMouseUpForSelection EXIT (not select tool)',data:{currentTool:toolRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         return;
       }
