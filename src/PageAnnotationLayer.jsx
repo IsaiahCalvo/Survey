@@ -1561,7 +1561,7 @@ const PageAnnotationLayer = memo(({
     const tbRight = tbLeft + callout.textBoxWidth * pageWidth;
     const tbBottom = tbTop + callout.textBoxHeight * pageHeight;
     if (clickPos.x >= tbLeft && clickPos.x <= tbRight &&
-        clickPos.y >= tbTop && clickPos.y <= tbBottom) {
+      clickPos.y >= tbTop && clickPos.y <= tbBottom) {
       return true;
     }
 
@@ -1620,15 +1620,9 @@ const PageAnnotationLayer = memo(({
 
     // 1. Check if we clicked on a Fabric annotation
     if (target) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1622',message:'Annotation context menu opening',data:{targetExists:!!target,targetType:target?.type,isAlreadyActive:canvas.getActiveObjects().includes(target)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       if (!canvas.getActiveObjects().includes(target)) {
         canvas.setActiveObject(target);
         canvas.requestRenderAll();
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1624',message:'Set active object',data:{activeObjectAfter:!!canvas.getActiveObject()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
       }
 
       setContextMenu({
@@ -1869,18 +1863,14 @@ const PageAnnotationLayer = memo(({
   }, [contextMenu, closeContextMenu]);
 
   const handleEdit = useCallback(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1865',message:'handleEdit called',data:{hasCanvas:!!fabricRef.current,contextMenuExists:!!contextMenu,contextMenuX:contextMenu?.x,contextMenuY:contextMenu?.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     const canvas = fabricRef.current;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1867',message:'Canvas check',data:{canvasExists:!!canvas},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     if (!canvas) return;
-    const activeObject = canvas.getActiveObject();
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1868',message:'ActiveObject check',data:{activeObjectExists:!!activeObject,activeObjectType:activeObject?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
+    let activeObject = canvas.getActiveObject();
+
+    // Fallback: use context menu target if no active object (e.g. selection lost)
+    if (!activeObject && contextMenu?.target) {
+      activeObject = contextMenu.target;
+    }
 
     if (activeObject) {
       // Get initial values from first object if selection
@@ -1943,9 +1933,6 @@ const PageAnnotationLayer = memo(({
         opacity: obj.opacity
       }));
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1931',message:'Setting editModal',data:{contextMenuX:contextMenu?.x,contextMenuY:contextMenu?.y,hasContextMenu:!!contextMenu},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       setEditModal({
         visible: true,
         x: contextMenu.x,
@@ -1953,13 +1940,6 @@ const PageAnnotationLayer = memo(({
         object: activeObject,
         initialStates: initialStates
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1937',message:'editModal set complete',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
-    } else {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1939',message:'activeObject is null, skipping editModal',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
     }
     closeContextMenu();
   }, [contextMenu, closeContextMenu, calloutsRef]);
@@ -2170,13 +2150,6 @@ const PageAnnotationLayer = memo(({
     canvas.requestRenderAll();
   }, [editValues, editModal]);
 
-  // Debug: Log editModal changes
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2148',message:'editModal state changed',data:{editModalExists:!!editModal,editModalVisible:editModal?.visible,editModalX:editModal?.x,editModalY:editModal?.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-  }, [editModal]);
-
   const cancelEdit = useCallback(() => {
     if (!editModal) return;
     const canvas = fabricRef.current;
@@ -2266,13 +2239,13 @@ const PageAnnotationLayer = memo(({
       if (!canvasElement) return;
 
       // Check if click is outside the context menu element
-      const isOutsideContextMenu = contextMenuRef.current && 
+      const isOutsideContextMenu = contextMenuRef.current &&
         !contextMenuRef.current.contains(event.target);
 
       // Check if click is on the canvas or its container
       const containerElement = canvasElement.parentElement;
-      const isOnCanvasArea = canvasElement.contains(event.target) || 
-                             (containerElement && containerElement.contains(event.target));
+      const isOnCanvasArea = canvasElement.contains(event.target) ||
+        (containerElement && containerElement.contains(event.target));
 
       // Check if there's a selected annotation
       const activeObject = canvas.getActiveObject();
@@ -2305,16 +2278,16 @@ const PageAnnotationLayer = memo(({
           canvas.requestRenderAll();
         }
         closeContextMenu();
-      } 
+      }
       // If no context menu but there's a selected annotation, deselect if clicking outside annotation
       else if (!contextMenu && hasSelectedAnnotation) {
         // Check if click is on the selected annotation itself
         const isOnSelectedAnnotation = target && (
-          target === activeObject || 
+          target === activeObject ||
           (activeObject.type === 'activeSelection' && activeObject.getObjects().includes(target)) ||
           (activeObject.type === 'group' && activeObject.getObjects().includes(target))
         );
-        
+
         // If click is not on the selected annotation, deselect
         if (!isOnSelectedAnnotation) {
           canvas.discardActiveObject();
@@ -2386,9 +2359,6 @@ const PageAnnotationLayer = memo(({
     // Disable Fabric.js built-in selection for Pan tool (we want drag-to-pan)
     // Enable selection for Select tool (we have custom selection handler but need Fabric's selection enabled for it to work)
     canvas.selection = tool === 'select';
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2388',message:'Canvas selection state',data:{tool:tool,canvasSelection:canvas.selection,isDrawingMode:canvas.isDrawingMode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
 
     // Deselect active object when switching away from select tool to prevent interference
     if (tool !== 'select') {
@@ -2607,7 +2577,7 @@ const PageAnnotationLayer = memo(({
 
         const canvas = fabricRef.current;
         if (!canvas) return;
-        
+
         // Get all active objects to support multiple selection
         const activeObjects = canvas.getActiveObjects();
         if (activeObjects.length === 0) return;
@@ -2621,7 +2591,7 @@ const PageAnnotationLayer = memo(({
 
         if (callouts.length > 0) {
           // Check if any callout is being edited
-          const isEditing = callouts.some(callout => 
+          const isEditing = callouts.some(callout =>
             callout.isEditing || (callout.getObjects && callout.getObjects().some(o => o.isEditing))
           );
 
@@ -3785,7 +3755,7 @@ const PageAnnotationLayer = memo(({
             const objSpaceId = obj.spaceId || null; // Old annotations may still have spaceId
             const objRegionId = obj.regionId || null;
             let shouldSkip = false;
-            
+
             // When a space is active (activeSpaceIdRef.current !== null):
             // - Background annotations (objRegionId === null) should NOT be erasable
             // - Region-scoped annotations (objRegionId !== null) SHOULD be erasable if they belong to the active space
@@ -3840,7 +3810,7 @@ const PageAnnotationLayer = memo(({
                 }
               }
             }
-            
+
             if (shouldSkip) {
               continue;
             }
@@ -4801,7 +4771,7 @@ const PageAnnotationLayer = memo(({
       // Callouts should only be evented when using select, pan, or callout tool to prevent blocking other annotation tools
       const isCallout = obj.data?.type === 'callout';
       const shouldBeEvented = isSelectable && (!isCallout || tool === 'select' || tool === 'pan' || tool === 'callout');
-      
+
       // Only update interactivity properties, preserve visibility from main filter
       obj.set({
         selectable: obj.visible && isSelectable, // Only selectable if visible AND tool allows it
@@ -5119,7 +5089,7 @@ const PageAnnotationLayer = memo(({
   // Helper function to get spaceId from regionId
   const getSpaceIdForRegion = useCallback((regionId) => {
     if (!regionId || !spaces || spaces.length === 0) return null;
-    
+
     for (const space of spaces) {
       const assignedPages = space.assignedPages || [];
       for (const page of assignedPages) {
@@ -5143,8 +5113,8 @@ const PageAnnotationLayer = memo(({
     // FIX: When region selection is active, preserve regions even if activeRegions is null temporarily
     // This ensures annotations remain visible during region editing
     // Use empty array to represent "regions mode active but no regions yet" vs null = "no regions mode"
-    const regions = (Array.isArray(activeRegions) && activeRegions.length > 0) 
-      ? activeRegions 
+    const regions = (Array.isArray(activeRegions) && activeRegions.length > 0)
+      ? activeRegions
       : (isRegionSelectionActive ? [] : null);
     const hasActiveRegions = regions !== null; // null = no regions mode, [] or [...] = regions mode active
 
@@ -5159,13 +5129,13 @@ const PageAnnotationLayer = memo(({
         hiddenCount += 1;
         return; // Skip further visibility checks
       }
-      
+
       const objModuleId = obj.moduleId || null;
       const objRegionId = obj.regionId || null; // Get region ID from annotation
 
       // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
       const isSurveyAnnotation = objModuleId !== null;
-      
+
       // Check if this is a scoped region annotation
       const isScopedRegionAnnotation = objRegionId !== null;
 
@@ -5174,7 +5144,7 @@ const PageAnnotationLayer = memo(({
       if (isScopedRegionAnnotation && objRegionId !== null) {
         derivedSpaceId = getSpaceIdForRegion(objRegionId);
       }
-      
+
       // Filter by space:
       // - Region-scoped annotations: derive spaceId from regionId and check if that space is ACTIVE (activeSpaceId)
       // - Background annotations (objRegionId === null): always pass space filter and be controlled by per-region lightbulb
@@ -5227,7 +5197,7 @@ const PageAnnotationLayer = memo(({
       // Background annotations (objRegionId === null) should respect the per-region lightbulb toggle
       // when a space is active, or be visible when no space is active
       let backgroundAnnotationVisible = true;
-      
+
       // Only apply to background annotations (not scoped region annotations)
       if (!isScopedRegionAnnotation && objRegionId === null) {
         // This is a background annotation (made outside any space/region)
@@ -5245,12 +5215,12 @@ const PageAnnotationLayer = memo(({
       // 2. Survey annotations are visible (if applicable)
       // 3. Scoped region annotations are visible (if applicable)
       // 4. Background annotations respect the per-region lightbulb toggle
-      const isVisible = matchesSpace && 
-                       matchesModule && 
-                       surveyAnnotationVisible && 
-                       scopedRegionAnnotationVisible &&
-                       (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
-      
+      const isVisible = matchesSpace &&
+        matchesModule &&
+        surveyAnnotationVisible &&
+        scopedRegionAnnotationVisible &&
+        (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
+
       // Interaction logic:
       // - When a space is active (activeSpaceId !== null), background annotations (objRegionId === null) 
       //   should NOT be interactive, regardless of visibility
@@ -5273,7 +5243,7 @@ const PageAnnotationLayer = memo(({
           isInteractive = (selectedModuleId === null || objModuleId === selectedModuleId);
         }
       }
-      
+
       obj.set({
         visible: isVisible,
         selectable: isInteractive,
@@ -5378,9 +5348,6 @@ const PageAnnotationLayer = memo(({
         handleContextMenu(e);
       }}
       onMouseDown={(e) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:5377',message:'MouseDown event',data:{tool:tool,button:e.button,hasModifier:e.ctrlKey||e.metaKey,canvasSelection:fabricRef.current?.selection},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
         // Detect Command+Click (Mac) or Control+Click (Windows) as context menu trigger
         // This should fire before Fabric.js processes the event
         const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
