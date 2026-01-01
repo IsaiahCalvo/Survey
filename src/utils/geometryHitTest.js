@@ -1075,6 +1075,10 @@ export const doesRectIntersectPath = (selRect, pathObj) => {
 export const doesRectIntersectRect = (selRect, rectObj) => {
   if (!rectObj || rectObj.type !== 'rect') return false;
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geometryHitTest.js:1042',message:'doesRectIntersectRect entry',data:{selRect,rectWidth:rectObj.width,rectHeight:rectObj.height,rectLeft:rectObj.left,rectTop:rectObj.top,strokeWidth:rectObj.strokeWidth,hasFill:!!(rectObj.fill && rectObj.fill !== 'transparent' && rectObj.fill !== ''),hasStroke:!!(rectObj.stroke && rectObj.stroke !== 'transparent' && rectObj.stroke !== '')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+
   const matrix = getObjectTransformMatrix(rectObj);
   const width = rectObj.width || 0;
   const height = rectObj.height || 0;
@@ -1104,6 +1108,10 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
   };
 
   const canvasVertices = localVertices.map(transformPoint);
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geometryHitTest.js:1073',message:'Rect vertices transformed',data:{canvasVertices,selRect,matrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
 
   if (hasFill) {
     // Check if any vertex is inside selection rect
@@ -1289,7 +1297,11 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
     }
   }
 
-  return false;
+  const result = false;
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geometryHitTest.js:1293',message:'doesRectIntersectRect exit false',data:{selRect,hasFill,hasStroke},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+  return result;
 };
 
 /**
@@ -1466,30 +1478,45 @@ const multiplyMatrices = (m1, m2) => {
 export const doesRectIntersectObject = (selRect, obj) => {
   if (!obj || !obj.type) return false;
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geometryHitTest.js:1466',message:'doesRectIntersectObject entry',data:{objType:obj.type,selRect,objId:obj.id,objLeft:obj.left,objTop:obj.top},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+
+  let result;
   switch (obj.type) {
     case 'path':
-      return doesRectIntersectPath(selRect, obj);
+      result = doesRectIntersectPath(selRect, obj);
+      break;
     case 'rect':
-      return doesRectIntersectRect(selRect, obj);
+      result = doesRectIntersectRect(selRect, obj);
+      break;
     case 'circle':
     case 'ellipse':
-      return doesRectIntersectCircle(selRect, obj);
+      result = doesRectIntersectCircle(selRect, obj);
+      break;
     case 'line':
-      return doesRectIntersectLine(selRect, obj);
+      result = doesRectIntersectLine(selRect, obj);
+      break;
     case 'textbox':
     case 'text':
     case 'i-text':
-      return doesRectIntersectTextbox(selRect, obj);
+      result = doesRectIntersectTextbox(selRect, obj);
+      break;
     case 'group':
-      return doesRectIntersectGroup(selRect, obj);
+      result = doesRectIntersectGroup(selRect, obj);
+      break;
     case 'polyline':
       // Similar to path, check each segment
       const points = obj.points || [];
-      if (points.length < 2) return false;
+      if (points.length < 2) {
+        result = false;
+        break;
+      }
       const matrix = getObjectTransformMatrix(obj);
       const [a, b, c, d, e, f] = matrix;
       const strokeWidth = obj.strokeWidth || 1;
 
+      result = false;
       for (let i = 0; i < points.length - 1; i++) {
         const start = {
           x: a * points[i].x + c * points[i].y + e,
@@ -1500,10 +1527,11 @@ export const doesRectIntersectObject = (selRect, obj) => {
           y: b * points[i + 1].x + d * points[i + 1].y + f
         };
         if (doesRectIntersectLineSegment(selRect, start, end, strokeWidth)) {
-          return true;
+          result = true;
+          break;
         }
       }
-      return false;
+      break;
     case 'triangle':
       // Get triangle vertices and check
       const triMatrix = getObjectTransformMatrix(obj);
@@ -1546,16 +1574,25 @@ export const doesRectIntersectObject = (selRect, obj) => {
           return true;
         }
       }
-      return false;
+      result = false;
+      break;
     default:
       // Fallback: use bounding box
       const bounds = obj.getBoundingRect ? obj.getBoundingRect() : null;
       if (bounds) {
-        return !(selRect.right < bounds.left || selRect.left > bounds.left + bounds.width ||
+        result = !(selRect.right < bounds.left || selRect.left > bounds.left + bounds.width ||
                  selRect.bottom < bounds.top || selRect.top > bounds.top + bounds.height);
+      } else {
+        result = false;
       }
-      return false;
+      break;
   }
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geometryHitTest.js:1530',message:'doesRectIntersectObject exit',data:{objType:obj.type,result,objId:obj.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+
+  return result;
 };
 
 /**

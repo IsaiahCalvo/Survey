@@ -4852,6 +4852,10 @@ const PageAnnotationLayer = memo(({
         // Selection rectangle for hit testing
         const selRect = { left: selLeft, top: selTop, right: selRight, bottom: selBottom };
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4853',message:'Selection rect created',data:{selRect,isWindowSelection,selWidth,selHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+
         // Collect objects based on direction-determined selection mode
         const allObjects = canvas.getObjects();
 
@@ -4895,11 +4899,18 @@ const PageAnnotationLayer = memo(({
               objRect.top > selRect.bottom
             );
 
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4891',message:'Bounding box check',data:{objType:obj.type,objRect,selRect,boundingBoxIntersects,objId:obj.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+
             if (boundingBoxIntersects) {
               // Bounding boxes intersect, now check if actual geometry intersects
               // Use geometry-based intersection for precise selection
               try {
                 const geoIntersects = doesRectIntersectObject(selRect, obj);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4902',message:'Geometry intersection result',data:{objType:obj.type,geoIntersects,objId:obj.id,objRect,selRect},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+                // #endregion
                 if (geoIntersects) {
                   objectsToSelect.push(obj);
                 }
@@ -4907,8 +4918,15 @@ const PageAnnotationLayer = memo(({
               } catch (e) {
                 // If geometry check fails, fall back to bounding box intersection
                 console.warn('Geometry check failed, using bounding box:', e.message);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4909',message:'Geometry check exception',data:{objType:obj.type,error:e.message,objId:obj.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                // #endregion
                 objectsToSelect.push(obj);
               }
+            } else {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4913',message:'Bounding box rejected',data:{objType:obj.type,objRect,selRect,objId:obj.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+              // #endregion
             }
           }
         });
