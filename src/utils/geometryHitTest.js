@@ -765,8 +765,8 @@ export const doesRectIntersectLineSegment = (selRect, lineStart, lineEnd, stroke
     Math.pow(lineEnd.x - lineStart.x, 2) + Math.pow(lineEnd.y - lineStart.y, 2)
   );
   if (lineLength > 0) {
-    // Sample points along the line, spacing them based on line length
-    const numSamples = Math.max(3, Math.ceil(lineLength / 10)); // Sample every ~10px
+    // Increased sampling density: sample every ~5px instead of ~10px for better detection
+    const numSamples = Math.max(4, Math.ceil(lineLength / 5)); // Changed from /10 to /5, min from 3 to 4
     for (let i = 0; i <= numSamples; i++) {
       const t = i / numSamples;
       const samplePoint = {
@@ -878,7 +878,8 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
 
   // Check if rect edges intersect ellipse
   // Sample points along ellipse and check if any fall within rect
-  const samples = 32;
+  // Increased from 32 to 64 samples for better coverage (matches path segment density)
+  const samples = 64;
   for (let i = 0; i < samples; i++) {
     const angle = (2 * Math.PI * i) / samples;
     const x = cx + outerRx * Math.cos(angle);
@@ -1167,6 +1168,35 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
       }
     }
 
+    // Sample points along rectangle edges to catch partial overlaps
+    // This matches the approach used for paths and ellipses - more thorough detection
+    for (let i = 0; i < canvasVertices.length; i++) {
+      const next = (i + 1) % canvasVertices.length;
+      const edgeStart = canvasVertices[i];
+      const edgeEnd = canvasVertices[next];
+      
+      const edgeLength = Math.sqrt(
+        Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
+      );
+      
+      // Sample every ~5px, minimum 4 samples per edge
+      const samplesPerEdge = Math.max(4, Math.ceil(edgeLength / 5));
+      
+      for (let s = 0; s <= samplesPerEdge; s++) {
+        const t = s / samplesPerEdge;
+        const point = {
+          x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
+          y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
+        };
+        
+        // Check if this point on the rectangle edge is inside the selection rect
+        if (point.x >= selRect.left && point.x <= selRect.right &&
+            point.y >= selRect.top && point.y <= selRect.bottom) {
+          return true;
+        }
+      }
+    }
+
     // Also check if selection rect edges intersect object edges (bidirectional)
     const selRectEdges = [
       [{ x: selRect.left, y: selRect.top }, { x: selRect.right, y: selRect.top }],
@@ -1277,6 +1307,34 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
       const next = (i + 1) % canvasVertices.length;
       if (doesRectIntersectLineSegment(selRect, canvasVertices[i], canvasVertices[next], 2)) {
         return true;
+      }
+    }
+    
+    // Sample points along rectangle edges to catch partial overlaps
+    for (let i = 0; i < canvasVertices.length; i++) {
+      const next = (i + 1) % canvasVertices.length;
+      const edgeStart = canvasVertices[i];
+      const edgeEnd = canvasVertices[next];
+      
+      const edgeLength = Math.sqrt(
+        Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
+      );
+      
+      // Sample every ~5px, minimum 4 samples per edge
+      const samplesPerEdge = Math.max(4, Math.ceil(edgeLength / 5));
+      
+      for (let s = 0; s <= samplesPerEdge; s++) {
+        const t = s / samplesPerEdge;
+        const point = {
+          x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
+          y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
+        };
+        
+        // Check if this point on the rectangle edge is inside the selection rect
+        if (point.x >= selRect.left && point.x <= selRect.right &&
+            point.y >= selRect.top && point.y <= selRect.bottom) {
+          return true;
+        }
       }
     }
     
@@ -1414,6 +1472,34 @@ export const doesRectIntersectTextbox = (selRect, textObj) => {
     const next = (i + 1) % canvasVertices.length;
     if (doesRectIntersectLineSegment(selRect, canvasVertices[i], canvasVertices[next], 0)) {
       return true;
+    }
+  }
+
+  // Sample points along textbox edges to catch partial overlaps
+  for (let i = 0; i < canvasVertices.length; i++) {
+    const next = (i + 1) % canvasVertices.length;
+    const edgeStart = canvasVertices[i];
+    const edgeEnd = canvasVertices[next];
+    
+    const edgeLength = Math.sqrt(
+      Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
+    );
+    
+    // Sample every ~5px, minimum 4 samples per edge
+    const samplesPerEdge = Math.max(4, Math.ceil(edgeLength / 5));
+    
+    for (let s = 0; s <= samplesPerEdge; s++) {
+      const t = s / samplesPerEdge;
+      const point = {
+        x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
+        y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
+      };
+      
+      // Check if this point on the textbox edge is inside the selection rect
+      if (point.x >= selRect.left && point.x <= selRect.right &&
+          point.y >= selRect.top && point.y <= selRect.bottom) {
+        return true;
+      }
     }
   }
 
@@ -1573,6 +1659,36 @@ export const doesRectIntersectObject = (selRect, obj) => {
         if (doesRectIntersectLineSegment(selRect, canvasTriVertices[i], canvasTriVertices[next], triStrokeWidth)) {
           return true;
         }
+      }
+
+      // Sample points along triangle edges to catch partial overlaps
+      for (let i = 0; i < canvasTriVertices.length; i++) {
+        const next = (i + 1) % canvasTriVertices.length;
+        const edgeStart = canvasTriVertices[i];
+        const edgeEnd = canvasTriVertices[next];
+        
+        const edgeLength = Math.sqrt(
+          Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
+        );
+        
+        // Sample every ~5px, minimum 4 samples per edge
+        const samplesPerEdge = Math.max(4, Math.ceil(edgeLength / 5));
+        
+        for (let s = 0; s <= samplesPerEdge; s++) {
+          const t = s / samplesPerEdge;
+          const point = {
+            x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
+            y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
+          };
+          
+          // Check if this point on the triangle edge is inside the selection rect
+          if (point.x >= selRect.left && point.x <= selRect.right &&
+              point.y >= selRect.top && point.y <= selRect.bottom) {
+            result = true;
+            break;
+          }
+        }
+        if (result) break;
       }
       result = false;
       break;
