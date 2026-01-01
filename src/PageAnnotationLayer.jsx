@@ -4752,14 +4752,7 @@ const PageAnnotationLayer = memo(({
           canvas.requestRenderAll();
         } else {
           // Don't deselect if we just finished drawing a shape
-          // #region agent log
-          const activeBeforeCheck = canvas.getActiveObject();
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4776',message:'handleMouseUpForSelection no hit - checking flag',data:{justFinishedDrawing:justFinishedDrawingRef.current,activeObjectType:activeBeforeCheck?.type,activeObjectId:activeBeforeCheck?.id,drawingState:drawingStateRef.current.isDrawingShape},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
           if (justFinishedDrawingRef.current) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4778',message:'handleMouseUpForSelection SKIP deselection (justFinishedDrawing=true)',data:{activeObjectType:activeBeforeCheck?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
             return;
           }
           
@@ -4776,10 +4769,6 @@ const PageAnnotationLayer = memo(({
           }
 
           // Clicked on empty space (outside bounding box) - deselect all
-          // #region agent log
-          const activeBeforeDiscard = canvas.getActiveObject();
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4793',message:'handleMouseUpForSelection DISCARDING active object',data:{activeObjectType:activeBeforeDiscard?.type,activeObjectId:activeBeforeDiscard?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           canvas.discardActiveObject();
           canvas.requestRenderAll();
         }
@@ -5155,7 +5144,8 @@ const PageAnnotationLayer = memo(({
 
       // Track the existing regionId to preserve when re-adding
       // This prevents highlights created outside a region from getting regionId when re-rendered
-      let preservedRegionId = null;
+      // IMPORTANT: undefined means "not captured yet", null means "explicitly no regionId"
+      let preservedRegionId; // undefined by default
 
       // Check if we already have this highlight rendered
       if (highlight.highlightId && renderedHighlightsRef.current.has(highlight.highlightId)) {
@@ -5164,7 +5154,9 @@ const PageAnnotationLayer = memo(({
         // Verify it's still on the canvas
         if (canvas.getObjects().includes(existingRect)) {
           // Capture the existing regionId BEFORE any removal
-          preservedRegionId = existingRect.regionId || null;
+          // Keep the exact value: could be null (no regionId), undefined, or a real ID
+          preservedRegionId = existingRect.regionId !== undefined ? existingRect.regionId : null;
+          console.log(`[RegionIdDebug] HighlightId-based check: Captured preservedRegionId=${preservedRegionId} from highlight ${highlight.highlightId}`);
 
           // Check if properties match (color, needsBIC, bounds)
           const rawColor = highlight.color || highlightColor;
@@ -5248,8 +5240,17 @@ const PageAnnotationLayer = memo(({
         return boundsMatch;
       });
 
-      // Remove matching highlights
+      // Remove matching highlights, but capture regionId if we haven't already
+      // This ensures highlights retain their regionId even when re-rendered via bounds match
       matchingRects.forEach(rect => {
+        // CRITICAL FIX: Capture regionId from bounds-matched rect if we haven't captured one yet
+        // This handles the case where the highlightId-based check didn't find the highlight
+        // (e.g., when a different highlight's bounds-based removal already deleted it from renderedHighlightsRef)
+        if (preservedRegionId === undefined) {
+          // Capture the regionId - could be null (explicitly no regionId) or a real ID
+          preservedRegionId = rect.regionId !== undefined ? rect.regionId : null;
+          console.log(`[RegionIdDebug] Bounds-based removal: Captured preservedRegionId=${preservedRegionId} from rect with highlightId=${rect.highlightId}`);
+        }
         // Remove the old highlight
         canvas.remove(rect);
         // Clean up refs if it had a highlightId
@@ -5295,18 +5296,19 @@ const PageAnnotationLayer = memo(({
           }
           // Preserve existing regionId from canvas object, or assign new one if appropriate
           // This ensures highlights created outside a region don't get regionId when re-rendered
-          // Priority: preservedRegionId (from existing canvas object) > highlight.regionId > new assignment
-          const existingRegionId = preservedRegionId || highlight.regionId || null;
-          if (existingRegionId) {
-            // Preserve the original regionId from when this highlight was created
-            rect.set({ regionId: existingRegionId });
+          // CRITICAL: preservedRegionId === null means "explicitly no regionId" (different from undefined)
+          if (preservedRegionId !== undefined) {
+            // We captured the regionId from the existing canvas object (could be null or a real ID)
+            // null means the highlight was INTENTIONALLY created without regionId - preserve that
+            rect.set({ regionId: preservedRegionId });
+          } else if (highlight.regionId) {
+            // Use regionId from highlight data if available
+            rect.set({ regionId: highlight.regionId });
           } else if (shouldAssignRegionId()) {
-            // Only assign new regionId if highlight doesn't already have one AND conditions are met
+            // Only assign new regionId if nothing was preserved and conditions are met
             rect.set({ regionId: activeRegionIdRef.current });
-          }
-          // If no regionId to assign, explicitly set to null to ensure it's not assigned
-          // This is important for highlights created outside of regions
-          if (!existingRegionId && !shouldAssignRegionId()) {
+          } else {
+            // Explicitly no regionId
             rect.set({ regionId: null });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
@@ -5352,18 +5354,19 @@ const PageAnnotationLayer = memo(({
           }
           // Preserve existing regionId from canvas object, or assign new one if appropriate
           // This ensures highlights created outside a region don't get regionId when re-rendered
-          // Priority: preservedRegionId (from existing canvas object) > highlight.regionId > new assignment
-          const existingRegionId = preservedRegionId || highlight.regionId || null;
-          if (existingRegionId) {
-            // Preserve the original regionId from when this highlight was created
-            rect.set({ regionId: existingRegionId });
+          // CRITICAL: preservedRegionId === null means "explicitly no regionId" (different from undefined)
+          if (preservedRegionId !== undefined) {
+            // We captured the regionId from the existing canvas object (could be null or a real ID)
+            // null means the highlight was INTENTIONALLY created without regionId - preserve that
+            rect.set({ regionId: preservedRegionId });
+          } else if (highlight.regionId) {
+            // Use regionId from highlight data if available
+            rect.set({ regionId: highlight.regionId });
           } else if (shouldAssignRegionId()) {
-            // Only assign new regionId if highlight doesn't already have one AND conditions are met
+            // Only assign new regionId if nothing was preserved and conditions are met
             rect.set({ regionId: activeRegionIdRef.current });
-          }
-          // If no regionId to assign, explicitly set to null to ensure it's not assigned
-          // This is important for highlights created outside of regions
-          if (!existingRegionId && !shouldAssignRegionId()) {
+          } else {
+            // Explicitly no regionId
             rect.set({ regionId: null });
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
