@@ -2932,19 +2932,11 @@ const PageAnnotationLayer = memo(({
 
     const saveCanvas = () => {
       if (!fabricRef.current) return;
-      // #region agent log
-      const activeBeforeSave = canvas.getActiveObject();
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2933',message:'saveCanvas ENTRY',data:{activeObjectType:activeBeforeSave?.type,activeObjectId:activeBeforeSave?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-      // #endregion
       try {
         // Include spaceId in the saved JSON to preserve space associations
         const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON);
-        // #region agent log
-        const activeAfterSave = canvas.getActiveObject();
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:2940',message:'saveCanvas EXIT',data:{activeObjectType:activeAfterSave?.type,activeObjectId:activeAfterSave?.id,wasCleared:activeBeforeSave!==null&&activeAfterSave===null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-        // #endregion
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
       }
@@ -3029,15 +3021,8 @@ const PageAnnotationLayer = memo(({
         if (shouldAssignRegionId()) {
           e.path.set({ regionId: activeRegionIdRef.current });
         }
-        // Set flag to prevent deselection in handleMouseUpForSelection
-        justFinishedDrawingRef.current = true;
-        // Automatically select the path so handles appear
-        canvas.setActiveObject(e.path);
-        canvas.requestRenderAll();
-        // Clear flag after a brief delay
-        setTimeout(() => {
-          justFinishedDrawingRef.current = false;
-        }, 100);
+        // NOTE: Do NOT auto-select pen strokes or highlighter paths
+        // Users should manually select them if they want to resize
       }
       saveCanvas();
     };
@@ -4299,16 +4284,7 @@ const PageAnnotationLayer = memo(({
 
       const currentStrokeColor = strokeColorRef.current;
       const ds = drawingStateRef.current;
-      // #region agent log
-      const activeOnEntry = canvas.getActiveObject();
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4280',message:'handleMouseUp ENTRY',data:{currentTool:toolRef.current,isDrawingShape:ds?.isDrawingShape,hasTempObj:!!ds?.tempObj,tempObjType:ds?.tempObj?.type,tempObjSelectable:ds?.tempObj?.selectable,tempObjHasControls:ds?.tempObj?.hasControls,activeObjectType:activeOnEntry?.type,justFinishedDrawing:justFinishedDrawingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      if (!ds.isDrawingShape || !ds.tempObj) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4284',message:'handleMouseUp EXIT (not drawing shape)',data:{isDrawingShape:ds?.isDrawingShape,hasTempObj:!!ds?.tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-        return;
-      }
+      if (!ds.isDrawingShape || !ds.tempObj) return;
 
       // Handle highlight tool: create rectangle and call callback
       if (currentTool === 'highlight' && ds.tempObj.type === 'rect') {
@@ -4415,60 +4391,32 @@ const PageAnnotationLayer = memo(({
           justFinishedDrawingRef.current = false;
         }, 100);
       } else if (ds.tempObj) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4375',message:'Entering else if ds.tempObj block',data:{currentTool:toolRef.current,tempObjType:ds.tempObj.type,tempObjSelectable:ds.tempObj.selectable,tempObjHasControls:ds.tempObj.hasControls,tempObjOnCanvas:canvas.getObjects().includes(ds.tempObj)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         // For other shapes (rect, ellipse, line, squiggly), the temp object is the final object
         // Automatically select it so handles appear
         // Make sure it's selectable and has controls
         const tempObj = ds.tempObj; // Store reference before clearing
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4410',message:'BEFORE setting object properties',data:{tempObjType:tempObj.type,tempObjSelectable:tempObj.selectable,tempObjHasControls:tempObj.hasControls,tempObjHasBorders:tempObj.hasBorders},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
         tempObj.set({
           selectable: true,
           hasControls: true,
           hasBorders: true
         });
         tempObj.setCoords(); // Ensure coordinates are updated
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4416',message:'AFTER setting object properties',data:{tempObjSelectable:tempObj.selectable,tempObjHasControls:tempObj.hasControls,tempObjHasBorders:tempObj.hasBorders},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
         
         // Set flag to prevent deselection in handleMouseUpForSelection
         justFinishedDrawingRef.current = true;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4419',message:'BEFORE setActiveObject - flag set',data:{justFinishedDrawing:justFinishedDrawingRef.current,activeObjectBefore:canvas.getActiveObject()?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
         
         // Select immediately so handles appear right away
         canvas.setActiveObject(tempObj);
         canvas.requestRenderAll();
         
-        // #region agent log
-        const activeAfterSet = canvas.getActiveObject();
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4422',message:'AFTER setActiveObject',data:{activeObjectType:activeAfterSet?.type,activeObjectIsTempObj:activeAfterSet===tempObj,activeObjectSelectable:activeAfterSet?.selectable,activeObjectHasControls:activeAfterSet?.hasControls,activeObjectHasBorders:activeAfterSet?.hasBorders,justFinishedDrawing:justFinishedDrawingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
-        
         // Clear flag after a brief delay to allow other handlers to see it
         setTimeout(() => {
           justFinishedDrawingRef.current = false;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4427',message:'Flag cleared after timeout',data:{justFinishedDrawing:justFinishedDrawingRef.current,activeObjectType:canvas.getActiveObject()?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-          // #endregion
         }, 100);
       }
       ds.isDrawingShape = false;
       ds.tempObj = null;
-      // #region agent log
-      const activeBeforeSave = canvas.getActiveObject();
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4435',message:'BEFORE saveCanvas',data:{activeObjectType:activeBeforeSave?.type,activeObjectId:activeBeforeSave?.id,activeObjectSelectable:activeBeforeSave?.selectable,activeObjectHasControls:activeBeforeSave?.hasControls,justFinishedDrawing:justFinishedDrawingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-      // #endregion
       saveCanvas();
-      // #region agent log
-      const activeAfterSave = canvas.getActiveObject();
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4438',message:'AFTER saveCanvas',data:{activeObjectType:activeAfterSave?.type,activeObjectId:activeAfterSave?.id,activeObjectSelectable:activeAfterSave?.selectable,activeObjectHasControls:activeAfterSave?.hasControls,wasCleared:activeBeforeSave!==null&&activeAfterSave===null,objectsMatch:activeBeforeSave===activeAfterSave},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-      // #endregion
     };
 
     const handleDblClick = (opt) => {
@@ -4743,26 +4691,15 @@ const PageAnnotationLayer = memo(({
 
     // Track mouse up to perform AutoCAD-style selection based on drag direction
     const handleMouseUpForSelection = (e) => {
-      // #region agent log
-      const activeOnEntry = canvas.getActiveObject();
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4693',message:'handleMouseUpForSelection ENTRY',data:{currentTool:toolRef.current,hasSelectionRect:!!selectionRectRef.current,activeObjectType:activeOnEntry?.type,activeObjectId:activeOnEntry?.id,justFinishedDrawing:justFinishedDrawingRef.current,drawingState:drawingStateRef.current.isDrawingShape},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      
       // CRITICAL: Don't interfere if we're currently drawing a shape or just finished drawing
       // This handler runs BEFORE handleMouseUp (due to LIFO event order), so we need to check
       // the drawing state to avoid deselecting shapes that are about to be selected in handleMouseUp
       if (drawingStateRef.current.isDrawingShape || justFinishedDrawingRef.current) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4700',message:'handleMouseUpForSelection EXIT (drawing shape)',data:{isDrawingShape:drawingStateRef.current.isDrawingShape,justFinishedDrawing:justFinishedDrawingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return;
       }
       
       if (toolRef.current !== 'select') {
         selectionRectRef.current = null;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4707',message:'handleMouseUpForSelection EXIT (not select tool)',data:{currentTool:toolRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return;
       }
 
