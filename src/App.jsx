@@ -13393,6 +13393,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return;
       }
 
+      // 'L' key to switch to Line Tool (only when no modifiers are pressed)
+      if ((e.key === 'l' || e.key === 'L') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        // Don't trigger if user is focused on an input field, textbox, or callout
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+
+        // Prevent default behavior and switch to line tool
+        e.preventDefault();
+        setActiveTool('line');
+        return;
+      }
+
       if (!isFormField && (e.metaKey || e.ctrlKey)) {
         const key = e.key.toLowerCase();
 

@@ -3773,6 +3773,36 @@ const PageAnnotationLayer = memo(({
         return;
       }
       if (currentTool === 'text') {
+        // Check if user is clicking on an existing textbox or its control handles
+        // If so, don't create a new textbox - let Fabric handle resize/move
+        const target = opt.target;
+        const activeObject = canvas.getActiveObject();
+        
+        // Check if clicking on an existing textbox
+        const isClickingTextbox = target && (target.type === 'textbox' || target.type === 'i-text' || target.type === 'text');
+        
+        // Check if active object is a textbox
+        const isActiveTextbox = activeObject && (activeObject.type === 'textbox' || activeObject.type === 'i-text' || activeObject.type === 'text');
+        
+        // Check if clicking on a control handle of an active textbox
+        let isClickingControl = false;
+        if (isActiveTextbox && activeObject._findTargetCorner) {
+          // Ensure control points are calculated
+          if (!activeObject.oCoords) {
+            try { activeObject.setCoords(); } catch (e) { }
+          }
+          if (activeObject.oCoords) {
+            const corner = activeObject._findTargetCorner(opt.e, true);
+            isClickingControl = corner !== undefined && corner !== '';
+          }
+        }
+        
+        // If clicking on a textbox or its control handle, don't create new one
+        // Let Fabric.js handle the interaction (resize, move, etc.)
+        if (isClickingTextbox || isClickingControl || (isActiveTextbox && target === activeObject)) {
+          return;
+        }
+        
         const tb = new Textbox('Text', {
           left: x,
           top: y,

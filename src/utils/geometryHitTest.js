@@ -735,6 +735,16 @@ export const doesRectIntersectLineSegment = (selRect, lineStart, lineEnd, stroke
     return true;
   }
 
+  // Check if line midpoint is inside the rect (catches cases where line is fully contained)
+  const midPoint = {
+    x: (lineStart.x + lineEnd.x) / 2,
+    y: (lineStart.y + lineEnd.y) / 2
+  };
+  if (midPoint.x >= rect.left && midPoint.x <= rect.right &&
+      midPoint.y >= rect.top && midPoint.y <= rect.bottom) {
+    return true;
+  }
+
   // Check if line crosses any edge of the rect
   const rectEdges = [
     [{ x: rect.left, y: rect.top }, { x: rect.right, y: rect.top }],     // Top
@@ -746,6 +756,29 @@ export const doesRectIntersectLineSegment = (selRect, lineStart, lineEnd, stroke
   for (const [edgeStart, edgeEnd] of rectEdges) {
     if (doLineSegmentsIntersect(lineStart, lineEnd, edgeStart, edgeEnd)) {
       return true;
+    }
+  }
+
+  // Additional check: sample points along the line to catch cases where the line
+  // passes through the rect but doesn't intersect edges (e.g., line fully inside)
+  const lineLength = Math.sqrt(
+    Math.pow(lineEnd.x - lineStart.x, 2) + Math.pow(lineEnd.y - lineStart.y, 2)
+  );
+  if (lineLength > 0) {
+    // Sample points along the line, spacing them based on line length
+    const numSamples = Math.max(3, Math.ceil(lineLength / 10)); // Sample every ~10px
+    for (let i = 0; i <= numSamples; i++) {
+      const t = i / numSamples;
+      const samplePoint = {
+        x: lineStart.x + t * (lineEnd.x - lineStart.x),
+        y: lineStart.y + t * (lineEnd.y - lineStart.y)
+      };
+      
+      // Check if this point is inside the expanded rect
+      if (samplePoint.x >= rect.left && samplePoint.x <= rect.right &&
+          samplePoint.y >= rect.top && samplePoint.y <= rect.bottom) {
+        return true;
+      }
     }
   }
 
