@@ -1143,8 +1143,69 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
     }
   }
 
-  if (hasStroke) {
-    // Check edges with stroke width
+  if (hasStroke && !hasFill) {
+    // Stroke-only rectangle: check if selection rect intersects the stroke outline
+    
+    // Check if any vertex is inside selection rect
+    for (const v of canvasVertices) {
+      if (v.x >= selRect.left && v.x <= selRect.right &&
+          v.y >= selRect.top && v.y <= selRect.bottom) {
+        return true;
+      }
+    }
+    
+    // Check if selection rect center is near any stroke edge
+    const center = { x: (selRect.left + selRect.right) / 2, y: (selRect.top + selRect.bottom) / 2 };
+    for (let i = 0; i < canvasVertices.length; i++) {
+      const next = (i + 1) % canvasVertices.length;
+      const dist = distanceToLineSegment(center, canvasVertices[i], canvasVertices[next]);
+      if (dist <= strokeWidth / 2) {
+        return true;
+      }
+    }
+    
+    // Check if object stroke edges intersect selection rect (with stroke width)
+    for (let i = 0; i < canvasVertices.length; i++) {
+      const next = (i + 1) % canvasVertices.length;
+      if (doesRectIntersectLineSegment(selRect, canvasVertices[i], canvasVertices[next], strokeWidth)) {
+        return true;
+      }
+    }
+    
+    // Check if selection rect edges intersect object stroke edges (bidirectional)
+    // Sample points along selection rect edges and check distance to object stroke edges
+    const selRectEdges = [
+      [{ x: selRect.left, y: selRect.top }, { x: selRect.right, y: selRect.top }],
+      [{ x: selRect.right, y: selRect.top }, { x: selRect.right, y: selRect.bottom }],
+      [{ x: selRect.right, y: selRect.bottom }, { x: selRect.left, y: selRect.bottom }],
+      [{ x: selRect.left, y: selRect.bottom }, { x: selRect.left, y: selRect.top }]
+    ];
+    for (const [selStart, selEnd] of selRectEdges) {
+      const edgeLength = Math.sqrt(
+        Math.pow(selEnd.x - selStart.x, 2) + Math.pow(selEnd.y - selStart.y, 2)
+      );
+      const samples = Math.max(4, Math.ceil(edgeLength / 10)); // Sample every ~10px
+      
+      for (let s = 0; s <= samples; s++) {
+        const t = s / samples;
+        const point = {
+          x: selStart.x + t * (selEnd.x - selStart.x),
+          y: selStart.y + t * (selEnd.y - selStart.y)
+        };
+        
+        // Check if this point on selection rect edge is near any object stroke edge
+        for (let i = 0; i < canvasVertices.length; i++) {
+          const next = (i + 1) % canvasVertices.length;
+          const dist = distanceToLineSegment(point, canvasVertices[i], canvasVertices[next]);
+          if (dist <= strokeWidth / 2) {
+            return true;
+          }
+        }
+      }
+    }
+  } else if (hasStroke) {
+    // Rectangle with both fill and stroke: stroke edges should be checked
+    // (fill was already checked above, but if fill check didn't match, check stroke)
     for (let i = 0; i < canvasVertices.length; i++) {
       const next = (i + 1) % canvasVertices.length;
       if (doesRectIntersectLineSegment(selRect, canvasVertices[i], canvasVertices[next], strokeWidth)) {
@@ -1154,11 +1215,43 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
   }
 
   if (!hasFill && !hasStroke) {
-    // Check with small tolerance
+    // No fill and no stroke: check edges with small tolerance
+    
+    // Check if any vertex is inside selection rect
+    for (const v of canvasVertices) {
+      if (v.x >= selRect.left && v.x <= selRect.right &&
+          v.y >= selRect.top && v.y <= selRect.bottom) {
+        return true;
+      }
+    }
+    
+    // Check if selection rect center is inside the rect (using polygon check)
+    const center = { x: (selRect.left + selRect.right) / 2, y: (selRect.top + selRect.bottom) / 2 };
+    if (isPointInPolygon(center, canvasVertices)) {
+      return true;
+    }
+    
+    // Check edges with small tolerance
     for (let i = 0; i < canvasVertices.length; i++) {
       const next = (i + 1) % canvasVertices.length;
       if (doesRectIntersectLineSegment(selRect, canvasVertices[i], canvasVertices[next], 2)) {
         return true;
+      }
+    }
+    
+    // Check if selection rect edges intersect object edges (bidirectional)
+    const selRectEdges = [
+      [{ x: selRect.left, y: selRect.top }, { x: selRect.right, y: selRect.top }],
+      [{ x: selRect.right, y: selRect.top }, { x: selRect.right, y: selRect.bottom }],
+      [{ x: selRect.right, y: selRect.bottom }, { x: selRect.left, y: selRect.bottom }],
+      [{ x: selRect.left, y: selRect.bottom }, { x: selRect.left, y: selRect.top }]
+    ];
+    for (const [selStart, selEnd] of selRectEdges) {
+      for (let i = 0; i < canvasVertices.length; i++) {
+        const next = (i + 1) % canvasVertices.length;
+        if (doLineSegmentsIntersect(selStart, selEnd, canvasVertices[i], canvasVertices[next])) {
+          return true;
+        }
       }
     }
   }
