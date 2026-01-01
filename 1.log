@@ -37,6 +37,8 @@ An iframe which has both allow-scripts and allow-same-origin for its sandbox att
 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 Me.htm:1 true
 Me.htm:1 true
 Me.htm:1 true
@@ -799,4 +801,14 @@ App.jsx:14369 [LightbulbDebug] Result: spaceId=1767287735927-a3ygz6dyv, pageId=1
 App.jsx:14369 [LightbulbDebug] Result: spaceId=1767287735927-a3ygz6dyv, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5614 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767287735927-a3ygz6dyv', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
 PageAnnotationLayer.jsx:5648 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
- Window focused, refetching subscription tier...
+AuthContext.jsx:102 Window focused, refetching subscription tier...
+App.jsx:14369 [LightbulbDebug] Result: spaceId=1767287735927-a3ygz6dyv, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14369 [LightbulbDebug] Result: spaceId=1767287735927-a3ygz6dyv, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14369 [LightbulbDebug] Result: spaceId=1767287735927-a3ygz6dyv, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14369 [LightbulbDebug] Result: spaceId=1767287735927-a3ygz6dyv, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14369 [LightbulbDebug] Result: spaceId=1767287735927-a3ygz6dyv, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14369 [LightbulbDebug] Result: spaceId=1767287735927-a3ygz6dyv, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14369 [LightbulbDebug] Result: spaceId=1767287735927-a3ygz6dyv, pageId=1, showBackgroundAnnotations=true, result=true
+Me.htm:1 true
+AuthContext.jsx:102 Window focused, refetching subscription tier...
+AuthContext.jsx:102 Window focused, refetching subscription tier...
