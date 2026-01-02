@@ -3058,8 +3058,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         file.projectId = doc.projectId || doc.project_id;  // Project ID
         file.supabaseFilePath = filePath;  // Storage path
 
-        console.log('[DocumentSync] Opening document with Supabase ID:', doc.id, 'projectId:', file.projectId);
-
         onDocumentSelect(file);
       } else if (doc.dataUrl) {
         // Legacy: Convert dataUrl back to blob, then to File
@@ -11076,7 +11074,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
-    console.log('[DocumentSync] Document opened, loading annotations from Supabase:', documentId);
     setIsLoadingRemoteAnnotations(true);
 
     loadAnnotationsFromSupabase(documentId)
@@ -11087,7 +11084,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
 
         if (Object.keys(remoteAnnotations).length > 0) {
-          console.log('[DocumentSync] Loaded', Object.keys(remoteAnnotations).length, 'annotations from Supabase');
           setHighlightAnnotations(prev => {
             // Merge remote annotations with local, preferring remote
             const merged = { ...prev };
@@ -11133,8 +11129,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
-    console.log('[DocumentSync] Subscribing to real-time changes for document:', documentId);
-
     // Unsubscribe from previous subscription if any
     if (documentSyncUnsubscribeRef.current) {
       documentSyncUnsubscribeRef.current();
@@ -11145,7 +11139,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // Don't apply our own changes
         if (annotation.lastModifiedBy === user.id) return;
 
-        console.log('[DocumentSync] Remote INSERT:', annotation.highlightId);
         setHighlightAnnotations(prev => ({
           ...prev,
           [annotation.highlightId]: {
@@ -11174,7 +11167,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // Don't apply our own changes
         if (annotation.lastModifiedBy === user.id) return;
 
-        console.log('[DocumentSync] Remote UPDATE:', annotation.highlightId);
         setHighlightAnnotations(prev => ({
           ...prev,
           [annotation.highlightId]: {
@@ -11201,7 +11193,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }));
       },
       onDelete: (highlightId) => {
-        console.log('[DocumentSync] Remote DELETE:', highlightId);
         setHighlightAnnotations(prev => {
           const next = { ...prev };
           delete next[highlightId];
@@ -11235,12 +11226,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     const syncTimeout = setTimeout(async () => {
-      console.log('[DocumentSync] Syncing', Object.keys(highlightAnnotations).length, 'annotations to Supabase...');
-
       const { success, synced, error } = await syncAnnotationsToSupabase(documentId, user.id, highlightAnnotations);
 
       if (success) {
-        console.log('[DocumentSync] Successfully synced', synced, 'annotations');
         lastSyncedAnnotationsRef.current = annotationsString;
       } else {
         console.error('[DocumentSync] Sync failed:', error);

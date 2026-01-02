@@ -125,7 +125,6 @@ export async function deleteAnnotations(documentId, highlightIds) {
  */
 export async function syncAnnotationsToSupabase(documentId, userId, highlightAnnotations) {
   if (!documentId || !userId) {
-    console.log('[AnnotationSync] Missing documentId or userId, skipping sync');
     return { success: false, error: 'Missing documentId or userId' };
   }
 
@@ -153,11 +152,8 @@ export async function syncAnnotationsToSupabase(documentId, userId, highlightAnn
   }));
 
   if (annotations.length === 0) {
-    console.log('[AnnotationSync] No annotations to sync');
     return { success: true, synced: 0 };
   }
-
-  console.log(`[AnnotationSync] Syncing ${annotations.length} annotations to Supabase...`);
 
   const { data, error } = await upsertAnnotations(annotations);
 
@@ -165,7 +161,6 @@ export async function syncAnnotationsToSupabase(documentId, userId, highlightAnn
     return { success: false, error };
   }
 
-  console.log(`[AnnotationSync] Successfully synced ${data.length} annotations`);
   return { success: true, synced: data.length };
 }
 
@@ -204,7 +199,6 @@ export async function loadAnnotationsFromSupabase(documentId) {
     };
   }
 
-  console.log(`[AnnotationSync] Loaded ${Object.keys(highlightAnnotations).length} annotations from Supabase`);
   return { highlightAnnotations, error: null };
 }
 
@@ -230,7 +224,6 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
-        console.log('[AnnotationSync] Real-time INSERT:', payload.new.highlight_id);
         if (onInsert) {
           onInsert(convertToLocalFormat(payload.new));
         }
@@ -245,7 +238,6 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
-        console.log('[AnnotationSync] Real-time UPDATE:', payload.new.highlight_id);
         if (onUpdate) {
           onUpdate(convertToLocalFormat(payload.new), convertToLocalFormat(payload.old));
         }
@@ -260,16 +252,13 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
-        console.log('[AnnotationSync] Real-time DELETE:', payload.old.highlight_id);
         if (onDelete) {
           onDelete(payload.old.highlight_id, convertToLocalFormat(payload.old));
         }
       }
     )
     .subscribe((status, err) => {
-      if (status === 'SUBSCRIBED') {
-        console.log('[AnnotationSync] Subscribed to real-time changes for document:', documentId);
-      } else if (err) {
+      if (err) {
         console.error('[AnnotationSync] Subscription error:', err);
         if (onError) onError(err);
       }
@@ -277,7 +266,6 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
 
   // Return cleanup function
   return () => {
-    console.log('[AnnotationSync] Unsubscribing from real-time changes');
     supabase.removeChannel(channel);
   };
 }
@@ -555,11 +543,6 @@ export async function addDocumentCollaborator(documentId, userIdOrEmail, role = 
 
   // Check if user can collaborate (not free tier)
   if (!eligibilityResult.can_collaborate) {
-    console.log('[AnnotationSync] User cannot be collaborator:', {
-      userId: eligibilityResult.user_id,
-      tier: eligibilityResult.tier,
-      reason: eligibilityResult.reason
-    });
     return {
       success: false,
       error: eligibilityResult.reason,
@@ -710,11 +693,6 @@ export async function addProjectCollaborator(projectId, userIdOrEmail, role = 'e
 
   // Check if user can collaborate (not free tier)
   if (!eligibilityResult.can_collaborate) {
-    console.log('[AnnotationSync] User cannot be project collaborator:', {
-      userId: eligibilityResult.user_id,
-      tier: eligibilityResult.tier,
-      reason: eligibilityResult.reason
-    });
     return {
       success: false,
       error: eligibilityResult.reason,
