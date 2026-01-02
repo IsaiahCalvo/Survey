@@ -1350,9 +1350,20 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
     }
   }
 
-  const result = false;
+  // Final fallback: check basic bounding box intersection if we reach here
+  // This handles edge cases where the above checks might have missed an intersection
+  try {
+    const bounds = rectObj.getBoundingRect ? rectObj.getBoundingRect() : null;
+    if (bounds) {
+      // Basic bounding box intersection check
+      return !(selRect.right < bounds.left || selRect.left > bounds.left + bounds.width ||
+        selRect.bottom < bounds.top || selRect.top > bounds.top + bounds.height);
+    }
+  } catch (e) {
+    // If getBoundingRect fails, fall through to false
+  }
 
-  return result;
+  return false;
 };
 
 /**
@@ -1506,6 +1517,7 @@ export const doesRectIntersectGroup = (selRect, groupObj) => {
   if (!groupObj || groupObj.type !== 'group') return false;
 
   const objects = groupObj._objects || groupObj.getObjects?.() || [];
+  if (objects.length === 0) return false;
 
   // Get group's transform matrix
   const groupMatrix = getObjectTransformMatrix(groupObj);
@@ -1513,18 +1525,45 @@ export const doesRectIntersectGroup = (selRect, groupObj) => {
   // For each child, combine its transform with group transform and check
   for (const child of objects) {
     // Create a wrapper that includes the group transform
-    const childWithGroupTransform = {
-      ...child,
-      calcTransformMatrix: () => {
-        const childMatrix = getObjectTransformMatrix(child);
-        // Multiply group matrix by child matrix
-        return multiplyMatrices(groupMatrix, childMatrix);
-      }
+    // We need to preserve all properties and methods that geometry functions might access
+    const childWithGroupTransform = Object.create(Object.getPrototypeOf(child));
+    
+    // Copy all enumerable properties
+    Object.assign(childWithGroupTransform, child);
+    
+    // Override calcTransformMatrix to combine group and child transforms
+    childWithGroupTransform.calcTransformMatrix = function() {
+      const childMatrix = getObjectTransformMatrix(child);
+      // Multiply group matrix by child matrix (group transform applied first, then child)
+      return multiplyMatrices(groupMatrix, childMatrix);
     };
-
-    if (doesRectIntersectObject(selRect, childWithGroupTransform)) {
-      return true;
+    
+    // Ensure type and other critical properties are preserved
+    if (!childWithGroupTransform.type) {
+      childWithGroupTransform.type = child.type;
     }
+
+    try {
+      if (doesRectIntersectObject(selRect, childWithGroupTransform)) {
+        return true;
+      }
+    } catch (e) {
+      // If geometry check fails for a child, continue to next child
+      // This prevents one problematic child from breaking the entire group check
+      console.warn('Error checking group child intersection:', e);
+      continue;
+    }
+  }
+
+  // Fallback: check group's bounding box if no child matched
+  try {
+    const bounds = groupObj.getBoundingRect ? groupObj.getBoundingRect() : null;
+    if (bounds) {
+      return !(selRect.right < bounds.left || selRect.left > bounds.left + bounds.width ||
+        selRect.bottom < bounds.top || selRect.top > bounds.top + bounds.height);
+    }
+  } catch (e) {
+    // Ignore errors in fallback
   }
 
   return false;
