@@ -3801,6 +3801,9 @@ const PageAnnotationLayer = memo(({
       }
       // Shape tools
       const ds = drawingStateRef.current;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3803',message:'handleMouseDown - shape tools entry',data:{tool:currentTool,prevIsDrawingShape:ds.isDrawingShape,prevHasTempObj:!!ds.tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       ds.isDrawingShape = false;
       let temp = null;
       if (currentTool === 'highlight') {
@@ -3840,6 +3843,9 @@ const PageAnnotationLayer = memo(({
       } else if (currentTool === 'line' || currentTool === 'underline' || currentTool === 'strikeout') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'arrow') {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3842',message:'handleMouseDown - creating arrow line',data:{tool:currentTool,prevIsDrawingShape:ds.isDrawingShape},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'callout') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
@@ -3892,6 +3898,9 @@ const PageAnnotationLayer = memo(({
         ds.startX = x;
         ds.startY = y;
         ds.tempObj = temp;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3902',message:'handleMouseDown - after setting drawing state',data:{tool:currentTool,isDrawingShape:ds.isDrawingShape,tempObjType:ds.tempObj?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         canvas.add(temp);
       }
     };
@@ -3978,6 +3987,14 @@ const PageAnnotationLayer = memo(({
       // Handle shape drawing
       const ds = drawingStateRef.current;
       if (!ds.isDrawingShape || !ds.tempObj) return;
+      // CRITICAL: Check if tempObj is inside a group (Fabric.js sets .group property)
+      // This prevents updates to objects that have been moved into groups
+      if (ds.tempObj.group) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3990',message:'handleMouseMove - tempObj in group, skipping',data:{tool:toolRef.current,isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj,hasGroup:!!ds.tempObj.group},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        return;
+      }
       const { x, y } = canvas.getPointer(opt.e);
       const sx = ds.startX;
       const sy = ds.startY;
@@ -3986,6 +4003,9 @@ const PageAnnotationLayer = memo(({
       } else if (ds.tempObj.type === 'circle') {
         ds.tempObj.set({ left: Math.min(sx, x), top: Math.min(sy, y), radius: Math.max(Math.abs(x - sx), Math.abs(y - sy)) / 2 });
       } else if (ds.tempObj.type === 'line') {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4001',message:'handleMouseMove - updating line',data:{tool:toolRef.current,isDrawingShape:ds.isDrawingShape,tempObjType:ds.tempObj.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         ds.tempObj.set({ x2: x, y2: y });
       } else if (ds.tempObj.type === 'polyline') {
         const points = ds.tempObj.get('points') || [];
@@ -3996,6 +4016,9 @@ const PageAnnotationLayer = memo(({
     };
 
     const handleMouseUp = (opt) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:3998',message:'handleMouseUp entry',data:{tool:toolRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       // --- Callout Entire Movement End (Cmd/Ctrl+drag) ---
       if (isMovingEntireCalloutRef.current) {
         isMovingEntireCalloutRef.current = false;
@@ -4288,7 +4311,15 @@ const PageAnnotationLayer = memo(({
 
       const currentStrokeColor = strokeColorRef.current;
       const ds = drawingStateRef.current;
-      if (!ds.isDrawingShape || !ds.tempObj) return;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4290',message:'Before drawing check',data:{tool:toolRef.current,isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj,tempObjType:ds.tempObj?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      if (!ds.isDrawingShape || !ds.tempObj) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4291',message:'Early return - drawing state check failed',data:{tool:toolRef.current,isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        return;
+      }
 
       // Handle highlight tool: create rectangle and call callback
       if (currentTool === 'highlight' && ds.tempObj.type === 'rect') {
@@ -4315,6 +4346,9 @@ const PageAnnotationLayer = memo(({
           });
         }
       } else if (currentTool === 'arrow' && ds.tempObj.type === 'line') {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4317',message:'Arrow completion code ENTERED',data:{tool:toolRef.current,tempObjType:ds.tempObj.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         const { x1, y1, x2, y2 } = ds.tempObj;
         const angle = Math.atan2(y2 - y1, x2 - x1);
         // Use the arrowhead style from toolbar settings
@@ -4324,6 +4358,15 @@ const PageAnnotationLayer = memo(({
         // Create group with line and arrowhead (if not NONE style)
         const groupObjects = head ? [ds.tempObj, head] : [ds.tempObj];
         const group = new Group(groupObjects, { selectable: true });
+        
+        // CRITICAL: At this point, Fabric.js has set ds.tempObj.group to point to the group
+        // We MUST clear the drawing state IMMEDIATELY so queued handleMouseMove events will skip
+        const tempObjRef = ds.tempObj; // Save reference for logging
+        ds.isDrawingShape = false;
+        ds.tempObj = null;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4359',message:'Arrow completion - state cleared after group creation',data:{isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj,tempObjHasGroup:!!tempObjRef.group},timestamp:Date.now(),sessionId:'debug-session',runId:'run5',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
 
         // Store arrowhead style and mark as arrow type on the group
         group.set({
@@ -4338,8 +4381,9 @@ const PageAnnotationLayer = memo(({
         if (shouldAssignRegionId()) {
           group.set({ regionId: activeRegionIdRef.current });
         }
+        
+        // Add group to canvas - Fabric.js automatically removes tempObj from canvas when grouping
         canvas.add(group);
-        canvas.remove(ds.tempObj);
         // Set flag to prevent deselection in handleMouseUpForSelection
         justFinishedDrawingRef.current = true;
         // Automatically select the arrow group so handles appear
@@ -4349,10 +4393,13 @@ const PageAnnotationLayer = memo(({
         setTimeout(() => {
           justFinishedDrawingRef.current = false;
         }, 100);
-        // Immediately reset drawing state and save to prevent polyline-like behavior
-        ds.isDrawingShape = false;
-        ds.tempObj = null;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4388',message:'Arrow completion - returning after save',data:{isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
         saveCanvas();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4356',message:'Arrow completion - returning after state reset',data:{isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
         return;
       } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
         const { x1, y1, x2, y2 } = ds.tempObj;
@@ -4411,6 +4458,9 @@ const PageAnnotationLayer = memo(({
           justFinishedDrawingRef.current = false;
         }, 100);
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4413',message:'Reached final state reset (should not reach for arrow)',data:{tool:toolRef.current,isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       ds.isDrawingShape = false;
       ds.tempObj = null;
       saveCanvas();
