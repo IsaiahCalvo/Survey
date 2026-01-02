@@ -1406,13 +1406,67 @@ export const doesRectIntersectLine = (selRect, lineObj) => {
   if (!lineObj || lineObj.type !== 'line') return false;
 
   const matrix = getObjectTransformMatrix(lineObj);
-  const x1 = lineObj.x1 || 0;
-  const y1 = lineObj.y1 || 0;
-  const x2 = lineObj.x2 || 0;
-  const y2 = lineObj.y2 || 0;
   const strokeWidth = lineObj.strokeWidth || 1;
 
+  // Get line coordinates - Fabric.js Line objects store endpoints as x1, y1, x2, y2
+  // These are relative to the line's origin (left, top)
+  let x1 = lineObj.x1;
+  let y1 = lineObj.y1;
+  let x2 = lineObj.x2;
+  let y2 = lineObj.y2;
+
+  // If coordinates are not directly available, try to get them from the line's path
+  // or calculate from bounding box
+  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) {
+    // Try to get from path if it exists (some Fabric.js versions store it there)
+    if (lineObj.path && Array.isArray(lineObj.path) && lineObj.path.length >= 2) {
+      const path = lineObj.path;
+      if (path[0] && Array.isArray(path[0]) && path[0].length >= 3) {
+        x1 = path[0][1] || 0;
+        y1 = path[0][2] || 0;
+      }
+      if (path[1] && Array.isArray(path[1]) && path[1].length >= 3) {
+        x2 = path[1][1] || 0;
+        y2 = path[1][2] || 0;
+      }
+    }
+
+    // Fallback: calculate from bounding box if coordinates still not available
+    if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) {
+      try {
+        const bounds = lineObj.getBoundingRect ? lineObj.getBoundingRect() : null;
+        if (bounds) {
+          // For a line, we can approximate endpoints from the bounding box
+          // This is a fallback - not perfect but better than nothing
+          x1 = 0;
+          y1 = 0;
+          x2 = bounds.width || 0;
+          y2 = bounds.height || 0;
+        } else {
+          // Ultimate fallback: use 0,0 to 0,0 (will be transformed by matrix)
+          x1 = 0;
+          y1 = 0;
+          x2 = 0;
+          y2 = 0;
+        }
+      } catch (e) {
+        // If all else fails, use defaults
+        x1 = 0;
+        y1 = 0;
+        x2 = 0;
+        y2 = 0;
+      }
+    }
+  }
+
+  // Ensure we have valid numbers (0 is a valid coordinate, so check for undefined/null/NaN)
+  x1 = (x1 === undefined || x1 === null || isNaN(x1)) ? 0 : x1;
+  y1 = (y1 === undefined || y1 === null || isNaN(y1)) ? 0 : y1;
+  x2 = (x2 === undefined || x2 === null || isNaN(x2)) ? 0 : x2;
+  y2 = (y2 === undefined || y2 === null || isNaN(y2)) ? 0 : y2;
+
   // Transform endpoints to canvas space
+  // The transform matrix already accounts for the line's position (left, top)
   const [a, b, c, d, e, f] = matrix;
   const start = {
     x: a * x1 + c * y1 + e,
@@ -1423,7 +1477,25 @@ export const doesRectIntersectLine = (selRect, lineObj) => {
     y: b * x2 + d * y2 + f
   };
 
-  return doesRectIntersectLineSegment(selRect, start, end, strokeWidth);
+  // Check intersection with the line segment
+  const intersects = doesRectIntersectLineSegment(selRect, start, end, strokeWidth);
+
+  // If the detailed check didn't find an intersection, do a fallback bounding box check
+  // This ensures we catch edge cases
+  if (!intersects) {
+    try {
+      const bounds = lineObj.getBoundingRect ? lineObj.getBoundingRect() : null;
+      if (bounds) {
+        // Basic bounding box intersection check
+        return !(selRect.right < bounds.left || selRect.left > bounds.left + bounds.width ||
+          selRect.bottom < bounds.top || selRect.top > bounds.top + bounds.height);
+      }
+    } catch (e) {
+      // Ignore errors in fallback
+    }
+  }
+
+  return intersects;
 };
 
 /**
