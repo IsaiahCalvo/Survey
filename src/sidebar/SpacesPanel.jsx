@@ -817,16 +817,24 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               return (
                                 <button
                                   onClick={(e) => {
-                                    if (isDisabled) return;
+                                    console.log(`[ToggleClickDebug] Button onClick fired! isDisabled=${isDisabled}, currentState=${regionLightbulbState}, newState=${!regionLightbulbState}`);
+                                    if (isDisabled) {
+                                      console.log('[ToggleClickDebug] Button is disabled, returning early');
+                                      return;
+                                    }
                                     e.stopPropagation();
                                     // #region agent log
                                     fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:719', message: 'Button clicked', data: { currentValue: regionLightbulbState, newValue: !regionLightbulbState, spaceId: space.id, pageId: page.pageId, isActive, isSurveyContext }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
                                     // #endregion
+                                    console.log(`[ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=${!regionLightbulbState}`);
                                     onToggleBackgroundAnnotations(space.id, page.pageId, !regionLightbulbState);
                                   }}
+                                  onMouseDown={(e) => {
+                                    console.log(`[ToggleClickDebug] Button onMouseDown fired! target=${e.target.tagName}`);
+                                  }}
                                   style={{
-                                    background: 'transparent',
-                                    border: '1px solid transparent',
+                                    background: regionLightbulbState ? 'rgba(74, 144, 226, 0.15)' : 'rgba(153, 153, 153, 0.1)',
+                                    border: `1px solid ${regionLightbulbState ? 'rgba(74, 144, 226, 0.4)' : 'rgba(153, 153, 153, 0.3)'}`,
                                     padding: '4px 8px',
                                     cursor: isDisabled ? 'not-allowed' : 'pointer',
                                     borderRadius: '4px',
@@ -837,9 +845,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     color: isDisabled ? '#666' : (regionLightbulbState ? '#4A90E2' : '#999'),
                                     opacity: isDisabled ? 0.5 : 1,
                                     fontFamily: FONT_FAMILY,
-                                    transition: 'color 0.15s ease, opacity 0.15s ease',
-                                    width: '20px',
-                                    height: '20px',
+                                    transition: 'all 0.15s ease',
+                                    width: '24px',
+                                    height: '24px',
+                                    minWidth: '24px',
+                                    minHeight: '24px',
                                     pointerEvents: isDisabled ? 'none' : 'auto'
                                   }}
                                   onMouseEnter={(e) => {
