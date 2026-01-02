@@ -940,6 +940,7 @@ const saveHighlightAnnotations = (pdfId, highlightAnnotations) => {
     const key = `highlightAnnotations_${pdfId}`;
     const data = JSON.stringify(highlightAnnotations);
     localStorage.setItem(key, data);
+    // console.log('Successfully saved highlightAnnotations to localStorage:', { key, size: data.length });
   } catch (e) {
     console.error('Error saving highlight annotations:', e);
   }
@@ -1846,6 +1847,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             const pageCountPromise = (async () => {
               const arrayBuffer = await file.arrayBuffer();
               perfUpload.mark(file.name, 'ArrayBuffer ready for page count');
+              console.log('Background Upload PDF Check:', {
                 name: file.name,
                 size: arrayBuffer.byteLength
               });
@@ -1887,6 +1889,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             refetchAllDocuments();
 
             perfUpload.end(file.name);
+            // console.log('Background upload completed for:', file.name, 'New Doc:', newDoc);
           } catch (err) {
             perfUpload.end(file.name);
             console.error('Error uploading file in background:', err);
@@ -2083,6 +2086,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     // Refetch projects to ensure we have the latest data
     const latestProjects = await refetchProjects() || supabaseProjects || [];
+    // console.log('Checking for name conflict. Current projects:', latestProjects.map(p => ({ id: p.id, name: p.name })));
 
     if (hasNameConflict(latestProjects, trimmedName, { getName: (project) => project?.name })) {
       const duplicateError = new Error('A project with this name already exists. Please choose a different name.');
@@ -2200,6 +2204,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // Try to clean up the project if no files were uploaded
       try {
         await deleteSupabaseProject(newProject.id);
+        // console.log('Cleaned up project after failed uploads');
       } catch (cleanupErr) {
         console.error('Error cleaning up project:', cleanupErr);
       }
@@ -9560,6 +9565,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setSpaces(prev => {
       const beforeSpace = prev.find(s => s.id === spaceId);
       const beforePage = beforeSpace?.assignedPages?.find(p => p.pageId === pageId);
+      // console.log('[App] Before update - space found:', !!beforeSpace, 'page found:', !!beforePage);
+      // console.log('[App] Before update - page entry:', beforePage);
 
       const updated = prev.map(space => {
         if (space.id !== spaceId) {
@@ -9572,6 +9579,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         let updatedPages;
         if (pageIndex >= 0) {
           // Page exists, update it
+          // console.log('[App] Updating existing page entry at index', pageIndex, { pageId, wholePageIncluded: true, regions: [] });
           updatedPages = assignedPages.map((page, index) => {
             if (index === pageIndex) {
               return {
@@ -9584,6 +9592,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           });
         } else {
           // Page doesn't exist, create it
+          // console.log('[App] Creating new page entry', { pageId, wholePageIncluded: true, regions: [] });
           updatedPages = [
             ...assignedPages,
             {
@@ -9595,6 +9604,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
 
         const afterPage = updatedPages.find(p => p.pageId === pageId);
+        // console.log('[App] After update - page entry:', afterPage);
 
         return {
           ...space,
@@ -9750,12 +9760,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
             // Get all highlights for this category and module (same logic as sidebar)
             const categoryHighlights = [];
+            // console.log(`Exporting Module: ${moduleName} (ID: ${moduleId})`);
+            // console.log(`Exporting Category: ${category.name} (ID: ${category.id})`);
+            // console.log('Total highlightAnnotations:', Object.keys(highlightAnnotations).length);
 
             Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
               const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
 
               // Debug logging for first few items
               if (categoryHighlights.length < 3) {
+                console.log(`Checking highlight ${highlightId}:`, {
                   highlightModuleId,
                   targetModuleId: moduleId,
                   highlightCategoryId: highlight.categoryId,
@@ -9773,6 +9787,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 });
               }
             });
+            // console.log(`Found ${categoryHighlights.length} highlights for this category.`);
 
             // Build header row: Changed By, Changed Date, Item, [checklist items], Ball in Court, Notes
             const headerRow = ['Changed By', 'Changed Date', 'Item'];
@@ -9956,6 +9971,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   }
                 });
               } else {
+                console.warn('Ball in Court validation list exceeds 255 characters. Validation skipped.');
               }
             }
 
@@ -10128,6 +10144,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
               // Check if Live Sync is enabled with active session - use cell-level updates
               if (liveSyncEnabled && excelSessionId && oneDriveFileId && liveSyncStatus === 'connected') {
+                // console.log('Using Live Sync cell-level updates...');
 
                 // Update each worksheet via session API
                 for (const ws of workbook.worksheets) {
@@ -10163,6 +10180,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                     try {
                       await updateCellRange(graphClient, oneDriveFileId, excelSessionId, sheetName, range, values);
+                      // console.log(`Updated sheet "${sheetName}" range ${range}`);
                     } catch (sheetErr) {
                       console.warn(`Failed to update sheet "${sheetName}":`, sheetErr);
                       // Continue with other sheets
@@ -10790,6 +10808,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     window.electronAPI.startFileWatcher(selectedTemplate.linkedExcelPath, watchId)
       .then(() => {
         setFileWatcherActive(true);
+        // console.log('File watcher started for:', selectedTemplate.linkedExcelPath);
       })
       .catch(error => {
         console.error('Failed to start file watcher:', error);
@@ -10797,7 +10816,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     // Set up event listeners
     const removeChangeListener = window.electronAPI.onFileChanged(({ watchId: changedWatchId, filePath }) => {
+      // console.log('File changed event received:', { changedWatchId, watchId, filePath });
       if (changedWatchId === watchId) {
+        // console.log('Excel file changed, auto-syncing...', filePath);
         handleAutoSyncFromExcel();
       }
     });
@@ -10838,6 +10859,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     // Debounce the push to avoid too frequent writes
     pushTimeoutRef.current = setTimeout(async () => {
+      // console.log('Auto-pushing to Excel...');
       try {
         await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
         setLastPushMessage('Pushed to Excel');
@@ -10902,6 +10924,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         excelSessionRef.current = { sessionId, expiresAt };
         setExcelSessionId(sessionId);
         setLiveSyncStatus('connected');
+        // console.log('Live sync session established');
 
         // Set up session refresh (every 3 minutes to prevent 5-min timeout)
         sessionRefreshInterval = setInterval(async () => {
@@ -10972,6 +10995,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             const currentData = JSON.stringify(usedRange.values);
 
             if (lastData && lastData !== currentData) {
+              // console.log(`Excel changes detected in sheet: ${sheet.name}`);
               // Trigger sync from Excel
               handleAutoSyncFromExcel();
               break; // Only sync once per poll cycle
@@ -11017,6 +11041,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Debounce cell updates (5 seconds to avoid too frequent syncs)
     const pushTimeout = setTimeout(async () => {
       try {
+        // console.log('Live sync: Pushing changes to Excel...');
         // Use silent mode to prevent alert popups during live sync
         await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
         setLastPushMessage('Live synced');
@@ -11454,6 +11479,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     // Enforce single region per page (as per requirements)
     if (page.regions.length > 1) {
+      console.warn('Page has multiple regions, expected max 1:', page.regions.length);
     }
     const region = page.regions[0]; // Use first region only
     if (!region || !Array.isArray(region.coordinates)) {
@@ -11522,6 +11548,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   useEffect(() => {
     if (!selectedTemplate || !selectedModuleId) return;
     const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+    /* console.log('[Survey Debug] Active module updated', {
       moduleId: selectedModuleId,
       moduleName,
       activeSpaceId,
@@ -11534,6 +11561,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const moduleName = selectedTemplate && selectedModuleId
       ? getModuleName(selectedTemplate, selectedModuleId)
       : null;
+    /* console.log('[Survey Debug] Space context updated', {
       activeSpaceId,
       selectedSpaceId,
       effectiveAnnotationSpaceId: annotationSpaceId,
@@ -11672,15 +11700,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, []);
 
   const handleRegionSetFullPage = useCallback(() => {
+    // console.log('[App] ===== handleRegionSetFullPage CALLED =====', { activeSpaceId, regionSelectionPage });
     if (!activeSpaceId || !regionSelectionPage) {
+      console.warn('[App] ERROR: Missing activeSpaceId or regionSelectionPage', { activeSpaceId, regionSelectionPage });
       return;
     }
 
+    // console.log('[App] Clearing all areas and setting full page mode');
     handleSpaceClearRegions(activeSpaceId, regionSelectionPage);
 
     // Close the region selection tool after setting full page
+    // console.log('[App] Closing region selection tool');
     setShowRegionSelection(false);
     setRegionSelectionPage(null);
+    // console.log('[App] ===== handleRegionSetFullPage COMPLETED =====');
   }, [activeSpaceId, regionSelectionPage, handleSpaceClearRegions]);
 
   const canSetRegionToFullPage = useMemo(() => {
@@ -11829,8 +11862,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Save highlightAnnotations to localStorage when they change
   useEffect(() => {
     if (!pdfId) {
+      // console.log('Skipping save - no pdfId');
       return;
     }
+    // console.log('Saving highlightAnnotations to localStorage:', { pdfId, count: Object.keys(highlightAnnotations).length });
     saveHighlightAnnotations(pdfId, highlightAnnotations);
   }, [pdfId, highlightAnnotations]);
 
@@ -11869,6 +11904,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Save survey data to Supabase Storage
   const saveSurveyDataToSupabase = useCallback(async (currentAnnotations, currentSpaces, currentTemplate) => {
     if (!pdfFile || !pdfFile.projectId || !pdfId) {
+      // console.log('Skipping Supabase save: missing context', { pdfFile, projectId: pdfFile?.projectId, pdfId });
       return;
     }
 
@@ -11926,6 +11962,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       // Verify it matches this PDF
       if (data.pdfId && data.pdfId !== getPDFId(pdfFile)) {
+        console.warn('Loaded data PDF ID mismatch. Ignoring.');
         // return; // Optional: decide whether to load anyway or warn
       }
 
@@ -11956,11 +11993,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const handleSaveDocument = useCallback(async (silent = false) => {
     // Feature Gate: Cloud Sync
     if (!features?.cloudSync) {
+      if (!silent) // console.log('Cloud sync skipped (Free Plan)');
       // Ensure we still save locally if possible
     }
     if (!pdfId || !pdfFile) return;
 
     try {
+      // console.log('Saving document with embedded annotations...', silent ? '(auto-save)' : '');
+      // console.log('PDF file path:', pdfFilePath);
 
       // Save PDF with embedded annotations (overwrites original file if path available)
       await savePDFWithAnnotationsPdfLib(pdfFile, annotationsByPage, pageSizes, pdfFilePath);
@@ -11983,6 +12023,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (features?.cloudSync) {
         await saveSurveyDataToSupabase(highlightAnnotations, spaces, selectedTemplate);
       } else {
+        // console.log('Skipping Supabase sync (Free Plan)');
       }
     } catch (error) {
       console.error('Error saving document:', error);
@@ -12000,6 +12041,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     const autoSaveInterval = setInterval(() => {
+      // console.log('Auto-saving document...');
       handleSaveDocument(true); // silent=true for auto-save
     }, 30000); // 30 seconds
 
@@ -12013,9 +12055,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     const handleBeforeQuit = async () => {
+      // console.log('App is quitting, saving document...');
       if (pdfFilePath && hasUnsavedAnnotations) {
         try {
           await handleSaveDocument(true); // silent=true
+          // console.log('Document saved before quit');
         } catch (error) {
           console.error('Error saving before quit:', error);
         }
@@ -12039,9 +12083,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // For item-level notes, noteDialogOpen is just the highlightId
     const highlightId = noteDialogOpen;
 
+    // console.log('Note dialog opened for item:', highlightId);
 
     const existingNote = highlightAnnotations[highlightId]?.note;
 
+    // console.log('Found item-level note:', existingNote);
 
     if (existingNote) {
       setNoteDialogContent({
@@ -12070,7 +12116,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Load PDF
   useEffect(() => {
+    // console.log('PDFViewer useEffect triggered. pdfFile:', pdfFile);
     if (!pdfFile) {
+      // console.log('No PDF file provided to viewer');
       return;
     }
 
@@ -12100,6 +12148,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
 
+        // console.log('ArrayBuffer created, size:', arrayBuffer.byteLength);
+        // console.log('PDF load check:', {
         //   size: arrayBuffer.byteLength,
         //   version: pdfjsLib.version,
         //   workerSrc: pdfjsLib.GlobalWorkerOptions.workerSrc
@@ -12108,6 +12158,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         try {
           const checkHeader = new Uint8Array(arrayBuffer.slice(0, 5));
           const headerStr = String.fromCharCode(...checkHeader);
+          // console.log('PDF Header Check:', headerStr);
           if (headerStr.indexOf('%PDF-') !== 0) {
             console.error('CRITICAL: File does not start with %PDF-');
           }
@@ -12138,11 +12189,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             });
             pdf = await recoveryTask.promise;
             perfLoad.mark(docName, 'PDF.js document parsed (recovery mode)');
+            // console.log('PDF loaded in recovery mode');
           } catch (recoveryError) {
             // If recovery also fails, throw the original error
             throw firstError;
           }
         }
+        // console.log('PDF loaded successfully. Pages:', pdf.numPages);
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
         setPageNum(1);
@@ -12165,6 +12218,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           pages[i] = page; // Store page object for text layer
         }
         perfLoad.mark(docName, `Page sizes calculated (${pdf.numPages} pages)`);
+        // console.log('Page sizes calculated:', Object.keys(sizes).length, 'pages');
         setPageHeights(heights);
         setPageSizes(sizes);
         setPageObjects(pages);
@@ -12203,6 +12257,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
           // Track unsupported annotation types for notification
           if (unsupportedTypes.length > 0) {
+            // console.log('Unsupported annotation types found:', unsupportedTypes);
             setUnsupportedAnnotationTypes(unsupportedTypes);
             setShowUnsupportedNotice(true);
           }
@@ -12381,6 +12436,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Use a small timeout to ensure DOM elements are mounted
     const setupTimer = setTimeout(() => {
       const containers = Object.values(pageContainersRef.current).filter(Boolean);
+      // console.log('Setting up IntersectionObserver for', containers.length, 'page containers');
       containers.forEach(container => {
         if (container) {
           observer.observe(container);
@@ -12392,6 +12448,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // This ensures page number updates always resume after a reasonable timeout
     const failsafeTimer = setInterval(() => {
       if (isNavigatingRef.current || targetPageRef.current !== null || isZoomingRef.current) {
+        console.warn('Navigation guards have been active for >2s, resetting for safety');
         isNavigatingRef.current = false;
         targetPageRef.current = null;
         isZoomingRef.current = false;
@@ -13637,7 +13694,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     addHistoryCheckpoint();
 
 
+    // console.log('[App] handleHighlightDeleted called', { pageNumber, bounds, highlightId, selectedModuleId, selectedTemplate });
     if (!selectedModuleId || !selectedTemplate) {
+      // console.warn('[App] handleHighlightDeleted aborted: Missing module or template');
       return;
     }
 
@@ -13820,8 +13879,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Handle deletion of a highlight item (from survey panel)
   const handleDeleteHighlightItem = useCallback((highlightId) => {
+    // console.log('[App] handleDeleteHighlightItem called', { highlightId });
     const highlight = highlightAnnotations[highlightId];
     if (!highlight) {
+      console.warn('[App] handleDeleteHighlightItem aborted: Highlight not found', highlightId);
       return;
     }
 
@@ -13914,6 +13975,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
     const debugSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
+    /* console.log('[Survey Debug] Highlight created', {
       highlightId,
       pageNumber,
       bounds,
@@ -14220,6 +14282,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (numPages > 0) {
       const visiblePages = Array.from({ length: numPages }, (_, i) => i + 1)
         .filter(pageNumber => shouldShowPage(pageNumber));
+      /* console.log('Pages visibility check:', {
         totalPages: numPages,
         visiblePages: visiblePages.length,
         activeSpaceId,
@@ -16232,20 +16295,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 return;
                               }
 
+                              // console.log('Source space ID:', sourceSpaceId);
+                              // console.log('Source template:', sourceTemplate);
+                              // console.log('Destination space ID:', space.id);
+                              // console.log('Destination template:', template);
+                              // console.log('All items:', items);
+                              // console.log('All annotations:', annotations);
 
                               selectedHighlightIds.forEach(highlightId => {
                                 const highlight = highlightAnnotations[highlightId];
+                                // console.log(`Processing highlight ${highlightId}:`, highlight);
 
                                 if (!highlight) {
+                                  console.warn(`Highlight ${highlightId} not found`);
                                   return;
                                 }
 
                                 if (!highlight.categoryId) {
+                                  console.warn(`Highlight ${highlightId} has no categoryId`);
                                   return;
                                 }
 
                                 // Find corresponding item by matching name and category (same logic as transfer)
                                 const categoryName = getCategoryName(sourceTemplate, highlight.spaceId, highlight.categoryId);
+                                // console.log(`Category name for highlight ${highlightId}:`, categoryName);
+                                // console.log(`Highlight name:`, highlight.name);
 
                                 // Find items that match name and category
                                 const matchingItem = Object.values(items).find(item =>
@@ -16253,6 +16327,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   item.itemType === categoryName
                                 );
 
+                                // console.log(`Matching item for highlight ${highlightId}:`, matchingItem);
 
                                 // Verify the item has an annotation in the same space
                                 if (matchingItem) {
@@ -16262,30 +16337,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     ann.spaceId === highlight.spaceId
                                   );
 
+                                  // console.log(`Matching annotation for item ${matchingItem.itemId}:`, matchingAnnotation);
 
                                   if (matchingAnnotation && matchingItem.itemId) {
                                     // Found corresponding item in new system
                                     // Avoid duplicates
                                     if (!itemIdsToCopy.includes(matchingItem.itemId)) {
+                                      // console.log(`Adding item ${matchingItem.itemId} to copy list`);
                                       itemIdsToCopy.push(matchingItem.itemId);
                                     }
                                   } else {
                                     // No annotation found, but item exists - still copy it
                                     // The item might not have an annotation yet, but we can still copy it
                                     if (!itemIdsToCopy.includes(matchingItem.itemId)) {
+                                      // console.log(`Adding item ${matchingItem.itemId} to copy list (no annotation)`);
                                       itemIdsToCopy.push(matchingItem.itemId);
                                     }
                                   }
                                 } else {
+                                  console.warn(`No matching item found for highlight ${highlightId} with name "${highlight.name}" and category "${categoryName}"`);
                                 }
                               });
 
+                              // console.log('Items to copy:', itemIdsToCopy);
 
                               if (itemIdsToCopy.length > 0) {
                                 // Check if categories need to be created
                                 const itemsToCheck = itemIdsToCopy.map(itemId => items[itemId]).filter(Boolean);
                                 const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
 
+                                // console.log('Item types to copy:', itemTypes);
 
                                 const missingCategories = itemTypes.filter(itemType =>
                                   !categoryExists(template, space.id, itemType)
@@ -16297,6 +16378,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   return;
                                 } else {
                                   // Direct transfer - copy items to the destination space
+                                  console.log('Calling transferItems with:', {
                                     itemIdsToCopy,
                                     sourceSpaceId,
                                     destSpaceId: space.id,
@@ -16312,16 +16394,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     annotations
                                   );
 
+                                  // console.log('Transfer result:', result);
 
                                   // Update items and annotations
                                   setItems(result.newItems);
                                   setAnnotations(result.updatedAnnotations);
 
                                   // Create highlight entries for visual display
+                                  // console.log('Creating highlight entries for', itemIdsToCopy.length, 'items');
                                   const newHighlights = {};
                                   itemIdsToCopy.forEach(itemId => {
                                     const item = result.newItems[itemId];
+                                    // console.log('Processing item for highlight creation:', itemId, item);
                                     if (!item) {
+                                      // console.log('Item not found in result.newItems');
                                       return;
                                     }
 
@@ -16330,11 +16416,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       ann.itemId === itemId && ann.spaceId === space.id
                                     );
 
+                                    // console.log('Destination annotation:', destAnnotation);
 
                                     // Find source annotation to get coordinates
                                     const sourceAnnotation = Object.values(annotations).find(a =>
                                       a.itemId === itemId && a.spaceId === sourceSpaceId
                                     );
+                                    // console.log('Source annotation:', sourceAnnotation);
 
                                     // Find source highlight by matching the selected ID
                                     const sourceHighlightId = selectedHighlightIds.find(id => {
@@ -16343,10 +16431,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     });
                                     const sourceHighlight = sourceHighlightId ? highlightAnnotations[sourceHighlightId] : null;
 
+                                    // console.log('Source highlight:', sourceHighlight);
 
                                     // Find destination category ID
                                     const destSpace = template.spaces.find(s => s.id === space.id);
                                     const destCategory = destSpace?.categories?.find(c => c.name === item.itemType);
+                                    // console.log('Destination category:', destCategory);
 
                                     // Use destination annotation coordinates, or source annotation coordinates, or source highlight bounds
                                     let bounds = null;
@@ -16358,6 +16448,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       bounds = sourceHighlight.bounds;
                                     }
 
+                                    // console.log('Bounds for highlight:', bounds);
 
                                     if (bounds) {
                                       const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -16374,6 +16465,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         // Do NOT copy BIC properties - item starts blank in new space
                                         checklistResponses: {}
                                       };
+                                      // console.log('Created highlight (no BIC):', newHighlights[highlightId]);
 
                                       // Add to newHighlightsByPage as transparent with dashed outline (needs BIC)
                                       setNewHighlightsByPage(prev => ({
@@ -16388,11 +16480,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         ]
                                       }));
                                     } else {
+                                      // console.log('No bounds available, skipping highlight creation');
                                     }
                                   });
 
                                   // Add new highlights to highlightAnnotations
                                   if (Object.keys(newHighlights).length > 0) {
+                                    // console.log('Adding', Object.keys(newHighlights).length, 'new highlights to highlightAnnotations');
                                     setHighlightAnnotations(prev => ({
                                       ...prev,
                                       ...newHighlights
@@ -16409,11 +16503,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   setSelectedSpaceId(space.id);
                                   setShowSurveyPanel(true);
 
+                                  // console.log('Copy completed successfully');
                                   // Explicitly return to prevent any further code execution
                                   return;
                                 }
                               } else {
                                 // No items found - handle as legacy highlights
+                                // console.log('No items found, treating highlights as legacy highlights');
                                 const legacyHighlights = selectedHighlightIds
                                   .map(id => highlightAnnotations[id])
                                   .filter(Boolean);
@@ -16424,6 +16520,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   return;
                                 }
 
+                                // console.log('Copying legacy highlights:', legacyHighlights);
 
                                 // Check if all required categories exist in destination space
                                 const destSpace = template.spaces.find(s => s.id === space.id);
@@ -16456,6 +16553,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     categoryId: destCategory?.id || null
                                   };
 
+                                  // console.log(`Created legacy highlight copy: ${newId}`, newHighlights[newId]);
                                 });
 
                                 // Update highlightAnnotations
@@ -16474,10 +16572,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 setSelectedSpaceId(space.id);
                                 setShowSurveyPanel(true);
 
+                                // console.log('Legacy highlights copied successfully');
                                 return;
                               }
                             } else {
                               // No items selected - this shouldn't happen if validation is working correctly
+                              console.warn('No items selected for copy. Closing modal.');
                               setShowSpaceSelection(false);
                             }
                           }}
@@ -17033,7 +17133,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               <button
                                 onClick={() => {
                                   const selectedIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
+                                  // console.log('=== Copy to Spaces Button Clicked ===');
+                                  // console.log('copiedItemSelection:', copiedItemSelection);
+                                  // console.log('selectedIds:', selectedIds);
+                                  // console.log('highlightAnnotations keys:', Object.keys(highlightAnnotations));
+                                  // console.log('Checking if selected IDs exist in highlightAnnotations:');
                                   selectedIds.forEach(id => {
+                                    // console.log(`  ${id}: ${highlightAnnotations[id] ? 'EXISTS' : 'NOT FOUND'}`);
                                   });
                                   if (selectedIds.length === 0) return;
                                   setShowSpaceSelection(true);
@@ -17960,6 +18066,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                             }
                                                           }));
                                                         } else {
+                                                          console.log('Checkbox changed:', {
                                                             highlightId,
                                                             checked: e.target.checked,
                                                             highlight,
@@ -17972,6 +18079,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                             } else {
                                                               delete newSelection[highlightId];
                                                             }
+                                                            // console.log('Updated selection:', newSelection);
                                                             return newSelection;
                                                           });
                                                         }
@@ -18177,6 +18285,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                       e.stopPropagation();
                                                       const highlightData = highlightAnnotations[highlightId];
                                                       const existingNote = highlightData?.note;
+                                                      // console.log('Opening item-level note dialog:', { highlightId, existingNote });
 
                                                       if (existingNote) {
                                                         setNoteDialogContent({
@@ -18337,6 +18446,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                               const entityId = e.target.value;
                                                               const entity = entityId ? ballInCourtEntities.find(e => e.id === entityId) : null;
 
+                                                              // console.log('Ball in Court dropdown changed:', { entityId, entity, matchingItem, highlightId, highlightData });
 
                                                               // Update highlight annotation - the useEffect will automatically rebuild newHighlightsByPage
                                                               setHighlightAnnotations(prev => {
@@ -18349,6 +18459,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                                     ballInCourtColor: entity?.color
                                                                   }
                                                                 };
+                                                                // console.log('Updated highlight annotation:', updated[highlightId]);
                                                                 return updated;
                                                               });
 
@@ -18891,6 +19002,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               const excelPath = selectedTemplate.linkedExcelPath;
                               const isOneDrive = selectedTemplate.isOneDrive;
 
+                              // console.log('Attempting to open Excel file:', { excelPath, isOneDrive });
 
                               if (!excelPath) {
                                 alert('No Excel file is linked to this survey.');
@@ -18925,6 +19037,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 try {
                                   // Check if file exists first
                                   const exists = await window.electronAPI.fileExists(excelPath);
+                                  // console.log('File exists:', exists);
 
                                   if (!exists) {
                                     alert(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`);
@@ -20339,13 +20452,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     <button
                       type="button"
                       onClick={() => {
+                        // console.log('noteDialogOpen:', noteDialogOpen);
+                        // console.log('noteDialogContent:', noteDialogContent);
 
                         // For item-level notes, noteDialogOpen is just the highlightId
                         const highlightId = noteDialogOpen;
 
+                        // console.log('Saving item-level note for highlightId:', highlightId);
+                        // console.log('Note text:', noteDialogContent.text);
+                        // console.log('Photos:', noteDialogContent.photos.length);
+                        // console.log('Videos:', noteDialogContent.videos.length);
 
                         // Update highlight annotation with item-level note
                         setHighlightAnnotations(prev => {
+                          // console.log('Current highlight data:', prev[highlightId]);
 
                           const existingHighlight = prev[highlightId] || {};
 
@@ -20354,6 +20474,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             photos: noteDialogContent.photos,
                             videos: noteDialogContent.videos
                           };
+                          // console.log('Saving note:', newNote);
 
                           const updated = {
                             ...prev,
@@ -20363,16 +20484,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             }
                           };
 
+                          // console.log('Updated highlight with note:', JSON.stringify(updated[highlightId], null, 2));
 
                           // Save to localStorage immediately
                           if (pdfId) {
                             saveHighlightAnnotations(pdfId, updated);
+                            // console.log('Saved to localStorage, pdfId:', pdfId);
                           } else {
+                            console.warn('Cannot save to localStorage: pdfId is null');
                           }
 
                           return updated;
                         });
 
+                        // console.log('Closing dialog');
                         setNoteDialogOpen(null);
                         setNoteDialogContent({ text: '', photos: [], videos: [] }); // Clear dialog content
                       }}
@@ -20467,13 +20592,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             const itemIdsToCopy = [];
                             const legacyHighlightsToCopy = [];
 
+                            // console.log('Copying items:', transferState.items);
+                            // console.log('Source module:', transferState.sourceModuleId);
+                            // console.log('Destination module:', module.id);
 
                             transferState.items.forEach(highlightId => {
                               const highlight = highlightAnnotations[highlightId];
+                              // console.log('Processing highlight:', highlightId, highlight);
 
                               if (!highlight) {
                                 // Not a highlight, might be an itemId directly
                                 if (items[highlightId]) {
+                                  // console.log('Found direct itemId:', highlightId);
                                   itemIdsToCopy.push(highlightId);
                                 }
                                 return;
@@ -20481,6 +20611,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                               // Try to find corresponding item by matching name and category (same logic as migration)
                               const categoryName = getCategoryName(selectedTemplate, highlight.spaceId, highlight.categoryId);
+                              // console.log('Category name:', categoryName, 'Highlight name:', highlight.name);
 
                               // Find items that match name and category
                               const matchingItem = Object.values(items).find(item =>
@@ -20488,6 +20619,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 item.itemType === categoryName
                               );
 
+                              // console.log('Matching item:', matchingItem);
 
                               // Verify the item has an annotation in the same space
                               if (matchingItem) {
@@ -20497,26 +20629,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   ann.spaceId === highlight.spaceId
                                 );
 
+                                // console.log('Matching annotation:', matchingAnnotation);
+                                // console.log('All annotations for item:', Object.values(annotations).filter(a => a.itemId === matchingItem.itemId));
 
                                 if (matchingAnnotation && matchingItem.itemId) {
                                   // Found corresponding item in new system
                                   // Avoid duplicates
                                   if (!itemIdsToCopy.includes(matchingItem.itemId)) {
+                                    // console.log('Adding itemId to copy:', matchingItem.itemId);
                                     itemIdsToCopy.push(matchingItem.itemId);
                                   }
                                 } else {
                                   // No annotation found, but item exists - still copy it
                                   // The item might not have an annotation yet, but we can still copy it
+                                  // console.log('No matching annotation, but item exists - copying anyway');
                                   if (!itemIdsToCopy.includes(matchingItem.itemId)) {
                                     itemIdsToCopy.push(matchingItem.itemId);
                                   }
                                 }
                               } else {
                                 // Legacy highlight, no corresponding item found
+                                // console.log('No matching item, treating as legacy highlight');
                                 legacyHighlightsToCopy.push(highlight);
                               }
                             });
 
+                            // console.log('Items to copy:', itemIdsToCopy);
+                            // console.log('Legacy highlights to copy:', legacyHighlightsToCopy);
 
                             // Handle new system items
                             if (itemIdsToCopy.length > 0) {
@@ -20550,10 +20689,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 setAnnotations(result.updatedAnnotations);
 
                                 // Create highlight entries for UI display
+                                // console.log('Creating highlight entries for', itemIdsToCopy.length, 'items');
                                 const newHighlights = {};
                                 itemIdsToCopy.forEach(itemId => {
                                   const item = result.newItems[itemId];
+                                  // console.log('Processing item for highlight creation:', itemId, item);
                                   if (!item) {
+                                    // console.log('Item not found in result.newItems');
                                     return;
                                   }
 
@@ -20563,12 +20705,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     return ann.itemId === itemId && annModuleId === module.id;
                                   });
 
+                                  // console.log('Destination annotation:', destAnnotation);
 
                                   // Find source annotation to get coordinates
                                   const sourceAnnotation = Object.values(annotations).find(a => {
                                     const aModuleId = a.moduleId || a.spaceId; // Support legacy spaceId
                                     return a.itemId === itemId && aModuleId === transferState.sourceModuleId;
                                   });
+                                  // console.log('Source annotation:', sourceAnnotation);
 
                                   // Find source highlight by matching coordinates or by finding the highlight we selected
                                   let sourceHighlight = null;
@@ -20594,10 +20738,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     }
                                   }
 
+                                  // console.log('Source highlight:', sourceHighlight);
 
                                   // Find destination category ID
                                   const destModule = ((selectedTemplate.modules || selectedTemplate.spaces) || []).find(m => m.id === module.id);
                                   const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
+                                  // console.log('Destination category:', destCategory);
 
                                   // Use destination annotation coordinates, or source annotation coordinates, or source highlight bounds
                                   // Convert pdfCoordinates format to bounds format (they should be the same structure)
@@ -20610,6 +20756,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     bounds = sourceHighlight.bounds;
                                   }
 
+                                  // console.log('Bounds for highlight:', bounds);
 
                                   if (bounds) {
                                     const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -20622,7 +20769,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       name: item.name || sourceHighlight?.name || 'Untitled Item',
                                       checklistResponses: {}
                                     };
+                                    // console.log('Created highlight:', newHighlights[highlightId]);
                                   } else {
+                                    // console.log('No bounds available, skipping highlight creation');
                                   }
                                 });
 
@@ -20640,6 +20789,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                             // Handle legacy highlights (if any)
                             if (legacyHighlightsToCopy.length > 0) {
+                              // console.log('Copying legacy highlights:', legacyHighlightsToCopy);
+                              // console.log('To module:', module.id, module.name);
 
                               // Find matching category in destination module
                               const allModules = (selectedTemplate.modules || selectedTemplate.spaces) || [];
@@ -20650,6 +20801,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 c => c.name === sourceCategory?.name
                               );
 
+                              // console.log('Source category:', sourceCategory);
+                              // console.log('Dest category:', destCategory);
 
                               // Create new highlights in destination module with same data
                               const newHighlights = {};
@@ -20663,6 +20816,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 };
                               });
 
+                              // console.log('New highlights to add:', newHighlights);
 
                               // Update highlightAnnotations state
                               setHighlightAnnotations(prev => ({
@@ -20678,6 +20832,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                             // If no items found at all, log warning
                             if (itemIdsToCopy.length === 0 && legacyHighlightsToCopy.length === 0) {
+                              console.warn('No items found to copy. Selected IDs:', transferState.items);
                               setTransferState(null);
                             }
                           }}
@@ -21563,6 +21718,7 @@ export default function App() {
   const generateTabId = () => `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   const handleDocumentSelect = (file, filePath = null) => {
+    // console.log('handleDocumentSelect called with file:', file, 'filePath:', filePath);
     if (!file) {
       console.error('No file provided to handleDocumentSelect');
       return;
@@ -21573,6 +21729,7 @@ export default function App() {
 
     // Check if this PDF is already being opened (prevents duplicate opens when app is slow)
     if (openingPdfsRef.current.has(pdfKey)) {
+      // console.log('PDF is already being opened, ignoring duplicate request:', file.name);
       return;
     }
 
@@ -21590,6 +21747,7 @@ export default function App() {
     });
 
     if (existingTab) {
+      // console.log('Switching to existing tab:', existingTab.id);
       // Clear the opening flag in case it was set (shouldn't happen, but just in case)
       openingPdfsRef.current.delete(pdfKey);
       // Switch to existing tab
@@ -21731,6 +21889,7 @@ export default function App() {
   const handlePageDrop = (sourceTabId, pageNumber, targetTabId) => {
     // This is a placeholder - actual PDF page copying would require PDF manipulation
     // For now, we'll just show a message or implement basic structure
+    // console.log(`Page ${pageNumber} from tab ${sourceTabId} dropped on tab ${targetTabId}`);
 
     // TODO: Implement actual page copying using PDF.js or a PDF manipulation library
     // This would involve:
