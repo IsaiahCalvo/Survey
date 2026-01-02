@@ -687,7 +687,12 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               <div
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (!isToggleEnabled || !onToggleRegionOverlay) return;
+                                  console.log(`[OverlayToggleDebug] Overlay toggle clicked! isToggleEnabled=${isToggleEnabled}, isOverlayEnabled=${isOverlayEnabled}, spaceId=${space.id}, pageId=${page.pageId}`);
+                                  if (!isToggleEnabled || !onToggleRegionOverlay) {
+                                    console.log('[OverlayToggleDebug] Toggle not enabled or no handler, returning');
+                                    return;
+                                  }
+                                  console.log(`[OverlayToggleDebug] Calling onToggleRegionOverlay to set overlay to ${!isOverlayEnabled}`);
                                   onToggleRegionOverlay(space.id, page.pageId);
                                 }}
                                 style={{

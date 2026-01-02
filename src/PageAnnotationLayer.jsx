@@ -1370,6 +1370,7 @@ const PageAnnotationLayer = memo(({
   eraserMode = 'partial', // 'partial' | 'entire'
   eraserSize = 20, // Eraser radius in pixels
   showSurveyPanel = false, // Whether survey mode is active
+  isRegionOverlayEnabled = null, // Function to check if overlay is enabled: (spaceId, pageId, page) => boolean
   layerVisibility = { 'native': true, 'pdf-annotations': true }, // Layer visibility toggles
   // Callout overlay props
   callouts = [], // Array of all callout objects
@@ -1421,7 +1422,8 @@ const PageAnnotationLayer = memo(({
     activeRegionIdRef.current = activeRegionId;
     spacesRef.current = spaces;
     getRegionLightbulbStateRef.current = getRegionLightbulbState;
-  }, [callouts, setCallouts, selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, spaces, getRegionLightbulbState, pageNumber]);
+    isRegionOverlayEnabledRef.current = isRegionOverlayEnabled;
+  }, [callouts, setCallouts, selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, spaces, getRegionLightbulbState, isRegionOverlayEnabled, pageNumber]);
   const strokeWidthRef = useRef(strokeWidth);
   const justCreatedCalloutRef = useRef(false);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
@@ -1434,14 +1436,15 @@ const PageAnnotationLayer = memo(({
   const activeRegionIdRef = useRef(activeRegionId);
   const spacesRef = useRef(spaces);
   const getRegionLightbulbStateRef = useRef(getRegionLightbulbState);
+  const isRegionOverlayEnabledRef = useRef(isRegionOverlayEnabled);
 
   // Helper function to determine if regionId should be assigned to new annotations
   // Only assign regionId if ALL of the following are true:
   // 1. A space is active
   // 2. The CURRENT PAGE is assigned to that space
   // 3. The current page HAS a region
-  // 4. The region's toggle is ON (showBackgroundAnnotations !== false)
-  // This ensures annotations created on pages without regions, or with toggle OFF, remain "global"
+  // 4. The OVERLAY toggle is ON (isRegionOverlayEnabled returns true)
+  // This ensures annotations created on pages without regions, or with overlay OFF, remain "global"
   const shouldAssignRegionId = useCallback(() => {
     // Must have an active space
     const spaceId = selectedSpaceIdRef.current;
@@ -1471,11 +1474,14 @@ const PageAnnotationLayer = memo(({
       return false;
     }
 
-    // Check if the region's toggle is ON
-    const isToggleOn = region.showBackgroundAnnotations !== false;
-    if (!isToggleOn) {
-      console.log(`[RegionIdDebug] Page ${pageNumber} region toggle is OFF, not assigning regionId`);
-      return false;
+    // Check if the OVERLAY toggle is ON (this is what determines regionId assignment)
+    const isOverlayEnabled = isRegionOverlayEnabledRef.current;
+    if (isOverlayEnabled) {
+      const isOverlayOn = isOverlayEnabled(spaceId, pageNumber, assignedPage);
+      if (!isOverlayOn) {
+        console.log(`[RegionIdDebug] Page ${pageNumber} overlay is OFF, not assigning regionId`);
+        return false;
+      }
     }
 
     // Also need an activeRegionId to actually assign

@@ -11508,10 +11508,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const key = `${spaceId}-${pageId}`;
       const newMap = new Map(prev);
       // Toggle: if currently disabled (true), enable it (delete); if enabled, disable it (set to true)
-      if (newMap.get(key) === true) {
+      const wasDisabled = newMap.get(key) === true;
+      if (wasDisabled) {
         newMap.delete(key);
+        console.log(`[OverlayToggleDebug] handleToggleRegionOverlay: Overlay ENABLED for ${key}`);
       } else {
         newMap.set(key, true);
+        console.log(`[OverlayToggleDebug] handleToggleRegionOverlay: Overlay DISABLED for ${key}`);
       }
       return newMap;
     });
@@ -15104,6 +15107,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               eraserMode={eraserMode}
                               eraserSize={eraserSize}
                               showSurveyPanel={showSurveyPanel}
+                              isRegionOverlayEnabled={isRegionOverlayEnabled}
                               layerVisibility={annotationLayerVisibility}
                               callouts={callouts}
                               setCallouts={setCallouts}
