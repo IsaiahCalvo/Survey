@@ -88,7 +88,7 @@ export const isPointNearEllipseStroke = (point, cx, cy, rx, ry, strokeWidth, tol
 
   // Point is near stroke if normalized distance is close to 1
   return normalizedDist >= Math.pow(1 - normalizedTolerance, 2) &&
-         normalizedDist <= Math.pow(1 + normalizedTolerance, 2);
+    normalizedDist <= Math.pow(1 + normalizedTolerance, 2);
 };
 
 /**
@@ -106,7 +106,7 @@ export const isPointInPolygon = (point, vertices) => {
     const xj = vertices[j].x, yj = vertices[j].y;
 
     if (((yi > point.y) !== (yj > point.y)) &&
-        (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+      (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
       inside = !inside;
     }
   }
@@ -383,7 +383,7 @@ export const isPointOnRect = (point, rectObj, tolerance = DEFAULT_TOLERANCE) => 
   // Check if point is inside the filled area
   if (hasFill) {
     if (localPoint.x >= originX && localPoint.x <= originX + width &&
-        localPoint.y >= originY && localPoint.y <= originY + height) {
+      localPoint.y >= originY && localPoint.y <= originY + height) {
       return true;
     }
   }
@@ -407,7 +407,7 @@ export const isPointOnRect = (point, rectObj, tolerance = DEFAULT_TOLERANCE) => 
   if (!hasFill && !hasStroke) {
     const effectiveDistance = tolerance;
     if (localPoint.x >= originX - effectiveDistance && localPoint.x <= originX + width + effectiveDistance &&
-        localPoint.y >= originY - effectiveDistance && localPoint.y <= originY + height + effectiveDistance) {
+      localPoint.y >= originY - effectiveDistance && localPoint.y <= originY + height + effectiveDistance) {
       return true;
     }
   }
@@ -576,9 +576,9 @@ export const isPointOnTextbox = (point, textObj, tolerance = DEFAULT_TOLERANCE) 
   // For text, we check the bounding area with tolerance
   // More precise per-glyph detection would require accessing text metrics
   return localPoint.x >= originX - tolerance &&
-         localPoint.x <= originX + width + tolerance &&
-         localPoint.y >= originY - tolerance &&
-         localPoint.y <= originY + height + tolerance;
+    localPoint.x <= originX + width + tolerance &&
+    localPoint.y >= originY - tolerance &&
+    localPoint.y <= originY + height + tolerance;
 };
 
 /**
@@ -681,9 +681,9 @@ export const isPointOnObject = (point, obj, tolerance = DEFAULT_TOLERANCE) => {
       const bounds = obj.getBoundingRect ? obj.getBoundingRect() : null;
       if (bounds) {
         return point.x >= bounds.left - tolerance &&
-               point.x <= bounds.left + bounds.width + tolerance &&
-               point.y >= bounds.top - tolerance &&
-               point.y <= bounds.top + bounds.height + tolerance;
+          point.x <= bounds.left + bounds.width + tolerance &&
+          point.y >= bounds.top - tolerance &&
+          point.y <= bounds.top + bounds.height + tolerance;
       }
       return false;
   }
@@ -721,17 +721,17 @@ export const doesRectIntersectLineSegment = (selRect, lineStart, lineEnd, stroke
   };
 
   if (rect.right < lineBounds.left || rect.left > lineBounds.right ||
-      rect.bottom < lineBounds.top || rect.top > lineBounds.bottom) {
+    rect.bottom < lineBounds.top || rect.top > lineBounds.bottom) {
     return false;
   }
 
   // Check if either endpoint is inside the rect
   if (lineStart.x >= rect.left && lineStart.x <= rect.right &&
-      lineStart.y >= rect.top && lineStart.y <= rect.bottom) {
+    lineStart.y >= rect.top && lineStart.y <= rect.bottom) {
     return true;
   }
   if (lineEnd.x >= rect.left && lineEnd.x <= rect.right &&
-      lineEnd.y >= rect.top && lineEnd.y <= rect.bottom) {
+    lineEnd.y >= rect.top && lineEnd.y <= rect.bottom) {
     return true;
   }
 
@@ -741,7 +741,7 @@ export const doesRectIntersectLineSegment = (selRect, lineStart, lineEnd, stroke
     y: (lineStart.y + lineEnd.y) / 2
   };
   if (midPoint.x >= rect.left && midPoint.x <= rect.right &&
-      midPoint.y >= rect.top && midPoint.y <= rect.bottom) {
+    midPoint.y >= rect.top && midPoint.y <= rect.bottom) {
     return true;
   }
 
@@ -773,10 +773,10 @@ export const doesRectIntersectLineSegment = (selRect, lineStart, lineEnd, stroke
         x: lineStart.x + t * (lineEnd.x - lineStart.x),
         y: lineStart.y + t * (lineEnd.y - lineStart.y)
       };
-      
+
       // Check if this point is inside the expanded rect
       if (samplePoint.x >= rect.left && samplePoint.x <= rect.right &&
-          samplePoint.y >= rect.top && samplePoint.y <= rect.bottom) {
+        samplePoint.y >= rect.top && samplePoint.y <= rect.bottom) {
         return true;
       }
     }
@@ -795,7 +795,7 @@ const doLineSegmentsIntersect = (p1, p2, p3, p4) => {
   const d4 = direction(p1, p2, p4);
 
   if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
-      ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+    ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
     return true;
   }
 
@@ -813,7 +813,7 @@ const direction = (p1, p2, p3) => {
 
 const onSegment = (p1, p2, p) => {
   return p.x <= Math.max(p1.x, p2.x) && p.x >= Math.min(p1.x, p2.x) &&
-         p.y <= Math.max(p1.y, p2.y) && p.y >= Math.min(p1.y, p2.y);
+    p.y <= Math.max(p1.y, p2.y) && p.y >= Math.min(p1.y, p2.y);
 };
 
 /**
@@ -864,7 +864,7 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
     const innerRy = Math.max(0, ry - halfStroke);
     for (const corner of corners) {
       if (isPointInEllipse(corner, cx, cy, outerRx, outerRy) &&
-          !isPointInEllipse(corner, cx, cy, innerRx, innerRy)) {
+        !isPointInEllipse(corner, cx, cy, innerRx, innerRy)) {
         return true;
       }
     }
@@ -872,7 +872,7 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
 
   // Check if ellipse center is inside rect
   if (cx >= selRect.left && cx <= selRect.right &&
-      cy >= selRect.top && cy <= selRect.bottom) {
+    cy >= selRect.top && cy <= selRect.bottom) {
     return true;
   }
 
@@ -886,7 +886,7 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
     const y = cy + outerRy * Math.sin(angle);
 
     if (x >= selRect.left && x <= selRect.right &&
-        y >= selRect.top && y <= selRect.bottom) {
+      y >= selRect.top && y <= selRect.bottom) {
       return true;
     }
   }
@@ -907,14 +907,14 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
       Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
     );
     const samplesPerEdge = Math.max(8, Math.ceil(edgeLength / 5)); // Sample every ~5px
-    
+
     for (let i = 0; i <= samplesPerEdge; i++) {
       const t = i / samplesPerEdge;
       const point = {
         x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
         y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
       };
-      
+
       // Check if this point on the edge is on or inside the ellipse
       if (hasFill) {
         if (isPointInEllipse(point, cx, cy, outerRx, outerRy)) {
@@ -924,8 +924,8 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
         const innerRx = Math.max(0, rx - halfStroke);
         const innerRy = Math.max(0, ry - halfStroke);
         // For stroke-only, check if point is on the stroke (between inner and outer)
-        const distSq = Math.pow(point.x - cx, 2) / (outerRx * outerRx) + 
-                      Math.pow(point.y - cy, 2) / (outerRy * outerRy);
+        const distSq = Math.pow(point.x - cx, 2) / (outerRx * outerRx) +
+          Math.pow(point.y - cy, 2) / (outerRy * outerRy);
         if (distSq >= Math.pow(innerRx / outerRx, 2) && distSq <= 1) {
           return true;
         }
@@ -982,7 +982,7 @@ export const doesRectIntersectPath = (selRect, pathObj) => {
       currentX = command === 'M' ? cmd[1] : currentX + cmd[1];
       currentY = command === 'M' ? cmd[2] : currentY + cmd[2];
       const tp = transformPoint(currentX, currentY);
-      transformedPoints.push({ type: 'M', local: {x: currentX, y: currentY}, canvas: tp });
+      transformedPoints.push({ type: 'M', local: { x: currentX, y: currentY }, canvas: tp });
     } else if (command === 'L' || command === 'l') {
       const startX = currentX, startY = currentY;
       const endX = command === 'L' ? cmd[1] : currentX + cmd[1];
@@ -990,7 +990,7 @@ export const doesRectIntersectPath = (selRect, pathObj) => {
 
       const start = transformPoint(startX, startY);
       const end = transformPoint(endX, endY);
-      transformedPoints.push({ type: 'L', localEnd: {x: endX, y: endY}, canvasStart: start, canvasEnd: end });
+      transformedPoints.push({ type: 'L', localEnd: { x: endX, y: endY }, canvasStart: start, canvasEnd: end });
 
       segmentCount++;
       if (doesRectIntersectLineSegment(selRect, start, end, strokeWidth)) {
@@ -1075,9 +1075,7 @@ export const doesRectIntersectPath = (selRect, pathObj) => {
 export const doesRectIntersectRect = (selRect, rectObj) => {
   if (!rectObj || rectObj.type !== 'rect') return false;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geometryHitTest.js:1042',message:'doesRectIntersectRect entry',data:{selRect,rectWidth:rectObj.width,rectHeight:rectObj.height,rectLeft:rectObj.left,rectTop:rectObj.top,strokeWidth:rectObj.strokeWidth,hasFill:!!(rectObj.fill && rectObj.fill !== 'transparent' && rectObj.fill !== ''),hasStroke:!!(rectObj.stroke && rectObj.stroke !== 'transparent' && rectObj.stroke !== '')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
+
 
   const matrix = getObjectTransformMatrix(rectObj);
   const width = rectObj.width || 0;
@@ -1109,15 +1107,13 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
 
   const canvasVertices = localVertices.map(transformPoint);
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geometryHitTest.js:1073',message:'Rect vertices transformed',data:{canvasVertices,selRect,matrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-  // #endregion
+
 
   if (hasFill) {
     // Check if any vertex is inside selection rect
     for (const v of canvasVertices) {
       if (v.x >= selRect.left && v.x <= selRect.right &&
-          v.y >= selRect.top && v.y <= selRect.bottom) {
+        v.y >= selRect.top && v.y <= selRect.bottom) {
         return true;
       }
     }
@@ -1150,7 +1146,7 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
     let allVerticesInside = true;
     for (const v of canvasVertices) {
       if (v.x < selRect.left || v.x > selRect.right ||
-          v.y < selRect.top || v.y > selRect.bottom) {
+        v.y < selRect.top || v.y > selRect.bottom) {
         allVerticesInside = false;
         break;
       }
@@ -1173,24 +1169,24 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
       const next = (i + 1) % canvasVertices.length;
       const edgeStart = canvasVertices[i];
       const edgeEnd = canvasVertices[next];
-      
+
       const edgeLength = Math.sqrt(
         Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
       );
-      
+
       // Sample every ~5px, minimum 4 samples per edge
       const samplesPerEdge = Math.max(4, Math.ceil(edgeLength / 5));
-      
+
       for (let s = 0; s <= samplesPerEdge; s++) {
         const t = s / samplesPerEdge;
         const point = {
           x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
           y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
         };
-        
+
         // Check if this point on the rectangle edge is inside the selection rect
         if (point.x >= selRect.left && point.x <= selRect.right &&
-            point.y >= selRect.top && point.y <= selRect.bottom) {
+          point.y >= selRect.top && point.y <= selRect.bottom) {
           return true;
         }
       }
@@ -1215,15 +1211,15 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
 
   if (hasStroke && !hasFill) {
     // Stroke-only rectangle: check if selection rect intersects the stroke outline
-    
+
     // Check if any vertex is inside selection rect
     for (const v of canvasVertices) {
       if (v.x >= selRect.left && v.x <= selRect.right &&
-          v.y >= selRect.top && v.y <= selRect.bottom) {
+        v.y >= selRect.top && v.y <= selRect.bottom) {
         return true;
       }
     }
-    
+
     // Check if selection rect center is near any stroke edge
     const center = { x: (selRect.left + selRect.right) / 2, y: (selRect.top + selRect.bottom) / 2 };
     for (let i = 0; i < canvasVertices.length; i++) {
@@ -1233,7 +1229,7 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
         return true;
       }
     }
-    
+
     // Check if object stroke edges intersect selection rect (with stroke width)
     for (let i = 0; i < canvasVertices.length; i++) {
       const next = (i + 1) % canvasVertices.length;
@@ -1241,7 +1237,7 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
         return true;
       }
     }
-    
+
     // Check if selection rect edges intersect object stroke edges (bidirectional)
     // Sample points along selection rect edges and check distance to object stroke edges
     const selRectEdges = [
@@ -1255,14 +1251,14 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
         Math.pow(selEnd.x - selStart.x, 2) + Math.pow(selEnd.y - selStart.y, 2)
       );
       const samples = Math.max(4, Math.ceil(edgeLength / 10)); // Sample every ~10px
-      
+
       for (let s = 0; s <= samples; s++) {
         const t = s / samples;
         const point = {
           x: selStart.x + t * (selEnd.x - selStart.x),
           y: selStart.y + t * (selEnd.y - selStart.y)
         };
-        
+
         // Check if this point on selection rect edge is near any object stroke edge
         for (let i = 0; i < canvasVertices.length; i++) {
           const next = (i + 1) % canvasVertices.length;
@@ -1286,21 +1282,21 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
 
   if (!hasFill && !hasStroke) {
     // No fill and no stroke: check edges with small tolerance
-    
+
     // Check if any vertex is inside selection rect
     for (const v of canvasVertices) {
       if (v.x >= selRect.left && v.x <= selRect.right &&
-          v.y >= selRect.top && v.y <= selRect.bottom) {
+        v.y >= selRect.top && v.y <= selRect.bottom) {
         return true;
       }
     }
-    
+
     // Check if selection rect center is inside the rect (using polygon check)
     const center = { x: (selRect.left + selRect.right) / 2, y: (selRect.top + selRect.bottom) / 2 };
     if (isPointInPolygon(center, canvasVertices)) {
       return true;
     }
-    
+
     // Check edges with small tolerance
     for (let i = 0; i < canvasVertices.length; i++) {
       const next = (i + 1) % canvasVertices.length;
@@ -1308,35 +1304,35 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
         return true;
       }
     }
-    
+
     // Sample points along rectangle edges to catch partial overlaps
     for (let i = 0; i < canvasVertices.length; i++) {
       const next = (i + 1) % canvasVertices.length;
       const edgeStart = canvasVertices[i];
       const edgeEnd = canvasVertices[next];
-      
+
       const edgeLength = Math.sqrt(
         Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
       );
-      
+
       // Sample every ~5px, minimum 4 samples per edge
       const samplesPerEdge = Math.max(4, Math.ceil(edgeLength / 5));
-      
+
       for (let s = 0; s <= samplesPerEdge; s++) {
         const t = s / samplesPerEdge;
         const point = {
           x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
           y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
         };
-        
+
         // Check if this point on the rectangle edge is inside the selection rect
         if (point.x >= selRect.left && point.x <= selRect.right &&
-            point.y >= selRect.top && point.y <= selRect.bottom) {
+          point.y >= selRect.top && point.y <= selRect.bottom) {
           return true;
         }
       }
     }
-    
+
     // Check if selection rect edges intersect object edges (bidirectional)
     const selRectEdges = [
       [{ x: selRect.left, y: selRect.top }, { x: selRect.right, y: selRect.top }],
@@ -1355,9 +1351,7 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
   }
 
   const result = false;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geometryHitTest.js:1293',message:'doesRectIntersectRect exit false',data:{selRect,hasFill,hasStroke},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
+
   return result;
 };
 
@@ -1455,7 +1449,7 @@ export const doesRectIntersectTextbox = (selRect, textObj) => {
   // Check if any vertex is inside selection rect
   for (const v of canvasVertices) {
     if (v.x >= selRect.left && v.x <= selRect.right &&
-        v.y >= selRect.top && v.y <= selRect.bottom) {
+      v.y >= selRect.top && v.y <= selRect.bottom) {
       return true;
     }
   }
@@ -1479,24 +1473,24 @@ export const doesRectIntersectTextbox = (selRect, textObj) => {
     const next = (i + 1) % canvasVertices.length;
     const edgeStart = canvasVertices[i];
     const edgeEnd = canvasVertices[next];
-    
+
     const edgeLength = Math.sqrt(
       Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
     );
-    
+
     // Sample every ~5px, minimum 4 samples per edge
     const samplesPerEdge = Math.max(4, Math.ceil(edgeLength / 5));
-    
+
     for (let s = 0; s <= samplesPerEdge; s++) {
       const t = s / samplesPerEdge;
       const point = {
         x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
         y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
       };
-      
+
       // Check if this point on the textbox edge is inside the selection rect
       if (point.x >= selRect.left && point.x <= selRect.right &&
-          point.y >= selRect.top && point.y <= selRect.bottom) {
+        point.y >= selRect.top && point.y <= selRect.bottom) {
         return true;
       }
     }
@@ -1563,9 +1557,7 @@ const multiplyMatrices = (m1, m2) => {
 export const doesRectIntersectObject = (selRect, obj) => {
   if (!obj || !obj.type) return false;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geometryHitTest.js:1466',message:'doesRectIntersectObject entry',data:{objType:obj.type,selRect,objId:obj.id,objLeft:obj.left,objTop:obj.top},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
+
 
   let result;
   switch (obj.type) {
@@ -1639,7 +1631,7 @@ export const doesRectIntersectObject = (selRect, obj) => {
       // Check vertices inside selection
       for (const v of canvasTriVertices) {
         if (v.x >= selRect.left && v.x <= selRect.right &&
-            v.y >= selRect.top && v.y <= selRect.bottom) {
+          v.y >= selRect.top && v.y <= selRect.bottom) {
           return true;
         }
       }
@@ -1665,38 +1657,37 @@ export const doesRectIntersectObject = (selRect, obj) => {
         const next = (i + 1) % canvasTriVertices.length;
         const edgeStart = canvasTriVertices[i];
         const edgeEnd = canvasTriVertices[next];
-        
+
         const edgeLength = Math.sqrt(
           Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
         );
-        
+
         // Sample every ~5px, minimum 4 samples per edge
         const samplesPerEdge = Math.max(4, Math.ceil(edgeLength / 5));
-        
+
         for (let s = 0; s <= samplesPerEdge; s++) {
           const t = s / samplesPerEdge;
           const point = {
             x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
             y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
           };
-          
+
           // Check if this point on the triangle edge is inside the selection rect
           if (point.x >= selRect.left && point.x <= selRect.right &&
-              point.y >= selRect.top && point.y <= selRect.bottom) {
+            point.y >= selRect.top && point.y <= selRect.bottom) {
             result = true;
             break;
           }
         }
         if (result) break;
       }
-      result = false;
       break;
     default:
       // Fallback: use bounding box
       const bounds = obj.getBoundingRect ? obj.getBoundingRect() : null;
       if (bounds) {
         result = !(selRect.right < bounds.left || selRect.left > bounds.left + bounds.width ||
-                 selRect.bottom < bounds.top || selRect.top > bounds.top + bounds.height);
+          selRect.bottom < bounds.top || selRect.top > bounds.top + bounds.height);
       } else {
         result = false;
       }
@@ -1704,7 +1695,7 @@ export const doesRectIntersectObject = (selRect, obj) => {
   }
 
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geometryHitTest.js:1530',message:'doesRectIntersectObject exit',data:{objType:obj.type,result,objId:obj.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'geometryHitTest.js:1530', message: 'doesRectIntersectObject exit', data: { objType: obj.type, result, objId: obj.id }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
   // #endregion
 
   return result;
@@ -1726,9 +1717,9 @@ export const isObjectFullyInRect = (selRect, obj) => {
 
   // Check if all bounds are within selection rect
   return bounds.left >= selRect.left &&
-         bounds.right <= selRect.right &&
-         bounds.top >= selRect.top &&
-         bounds.bottom <= selRect.bottom;
+    bounds.right <= selRect.right &&
+    bounds.top >= selRect.top &&
+    bounds.bottom <= selRect.bottom;
 };
 
 /**
@@ -1780,152 +1771,152 @@ export const getObjectGeometryBounds = (obj) => {
       maxY = Math.max(maxY, y);
     };
 
-  switch (obj.type) {
-    case 'path': {
-      if (!obj.path) return null;
-      const strokeWidth = (obj.strokeWidth || 1) / 2;
-      let currentX = 0, currentY = 0;
+    switch (obj.type) {
+      case 'path': {
+        if (!obj.path) return null;
+        const strokeWidth = (obj.strokeWidth || 1) / 2;
+        let currentX = 0, currentY = 0;
 
-      for (const cmd of obj.path) {
-        const command = cmd[0];
-        if (command === 'M' || command === 'm') {
-          currentX = command === 'M' ? cmd[1] : currentX + cmd[1];
-          currentY = command === 'M' ? cmd[2] : currentY + cmd[2];
-          const p = transformPoint(currentX, currentY);
-          updateBounds(p.x - strokeWidth, p.y - strokeWidth);
-          updateBounds(p.x + strokeWidth, p.y + strokeWidth);
-        } else if (command === 'L' || command === 'l') {
-          currentX = command === 'L' ? cmd[1] : currentX + cmd[1];
-          currentY = command === 'L' ? cmd[2] : currentY + cmd[2];
-          const p = transformPoint(currentX, currentY);
-          updateBounds(p.x - strokeWidth, p.y - strokeWidth);
-          updateBounds(p.x + strokeWidth, p.y + strokeWidth);
-        } else if (command === 'C' || command === 'c') {
-          // Sample bezier curve
-          const cp1x = command === 'C' ? cmd[1] : currentX + cmd[1];
-          const cp1y = command === 'C' ? cmd[2] : currentY + cmd[2];
-          const cp2x = command === 'C' ? cmd[3] : currentX + cmd[3];
-          const cp2y = command === 'C' ? cmd[4] : currentY + cmd[4];
-          const endX = command === 'C' ? cmd[5] : currentX + cmd[5];
-          const endY = command === 'C' ? cmd[6] : currentY + cmd[6];
-
-          for (let t = 0; t <= 1; t += 0.1) {
-            const mt = 1 - t;
-            const x = mt * mt * mt * currentX + 3 * mt * mt * t * cp1x + 3 * mt * t * t * cp2x + t * t * t * endX;
-            const y = mt * mt * mt * currentY + 3 * mt * mt * t * cp1y + 3 * mt * t * t * cp2y + t * t * t * endY;
-            const p = transformPoint(x, y);
+        for (const cmd of obj.path) {
+          const command = cmd[0];
+          if (command === 'M' || command === 'm') {
+            currentX = command === 'M' ? cmd[1] : currentX + cmd[1];
+            currentY = command === 'M' ? cmd[2] : currentY + cmd[2];
+            const p = transformPoint(currentX, currentY);
             updateBounds(p.x - strokeWidth, p.y - strokeWidth);
             updateBounds(p.x + strokeWidth, p.y + strokeWidth);
-          }
-          currentX = endX;
-          currentY = endY;
-        } else if (command === 'Q' || command === 'q') {
-          const cpx = command === 'Q' ? cmd[1] : currentX + cmd[1];
-          const cpy = command === 'Q' ? cmd[2] : currentY + cmd[2];
-          const endX = command === 'Q' ? cmd[3] : currentX + cmd[3];
-          const endY = command === 'Q' ? cmd[4] : currentY + cmd[4];
-
-          for (let t = 0; t <= 1; t += 0.1) {
-            const mt = 1 - t;
-            const x = mt * mt * currentX + 2 * mt * t * cpx + t * t * endX;
-            const y = mt * mt * currentY + 2 * mt * t * cpy + t * t * endY;
-            const p = transformPoint(x, y);
+          } else if (command === 'L' || command === 'l') {
+            currentX = command === 'L' ? cmd[1] : currentX + cmd[1];
+            currentY = command === 'L' ? cmd[2] : currentY + cmd[2];
+            const p = transformPoint(currentX, currentY);
             updateBounds(p.x - strokeWidth, p.y - strokeWidth);
             updateBounds(p.x + strokeWidth, p.y + strokeWidth);
+          } else if (command === 'C' || command === 'c') {
+            // Sample bezier curve
+            const cp1x = command === 'C' ? cmd[1] : currentX + cmd[1];
+            const cp1y = command === 'C' ? cmd[2] : currentY + cmd[2];
+            const cp2x = command === 'C' ? cmd[3] : currentX + cmd[3];
+            const cp2y = command === 'C' ? cmd[4] : currentY + cmd[4];
+            const endX = command === 'C' ? cmd[5] : currentX + cmd[5];
+            const endY = command === 'C' ? cmd[6] : currentY + cmd[6];
+
+            for (let t = 0; t <= 1; t += 0.1) {
+              const mt = 1 - t;
+              const x = mt * mt * mt * currentX + 3 * mt * mt * t * cp1x + 3 * mt * t * t * cp2x + t * t * t * endX;
+              const y = mt * mt * mt * currentY + 3 * mt * mt * t * cp1y + 3 * mt * t * t * cp2y + t * t * t * endY;
+              const p = transformPoint(x, y);
+              updateBounds(p.x - strokeWidth, p.y - strokeWidth);
+              updateBounds(p.x + strokeWidth, p.y + strokeWidth);
+            }
+            currentX = endX;
+            currentY = endY;
+          } else if (command === 'Q' || command === 'q') {
+            const cpx = command === 'Q' ? cmd[1] : currentX + cmd[1];
+            const cpy = command === 'Q' ? cmd[2] : currentY + cmd[2];
+            const endX = command === 'Q' ? cmd[3] : currentX + cmd[3];
+            const endY = command === 'Q' ? cmd[4] : currentY + cmd[4];
+
+            for (let t = 0; t <= 1; t += 0.1) {
+              const mt = 1 - t;
+              const x = mt * mt * currentX + 2 * mt * t * cpx + t * t * endX;
+              const y = mt * mt * currentY + 2 * mt * t * cpy + t * t * endY;
+              const p = transformPoint(x, y);
+              updateBounds(p.x - strokeWidth, p.y - strokeWidth);
+              updateBounds(p.x + strokeWidth, p.y + strokeWidth);
+            }
+            currentX = endX;
+            currentY = endY;
           }
-          currentX = endX;
-          currentY = endY;
         }
+        break;
       }
-      break;
-    }
-    case 'rect': {
-      const width = obj.width || 0;
-      const height = obj.height || 0;
-      const strokeWidth = (obj.strokeWidth || 0) / 2;
-      const originX = obj.originX === 'center' ? -width / 2 : 0;
-      const originY = obj.originY === 'center' ? -height / 2 : 0;
+      case 'rect': {
+        const width = obj.width || 0;
+        const height = obj.height || 0;
+        const strokeWidth = (obj.strokeWidth || 0) / 2;
+        const originX = obj.originX === 'center' ? -width / 2 : 0;
+        const originY = obj.originY === 'center' ? -height / 2 : 0;
 
-      const vertices = [
-        transformPoint(originX - strokeWidth, originY - strokeWidth),
-        transformPoint(originX + width + strokeWidth, originY - strokeWidth),
-        transformPoint(originX + width + strokeWidth, originY + height + strokeWidth),
-        transformPoint(originX - strokeWidth, originY + height + strokeWidth)
-      ];
-      vertices.forEach(v => updateBounds(v.x, v.y));
-      break;
-    }
-    case 'circle':
-    case 'ellipse': {
-      let rx, ry;
-      if (obj.type === 'ellipse') {
-        rx = obj.rx || 0;
-        ry = obj.ry || 0;
-      } else {
-        rx = ry = obj.radius || 0;
+        const vertices = [
+          transformPoint(originX - strokeWidth, originY - strokeWidth),
+          transformPoint(originX + width + strokeWidth, originY - strokeWidth),
+          transformPoint(originX + width + strokeWidth, originY + height + strokeWidth),
+          transformPoint(originX - strokeWidth, originY + height + strokeWidth)
+        ];
+        vertices.forEach(v => updateBounds(v.x, v.y));
+        break;
       }
-      const strokeWidth = (obj.strokeWidth || 0) / 2;
-
-      // Sample ellipse boundary
-      for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 16) {
-        const x = (rx + strokeWidth) * Math.cos(angle);
-        const y = (ry + strokeWidth) * Math.sin(angle);
-        const p = transformPoint(x, y);
-        updateBounds(p.x, p.y);
-      }
-      break;
-    }
-    case 'line': {
-      const x1 = obj.x1 || 0;
-      const y1 = obj.y1 || 0;
-      const x2 = obj.x2 || 0;
-      const y2 = obj.y2 || 0;
-      const strokeWidth = (obj.strokeWidth || 1) / 2;
-
-      const p1 = transformPoint(x1, y1);
-      const p2 = transformPoint(x2, y2);
-      updateBounds(p1.x - strokeWidth, p1.y - strokeWidth);
-      updateBounds(p1.x + strokeWidth, p1.y + strokeWidth);
-      updateBounds(p2.x - strokeWidth, p2.y - strokeWidth);
-      updateBounds(p2.x + strokeWidth, p2.y + strokeWidth);
-      break;
-    }
-    case 'textbox':
-    case 'text':
-    case 'i-text': {
-      const width = obj.width || 0;
-      const height = obj.height || 0;
-      const originX = obj.originX === 'center' ? -width / 2 : 0;
-      const originY = obj.originY === 'center' ? -height / 2 : 0;
-
-      const vertices = [
-        transformPoint(originX, originY),
-        transformPoint(originX + width, originY),
-        transformPoint(originX + width, originY + height),
-        transformPoint(originX, originY + height)
-      ];
-      vertices.forEach(v => updateBounds(v.x, v.y));
-      break;
-    }
-    case 'group': {
-      const objects = obj._objects || obj.getObjects?.() || [];
-      for (const child of objects) {
-        const childBounds = getObjectGeometryBounds(child);
-        if (childBounds) {
-          // Transform child bounds through group matrix
-          const corners = [
-            transformPoint(childBounds.left, childBounds.top),
-            transformPoint(childBounds.right, childBounds.top),
-            transformPoint(childBounds.right, childBounds.bottom),
-            transformPoint(childBounds.left, childBounds.bottom)
-          ];
-          corners.forEach(c => updateBounds(c.x, c.y));
+      case 'circle':
+      case 'ellipse': {
+        let rx, ry;
+        if (obj.type === 'ellipse') {
+          rx = obj.rx || 0;
+          ry = obj.ry || 0;
+        } else {
+          rx = ry = obj.radius || 0;
         }
+        const strokeWidth = (obj.strokeWidth || 0) / 2;
+
+        // Sample ellipse boundary
+        for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 16) {
+          const x = (rx + strokeWidth) * Math.cos(angle);
+          const y = (ry + strokeWidth) * Math.sin(angle);
+          const p = transformPoint(x, y);
+          updateBounds(p.x, p.y);
+        }
+        break;
       }
-      break;
-    }
-    default:
-      return getFallbackBounds();
+      case 'line': {
+        const x1 = obj.x1 || 0;
+        const y1 = obj.y1 || 0;
+        const x2 = obj.x2 || 0;
+        const y2 = obj.y2 || 0;
+        const strokeWidth = (obj.strokeWidth || 1) / 2;
+
+        const p1 = transformPoint(x1, y1);
+        const p2 = transformPoint(x2, y2);
+        updateBounds(p1.x - strokeWidth, p1.y - strokeWidth);
+        updateBounds(p1.x + strokeWidth, p1.y + strokeWidth);
+        updateBounds(p2.x - strokeWidth, p2.y - strokeWidth);
+        updateBounds(p2.x + strokeWidth, p2.y + strokeWidth);
+        break;
+      }
+      case 'textbox':
+      case 'text':
+      case 'i-text': {
+        const width = obj.width || 0;
+        const height = obj.height || 0;
+        const originX = obj.originX === 'center' ? -width / 2 : 0;
+        const originY = obj.originY === 'center' ? -height / 2 : 0;
+
+        const vertices = [
+          transformPoint(originX, originY),
+          transformPoint(originX + width, originY),
+          transformPoint(originX + width, originY + height),
+          transformPoint(originX, originY + height)
+        ];
+        vertices.forEach(v => updateBounds(v.x, v.y));
+        break;
+      }
+      case 'group': {
+        const objects = obj._objects || obj.getObjects?.() || [];
+        for (const child of objects) {
+          const childBounds = getObjectGeometryBounds(child);
+          if (childBounds) {
+            // Transform child bounds through group matrix
+            const corners = [
+              transformPoint(childBounds.left, childBounds.top),
+              transformPoint(childBounds.right, childBounds.top),
+              transformPoint(childBounds.right, childBounds.bottom),
+              transformPoint(childBounds.left, childBounds.bottom)
+            ];
+            corners.forEach(c => updateBounds(c.x, c.y));
+          }
+        }
+        break;
+      }
+      default:
+        return getFallbackBounds();
     }
 
     if (minX === Infinity) return getFallbackBounds();

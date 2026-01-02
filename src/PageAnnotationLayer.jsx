@@ -4304,6 +4304,7 @@ const PageAnnotationLayer = memo(({
       }
 
       const currentStrokeColor = strokeColorRef.current;
+      const currentStrokeWidth = strokeWidthRef.current;
       const ds = drawingStateRef.current;
       if (!ds.isDrawingShape || !ds.tempObj) {
         return;
