@@ -817,7 +817,21 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               return (
                                 <button
                                   onClick={(e) => {
-                                    console.log(`[ToggleClickDebug] Button onClick fired! isDisabled=${isDisabled}, currentState=${regionLightbulbState}, newState=${!regionLightbulbState}`);
+                                    const now = Date.now();
+                                    // Use a data attribute on the button to track last click time (per-button debounce)
+                                    const lastClick = parseInt(e.currentTarget.dataset.lastClick || '0', 10);
+                                    const timeSinceLastClick = now - lastClick;
+                                    console.log(`[ToggleClickDebug] Button onClick fired! isDisabled=${isDisabled}, currentState=${regionLightbulbState}, newState=${!regionLightbulbState}, timeSinceLastClick=${timeSinceLastClick}ms`);
+
+                                    // Debounce: ignore clicks within 300ms of each other
+                                    if (timeSinceLastClick < 300) {
+                                      console.log('[ToggleClickDebug] IGNORING click - too soon after last click (debounce)');
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      return;
+                                    }
+                                    e.currentTarget.dataset.lastClick = now.toString();
+
                                     if (isDisabled) {
                                       console.log('[ToggleClickDebug] Button is disabled, returning early');
                                       return;
