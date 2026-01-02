@@ -4334,19 +4334,35 @@ const PageAnnotationLayer = memo(({
           });
         }
       } else if (currentTool === 'arrow' && ds.tempObj.type === 'line') {
-        // CRITICAL: Save tempObj reference and clear state IMMEDIATELY to stop handleMouseMove
+        // CRITICAL: Save tempObj reference and clear state IMMEDIATELY
         const tempObjRef = ds.tempObj;
         ds.isDrawingShape = false;
         ds.tempObj = null;
 
+        // Extract properties from the temporary line
         const { x1, y1, x2, y2 } = tempObjRef;
+        const lineOptions = {
+          stroke: tempObjRef.stroke,
+          strokeWidth: tempObjRef.strokeWidth,
+          strokeUniform: tempObjRef.strokeUniform,
+          // Copy any other relevant properties if needed
+        };
+
+        // Remove the temporary line from the canvas explicitly
+        canvas.remove(tempObjRef);
+
+        // Recreate the line for the group
+        const newLine = new Line([x1, y1, x2, y2], lineOptions);
+
         const angle = Math.atan2(y2 - y1, x2 - x1);
         // Use the arrowhead style from toolbar settings
+        // Ensure we have a valid style, defaulting to SOLID_TRIANGLE
         const selectedArrowheadStyle = arrowheadStyleRef.current || ARROWHEAD_STYLES.SOLID_TRIANGLE;
+
         const head = createArrowhead(x2, y2, angle, currentStrokeColor, currentStrokeWidth, selectedArrowheadStyle);
 
-        // Create group with line and arrowhead (if not NONE style)
-        const groupObjects = head ? [tempObjRef, head] : [tempObjRef];
+        // Create group with new line and arrowhead
+        const groupObjects = head ? [newLine, head] : [newLine];
         const group = new Group(groupObjects, { selectable: true });
 
         // Store arrowhead style and mark as arrow type on the group
@@ -4363,18 +4379,23 @@ const PageAnnotationLayer = memo(({
           group.set({ regionId: activeRegionIdRef.current });
         }
 
-        // Add group to canvas - Fabric.js automatically removes tempObj from canvas when grouping
+        // Add group to canvas
         canvas.add(group);
+
         // Set flag to prevent deselection in handleMouseUpForSelection
         justFinishedDrawingRef.current = true;
+
         // Automatically select the arrow group so handles appear
         canvas.setActiveObject(group);
         canvas.requestRenderAll();
+
         // Clear flag after a brief delay
         setTimeout(() => {
           justFinishedDrawingRef.current = false;
         }, 100);
+
         saveCanvas();
+
         return;
       } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
         const { x1, y1, x2, y2 } = ds.tempObj;
