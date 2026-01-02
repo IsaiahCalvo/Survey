@@ -261,15 +261,22 @@ const createCurveControls = (object) => {
   object.setControlsVisibility({
     tl: false, tr: false, br: false, bl: false,
     ml: false, mt: false, mr: false, mb: false,
-    mtr: false // No rotation for now, or maybe yes? Request implies dragging endpoints.
+    mtr: false // No rotation for now
   });
 
   // Helper to get absolute coordinates of path points
-  const getPathPoints = (pathObject) => {
+  const getPathPoints = (target) => {
+    let pathObject = target;
+    if (target.type === 'group') {
+      // Find the path object inside the group
+      // Assuming it's the valid path we created
+      pathObject = target.getObjects().find(o => o.type === 'path');
+    }
+    if (!pathObject || !pathObject.path) return { p1: { x: 0, y: 0 }, cp: { x: 0, y: 0 }, p2: { x: 0, y: 0 } };
+
     const matrix = pathObject.calcTransformMatrix();
     const path = pathObject.path;
     // Transform local path points to canvas coordinates
-    // Path points allow for pathOffset
     const offsetX = pathObject.pathOffset.x;
     const offsetY = pathObject.pathOffset.y;
 
@@ -284,11 +291,19 @@ const createCurveControls = (object) => {
     };
   };
 
+  // Helper to resolve pathObj from target
+  const getPathObj = (target) => {
+    if (target.type === 'group') {
+      return target.getObjects().find(o => o.type === 'path');
+    }
+    return target;
+  };
+
   // Custom Control Definitions
 
   // Start Point (p1)
   const p1Control = new Control({
-    x: -0.5, y: 0, // Initial relative pos, receives update via positionHandler
+    x: -0.5, y: 0,
     cursorStyle: 'crosshair',
     actionName: 'drag_p1',
     render: renderPillControl,
@@ -297,20 +312,11 @@ const createCurveControls = (object) => {
       return p1;
     },
     actionHandler: function (eventData, transform, x, y) {
-      const pathObj = transform.target;
-      const mouseLocal = pathObj.toLocalPoint(new fabricLib.Point(x, y), 'center', 'center');
-      const { p1, cp, p2 } = getPathPoints(pathObj); // Absolute current
+      const target = transform.target;
+      const pathObj = getPathObj(target);
+      if (!pathObj) return false;
 
-      // New P1 is Mouse Position (Absolute)
-      // But we need to update path data essentially.
-      // Simplified: Update the path using the new mouse position as absolute coordinate
-      // We need to re-calculate everything since modifying path object dimensions shifts it.
-
-      // Actually, simpler logic:
-      // 1. Get current absolute coordinates of other points.
-      // 2. Form new 3 points.
-      // 3. Update path.
-
+      const { p1, cp, p2 } = getPathPoints(target);
       updateCurvePath(pathObj, { x, y }, cp, p2);
       return true;
     }
@@ -327,8 +333,11 @@ const createCurveControls = (object) => {
       return p2;
     },
     actionHandler: function (eventData, transform, x, y) {
-      const pathObj = transform.target;
-      const { p1, cp } = getPathPoints(pathObj);
+      const target = transform.target;
+      const pathObj = getPathObj(target);
+      if (!pathObj) return false;
+
+      const { p1, cp } = getPathPoints(target);
       updateCurvePath(pathObj, p1, cp, { x, y });
       return true;
     }
@@ -339,22 +348,22 @@ const createCurveControls = (object) => {
     x: 0, y: 0,
     cursorStyle: 'move',
     actionName: 'drag_cp',
-    render: renderPillControl, // Use pill or maybe circle?
-    cornerSize: 12, // Smaller
+    render: renderPillControl,
+    cornerSize: 12,
     positionHandler: function (dim, finalMatrix, fabricObject) {
       const { cp } = getPathPoints(fabricObject);
       return cp;
     },
     actionHandler: function (eventData, transform, x, y) {
-      const pathObj = transform.target;
-      const { p1, p2 } = getPathPoints(pathObj);
+      const target = transform.target;
+      const pathObj = getPathObj(target);
+      if (!pathObj) return false;
+
+      const { p1, p2 } = getPathPoints(target);
 
       // Snapping Logic
-      // Check distance to straight line midpoint
       const midX = (p1.x + p2.x) / 2;
       const midY = (p1.y + p2.y) / 2;
-
-      // Snap threshold (e.g., 20px)
       const SNAP_DIST = 20;
       const dist = Math.sqrt(Math.pow(x - midX, 2) + Math.pow(y - midY, 2));
 
@@ -2901,6 +2910,16 @@ const PageAnnotationLayer = memo(({
 
           obj.set({ visible: isVisible, selectable: isVisible && isInteractive, evented: isVisible && isInteractive });
 
+          // Apply custom controls for Curvable Lines and Arrows
+          if (obj.type === 'path' && obj.path && obj.path.length === 2 && obj.path[1][0] === 'Q') {
+            createCurveControls(obj);
+          } else if (obj.type === 'group' && obj.data?.type === 'arrow') {
+            const path = obj.getObjects().find(o => o.type === 'path');
+            if (path) {
+              createCurveControls(obj);
+            }
+          }
+
           canvas.add(obj);
           obj.setCoords();
         });
@@ -4520,42 +4539,66 @@ const PageAnnotationLayer = memo(({
             height: rectHeight
           });
         }
-      } else if (currentTool === 'arrow' && ds.tempObj.type === 'line') {
+      } else if (currentTool === 'arrow' && (ds.tempObj.type === 'line' || ds.tempObj.type === 'path')) {
         // CRITICAL: Save tempObj reference and clear state IMMEDIATELY
         const tempObjRef = ds.tempObj;
         ds.isDrawingShape = false;
         ds.tempObj = null;
 
-        // Extract properties from the temporary line
-        const { x1, y1, x2, y2 } = tempObjRef;
-        const lineOptions = {
-          stroke: tempObjRef.stroke,
-          strokeWidth: tempObjRef.strokeWidth,
-          strokeUniform: tempObjRef.strokeUniform,
-          // Copy any other relevant properties if needed
-        };
+        let pathObj;
+        if (tempObjRef.type === 'path') {
+          // Reuse the path object created in handleMouseDown
+          pathObj = tempObjRef;
+          canvas.remove(tempObjRef);
+        } else {
+          // Fallback if it was a Line (e.g. slight race condition or logic change)
+          // Convert to Path for curvature support
+          const { x1, y1, x2, y2 } = tempObjRef;
+          canvas.remove(tempObjRef);
+          const pathData = `M ${x1} ${y1} Q ${(x1 + x2) / 2} ${(y1 + y2) / 2} ${x2} ${y2}`;
+          pathObj = new Path(pathData, {
+            stroke: tempObjRef.stroke,
+            strokeWidth: tempObjRef.strokeWidth,
+            fill: 'transparent',
+            strokeUniform: true,
+            uniformScaling: false,
+            lockUniScaling: false
+          });
+        }
 
-        // Remove the temporary line from the canvas explicitly
-        canvas.remove(tempObjRef);
-
-        // Recreate the line for the group
-        const newLine = new Line([x1, y1, x2, y2], lineOptions);
+        // Recover points for Arrowhead calculation
+        // Ensure we handle Path with pathOffset correctly if needed, but for initial straight line, 
+        // extracting from path command or bounds is safer if we know it's straight.
+        // Actually, handleMouseMove updated the path array directly in our new logic.
+        // path[0][1].. etc.
+        let x1, y1, x2, y2;
+        if (pathObj.path) {
+          // Arrays: ['M', x, y], ['Q', cx, cy, x2, y2]
+          x1 = pathObj.path[0][1];
+          y1 = pathObj.path[0][2];
+          x2 = pathObj.path[1][3];
+          y2 = pathObj.path[1][4];
+        } else {
+          // Fallback (shouldn't happen with Path)
+          x1 = pathObj.left; y1 = pathObj.top; x2 = pathObj.left + pathObj.width; y2 = pathObj.top + pathObj.height;
+        }
 
         const angle = Math.atan2(y2 - y1, x2 - x1);
-        // Use the arrowhead style from toolbar settings
-        // Ensure we have a valid style, defaulting to SOLID_TRIANGLE
         const selectedArrowheadStyle = arrowheadStyleRef.current || ARROWHEAD_STYLES.SOLID_TRIANGLE;
 
         const head = createArrowhead(x2, y2, angle, currentStrokeColor, currentStrokeWidth, selectedArrowheadStyle);
 
         // Create group with new line and arrowhead
-        const groupObjects = head ? [newLine, head] : [newLine];
+        const groupObjects = head ? [pathObj, head] : [pathObj];
         const group = new Group(groupObjects, { selectable: true });
 
         // Store arrowhead style and mark as arrow type on the group
         group.set({
           data: { type: 'arrow', arrowheadStyle: selectedArrowheadStyle }
         });
+
+        // Apply 3-point controls
+        createCurveControls(group);
 
         // Store current moduleId on the arrow group
         if (selectedModuleIdRef.current) {
@@ -4583,6 +4626,29 @@ const PageAnnotationLayer = memo(({
 
         saveCanvas();
 
+        return;
+      } else if (currentTool === 'line' && ds.tempObj.type === 'path') {
+        // Finalize Line tool (which is now a Path/Curve)
+        const tempObj = ds.tempObj;
+        ds.isDrawingShape = false;
+        ds.tempObj = null;
+
+        // Apply 3-point controls
+        createCurveControls(tempObj);
+
+        tempObj.set({
+          selectable: true,
+          hasControls: true,
+          hasBorders: true
+        });
+        tempObj.setCoords();
+
+        // Standard finalization
+        justFinishedDrawingRef.current = true;
+        canvas.setActiveObject(tempObj);
+        canvas.requestRenderAll();
+        setTimeout(() => { justFinishedDrawingRef.current = false; }, 100);
+        saveCanvas();
         return;
       } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
         const { x1, y1, x2, y2 } = ds.tempObj;
@@ -4955,6 +5021,33 @@ const PageAnnotationLayer = memo(({
         }
 
         if (hitObject) {
+          // Check if we are clicking on an ALREADY selected callout
+          // If so, enter edit mode (Requirement: Two separate clicks -> Edit)
+          const activeObject = canvas.getActiveObject();
+          let targetObj = hitObject;
+          // If clicking a child of a callout group, target the group
+          if (hitObject.group && hitObject.group.data?.type === 'callout') {
+            targetObj = hitObject.group;
+          }
+
+          console.log('MouseUp Hit:', {
+            hitId: targetObj.id || 'obj',
+            type: targetObj.data?.type,
+            isActive: activeObject === targetObj,
+            activeType: activeObject?.data?.type
+          });
+
+          if (activeObject === targetObj && targetObj.data?.type === 'callout') {
+            console.log('Entering edit mode for callout');
+            const textObj = targetObj.getObjects().find(o => o.name === 'calloutText');
+            if (textObj) {
+              textObj.enterEditing();
+              textObj.selectAll();
+              canvas.requestRenderAll();
+              return;
+            }
+          }
+
           // If the hit object is a child of a callout group, select the parent group instead
           if (hitObject.group && hitObject.group.data?.type === 'callout') {
             const parentGroup = hitObject.group;
