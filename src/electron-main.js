@@ -105,8 +105,14 @@ function createWindow() {
 
   // Also handle external links (like OAuth providers)
   win.webContents.setWindowOpenHandler(({ url }) => {
-    // Allow OAuth URLs to open in the same window
-    if (url.includes('oauth') || url.includes('google') || url.includes('supabase') || url.includes('microsoft') || url.includes('login.microsoftonline.com')) {
+    // Allow OAuth URLs and blank windows (MSAL opens about:blank first, then navigates)
+    if (url === 'about:blank' ||
+        url.includes('oauth') ||
+        url.includes('google') ||
+        url.includes('supabase') ||
+        url.includes('microsoft') ||
+        url.includes('login.microsoftonline.com') ||
+        url.includes('login.live.com')) {
       return { action: 'allow' };
     }
     // Open other external links in the default browser
