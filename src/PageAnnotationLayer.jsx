@@ -636,6 +636,685 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
   return group;
 };
 
+// --- Line & Arrow Control Helpers ---
+
+// Reusable render function for control handles (shared with callout)
+// Fabric.js Control render signature: (ctx, left, top, styleOverride, fabricObject)
+const renderControl = (ctx, left, top, styleOverride, fabricObject) => {
+  const size = 12;
+  ctx.save();
+  ctx.translate(left, top);
+  ctx.beginPath();
+  ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#4a90e2';
+  ctx.lineWidth = 1;
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = 3;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+};
+
+// Check if midpoint is within snap threshold of the linear path between start and end
+const checkSnapZone = (midpoint, start, end, threshold = 8) => {
+  const distance = distanceToLineSegment(midpoint, start, end);
+  const isSnapping = distance < threshold;
+  // #region agent log
+  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:659',message:'checkSnapZone result',data:{distance,threshold,isSnapping,midpointX:midpoint.x,midpointY:midpoint.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+  return isSnapping;
+};
+
+// Convert Line object to Polyline with 3 points (start, midpoint, end)
+const convertLineToPolyline = (line, midpoint, canvas) => {
+  const { x1, y1, x2, y2 } = line;
+  const stroke = line.stroke;
+  const strokeWidth = line.strokeWidth;
+  const strokeUniform = line.strokeUniform;
+  const opacity = line.opacity;
+  const moduleId = line.moduleId;
+  const regionId = line.regionId;
+  const spaceId = line.spaceId;
+
+  const polyline = new Polyline([
+    { x: x1, y: y1 },
+    { x: midpoint.x, y: midpoint.y },
+    { x: x2, y: y2 }
+  ], {
+    stroke,
+    strokeWidth,
+    strokeUniform,
+    fill: 'transparent',
+    opacity,
+    selectable: line.selectable,
+    evented: line.evented,
+    originX: line.originX,
+    originY: line.originY,
+    left: line.left,
+    top: line.top,
+    angle: line.angle,
+    scaleX: line.scaleX,
+    scaleY: line.scaleY
+  });
+
+  // Copy custom properties
+  if (moduleId) polyline.moduleId = moduleId;
+  if (regionId) polyline.regionId = regionId;
+  if (spaceId) polyline.spaceId = spaceId;
+  if (line.data) polyline.data = { ...line.data, isCurved: true };
+
+  return polyline;
+};
+
+// Convert Polyline object back to Line when snapped straight
+const convertPolylineToLine = (polyline) => {
+  if (polyline.points.length !== 3) {
+    // If not a 3-point polyline, calculate endpoints
+    const first = polyline.points[0];
+    const last = polyline.points[polyline.points.length - 1];
+    return { x1: first.x, y1: first.y, x2: last.x, y2: last.y };
+  }
+
+  const [start, , end] = polyline.points;
+  return {
+    x1: start.x,
+    y1: start.y,
+    x2: end.x,
+    y2: end.y
+  };
+};
+
+// Calculate tangent angle at start or end of a curved polyline for arrowhead positioning
+const calculateCurveTangent = (polyline, atEnd = true) => {
+  if (!polyline || !polyline.points || polyline.points.length < 2) {
+    return 0;
+  }
+
+  const points = polyline.points;
+  let p1, p2;
+
+  if (atEnd) {
+    // Calculate tangent at the end point
+    if (points.length >= 2) {
+      p1 = points[points.length - 2];
+      p2 = points[points.length - 1];
+    } else {
+      return 0;
+    }
+  } else {
+    // Calculate tangent at the start point
+    if (points.length >= 2) {
+      p1 = points[0];
+      p2 = points[1];
+    } else {
+      return 0;
+    }
+  }
+
+  // Return angle in radians
+  return Math.atan2(p2.y - p1.y, p2.x - p1.x);
+};
+
+// Position handler for line controls (for direct Line/Polyline objects)
+const linePositionHandler = (type) => {
+  return function (dim, finalMatrix, fabricObject) {
+    // #region agent log
+    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:761',message:'linePositionHandler called',data:{type,fabricObjectType:fabricObject.type,hasFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    if (fabricObject.type === 'polyline') {
+      // Handle Polyline (curved)
+      const points = fabricObject.points || [];
+      if (points.length < 2) return { x: 0, y: 0 };
+
+      let point;
+      if (type === 'start') {
+        point = { x: points[0].x, y: points[0].y };
+      } else if (type === 'midpoint') {
+        if (fabricObject.data?.midpoint) {
+          point = { x: fabricObject.data.midpoint.x, y: fabricObject.data.midpoint.y };
+        } else if (points.length >= 3) {
+          point = { x: points[1].x, y: points[1].y };
+        } else {
+          const mid = {
+            x: (points[0].x + points[points.length - 1].x) / 2,
+            y: (points[0].y + points[points.length - 1].y) / 2
+          };
+          point = mid;
+        }
+      } else if (type === 'end') {
+        point = { x: points[points.length - 1].x, y: points[points.length - 1].y };
+      }
+
+      // Transform point to canvas space
+      const matrix = finalMatrix || fabricObject.calcTransformMatrix();
+      const result = util.transformPoint(point, matrix);
+      // #region agent log
+      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:790',message:'linePositionHandler polyline result',data:{type,localX:point.x,localY:point.y,canvasX:result.x,canvasY:result.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      return result;
+    } else if (fabricObject.type === 'line') {
+      // Handle Line (straight)
+      let point;
+      if (type === 'start') {
+        point = { x: fabricObject.x1, y: fabricObject.y1 };
+      } else if (type === 'midpoint') {
+        // Calculate geometric midpoint
+        point = {
+          x: (fabricObject.x1 + fabricObject.x2) / 2,
+          y: (fabricObject.y1 + fabricObject.y2) / 2
+        };
+      } else if (type === 'end') {
+        point = { x: fabricObject.x2, y: fabricObject.y2 };
+      }
+
+      // Transform point to canvas space
+      const matrix = finalMatrix || fabricObject.calcTransformMatrix();
+      const result = util.transformPoint(point, matrix);
+      // #region agent log
+      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:809',message:'linePositionHandler line result',data:{type,localX:point.x,localY:point.y,canvasX:result.x,canvasY:result.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      return result;
+    }
+
+    return { x: 0, y: 0 };
+  };
+};
+
+// Position handler for arrow controls (for Group objects containing Line/Polyline + arrowhead)
+const arrowPositionHandler = (type) => {
+  return function (dim, finalMatrix, fabricObject) {
+    // #region agent log
+    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:818',message:'arrowPositionHandler called',data:{type,hasFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    const group = fabricObject;
+    const line = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
+    if (!line) return { x: 0, y: 0 };
+
+    let localPoint;
+
+    if (line.type === 'polyline') {
+      // Handle curved arrow (Polyline)
+      const points = line.points || [];
+      if (points.length < 2) return { x: 0, y: 0 };
+
+      if (type === 'start') {
+        localPoint = { x: points[0].x, y: points[0].y };
+      } else if (type === 'midpoint') {
+        if (group.data?.midpoint) {
+          localPoint = { x: group.data.midpoint.x, y: group.data.midpoint.y };
+        } else if (points.length >= 3) {
+          localPoint = { x: points[1].x, y: points[1].y };
+        } else {
+          localPoint = {
+            x: (points[0].x + points[points.length - 1].x) / 2,
+            y: (points[0].y + points[points.length - 1].y) / 2
+          };
+        }
+      } else if (type === 'end') {
+        localPoint = { x: points[points.length - 1].x, y: points[points.length - 1].y };
+      }
+    } else {
+      // Handle straight arrow (Line)
+      if (type === 'start') {
+        localPoint = { x: line.x1, y: line.y1 };
+      } else if (type === 'midpoint') {
+        if (group.data?.midpoint) {
+          localPoint = { x: group.data.midpoint.x, y: group.data.midpoint.y };
+        } else {
+          localPoint = {
+            x: (line.x1 + line.x2) / 2,
+            y: (line.y1 + line.y2) / 2
+          };
+        }
+      } else if (type === 'end') {
+        localPoint = { x: line.x2, y: line.y2 };
+      }
+    }
+
+    // Transform group-relative point to canvas space
+    const matrix = finalMatrix || group.calcTransformMatrix();
+    const result = util.transformPoint(localPoint, matrix);
+    // #region agent log
+    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:865',message:'arrowPositionHandler result',data:{type,localX:localPoint.x,localY:localPoint.y,canvasX:result.x,canvasY:result.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    return result;
+  };
+};
+
+// Setup custom 3-handle controls for Line objects
+const setupLineControls = (line, canvas) => {
+  // #region agent log
+  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:864',message:'setupLineControls called',data:{type:line.type,hasData:!!line.data,midpoint:line.data?.midpoint},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  // Disable default controls
+  line.controls = {};
+  line.set({ hasControls: true, hasBorders: false });
+
+  // Update line geometry handler
+  const updateLineGeometry = (transform, x, y, handleType) => {
+    // #region agent log
+    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:870',message:'updateLineGeometry called',data:{handleType,canvasX:x,canvasY:y,targetType:transform.target.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    const target = transform.target;
+    const localPoint = getLocalPoint(transform, x, y);
+    // #region agent log
+    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:873',message:'localPoint calculated',data:{localX:localPoint.x,localY:localPoint.y,handleType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+
+    if (handleType === 'start') {
+      if (target.type === 'line') {
+        target.set({ x1: localPoint.x, y1: localPoint.y });
+      } else if (target.type === 'polyline' && target.points.length >= 3) {
+        target.points[0] = { x: localPoint.x, y: localPoint.y };
+        target.set({ points: target.points });
+      }
+    } else if (handleType === 'end') {
+      if (target.type === 'line') {
+        target.set({ x2: localPoint.x, y2: localPoint.y });
+      } else if (target.type === 'polyline' && target.points.length >= 3) {
+        target.points[target.points.length - 1] = { x: localPoint.x, y: localPoint.y };
+        target.set({ points: target.points });
+      }
+    } else if (handleType === 'midpoint') {
+      // Get current start and end points
+      let startPoint, endPoint;
+      if (target.type === 'line') {
+        startPoint = { x: target.x1, y: target.y1 };
+        endPoint = { x: target.x2, y: target.y2 };
+      } else if (target.type === 'polyline' && target.points.length >= 2) {
+        startPoint = { x: target.points[0].x, y: target.points[0].y };
+        endPoint = { x: target.points[target.points.length - 1].x, y: target.points[target.points.length - 1].y };
+      } else {
+        return false;
+      }
+
+      // Check snap zone
+      const geometricMidpoint = {
+        x: (startPoint.x + endPoint.x) / 2,
+        y: (startPoint.y + endPoint.y) / 2
+      };
+
+      const isSnapping = checkSnapZone(localPoint, startPoint, endPoint, 8);
+      // #region agent log
+      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:907',message:'snap zone check',data:{isSnapping,midpointX:localPoint.x,midpointY:localPoint.y,startX:startPoint.x,startY:startPoint.y,endX:endPoint.x,endY:endPoint.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
+      if (isSnapping) {
+        // Snap to straight line - convert Polyline back to Line if needed
+        if (target.type === 'polyline') {
+          const lineData = convertPolylineToLine(target);
+          const stroke = target.stroke;
+          const strokeWidth = target.strokeWidth;
+          const strokeUniform = target.strokeUniform;
+          const opacity = target.opacity;
+          const moduleId = target.moduleId;
+          const regionId = target.regionId;
+          const spaceId = target.spaceId;
+
+          // Create new Line object
+          const newLine = new Line([lineData.x1, lineData.y1, lineData.x2, lineData.y2], {
+            stroke,
+            strokeWidth,
+            strokeUniform,
+            opacity,
+            selectable: target.selectable,
+            evented: target.evented,
+            originX: target.originX,
+            originY: target.originY,
+            left: target.left,
+            top: target.top,
+            angle: target.angle,
+            scaleX: target.scaleX,
+            scaleY: target.scaleY
+          });
+
+          if (moduleId) newLine.moduleId = moduleId;
+          if (regionId) newLine.regionId = regionId;
+          if (spaceId) newLine.spaceId = spaceId;
+          if (target.data) newLine.data = { ...target.data, isCurved: false };
+
+          // Replace polyline with line in canvas
+          const objects = canvas.getObjects();
+          const index = objects.indexOf(target);
+          if (index !== -1) {
+            canvas.remove(target);
+            canvas.insertAt(newLine, index);
+            canvas.setActiveObject(newLine);
+            
+            // Re-setup controls on new line
+            setupLineControls(newLine, canvas);
+          }
+        } else {
+          // Already a line, just ensure midpoint is at geometric center
+          // No need to update, it's already straight
+        }
+      } else {
+        // Not snapping - update midpoint (curved state)
+        if (target.type === 'line') {
+          // Convert Line to Polyline
+          const polyline = convertLineToPolyline(target, localPoint, canvas);
+          
+          // Replace line with polyline in canvas
+          const objects = canvas.getObjects();
+          const index = objects.indexOf(target);
+          if (index !== -1) {
+            canvas.remove(target);
+            canvas.insertAt(polyline, index);
+            canvas.setActiveObject(polyline);
+            
+            // Store midpoint in data
+            if (!polyline.data) polyline.data = {};
+            polyline.data.midpoint = { x: localPoint.x, y: localPoint.y };
+            
+            // Re-setup controls on new polyline
+            setupLineControls(polyline, canvas);
+          }
+        } else if (target.type === 'polyline' && target.points.length >= 3) {
+          // Update midpoint in polyline
+          target.points[1] = { x: localPoint.x, y: localPoint.y };
+          target.set({ points: target.points });
+          
+          // Store midpoint in data
+          if (!target.data) target.data = {};
+          target.data.midpoint = { x: localPoint.x, y: localPoint.y };
+        }
+      }
+    }
+
+    target.setCoords();
+    return true;
+  };
+
+  // Define render function for controls (must be local, not global reference)
+  const renderControlHandle = (ctx, left, top, styleOverride, fabricObject) => {
+    const size = 12;
+    ctx.save();
+    ctx.translate(left, top);
+    ctx.beginPath();
+    ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#4a90e2';
+    ctx.lineWidth = 1;
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 3;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  // Start handle
+  line.controls.start = new Control({
+    x: -0.5, y: -0.5,
+    cursorStyle: 'crosshair',
+    actionHandler: (e, t, x, y) => updateLineGeometry(t, x, y, 'start'),
+    positionHandler: linePositionHandler('start'),
+    render: renderControlHandle
+  });
+
+  // Midpoint handle
+  line.controls.midpoint = new Control({
+    x: 0, y: 0,
+    cursorStyle: 'crosshair',
+    actionHandler: (e, t, x, y) => updateLineGeometry(t, x, y, 'midpoint'),
+    positionHandler: linePositionHandler('midpoint'),
+    render: renderControlHandle
+  });
+
+  // End handle
+  line.controls.end = new Control({
+    x: 0.5, y: 0.5,
+    cursorStyle: 'crosshair',
+    actionHandler: (e, t, x, y) => updateLineGeometry(t, x, y, 'end'),
+    positionHandler: linePositionHandler('end'),
+    render: renderControlHandle
+  });
+  // #region agent log
+  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1007',message:'setupLineControls completed',data:{controlCount:Object.keys(line.controls).length,hasStart:!!line.controls.start,hasMidpoint:!!line.controls.midpoint,hasEnd:!!line.controls.end},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+};
+
+// Setup custom 3-handle controls for Arrow Group objects
+const setupArrowControls = (group, canvas) => {
+  // #region agent log
+  const lineObj = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
+  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1018',message:'setupArrowControls called',data:{lineType:lineObj?.type,hasData:!!group.data,midpoint:group.data?.midpoint,arrowheadStyle:group.data?.arrowheadStyle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  // Disable default controls
+  group.controls = {};
+  group.set({ hasControls: true, hasBorders: false });
+
+  // Initialize midpoint if not present
+  if (!group.data) group.data = {};
+  if (!group.data.midpoint) {
+    const line = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
+    if (line && line.type === 'line') {
+      group.data.midpoint = null; // Will be calculated on-demand when straight
+      group.data.isCurved = false;
+    }
+  }
+
+  // Update arrow geometry handler
+  const updateArrowGeometry = (transform, x, y, handleType) => {
+    // #region agent log
+    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1035',message:'updateArrowGeometry called',data:{handleType,canvasX:x,canvasY:y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    const target = transform.target; // The Group
+    const localPoint = getLocalPoint(transform, x, y); // Mouse pos in Group coords
+    // #region agent log
+    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1038',message:'arrow localPoint calculated',data:{localX:localPoint.x,localY:localPoint.y,handleType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+
+    const line = target.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
+    const head = target.getObjects().find(o => o.name === 'arrowHead' || (o.type === 'triangle' && !o.name));
+    if (!line) return false;
+
+    if (handleType === 'start') {
+      if (line.type === 'line') {
+        line.set({ x1: localPoint.x, y1: localPoint.y });
+      } else if (line.type === 'polyline' && line.points.length >= 3) {
+        line.points[0] = { x: localPoint.x, y: localPoint.y };
+        line.set({ points: line.points });
+      }
+    } else if (handleType === 'end') {
+      if (line.type === 'line') {
+        line.set({ x2: localPoint.x, y2: localPoint.y });
+      } else if (line.type === 'polyline' && line.points.length >= 3) {
+        const lastIndex = line.points.length - 1;
+        line.points[lastIndex] = { x: localPoint.x, y: localPoint.y };
+        line.set({ points: line.points });
+      }
+      
+      // Update arrowhead position and angle
+      if (head) {
+        head.set({ left: localPoint.x, top: localPoint.y });
+        let angle;
+        if (line.type === 'polyline') {
+          angle = calculateCurveTangent(line, true); // Calculate tangent at end
+        } else {
+          const { x1, y1, x2, y2 } = line;
+          angle = Math.atan2(y2 - y1, x2 - x1);
+        }
+        const angleDeg = (angle * 180) / Math.PI;
+        head.set({ angle: angleDeg + 90 });
+      }
+    } else if (handleType === 'midpoint') {
+      // Get current start and end points
+      let startPoint, endPoint;
+      if (line.type === 'line') {
+        startPoint = { x: line.x1, y: line.y1 };
+        endPoint = { x: line.x2, y: line.y2 };
+      } else if (line.type === 'polyline' && line.points.length >= 2) {
+        startPoint = { x: line.points[0].x, y: line.points[0].y };
+        endPoint = { x: line.points[line.points.length - 1].x, y: line.points[line.points.length - 1].y };
+      } else {
+        return false;
+      }
+
+      // Check snap zone
+      const geometricMidpoint = {
+        x: (startPoint.x + endPoint.x) / 2,
+        y: (startPoint.y + endPoint.y) / 2
+      };
+
+      const isSnapping = checkSnapZone(localPoint, startPoint, endPoint, 8);
+      // #region agent log
+      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1096',message:'arrow snap zone check',data:{isSnapping,midpointX:localPoint.x,midpointY:localPoint.y,startX:startPoint.x,startY:startPoint.y,endX:endPoint.x,endY:endPoint.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+
+      if (isSnapping) {
+        // Snap to straight line - convert Polyline back to Line if needed
+        if (line.type === 'polyline') {
+          const lineData = convertPolylineToLine(line);
+          const stroke = line.stroke;
+          const strokeWidth = line.strokeWidth;
+          const strokeUniform = line.strokeUniform;
+          const opacity = line.opacity;
+
+          // Create new Line object
+          const newLine = new Line([lineData.x1, lineData.y1, lineData.x2, lineData.y2], {
+            stroke,
+            strokeWidth,
+            strokeUniform,
+            fill: 'transparent',
+            opacity,
+            selectable: false,
+            evented: true,
+            originX: 'center',
+            originY: 'center'
+          });
+
+          // Remove old line and add new one
+          target.remove(line);
+          target.add(newLine);
+
+          // Update arrowhead angle for straight line
+          if (head) {
+            const angle = Math.atan2(lineData.y2 - lineData.y1, lineData.x2 - lineData.x1);
+            const angleDeg = (angle * 180) / Math.PI;
+            head.set({ angle: angleDeg + 90 });
+          }
+
+          // Update data
+          target.data.midpoint = null;
+          target.data.isCurved = false;
+        } else {
+          // Already a line, midpoint is at geometric center
+          target.data.midpoint = null;
+        }
+      } else {
+        // Not snapping - update midpoint (curved state)
+        if (line.type === 'line') {
+          // Convert Line to Polyline
+          const stroke = line.stroke;
+          const strokeWidth = line.strokeWidth;
+          const strokeUniform = line.strokeUniform;
+          const opacity = line.opacity;
+
+          const newPolyline = new Polyline([
+            { x: line.x1, y: line.y1 },
+            { x: localPoint.x, y: localPoint.y },
+            { x: line.x2, y: line.y2 }
+          ], {
+            stroke,
+            strokeWidth,
+            strokeUniform,
+            fill: 'transparent',
+            opacity,
+            selectable: false,
+            evented: true,
+            originX: 'center',
+            originY: 'center'
+          });
+
+          // Remove old line and add new polyline
+          target.remove(line);
+          target.add(newPolyline);
+
+          // Update arrowhead angle for curved line
+          if (head) {
+            const angle = calculateCurveTangent(newPolyline, true);
+            const angleDeg = (angle * 180) / Math.PI;
+            head.set({ angle: angleDeg + 90 });
+          }
+
+          // Update data
+          target.data.midpoint = { x: localPoint.x, y: localPoint.y };
+          target.data.isCurved = true;
+        } else if (line.type === 'polyline' && line.points.length >= 3) {
+          // Update midpoint in polyline
+          line.points[1] = { x: localPoint.x, y: localPoint.y };
+          line.set({ points: line.points });
+
+          // Update arrowhead angle
+          if (head) {
+            const angle = calculateCurveTangent(line, true);
+            const angleDeg = (angle * 180) / Math.PI;
+            head.set({ angle: angleDeg + 90 });
+          }
+
+          // Update data
+          target.data.midpoint = { x: localPoint.x, y: localPoint.y };
+          target.data.isCurved = true;
+        }
+      }
+
+      // Update group
+      target.addWithUpdate();
+    }
+
+    target.setCoords();
+    return true;
+  };
+
+  // Define render function for controls (must be local, not global reference)
+  const renderControlHandle = (ctx, left, top, styleOverride, fabricObject) => {
+    const size = 12;
+    ctx.save();
+    ctx.translate(left, top);
+    ctx.beginPath();
+    ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#4a90e2';
+    ctx.lineWidth = 1;
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 3;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  // Start handle
+  group.controls.start = new Control({
+    x: -0.5, y: -0.5,
+    cursorStyle: 'crosshair',
+    actionHandler: (e, t, x, y) => updateArrowGeometry(t, x, y, 'start'),
+    positionHandler: arrowPositionHandler('start'),
+    render: renderControlHandle
+  });
+
+  // Midpoint handle
+  group.controls.midpoint = new Control({
+    x: 0, y: 0,
+    cursorStyle: 'crosshair',
+    actionHandler: (e, t, x, y) => updateArrowGeometry(t, x, y, 'midpoint'),
+    positionHandler: arrowPositionHandler('midpoint'),
+    render: renderControlHandle
+  });
+
+  // End handle
+  group.controls.end = new Control({
+    x: 0.5, y: 0.5,
+    cursorStyle: 'crosshair',
+    actionHandler: (e, t, x, y) => updateArrowGeometry(t, x, y, 'end'),
+    positionHandler: arrowPositionHandler('end'),
+    render: renderControlHandle
+  });
+  // #region agent log
+  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1214',message:'setupArrowControls completed',data:{controlCount:Object.keys(group.controls).length,hasStart:!!group.controls.start,hasMidpoint:!!group.controls.midpoint,hasEnd:!!group.controls.end},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+};
+
 // Helper function to check if a point is within eraser radius of any point in eraser path
 const isPointNearEraserPath = (point, eraserPath, eraserRadius) => {
   return eraserPath.points.some(eraserPoint => {
@@ -2653,6 +3332,29 @@ const PageAnnotationLayer = memo(({
             obj.set({ globalCompositeOperation: 'multiply' });
           }
 
+          // Migrate old Line/Arrow objects to new 3-handle control system
+          // Check if this is a Line object that needs custom controls
+          if (obj.type === 'line' && !obj.data?.midpoint && obj.controls && Object.keys(obj.controls).length > 3) {
+            // Old line with default Fabric controls - migrate to custom controls
+            if (!obj.data) obj.data = {};
+            obj.data.midpoint = null;
+            obj.data.isCurved = false;
+            setupLineControls(obj, canvas);
+          }
+          
+          // Check if this is an Arrow Group that needs custom controls
+          if (obj.type === 'group' && obj.data?.type === 'arrow') {
+            const lineObj = obj.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
+            if (lineObj && (!obj.data.midpoint || obj.controls && Object.keys(obj.controls).length > 3)) {
+              // Old arrow with default Fabric controls - migrate to custom controls
+              if (!obj.data.midpoint) obj.data.midpoint = null;
+              if (obj.data.isCurved === undefined) {
+                obj.data.isCurved = lineObj.type === 'polyline';
+              }
+              setupArrowControls(obj, canvas);
+            }
+          }
+
           // Apply visibility filter using the same three-layer logic as the main visibility useEffect
           const objLayer = obj.layer || 'native';
           const layerVisible = layerVisibilityRef.current[objLayer] !== false;
@@ -4368,7 +5070,7 @@ const PageAnnotationLayer = memo(({
 
         // Store arrowhead style and mark as arrow type on the group
         group.set({
-          data: { type: 'arrow', arrowheadStyle: selectedArrowheadStyle }
+          data: { type: 'arrow', arrowheadStyle: selectedArrowheadStyle, midpoint: null, isCurved: false }
         });
 
         // Store current moduleId on the arrow group
@@ -4383,11 +5085,25 @@ const PageAnnotationLayer = memo(({
         // Add group to canvas
         canvas.add(group);
 
+        // #region agent log
+        fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4575',message:'Arrow tool: setting up controls',data:{x1,y1,x2,y2,arrowheadStyle:selectedArrowheadStyle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        // Set up custom 3-handle controls for arrow
+        setupArrowControls(group, canvas);
+        // Ensure coordinates are set for controls to render properly
+        group.setCoords();
+        // #region agent log
+        fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4587',message:'After setupArrowControls check',data:{hasControls:group.hasControls,controlCount:Object.keys(group.controls||{}).length,selectable:group.selectable},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+
         // Set flag to prevent deselection in handleMouseUpForSelection
         justFinishedDrawingRef.current = true;
 
         // Automatically select the arrow group so handles appear
         canvas.setActiveObject(group);
+        // #region agent log
+        fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4595',message:'After setActiveObject arrow',data:{isActive:canvas.getActiveObject()===group,activeHasControls:canvas.getActiveObject()?.hasControls,activeControlCount:Object.keys(canvas.getActiveObject()?.controls||{}).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         canvas.requestRenderAll();
 
         // Clear flag after a brief delay
@@ -4434,13 +5150,38 @@ const PageAnnotationLayer = memo(({
       } else if (ds.tempObj) {
         // For other shapes (rect, ellipse, line, squiggly), the temp object is the final object
         // Automatically select it so handles appear
-        // Make sure it's selectable and has controls
         const tempObj = ds.tempObj; // Store reference before clearing
-        tempObj.set({
-          selectable: true,
-          hasControls: true,
-          hasBorders: true
-        });
+        
+        // Special handling for line tool - set up custom 3-handle controls
+        if (currentTool === 'line' && tempObj.type === 'line') {
+          // #region agent log
+          fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4820',message:'Line tool: setting up controls',data:{x1:tempObj.x1,y1:tempObj.y1,x2:tempObj.x2,y2:tempObj.y2},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          tempObj.set({
+            selectable: true,
+            hasControls: true,
+            hasBorders: false
+          });
+          // Initialize data for midpoint tracking
+          if (!tempObj.data) tempObj.data = {};
+          tempObj.data.midpoint = null; // Will be calculated on-demand when straight
+          tempObj.data.isCurved = false;
+          // Set up custom controls
+          setupLineControls(tempObj, canvas);
+          // Ensure coordinates are set for controls to render properly
+          tempObj.setCoords();
+          // #region agent log
+          fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4840',message:'After setupLineControls check',data:{hasControls:tempObj.hasControls,controlCount:Object.keys(tempObj.controls||{}).length,selectable:tempObj.selectable,isActive:canvas.getActiveObject()===tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
+        } else {
+          // For other shapes, use default controls
+          tempObj.set({
+            selectable: true,
+            hasControls: true,
+            hasBorders: true
+          });
+        }
+        
         tempObj.setCoords(); // Ensure coordinates are updated
 
         // Set flag to prevent deselection in handleMouseUpForSelection
@@ -4448,6 +5189,9 @@ const PageAnnotationLayer = memo(({
 
         // Select immediately so handles appear right away
         canvas.setActiveObject(tempObj);
+        // #region agent log
+        fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4860',message:'After setActiveObject line',data:{isActive:canvas.getActiveObject()===tempObj,activeHasControls:canvas.getActiveObject()?.hasControls,activeControlCount:Object.keys(canvas.getActiveObject()?.controls||{}).length,activeType:canvas.getActiveObject()?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         canvas.requestRenderAll();
 
         // Clear flag after a brief delay to allow other handlers to see it

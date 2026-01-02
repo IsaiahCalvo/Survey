@@ -13375,6 +13375,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return;
       }
 
+      // 'A' key to switch to Arrow Tool (only when no modifiers are pressed)
+      if ((e.key === 'a' || e.key === 'A') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        // Don't trigger if user is focused on an input field, textbox, or callout
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+
+        // Prevent default behavior and switch to arrow tool
+        e.preventDefault();
+        setActiveTool('arrow');
+        return;
+      }
+
       if (!isFormField && (e.metaKey || e.ctrlKey)) {
         const key = e.key.toLowerCase();
 
