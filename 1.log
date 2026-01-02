@@ -1,41 +1,597 @@
 chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-SilentHandler.ts:259 Unrecognized feature: 'local-network-access'.
+MSGraphContext.jsx:236 Unrecognized feature: 'local-network-access'.
 createHiddenIframe @ SilentHandler.ts:259
 loadFrameSync @ SilentHandler.ts:235
 (anonymous) @ FunctionWrappers.ts:43
 initiateCodeRequest @ SilentHandler.ts:62
 (anonymous) @ FunctionWrappers.ts:102
 silentTokenHelper @ SilentIframeClient.ts:430
-SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+await in silentTokenHelper (async)
+(anonymous) @ FunctionWrappers.ts:102
+executeCodeFlow @ SilentIframeClient.ts:177
+await in executeCodeFlow (async)
+acquireToken @ SilentIframeClient.ts:139
+await in acquireToken (async)
+ssoSilent @ StandardController.ts:1067
+ssoSilent @ PublicClientApplication.ts:343
+initializeMsal @ MSGraphContext.jsx:236
+await in initializeMsal (async)
+(anonymous) @ MSGraphContext.jsx:274
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 22 more frames
+MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 createHiddenIframe @ SilentHandler.ts:260
 loadFrameSync @ SilentHandler.ts:235
 (anonymous) @ FunctionWrappers.ts:43
 initiateCodeRequest @ SilentHandler.ts:62
 (anonymous) @ FunctionWrappers.ts:102
 silentTokenHelper @ SilentIframeClient.ts:430
-SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+await in silentTokenHelper (async)
+(anonymous) @ FunctionWrappers.ts:102
+executeCodeFlow @ SilentIframeClient.ts:177
+await in executeCodeFlow (async)
+acquireToken @ SilentIframeClient.ts:139
+await in acquireToken (async)
+ssoSilent @ StandardController.ts:1067
+ssoSilent @ PublicClientApplication.ts:343
+initializeMsal @ MSGraphContext.jsx:236
+await in initializeMsal (async)
+(anonymous) @ MSGraphContext.jsx:274
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 22 more frames
+MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 createHiddenIframe @ SilentHandler.ts:260
 loadFrameSync @ SilentHandler.ts:235
 (anonymous) @ FunctionWrappers.ts:43
 initiateCodeRequest @ SilentHandler.ts:62
 (anonymous) @ FunctionWrappers.ts:102
 silentTokenHelper @ SilentIframeClient.ts:430
-Show 6 more frames
+await in silentTokenHelper (async)
+(anonymous) @ FunctionWrappers.ts:102
+executeCodeFlow @ SilentIframeClient.ts:177
+await in executeCodeFlow (async)
+acquireToken @ SilentIframeClient.ts:139
+await in acquireToken (async)
+ssoSilent @ StandardController.ts:1067
+ssoSilent @ PublicClientApplication.ts:343
+initializeMsal @ MSGraphContext.jsx:236
+await in initializeMsal (async)
+(anonymous) @ MSGraphContext.jsx:274
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 22 more frames
+login.live.com/Me.htm?v=3:1 true
+login.live.com/Me.htm?v=3:1 true
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI3ZDQwLTU1MjMtNzFiNC1iZTAyLWY0OGRhYzBlN2FiZCIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI3ZDQwLTU1YjYtN2M1Ny05Mjg1LWE4MDk3ZWM5YjZlYyIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1568     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1568
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1080     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1080
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1114     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectRect @ geometryHitTest.js:1114
+doesRectIntersectObject @ geometryHitTest.js:1577
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1708     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+doesRectIntersectObject @ geometryHitTest.js:1708
+(anonymous) @ PageAnnotationLayer.jsx:4888
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4843
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+App.jsx:12002 Saving document with embedded annotations... 
+App.jsx:12003 PDF file path: null
+App.jsx:12017 Document saved successfully
+App.jsx:11907 Skipping Supabase save: missing context {pdfFile: File, projectId: undefined, pdfId: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-25699506'}
 AuthContext.jsx:102 Window focused, refetching subscription tier...
-PageAnnotationLayer.jsx:4838     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:4838
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-PageAnnotationLayer.jsx:4838     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:4838
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
 main.jsx:25 Navigation guards have been active for >2s, resetting for safety
 console.warn @ main.jsx:25
 (anonymous) @ App.jsx:12451
@@ -53,11 +609,3283 @@ workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 11 more frames
-PageAnnotationLayer.jsx:4838     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:4838
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ PageAnnotationLayer.jsx:1464
+handleMouseDown @ PageAnnotationLayer.jsx:3839
+(anonymous) @ PageAnnotationLayer.jsx:4970
 fire @ fabric.js:334
 _handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
+__onMouseDown @ fabric.js:13667
+_onMouseDown @ fabric.js:13274
 Show 4 more frames
- Window focused, refetching subscription tier...
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ PageAnnotationLayer.jsx:1464
+(anonymous) @ PageAnnotationLayer.jsx:5325
+(anonymous) @ PageAnnotationLayer.jsx:5160
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ PageAnnotationLayer.jsx:1464
+handlePathCreated @ PageAnnotationLayer.jsx:3003
+fire @ fabric.js:334
+_finalizeAndAddPath @ fabric.js:11213
+onMouseUp @ fabric.js:11021
+_onMouseUpInDrawingMode @ fabric.js:13579
+__onMouseUp @ fabric.js:13398
+_onMouseUp @ fabric.js:13315
+Show 6 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ PageAnnotationLayer.jsx:1464
+handlePathCreated @ PageAnnotationLayer.jsx:3003
+fire @ fabric.js:334
+_finalizeAndAddPath @ fabric.js:11213
+onMouseUp @ fabric.js:11021
+_onMouseUpInDrawingMode @ fabric.js:13579
+__onMouseUp @ fabric.js:13398
+_onMouseUp @ fabric.js:13315
+Show 6 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 10 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ SpacesPanel.jsx:674
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11530
+(anonymous) @ SpacesPanel.jsx:675
+(anonymous) @ SpacesPanel.jsx:739
+SpaceSortableCard2 @ SpacesPanel.jsx:652
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+updateSimpleMemoComponent @ chunk-DSUIPI7G.js:21352
+beginWork @ chunk-DSUIPI7G.js:22869
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 11 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14339
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+main.jsx:25 Page has multiple regions, expected max 1: 2
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:11482
+(anonymous) @ App.jsx:11515
+(anonymous) @ App.jsx:14927
+(anonymous) @ App.jsx:14950
+PDFViewer @ App.jsx:14806
+renderWithHooks @ chunk-DSUIPI7G.js:18437
+updateFunctionComponent @ chunk-DSUIPI7G.js:21471
+beginWork @ chunk-DSUIPI7G.js:22813
+beginWork$1 @ chunk-DSUIPI7G.js:26642
+performUnitOfWork @ chunk-DSUIPI7G.js:26087
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25567
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:12002 Saving document with embedded annotations... 
+App.jsx:12003 PDF file path: null
+App.jsx:12017 Document saved successfully
+App.jsx:11907 Skipping Supabase save: missing context {pdfFile: File, projectId: undefined, pdfId: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-25699506'}
+AuthContext.jsx:102 Window focused, refetching subscription tier...
