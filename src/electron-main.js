@@ -106,7 +106,7 @@ function createWindow() {
   // Also handle external links (like OAuth providers)
   win.webContents.setWindowOpenHandler(({ url }) => {
     // Allow OAuth URLs to open in the same window
-    if (url.includes('oauth') || url.includes('google') || url.includes('supabase')) {
+    if (url.includes('oauth') || url.includes('google') || url.includes('supabase') || url.includes('microsoft') || url.includes('login.microsoftonline.com')) {
       return { action: 'allow' };
     }
     // Open other external links in the default browser
