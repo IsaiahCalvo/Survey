@@ -26,7 +26,7 @@ import {
   getObjectGeometryBounds
 } from './utils/geometryHitTest';
 import { splitPathDataByEraser, booleanErasePath } from './utils/geometryEraser';
-import { configureFabricOverrides } from './utils/fabricCustomization';
+import { configureFabricOverrides, renderPillControl, renderVerticalPillControl, renderRotationControl } from './utils/fabricCustomization';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
 
 // Apply custom Drawboard-style controls and selection visuals
@@ -191,6 +191,188 @@ const createArrowhead = (x, y, angle, color, strokeWidth, style = ARROWHEAD_STYL
         evented: false
       });
   }
+};
+
+/**
+ * Update the path of a quadratic curve based on 3 points (start, control, end).
+ * Recalculates arrowhead position and angle if applicable.
+ */
+const updateCurvePath = (pathObj, p1, cp, p2) => {
+  // Update the path command
+  // M startX startY Q cpX cpY endX endY
+  // Note: pathObj.path is an array of commands, e.g. [['M', x, y], ['Q', cx, cy, x2, y2]]
+  if (!pathObj.path || pathObj.path.length < 2) return;
+
+  pathObj.path[0][1] = p1.x;
+  pathObj.path[0][2] = p1.y;
+  pathObj.path[1][1] = cp.x;
+  pathObj.path[1][2] = cp.y;
+  pathObj.path[1][3] = p2.x;
+  pathObj.path[1][4] = p2.y;
+
+  // IMPORTANT: For Fabric.js Path objects, updating the path array directly doesn't automatically
+  // update the bounding box or dimensions. We need to handle this manually or create a new path.
+  // However, recreating path breaks the reference for controls.
+  // Force dimension update:
+  const dims = pathObj._calcDimensions();
+  pathObj.set(dims);
+  pathObj.setCoords();
+
+  // If part of an arrow group, update arrowhead
+  if (pathObj.group && pathObj.group.data?.type === 'arrow') {
+    const group = pathObj.group;
+    const arrowHead = group.getObjects().find(o => o.name === 'arrowHead');
+
+    if (arrowHead) {
+      // Calculate tangent at t=1 (end point)
+      // Derivative of Q-Bezier: 2(1-t)(P1-P0) + 2t(P2-P1)
+      // At t=1: 2(P2 - P1) where P1 is control point, P2 is end point
+      // Vector P2 - P1
+      let vx = p2.x - cp.x;
+      let vy = p2.y - cp.y;
+
+      // If straight line (cp is roughly on the segment p1-p2), use p2-p1
+      const isStraight = Math.abs(vx) < 0.1 && Math.abs(vy) < 0.1;
+
+      if (isStraight) {
+        vx = p2.x - p1.x;
+        vy = p2.y - p1.y;
+      }
+
+      const angle = Math.atan2(vy, vx);
+      const angleDeg = (angle * 180) / Math.PI;
+
+      arrowHead.set({
+        left: p2.x,
+        top: p2.y,
+        angle: angleDeg + 90 // Match createArrowhead logic (TRIANGLE is +90)
+      });
+    }
+    // Update group layout
+    group.addWithUpdate();
+  }
+};
+
+/**
+ * Configure 3-point controls for Line/Arrow (Start, Mid, End)
+ */
+const createCurveControls = (object) => {
+  // Disable standard controls
+  object.setControlsVisibility({
+    tl: false, tr: false, br: false, bl: false,
+    ml: false, mt: false, mr: false, mb: false,
+    mtr: false // No rotation for now, or maybe yes? Request implies dragging endpoints.
+  });
+
+  // Helper to get absolute coordinates of path points
+  const getPathPoints = (pathObject) => {
+    const matrix = pathObject.calcTransformMatrix();
+    const path = pathObject.path;
+    // Transform local path points to canvas coordinates
+    // Path points allow for pathOffset
+    const offsetX = pathObject.pathOffset.x;
+    const offsetY = pathObject.pathOffset.y;
+
+    const p1Local = { x: path[0][1] - offsetX, y: path[0][2] - offsetY };
+    const cpLocal = { x: path[1][1] - offsetX, y: path[1][2] - offsetY };
+    const p2Local = { x: path[1][3] - offsetX, y: path[1][4] - offsetY };
+
+    return {
+      p1: fabricLib.util.transformPoint(p1Local, matrix),
+      cp: fabricLib.util.transformPoint(cpLocal, matrix),
+      p2: fabricLib.util.transformPoint(p2Local, matrix)
+    };
+  };
+
+  // Custom Control Definitions
+
+  // Start Point (p1)
+  const p1Control = new Control({
+    x: -0.5, y: 0, // Initial relative pos, receives update via positionHandler
+    cursorStyle: 'crosshair',
+    actionName: 'drag_p1',
+    render: renderPillControl,
+    positionHandler: function (dim, finalMatrix, fabricObject) {
+      const { p1 } = getPathPoints(fabricObject);
+      return p1;
+    },
+    actionHandler: function (eventData, transform, x, y) {
+      const pathObj = transform.target;
+      const mouseLocal = pathObj.toLocalPoint(new fabricLib.Point(x, y), 'center', 'center');
+      const { p1, cp, p2 } = getPathPoints(pathObj); // Absolute current
+
+      // New P1 is Mouse Position (Absolute)
+      // But we need to update path data essentially.
+      // Simplified: Update the path using the new mouse position as absolute coordinate
+      // We need to re-calculate everything since modifying path object dimensions shifts it.
+
+      // Actually, simpler logic:
+      // 1. Get current absolute coordinates of other points.
+      // 2. Form new 3 points.
+      // 3. Update path.
+
+      updateCurvePath(pathObj, { x, y }, cp, p2);
+      return true;
+    }
+  });
+
+  // End Point (p2)
+  const p2Control = new Control({
+    x: 0.5, y: 0,
+    cursorStyle: 'crosshair',
+    actionName: 'drag_p2',
+    render: renderPillControl,
+    positionHandler: function (dim, finalMatrix, fabricObject) {
+      const { p2 } = getPathPoints(fabricObject);
+      return p2;
+    },
+    actionHandler: function (eventData, transform, x, y) {
+      const pathObj = transform.target;
+      const { p1, cp } = getPathPoints(pathObj);
+      updateCurvePath(pathObj, p1, cp, { x, y });
+      return true;
+    }
+  });
+
+  // Control Point (Midpoint)
+  const cpControl = new Control({
+    x: 0, y: 0,
+    cursorStyle: 'move',
+    actionName: 'drag_cp',
+    render: renderPillControl, // Use pill or maybe circle?
+    cornerSize: 12, // Smaller
+    positionHandler: function (dim, finalMatrix, fabricObject) {
+      const { cp } = getPathPoints(fabricObject);
+      return cp;
+    },
+    actionHandler: function (eventData, transform, x, y) {
+      const pathObj = transform.target;
+      const { p1, p2 } = getPathPoints(pathObj);
+
+      // Snapping Logic
+      // Check distance to straight line midpoint
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+
+      // Snap threshold (e.g., 20px)
+      const SNAP_DIST = 20;
+      const dist = Math.sqrt(Math.pow(x - midX, 2) + Math.pow(y - midY, 2));
+
+      let newCp = { x, y };
+      if (dist < SNAP_DIST) {
+        newCp = { x: midX, y: midY };
+      }
+
+      updateCurvePath(pathObj, p1, newCp, p2);
+      return true;
+    }
+  });
+
+  object.controls = {
+    p1: p1Control,
+    p2: p2Control,
+    cp: cpControl
+  };
 };
 
 /**
@@ -3842,10 +4024,14 @@ const PageAnnotationLayer = memo(({
         temp = new Rect({ left: x, top: y, width: 1, height: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'ellipse') {
         temp = new Circle({ left: x, top: y, radius: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, originX: 'left', originY: 'top', uniformScaling: false, lockUniScaling: false });
-      } else if (currentTool === 'line' || currentTool === 'underline' || currentTool === 'strikeout') {
+      } else if (currentTool === 'line') {
+        const pathData = [['M', x, y], ['Q', x, y, x, y]];
+        temp = new Path(pathData, { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false, lockUniScaling: false });
+      } else if (currentTool === 'underline' || currentTool === 'strikeout') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'arrow') {
-        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
+        const pathData = [['M', x, y], ['Q', x, y, x, y]];
+        temp = new Path(pathData, { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'callout') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'squiggly') {

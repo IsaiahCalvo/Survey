@@ -41,24 +41,24 @@ const loadRotateIcon = (callback) => {
  * Renders a pill-shaped control (rounded rectangle)
  * Rotates with the object to stay parallel to bounding box edges
  */
-const renderPillControl = (ctx, left, top, styleOverride, fabricObject) => {
+export const renderPillControl = (ctx, left, top, styleOverride, fabricObject) => {
     const size = styleOverride.cornerSize || 24;
     const width = size * 1.5; // Wider than tall
     const height = size / 2.5; // Thinner height
-    
+
     // Get object rotation angle in radians
     const angle = fabricObject ? (fabricObject.angle || 0) * Math.PI / 180 : 0;
 
     ctx.save();
-    
+
     // Translate to control center and rotate
     ctx.translate(left, top);
     ctx.rotate(angle);
-    
+
     // Draw centered at origin (0, 0) after transform
     const x = -width / 2;
     const y = -height / 2;
-    
+
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, height / 2);
     ctx.fillStyle = '#ffffff';
@@ -78,24 +78,24 @@ const renderPillControl = (ctx, left, top, styleOverride, fabricObject) => {
  * Renders a vertical pill-shaped control (for left/right handles)
  * Rotates with the object to stay parallel to bounding box edges
  */
-const renderVerticalPillControl = (ctx, left, top, styleOverride, fabricObject) => {
+export const renderVerticalPillControl = (ctx, left, top, styleOverride, fabricObject) => {
     const size = styleOverride.cornerSize || 24;
     const width = size / 2.5; // Thinner width
     const height = size * 1.5; // Taller than wide
-    
+
     // Get object rotation angle in radians
     const angle = fabricObject ? (fabricObject.angle || 0) * Math.PI / 180 : 0;
 
     ctx.save();
-    
+
     // Translate to control center and rotate
     ctx.translate(left, top);
     ctx.rotate(angle);
-    
+
     // Draw centered at origin (0, 0) after transform
     const x = -width / 2;
     const y = -height / 2;
-    
+
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, width / 2);
     ctx.fillStyle = '#ffffff';
@@ -116,18 +116,18 @@ const renderVerticalPillControl = (ctx, left, top, styleOverride, fabricObject) 
  * Renders a circular rotation control with icon
  * Rotates with the object to maintain orientation relative to the object
  */
-const renderRotationControl = (ctx, left, top, styleOverride, fabricObject) => {
+export const renderRotationControl = (ctx, left, top, styleOverride, fabricObject) => {
     const size = 24;
-    
+
     // Get object rotation angle in radians
     const angle = fabricObject ? (fabricObject.angle || 0) * Math.PI / 180 : 0;
 
     ctx.save();
-    
+
     // Translate to control center and rotate
     ctx.translate(left, top);
     ctx.rotate(angle);
-    
+
     // Draw circle centered at origin (0, 0) after transform
     ctx.beginPath();
     ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
@@ -146,7 +146,7 @@ const renderRotationControl = (ctx, left, top, styleOverride, fabricObject) => {
         // Clear shadow for icon
         ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
-        
+
         // Draw the icon centered, scaled to fit inside the circle
         const iconSize = size * 0.7; // 70% of circle size
         ctx.drawImage(
@@ -179,7 +179,7 @@ const renderRotationControl = (ctx, left, top, styleOverride, fabricObject) => {
         ctx.moveTo(arrowX, arrowY);
         ctx.lineTo(arrowX + 1, arrowY + 3);
         ctx.stroke();
-        
+
         // Try to load the icon if not already loading
         loadRotateIcon(() => {
             // Icon loaded, but we can't redraw here - it will be drawn on next render
