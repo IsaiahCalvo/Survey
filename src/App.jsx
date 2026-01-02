@@ -65,7 +65,8 @@ import {
   loadAnnotationsFromSupabase,
   subscribeToDocumentAnnotations,
   updateDocumentPresence,
-  removeDocumentPresence
+  removeDocumentPresence,
+  deleteAnnotations
 } from './services/documentAnnotationService';
 import { perfUpload, perfLoad, perfRender, perfZoom, setDebugEnabled, isDebugEnabled } from './utils/performanceLogger';
 import { useZoomState } from './hooks/useZoomState';
@@ -13835,6 +13836,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return updated;
       });
 
+      // Delete from Supabase to persist the deletion
+      const documentId = pdfFile?.id;
+      if (documentId && user?.id && documentSyncEnabled) {
+        deleteAnnotations(documentId, matchingHighlightIds).catch(err => {
+          console.error('[App] Error deleting annotations from Supabase:', err);
+        });
+      }
+
       // Clear the removal queue after a short delay
       setTimeout(() => {
         setHighlightsToRemoveByPage(prev => {
@@ -13842,7 +13851,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           highlightsToDelete.forEach(({ highlight }) => {
             if (highlight && highlight.pageNumber && updated[highlight.pageNumber]) {
               // Start fresh for that page or filter out specific bounds if we want to be granular
-              // For simplicity and to match the 'add' logic which accumulates, we can just clear the whole page key 
+              // For simplicity and to match the 'add' logic which accumulates, we can just clear the whole page key
               // if we assume this is the main source of removals.
               // But to be safer, let's just leave it. The PageAnnotationLayer handles 'new' props.
               // Actually, the PageAnnotationLayer useEffect likely expects a change to trigger.
@@ -13855,7 +13864,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       }, 100);
     }
-  }, [selectedModuleId, selectedTemplate, highlightAnnotations, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey]);
+  }, [selectedModuleId, selectedTemplate, highlightAnnotations, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
 
   // Handle deletion of a highlight item (from survey panel)
   const handleDeleteHighlightItem = useCallback((highlightId) => {
