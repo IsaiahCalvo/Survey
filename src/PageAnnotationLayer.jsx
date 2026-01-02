@@ -4298,17 +4298,6 @@ const PageAnnotationLayer = memo(({
         const rectWidth = rect.width;
         const rectHeight = rect.height;
         const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
-          pageNumber,
-          rectLeft,
-          rectTop,
-          rectWidth,
-          rectHeight,
-          scale,
-          canvasZoom: currentZoom,
-          viewportTransform: canvas.viewportTransform,
-          selectedModuleId: selectedModuleIdRef.current,
-          selectedSpaceId: selectedSpaceIdRef.current
-        }); */
 
         // Remove the temporary selection rectangle from canvas
         canvas.remove(ds.tempObj);

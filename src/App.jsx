@@ -1847,10 +1847,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             const pageCountPromise = (async () => {
               const arrayBuffer = await file.arrayBuffer();
               perfUpload.mark(file.name, 'ArrayBuffer ready for page count');
-              console.log('Background Upload PDF Check:', {
-                name: file.name,
-                size: arrayBuffer.byteLength
-              });
               let pdfDoc;
               try {
                 // Clone buffer since PDF.js may detach it when transferring to worker
@@ -9767,18 +9763,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
               const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
 
-              // Debug logging for first few items
-              if (categoryHighlights.length < 3) {
-                console.log(`Checking highlight ${highlightId}:`, {
-                  highlightModuleId,
-                  targetModuleId: moduleId,
-                  highlightCategoryId: highlight.categoryId,
-                  targetCategoryId: category.id,
-                  matchModule: highlightModuleId == moduleId, // Loose equality check
-                  matchCategory: highlight.categoryId == category.id // Loose equality check
-                });
-              }
-
               // Use loose equality (==) to handle potential string/number mismatches
               if (highlightModuleId == moduleId && highlight.categoryId == category.id) {
                 categoryHighlights.push({
@@ -11991,11 +11975,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
   const handleSaveDocument = useCallback(async (silent = false) => {
-    // Feature Gate: Cloud Sync
-    if (!features?.cloudSync) {
-      if (!silent) // console.log('Cloud sync skipped (Free Plan)');
-      // Ensure we still save locally if possible
-    }
+    // Feature Gate: Cloud Sync - still save locally regardless of plan
     if (!pdfId || !pdfFile) return;
 
     try {
@@ -16378,13 +16358,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   return;
                                 } else {
                                   // Direct transfer - copy items to the destination space
-                                  console.log('Calling transferItems with:', {
-                                    itemIdsToCopy,
-                                    sourceSpaceId,
-                                    destSpaceId: space.id,
-                                    template
-                                  });
-
                                   const result = transferItems(
                                     itemIdsToCopy,
                                     sourceSpaceId,
@@ -18066,12 +18039,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                             }
                                                           }));
                                                         } else {
-                                                          console.log('Checkbox changed:', {
-                                                            highlightId,
-                                                            checked: e.target.checked,
-                                                            highlight,
-                                                            'highlight.id': highlight.id
-                                                          });
                                                           setCopiedItemSelection(prev => {
                                                             const newSelection = { ...prev };
                                                             if (e.target.checked) {
