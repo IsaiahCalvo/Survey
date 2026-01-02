@@ -787,10 +787,13 @@ const linePositionHandler = (type) => {
       }
 
       // Transform point to canvas space
+      // Use finalMatrix if provided (Fabric.js passes it), otherwise calculate
       const matrix = finalMatrix || fabricObject.calcTransformMatrix();
-      const result = util.transformPoint(point, matrix);
+      const result = finalMatrix 
+        ? util.transformPoint(point, finalMatrix)
+        : util.transformPoint(point, matrix);
       // #region agent log
-      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:790',message:'linePositionHandler polyline result',data:{type,localX:point.x,localY:point.y,canvasX:result.x,canvasY:result.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:790',message:'linePositionHandler polyline result',data:{type,localX:point.x,localY:point.y,canvasX:result.x,canvasY:result.y,usingFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
       // #endregion
       return result;
     } else if (fabricObject.type === 'line') {
@@ -809,10 +812,13 @@ const linePositionHandler = (type) => {
       }
 
       // Transform point to canvas space
+      // Use finalMatrix if provided (Fabric.js passes it), otherwise calculate
       const matrix = finalMatrix || fabricObject.calcTransformMatrix();
-      const result = util.transformPoint(point, matrix);
+      const result = finalMatrix 
+        ? util.transformPoint(point, finalMatrix)
+        : util.transformPoint(point, matrix);
       // #region agent log
-      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:809',message:'linePositionHandler line result',data:{type,localX:point.x,localY:point.y,canvasX:result.x,canvasY:result.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:812',message:'linePositionHandler line result',data:{type,localX:point.x,localY:point.y,canvasX:result.x,canvasY:result.y,usingFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
       // #endregion
       return result;
     }
@@ -873,10 +879,13 @@ const arrowPositionHandler = (type) => {
     }
 
     // Transform group-relative point to canvas space
+    // Use finalMatrix if provided (Fabric.js passes it), otherwise calculate
     const matrix = finalMatrix || group.calcTransformMatrix();
-    const result = util.transformPoint(localPoint, matrix);
+    const result = finalMatrix
+      ? util.transformPoint(localPoint, finalMatrix)
+      : util.transformPoint(localPoint, matrix);
     // #region agent log
-    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:865',message:'arrowPositionHandler result',data:{type,localX:localPoint.x,localY:localPoint.y,canvasX:result.x,canvasY:result.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:870',message:'arrowPositionHandler result',data:{type,localX:localPoint.x,localY:localPoint.y,canvasX:result.x,canvasY:result.y,usingFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
     // #endregion
     return result;
   };
@@ -889,7 +898,9 @@ const setupLineControls = (line, canvas) => {
   // #endregion
   // Disable default controls
   line.controls = {};
-  line.set({ hasControls: true, hasBorders: false });
+  // Note: Callout uses hasBorders: false but controls still work. However, for Line objects,
+  // we might need borders enabled for controls to render. Let's try with borders enabled.
+  line.set({ hasControls: true, hasBorders: true });
 
   // Update line geometry handler
   const updateLineGeometry = (transform, x, y, handleType) => {
@@ -1028,14 +1039,27 @@ const setupLineControls = (line, canvas) => {
 
   // Define render function for controls (must be local, not global reference)
   const renderControlHandle = (ctx, left, top, styleOverride, fabricObject) => {
-    const size = 12;
+    // #region agent log
+    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1030',message:'renderControlHandle LINE called',data:{left,top,hasCtx:!!ctx,canvasWidth:ctx?.canvas?.width,canvasHeight:ctx?.canvas?.height},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
+    const size = 16; // Make larger for debugging
     ctx.save();
-    ctx.translate(left, top);
+    // Reset any transforms
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Draw a very visible debug circle
     ctx.beginPath();
-    ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+    ctx.arc(left, top, size / 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#FF0000'; // Bright red for debugging
+    ctx.fill();
+    ctx.strokeStyle = '#FFFF00'; // Bright yellow border
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // Also draw the normal control
+    ctx.beginPath();
+    ctx.arc(left, top, 6, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#4a90e2';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
     ctx.shadowColor = 'rgba(0,0,0,0.3)';
     ctx.shadowBlur = 3;
     ctx.fill();
@@ -1049,7 +1073,8 @@ const setupLineControls = (line, canvas) => {
     cursorStyle: 'crosshair',
     actionHandler: (e, t, x, y) => updateLineGeometry(t, x, y, 'start'),
     positionHandler: linePositionHandler('start'),
-    render: renderControlHandle
+    render: renderControlHandle,
+    visible: true
   });
 
   // Midpoint handle
@@ -1058,7 +1083,8 @@ const setupLineControls = (line, canvas) => {
     cursorStyle: 'crosshair',
     actionHandler: (e, t, x, y) => updateLineGeometry(t, x, y, 'midpoint'),
     positionHandler: linePositionHandler('midpoint'),
-    render: renderControlHandle
+    render: renderControlHandle,
+    visible: true
   });
 
   // End handle
@@ -1067,7 +1093,8 @@ const setupLineControls = (line, canvas) => {
     cursorStyle: 'crosshair',
     actionHandler: (e, t, x, y) => updateLineGeometry(t, x, y, 'end'),
     positionHandler: linePositionHandler('end'),
-    render: renderControlHandle
+    render: renderControlHandle,
+    visible: true
   });
   // #region agent log
   fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1007',message:'setupLineControls completed',data:{controlCount:Object.keys(line.controls).length,hasStart:!!line.controls.start,hasMidpoint:!!line.controls.midpoint,hasEnd:!!line.controls.end},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
@@ -1082,6 +1109,8 @@ const setupArrowControls = (group, canvas) => {
   // #endregion
   // Disable default controls
   group.controls = {};
+  // Note: Callout uses hasBorders: false but controls still work for Groups.
+  // For arrows (which are Groups), we can try with borders disabled like callout.
   group.set({ hasControls: true, hasBorders: false });
 
   // Initialize midpoint if not present
@@ -1269,14 +1298,27 @@ const setupArrowControls = (group, canvas) => {
 
   // Define render function for controls (must be local, not global reference)
   const renderControlHandle = (ctx, left, top, styleOverride, fabricObject) => {
-    const size = 12;
+    // #region agent log
+    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1271',message:'renderControlHandle ARROW called',data:{left,top,hasCtx:!!ctx,canvasWidth:ctx?.canvas?.width,canvasHeight:ctx?.canvas?.height},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
+    const size = 16; // Make larger for debugging
     ctx.save();
-    ctx.translate(left, top);
+    // Reset any transforms
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Draw a very visible debug circle
     ctx.beginPath();
-    ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+    ctx.arc(left, top, size / 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#FF0000'; // Bright red for debugging
+    ctx.fill();
+    ctx.strokeStyle = '#FFFF00'; // Bright yellow border
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // Also draw the normal control
+    ctx.beginPath();
+    ctx.arc(left, top, 6, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#4a90e2';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
     ctx.shadowColor = 'rgba(0,0,0,0.3)';
     ctx.shadowBlur = 3;
     ctx.fill();
@@ -1290,7 +1332,8 @@ const setupArrowControls = (group, canvas) => {
     cursorStyle: 'crosshair',
     actionHandler: (e, t, x, y) => updateArrowGeometry(t, x, y, 'start'),
     positionHandler: arrowPositionHandler('start'),
-    render: renderControlHandle
+    render: renderControlHandle,
+    visible: true
   });
 
   // Midpoint handle
@@ -1299,7 +1342,8 @@ const setupArrowControls = (group, canvas) => {
     cursorStyle: 'crosshair',
     actionHandler: (e, t, x, y) => updateArrowGeometry(t, x, y, 'midpoint'),
     positionHandler: arrowPositionHandler('midpoint'),
-    render: renderControlHandle
+    render: renderControlHandle,
+    visible: true
   });
 
   // End handle
@@ -1308,7 +1352,8 @@ const setupArrowControls = (group, canvas) => {
     cursorStyle: 'crosshair',
     actionHandler: (e, t, x, y) => updateArrowGeometry(t, x, y, 'end'),
     positionHandler: arrowPositionHandler('end'),
-    render: renderControlHandle
+    render: renderControlHandle,
+    visible: true
   });
   // #region agent log
   fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1214',message:'setupArrowControls completed',data:{controlCount:Object.keys(group.controls).length,hasStart:!!group.controls.start,hasMidpoint:!!group.controls.midpoint,hasEnd:!!group.controls.end},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
@@ -5092,8 +5137,12 @@ const PageAnnotationLayer = memo(({
         setupArrowControls(group, canvas);
         // Ensure coordinates are set for controls to render properly
         group.setCoords();
+        // Force control coordinates update
+        if (group._setCornerCoords) {
+          group._setCornerCoords();
+        }
         // #region agent log
-        fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4587',message:'After setupArrowControls check',data:{hasControls:group.hasControls,controlCount:Object.keys(group.controls||{}).length,selectable:group.selectable},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4592',message:'After setupArrowControls check',data:{hasControls:group.hasControls,controlCount:Object.keys(group.controls||{}).length,selectable:group.selectable,hasSetCornerCoords:typeof group._setCornerCoords==='function'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
         // #endregion
 
         // Set flag to prevent deselection in handleMouseUpForSelection
@@ -5160,7 +5209,7 @@ const PageAnnotationLayer = memo(({
           tempObj.set({
             selectable: true,
             hasControls: true,
-            hasBorders: false
+            hasBorders: true  // Try with borders enabled for Line objects
           });
           // Initialize data for midpoint tracking
           if (!tempObj.data) tempObj.data = {};
@@ -5170,8 +5219,12 @@ const PageAnnotationLayer = memo(({
           setupLineControls(tempObj, canvas);
           // Ensure coordinates are set for controls to render properly
           tempObj.setCoords();
+          // Force control coordinates update
+          if (tempObj._setCornerCoords) {
+            tempObj._setCornerCoords();
+          }
           // #region agent log
-          fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4840',message:'After setupLineControls check',data:{hasControls:tempObj.hasControls,controlCount:Object.keys(tempObj.controls||{}).length,selectable:tempObj.selectable,isActive:canvas.getActiveObject()===tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4845',message:'After setupLineControls check',data:{hasControls:tempObj.hasControls,controlCount:Object.keys(tempObj.controls||{}).length,selectable:tempObj.selectable,isActive:canvas.getActiveObject()===tempObj,hasSetCornerCoords:typeof tempObj._setCornerCoords==='function'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
           // #endregion
         } else {
           // For other shapes, use default controls

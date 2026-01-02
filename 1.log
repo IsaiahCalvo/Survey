@@ -3,25 +3,70 @@ SilentHandler.ts:259 Unrecognized feature: 'local-network-access'.
 createHiddenIframe @ SilentHandler.ts:259
 SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 createHiddenIframe @ SilentHandler.ts:260
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI4MTE1LTE0Y2QtNzc4NS05Y2FmLTY5M2ViZmJjOGM1NiIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
 Show 1 more frame
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI4MDk1LWVkMzItNzE5Ni1hYTNlLTBkMzViMzc5ZGY5NCIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-authConfig.js:33 [Fri, 02 Jan 2026 21:21:26 GMT] : [019b8096-3612-7b8e-a0d5-d4f1d27211d9] : msal.js.browser@4.26.2 : Error - error opening popup empty_window_error: window.open returned null or undefined window object.
-loggerCallback @ authConfig.js:33
-executeCallback @ Logger.ts:152
-logMessage @ Logger.ts:136
-error @ Logger.ts:160
-openPopup @ PopupClient.ts:898
-initiateAuthRequest @ PopupClient.ts:773
-executeCodeFlow @ PopupClient.ts:324
-await in executeCodeFlow (async)
-acquireTokenPopupAsync @ PopupClient.ts:248
-await in acquireTokenPopupAsync (async)
-acquireToken @ PopupClient.ts:146
-acquireTokenPopup @ StandardController.ts:898
-loginPopup @ StandardController.ts:2066
-loginPopup @ PublicClientApplication.ts:285
-login @ MSGraphContext.jsx:376
-onClick @ App.jsx:21595
+excelGraphService.js:52     PUT https://graph.microsoft.com/v1.0/me/drive/root:/Documents/Security_export.xlsx:/content 423
+(anonymous) @ HTTPMessageHandler.ts:29
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ HTTPMessageHandler.ts:28
+(anonymous) @ TelemetryHandler.ts:91
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ TelemetryHandler.ts:66
+(anonymous) @ RedirectHandler.ts:193
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRedirect @ RedirectHandler.ts:192
+(anonymous) @ RedirectHandler.ts:225
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RedirectHandler.ts:220
+(anonymous) @ RetryHandler.ts:173
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRetry @ RetryHandler.ts:172
+(anonymous) @ RetryHandler.ts:196
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RetryHandler.ts:192
+(anonymous) @ AuthenticationHandler.ts:88
+fulfilled @ tslib.es6.mjs:118
+Promise.then (async)
+step @ tslib.es6.mjs:120
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ AuthenticationHandler.ts:63
+(anonymous) @ HTTPClient.ts:88
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+sendRequest @ HTTPClient.ts:81
+(anonymous) @ GraphRequest.ts:372
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+send @ GraphRequest.ts:366
+(anonymous) @ GraphRequest.ts:691
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+put @ GraphRequest.ts:684
+uploadExcelFile @ excelGraphService.js:52
+onClick @ App.jsx:21430
 callCallback2 @ chunk-DSUIPI7G.js:10563
 invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
 invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
@@ -37,11 +82,42 @@ dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
 dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
 dispatchEvent @ chunk-DSUIPI7G.js:12361
 dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
-Show 26 more frames
-MSGraphContext.jsx:387 Microsoft login failed: popup_window_error: Error opening popup window. This can happen if you are using IE or if popups are blocked in the browser.
-login @ MSGraphContext.jsx:387
-await in login (async)
-onClick @ App.jsx:21595
+Show 57 more frames
+excelGraphService.js:56 Failed to upload Excel file: Error: The resource you are attempting to access is locked
+    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+uploadExcelFile @ excelGraphService.js:56
+await in uploadExcelFile (async)
+onClick @ App.jsx:21430
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+App.jsx:21465 Failed to export to OneDrive: Error: Failed to upload Excel file: The resource you are attempting to access is locked
+    at uploadExcelFile (excelGraphService.js:57:11)
+    at async onClick (App.jsx:21430:21)
+onClick @ App.jsx:21465
+await in onClick (async)
 callCallback2 @ chunk-DSUIPI7G.js:10563
 invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
 invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
