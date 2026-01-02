@@ -4347,23 +4347,25 @@ const PageAnnotationLayer = memo(({
         }
       } else if (currentTool === 'arrow' && ds.tempObj.type === 'line') {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4317',message:'Arrow completion code ENTERED',data:{tool:toolRef.current,tempObjType:ds.tempObj.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4348',message:'Arrow completion code ENTERED',data:{tool:toolRef.current,tempObjType:ds.tempObj.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
-        const { x1, y1, x2, y2 } = ds.tempObj;
+        // CRITICAL: Save tempObj reference and clear state IMMEDIATELY to stop handleMouseMove
+        const tempObjRef = ds.tempObj;
+        ds.isDrawingShape = false;
+        ds.tempObj = null;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4353',message:'Arrow completion - state cleared IMMEDIATELY',data:{isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        
+        const { x1, y1, x2, y2 } = tempObjRef;
         const angle = Math.atan2(y2 - y1, x2 - x1);
         // Use the arrowhead style from toolbar settings
         const selectedArrowheadStyle = arrowheadStyleRef.current || ARROWHEAD_STYLES.SOLID_TRIANGLE;
         const head = createArrowhead(x2, y2, angle, currentStrokeColor, currentStrokeWidth, selectedArrowheadStyle);
 
         // Create group with line and arrowhead (if not NONE style)
-        const groupObjects = head ? [ds.tempObj, head] : [ds.tempObj];
+        const groupObjects = head ? [tempObjRef, head] : [tempObjRef];
         const group = new Group(groupObjects, { selectable: true });
-        
-        // CRITICAL: At this point, Fabric.js has set ds.tempObj.group to point to the group
-        // We MUST clear the drawing state IMMEDIATELY so queued handleMouseMove events will skip
-        const tempObjRef = ds.tempObj; // Save reference for logging
-        ds.isDrawingShape = false;
-        ds.tempObj = null;
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4359',message:'Arrow completion - state cleared after group creation',data:{isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj,tempObjHasGroup:!!tempObjRef.group},timestamp:Date.now(),sessionId:'debug-session',runId:'run5',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
@@ -4384,6 +4386,9 @@ const PageAnnotationLayer = memo(({
         
         // Add group to canvas - Fabric.js automatically removes tempObj from canvas when grouping
         canvas.add(group);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4380',message:'Arrow completion - group added to canvas',data:{isDrawingShape:ds.isDrawingShape,hasTempObj:!!ds.tempObj},timestamp:Date.now(),sessionId:'debug-session',runId:'run6',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
         // Set flag to prevent deselection in handleMouseUpForSelection
         justFinishedDrawingRef.current = true;
         // Automatically select the arrow group so handles appear
