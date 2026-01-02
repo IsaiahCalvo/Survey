@@ -14337,24 +14337,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return allRegions;
   }, [activeSpaceId, spaces, showRegionSelection, regionSelectionPage]);
 
-  // Track active region ID when regions are active
+  // Track active region ID when regions are active AND toggle is ON
+  // A regionId should only be assigned to annotations when the region toggle is ON
   useEffect(() => {
     if (activeSpaceId) {
-      // Find the first page with regions in the active space
+      // Find the first page with regions in the active space WHERE toggle is ON
       const space = spaces.find(s => s.id === activeSpaceId);
       if (space && space.assignedPages) {
         for (const assignedPage of space.assignedPages) {
           if (assignedPage.regions && assignedPage.regions.length > 0) {
-            // Use the first region's ID as the active region
             const firstRegion = assignedPage.regions[0];
-            if (firstRegion && firstRegion.regionId) {
+            // Only set activeRegionId if region exists AND toggle is ON
+            const isToggleOn = firstRegion.showBackgroundAnnotations !== false;
+            if (firstRegion && firstRegion.regionId && isToggleOn) {
+              console.log(`[ActiveRegionDebug] Setting activeRegionId: ${firstRegion.regionId} (toggle ON)`);
               setActiveRegionId(firstRegion.regionId);
               return;
+            } else if (firstRegion && firstRegion.regionId && !isToggleOn) {
+              console.log(`[ActiveRegionDebug] Region ${firstRegion.regionId} exists but toggle is OFF - not setting activeRegionId`);
             }
           }
         }
       }
     }
+    console.log('[ActiveRegionDebug] Clearing activeRegionId');
     setActiveRegionId(null);
   }, [activeSpaceId, spaces]);
 
