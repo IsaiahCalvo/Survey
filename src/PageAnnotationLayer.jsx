@@ -1081,10 +1081,8 @@ const erasePathSegment = (pathObj, eraserPath, eraserRadius, canvas) => {
 };
 
 const erasePathSegment_Deprecated = (pathObj, eraserPath, eraserRadius, canvas) => {
-  console.log('[erasePathSegment] ClipPath mode');
 
   if (pathObj.type !== 'path') {
-    console.log('[erasePathSegment] Not a path, returning false');
     return false;
   }
 
@@ -1102,7 +1100,6 @@ const erasePathSegment_Deprecated = (pathObj, eraserPath, eraserRadius, canvas) 
     const pathBounds = pathObj.getBoundingRect ? pathObj.getBoundingRect(true) : null; // true = force recalculation
     const boundsTime = performance.now() - boundsStartTime;
     if (!pathBounds) {
-      console.log('[erasePathSegment] Could not get bounding rect');
       return false;
     }
 
@@ -1121,7 +1118,6 @@ const erasePathSegment_Deprecated = (pathObj, eraserPath, eraserRadius, canvas) 
     const bboxCheckTime = performance.now() - bboxCheckStart;
 
     if (!eraserIntersects) {
-      console.log('[erasePathSegment] Bounding box check failed');
       return false;
     }
 
@@ -1143,7 +1139,6 @@ const erasePathSegment_Deprecated = (pathObj, eraserPath, eraserRadius, canvas) 
     const hitTestTime = performance.now() - hitTestStart;
 
     if (!touchesPath) {
-      console.log('[erasePathSegment] Eraser does not touch path geometry');
       return false;
     }
 
@@ -1197,7 +1192,6 @@ const erasePathSegment_Deprecated = (pathObj, eraserPath, eraserRadius, canvas) 
         dirty: true
       });
       const setClipTime = performance.now() - setClipStart;
-      console.log('[erasePathSegment] Applied clipPath with', allEraserCircles.length, 'eraser circles');
     }
 
     // Check if the entire path is covered by eraser circles
@@ -1268,7 +1262,6 @@ const erasePathSegment_Deprecated = (pathObj, eraserPath, eraserRadius, canvas) 
 
         // If all sample points are covered, remove the path
         if (visiblePoints === 0 && samplePoints.length > 0) {
-          console.log('[erasePathSegment] All sample points covered, removing path');
           canvas.remove(pathObj);
           return true;
         }
@@ -2749,7 +2742,6 @@ const PageAnnotationLayer = memo(({
   useEffect(() => {
     if (!canvasRef.current || !width || !height || isInitializedRef.current) return;
 
-    // console.log(`[Page ${pageNumber}] Initializing canvas`);
     isInitializedRef.current = true;
 
     // Detect platform for modifier key handling
@@ -4306,7 +4298,6 @@ const PageAnnotationLayer = memo(({
         const rectWidth = rect.width;
         const rectHeight = rect.height;
         const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
-        /* console.log('[Survey Debug] Highlight drag capture', {
           pageNumber,
           rectLeft,
           rectTop,
@@ -4369,6 +4360,11 @@ const PageAnnotationLayer = memo(({
         setTimeout(() => {
           justFinishedDrawingRef.current = false;
         }, 100);
+        // Immediately reset drawing state and save to prevent polyline-like behavior
+        ds.isDrawingShape = false;
+        ds.tempObj = null;
+        saveCanvas();
+        return;
       } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
         const { x1, y1, x2, y2 } = ds.tempObj;
         const calloutGroup = createCalloutGroup(
@@ -5037,7 +5033,6 @@ const PageAnnotationLayer = memo(({
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      // console.log(`[Page ${pageNumber}] Cleanup`);
       isInitializedRef.current = false;
       if (fabricRef.current) {
         fabricRef.current.off();

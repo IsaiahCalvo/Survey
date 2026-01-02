@@ -11,16 +11,13 @@ import { AnnotationFactory } from 'annotpdf';
  */
 const fabricPathToInkAnnotation = (fabricObj, pageNumber, pageHeight) => {
   if (fabricObj.type?.toLowerCase() !== 'path') {
-    console.log(`fabricPathToInkAnnotation: Wrong type ${fabricObj.type}`);
     return null;
   }
 
   try {
     // Extract path points from Fabric.js path data
     const pathData = fabricObj.path;
-    console.log('Path data:', pathData);
     if (!pathData || pathData.length === 0) {
-      console.log('No path data found');
       return null;
     }
 
@@ -53,10 +50,8 @@ const fabricPathToInkAnnotation = (fabricObj, pageNumber, pageHeight) => {
       inkLists.push(currentList);
     }
 
-    console.log(`Generated ${inkLists.length} ink lists with ${inkLists.reduce((sum, list) => sum + list.length / 2, 0)} total points`);
 
     if (inkLists.length === 0) {
-      console.log('No ink lists generated');
       return null;
     }
 
@@ -89,7 +84,6 @@ const fabricPathToInkAnnotation = (fabricObj, pageNumber, pageHeight) => {
       width: maxX - minX,
       height: maxY - minY
     };
-    console.log('Calculated bounds:', bounds);
 
     return {
       type: 'ink',
@@ -223,26 +217,21 @@ const fabricLineToLineAnnotation = (fabricObj, pageNumber, pageHeight) => {
  */
 export const convertPageAnnotationsToPDF = (fabricJSON, pageNumber, pageHeight) => {
   if (!fabricJSON || !fabricJSON.objects) {
-    console.log('No fabricJSON or objects for page', pageNumber);
     return [];
   }
 
-  console.log(`Page ${pageNumber + 1}: Processing ${fabricJSON.objects.length} total objects`);
 
   const pdfAnnotations = [];
 
   fabricJSON.objects.forEach(obj => {
-    console.log(`Object type: ${obj.type}, moduleId: ${obj.moduleId}, highlightId: ${obj.highlightId}`);
 
     // Skip objects that have moduleId (they're survey-specific, don't embed in PDF)
     if (obj.moduleId) {
-      console.log('Skipping object with moduleId');
       return;
     }
 
     // Skip survey highlight rectangles (they have highlightId)
     if (obj.highlightId) {
-      console.log('Skipping object with highlightId');
       return;
     }
 
@@ -251,7 +240,6 @@ export const convertPageAnnotationsToPDF = (fabricJSON, pageNumber, pageHeight) 
 
     switch (objType) {
       case 'path':
-        console.log('Converting path to ink annotation');
         annotation = fabricPathToInkAnnotation(obj, pageNumber, pageHeight);
         break;
       case 'textbox':
@@ -269,7 +257,6 @@ export const convertPageAnnotationsToPDF = (fabricJSON, pageNumber, pageHeight) 
         break;
       // TODO: Add support for groups (arrows), polylines, etc.
       default:
-        console.log(`Unsupported annotation type: ${obj.type}`);
     }
 
     if (annotation) {
@@ -285,7 +272,6 @@ export const convertPageAnnotationsToPDF = (fabricJSON, pageNumber, pageHeight) 
  */
 export const savePDFWithAnnotations = async (pdfFile, annotationsByPage, pageSizes) => {
   try {
-    console.log('Starting PDF annotation embedding...');
 
     // Load PDF file as ArrayBuffer
     const arrayBuffer = await pdfFile.arrayBuffer();
@@ -296,25 +282,20 @@ export const savePDFWithAnnotations = async (pdfFile, annotationsByPage, pageSiz
 
     let totalAnnotations = 0;
 
-    console.log('annotationsByPage:', annotationsByPage);
-    console.log('pageSizes:', pageSizes);
 
     // Convert and add annotations for each page
     Object.entries(annotationsByPage).forEach(([pageNumStr, pageData]) => {
       const pageNumber = parseInt(pageNumStr) - 1; // Convert to 0-indexed
       const pageSize = pageSizes[pageNumStr];
 
-      console.log(`Processing page ${pageNumStr}, pageData:`, pageData);
 
       if (!pageSize) {
-        console.warn(`No page size found for page ${pageNumStr}`);
         return;
       }
 
       const pageHeight = pageSize.height;
       const pdfAnnotations = convertPageAnnotationsToPDF(pageData, pageNumber, pageHeight);
 
-      console.log(`Page ${pageNumStr}: Converting ${pdfAnnotations.length} annotations`);
 
       // Add each annotation to the PDF
       pdfAnnotations.forEach(annot => {
@@ -370,7 +351,6 @@ export const savePDFWithAnnotations = async (pdfFile, annotationsByPage, pageSiz
               break;
 
             default:
-              console.warn(`Unsupported annotation type for PDF embedding: ${annot.type}`);
           }
         } catch (e) {
           console.error(`Error adding ${annot.type} annotation:`, e);
@@ -378,7 +358,6 @@ export const savePDFWithAnnotations = async (pdfFile, annotationsByPage, pageSiz
       });
     });
 
-    console.log(`Embedded ${totalAnnotations} annotations into PDF`);
 
     // Write the modified PDF
     const modifiedPdfBytes = await factory.write();
@@ -386,17 +365,14 @@ export const savePDFWithAnnotations = async (pdfFile, annotationsByPage, pageSiz
     // Check if we're in Electron and have the original file path
     if (window.electronAPI && pdfFile.path) {
       // Save to original file location using atomic write (crash-safe)
-      console.log(`Saving to original file: ${pdfFile.path}`);
       if (window.electronAPI.writeFileAtomic) {
         await window.electronAPI.writeFileAtomic(pdfFile.path, modifiedPdfBytes);
       } else {
         // Fallback to regular write if atomic not available
         await window.electronAPI.writeFile(pdfFile.path, modifiedPdfBytes);
       }
-      console.log('PDF saved successfully to original location with embedded annotations');
     } else {
       // Fallback: Download the file (browser mode or no path available)
-      console.log('Downloading modified PDF (no original path available)');
       const blob = new Blob([modifiedPdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -406,7 +382,6 @@ export const savePDFWithAnnotations = async (pdfFile, annotationsByPage, pageSiz
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      console.log('PDF downloaded successfully with embedded annotations');
     }
 
     return true;

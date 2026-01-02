@@ -92,7 +92,6 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   useEffect(() => {
     const handleFocus = () => {
       if (isOpen && user) {
-        console.log('Window focused, refetching subscription data...');
         fetchSubscription();
       }
     };

@@ -51,7 +51,6 @@ export async function uploadExcelFile(graphClient, filePath, fileContent) {
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .put(blob);
 
-    console.log('Excel file uploaded to OneDrive:', response);
     return response;
   } catch (error) {
     console.error('Failed to upload Excel file:', error);
@@ -80,7 +79,6 @@ export async function updateExcelRange(graphClient, fileId, worksheetName, range
         values: values
       });
 
-    console.log('Excel range updated:', response);
     return response;
   } catch (error) {
     console.error('Failed to update Excel range:', error);

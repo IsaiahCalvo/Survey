@@ -55,7 +55,6 @@ export async function createWorkbookSession(graphClient, fileId, persistChanges 
     // Sessions typically expire after 5 minutes of inactivity
     const expiresAt = new Date(Date.now() + 4 * 60 * 1000); // 4 min to be safe
 
-    console.log('Workbook session created:', response.id);
     return {
       sessionId: response.id,
       expiresAt: expiresAt
@@ -94,7 +93,6 @@ export async function closeWorkbookSession(graphClient, fileId, sessionId) {
       .header('workbook-session-id', sessionId)
       .post({});
 
-    console.log('Workbook session closed');
   } catch (error) {
     // Don't throw on close errors - session may have already expired
     console.warn('Failed to close workbook session (may have expired):', error.message);

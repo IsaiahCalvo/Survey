@@ -32,18 +32,15 @@ export function SurveySessionProvider({ children }) {
 
   // Handle remote changes
   const handleRemoteChange = useCallback((change) => {
-    console.log('[SurveySession] Remote change received:', change.type);
     setPendingRemoteChanges((prev) => [...prev, change]);
   }, []);
 
   // Handle presence changes
   const handlePresenceChange = useCallback((users) => {
-    console.log('[SurveySession] Active users:', users.length);
   }, []);
 
   // Handle conflicts
   const handleConflict = useCallback((conflict) => {
-    console.log('[SurveySession] Conflict detected:', conflict);
     setConflicts((prev) => [...prev, conflict]);
   }, []);
 
@@ -83,7 +80,6 @@ export function SurveySessionProvider({ children }) {
    * Enable sync for a specific template
    */
   const enableSync = useCallback((templateId, documentId = null) => {
-    console.log('[SurveySession] Enabling sync for template:', templateId);
     setActiveTemplateId(templateId);
     setActiveDocumentId(documentId);
     setSyncEnabled(true);
@@ -93,7 +89,6 @@ export function SurveySessionProvider({ children }) {
    * Disable sync
    */
   const disableSync = useCallback(() => {
-    console.log('[SurveySession] Disabling sync');
     setSyncEnabled(false);
     setActiveTemplateId(null);
     setActiveDocumentId(null);

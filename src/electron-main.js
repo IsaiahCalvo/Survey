@@ -4,7 +4,6 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-console.log('Starting Electron Main Process...');
 
 // Suppress security warnings in development
 if (process.env.NODE_ENV === 'development') {
@@ -23,10 +22,8 @@ function createWindow() {
     const pngPath = path.join(appPath, 'build', 'icon.png');
     if (fs.existsSync(icnsPath)) {
       iconPath = icnsPath;
-      console.log('Using macOS icon:', iconPath);
     } else if (fs.existsSync(pngPath)) {
       iconPath = pngPath;
-      console.log('Using macOS icon (PNG fallback):', iconPath);
     }
   } else if (process.platform === 'win32') {
     // Windows - use .ico if available, otherwise .png
@@ -43,7 +40,6 @@ function createWindow() {
   }
 
   if (!iconPath || !fs.existsSync(iconPath)) {
-    console.warn('Icon file not found. Expected at:', path.join(appPath, 'build', 'icon.icns'));
   }
 
   // Preload path - in production, __dirname is app.asar/src, so preload.js is in the same directory
@@ -70,7 +66,6 @@ function createWindow() {
       // Check if this is an OAuth callback (contains hash with access_token or code)
       if (parsedUrl.hash && (parsedUrl.hash.includes('access_token') || parsedUrl.hash.includes('code') || parsedUrl.hash.includes('error'))) {
         event.preventDefault();
-        console.log('OAuth callback detected:', navigationUrl);
         
         // Reload the app to process the OAuth token
         if (process.env.NODE_ENV === 'development') {
@@ -124,12 +119,9 @@ function createWindow() {
     const tryLoadDev = async () => {
       try {
         await win.loadURL('http://localhost:5173');
-        console.log('Connected to dev server on port 5173');
       } catch (err) {
-        console.log('Port 5173 not available, trying 5174...');
         try {
           await win.loadURL('http://localhost:5174');
-          console.log('Connected to dev server on port 5174');
         } catch (err2) {
           console.error('Could not connect to dev server on either port');
           win.loadURL('http://localhost:5173'); // Fallback
@@ -141,7 +133,6 @@ function createWindow() {
     // In production, __dirname is app.asar/src, so we need to go up one level to app.asar
     // then into dist. Use app.getAppPath() which gives us the app.asar directory
     const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
-    console.log('Loading production file from:', distPath);
     win.loadFile(distPath);
   }
 }
@@ -160,10 +151,8 @@ let chokidar = null;
   }
 })();
 
-console.log('Registering IPC handlers...');
 
 ipcMain.handle('dialog:openFile', async (event, options = {}) => {
-  console.log('IPC: dialog:openFile invoked', options);
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: options.title || 'Open File',
     defaultPath: options.defaultPath,
@@ -287,7 +276,6 @@ ipcMain.handle('fs:writeFileAtomic', async (event, { path: filePath, data }) => 
     if (fs.existsSync(backupPath) && !fs.existsSync(filePath)) {
       try {
         fs.renameSync(backupPath, filePath);
-        console.log('Recovered from backup after failed write');
       } catch (recoveryError) {
         console.error('Recovery from backup also failed:', recoveryError);
       }
@@ -419,7 +407,6 @@ app.on('before-quit', (event) => {
 // Handle save completion from renderer
 ipcMain.on('app:saveComplete', () => {
   // This is just for logging, actual quit happens via timeout
-  console.log('Renderer completed saving');
 });
 
 app.on('window-all-closed', () => {

@@ -94,9 +94,6 @@ export const useDragToReorder = (items, onReorder, options = {}) => {
 
     // Store original order - capture the initial order at drag start
     const initialOrder = items.map((item, idx) => ({ item, index: idx }));
-    console.log('[DragToReorder] Grab started for item:', itemId);
-    console.log('[DragToReorder] Initial items:', items.map(i => ({ id: i.id, name: i.name || 'no name' })));
-    console.log('[DragToReorder] Initial order:', initialOrder.map(e => ({ id: e.item.id, index: e.index })));
     setVirtualOrder(initialOrder);
     virtualOrderRef.current = initialOrder;
     initialOrderRef.current = initialOrder; // Store initial order to compare against later
@@ -181,7 +178,6 @@ export const useDragToReorder = (items, onReorder, options = {}) => {
                 const [draggedEntry] = newOrder.splice(draggedIndex, 1);
                 const targetIndex = newOrder.findIndex(entry => entry.item.id === item.id);
                 if (targetIndex !== -1) {
-                  console.log('[DragToReorder] Swapping: dragged item', prev.itemId, 'from index', draggedIndex, 'to before item', item.id, 'at index', targetIndex);
                   newOrder.splice(targetIndex, 0, draggedEntry);
                   orderChanged = true;
                 }
@@ -196,7 +192,6 @@ export const useDragToReorder = (items, onReorder, options = {}) => {
               index: newIndex
             }));
             
-            console.log('[DragToReorder] Order changed during drag. New order:', updatedOrder.map(e => ({ id: e.item.id, index: e.index })));
             setVirtualOrder(updatedOrder);
             virtualOrderRef.current = updatedOrder; // Update ref synchronously
             
@@ -285,7 +280,6 @@ export const useDragToReorder = (items, onReorder, options = {}) => {
       // Apply final reorder if order changed
       // Use ref to get the latest virtual order synchronously
       const finalOrder = virtualOrderRef.current || initialOrderRef.current || items.map((item, idx) => ({ item, index: idx }));
-      console.log('[DragToReorder] MouseUp - Final Order:', finalOrder);
       
       const finalOrderedItems = finalOrder
         .sort((a, b) => a.index - b.index)
@@ -296,16 +290,10 @@ export const useDragToReorder = (items, onReorder, options = {}) => {
       const originalOrder = initialOrder.sort((a, b) => a.index - b.index).map(({ item }) => item.id);
       const newOrder = finalOrderedItems.map(item => item.id);
       
-      console.log('[DragToReorder] Initial Order IDs (from drag start):', originalOrder);
-      console.log('[DragToReorder] New Order IDs:', newOrder);
-      console.log('[DragToReorder] Order changed?', JSON.stringify(originalOrder) !== JSON.stringify(newOrder));
-      console.log('[DragToReorder] Final ordered items:', finalOrderedItems);
       
       if (JSON.stringify(originalOrder) !== JSON.stringify(newOrder)) {
-        console.log('[DragToReorder] Calling onReorder with:', finalOrderedItems);
         onReorder(finalOrderedItems);
       } else {
-        console.log('[DragToReorder] Order unchanged, not calling onReorder');
       }
       
       // Clear the refs

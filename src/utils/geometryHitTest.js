@@ -994,7 +994,6 @@ export const doesRectIntersectPath = (selRect, pathObj) => {
 
       segmentCount++;
       if (doesRectIntersectLineSegment(selRect, start, end, strokeWidth)) {
-        console.log('[GEO DEBUG] Found intersecting segment:', { start, end, selRect });
         return true;
       }
 

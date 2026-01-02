@@ -23,7 +23,6 @@ export async function createSurveySession(templateId, userId, documentId = null,
     throw new Error('Supabase not available');
   }
 
-  console.log('[SurveyRealtimeService] Creating session for template:', templateId, 'user:', userId);
 
   const sessionData = {
     template_id: templateId,
@@ -49,7 +48,6 @@ export async function createSurveySession(templateId, userId, documentId = null,
     throw error;
   }
 
-  console.log('[SurveyRealtimeService] Session created:', data.id);
   return data;
 }
 
@@ -383,7 +381,6 @@ export async function getSessionPresence(sessionId) {
  */
 export function subscribeToSurveyItems(sessionId, callbacks = {}) {
   if (!isSupabaseAvailable()) {
-    console.warn('Supabase not available, cannot subscribe to survey items');
     return null;
   }
 
@@ -398,7 +395,6 @@ export function subscribeToSurveyItems(sessionId, callbacks = {}) {
         filter: `session_id=eq.${sessionId}`,
       },
       (payload) => {
-        console.log('[SurveySync] Item inserted:', payload.new.highlight_id);
         callbacks.onInsert?.(convertItemFromDb(payload.new));
       }
     )
@@ -411,7 +407,6 @@ export function subscribeToSurveyItems(sessionId, callbacks = {}) {
         filter: `session_id=eq.${sessionId}`,
       },
       (payload) => {
-        console.log('[SurveySync] Item updated:', payload.new.highlight_id);
         callbacks.onUpdate?.(convertItemFromDb(payload.new), convertItemFromDb(payload.old));
       }
     )
@@ -424,12 +419,10 @@ export function subscribeToSurveyItems(sessionId, callbacks = {}) {
         filter: `session_id=eq.${sessionId}`,
       },
       (payload) => {
-        console.log('[SurveySync] Item deleted:', payload.old.highlight_id);
         callbacks.onDelete?.(convertItemFromDb(payload.old));
       }
     )
     .subscribe((status) => {
-      console.log('[SurveySync] Subscription status:', status);
       callbacks.onStatus?.(status);
     });
 
@@ -458,7 +451,6 @@ export function subscribeToPresence(sessionId, callbacks = {}) {
         filter: `session_id=eq.${sessionId}`,
       },
       (payload) => {
-        console.log('[SurveySync] Presence change:', payload.eventType);
         callbacks.onPresenceChange?.(payload);
       }
     )

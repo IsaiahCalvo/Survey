@@ -71,7 +71,6 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
       if (result?.url) {
         // In Electron, the navigation is handled by the main process
         // Just wait a moment for the redirect to happen
-        console.log('OAuth redirect initiated');
         // Don't set loading to false - let the redirect happen
         // The modal will close when auth state changes
       } else {

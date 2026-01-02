@@ -171,7 +171,6 @@ export const useDocuments = (projectId = null) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // console.log('useDocuments render. projectId:', projectId, 'documents count:', documents.length);
 
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) {
@@ -217,7 +216,6 @@ export const useDocuments = (projectId = null) => {
         .single();
 
       if (error) throw error;
-      console.log('createDocument success, updating state with:', data);
       setDocuments([data, ...documents]);
       return data;
     } catch (err) {
@@ -591,7 +589,6 @@ export const useConnectedServices = () => {
 
     try {
       setLoading(true);
-      console.log('[useConnectedServices] Fetching services for user:', user.id);
       const { data, error } = await supabase
         .from('connected_services')
         .select('*')
@@ -612,13 +609,11 @@ export const useConnectedServices = () => {
       // Table is available
       setConnectedServicesAvailable(true);
 
-      console.log('[useConnectedServices] ✅ Fetched services from Supabase:', data);
 
       // Convert array to object keyed by service_name for easier access
       const servicesMap = {};
       (data || []).forEach(service => {
         servicesMap[service.service_name] = service;
-        console.log(`[useConnectedServices]   - ${service.service_name}: ${service.is_connected ? 'Connected' : 'Disconnected'} (${service.account_email})`);
       });
       setServices(servicesMap);
     } catch (err) {

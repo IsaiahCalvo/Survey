@@ -97,7 +97,6 @@ export function useSurveySync(options = {}) {
       const sessionData = await getOrCreateSession(templateId, user.id, documentId);
       setSession(sessionData);
 
-      console.log('[useSurveySync] Session initialized:', sessionData.id);
       return sessionData;
     } catch (error) {
       console.error('[useSurveySync] Failed to initialize session:', error);
@@ -218,7 +217,6 @@ export function useSurveySync(options = {}) {
     const localVersion = localVersionsRef.current.get(newItem.highlightId);
     if (localVersion && localVersion > oldItem?.version) {
       // Conflict detected - remote change came in while we had local changes
-      console.log('[useSurveySync] Conflict detected for:', newItem.highlightId);
       onConflict?.({
         item: newItem,
         localVersion,

@@ -47,7 +47,6 @@ const Tile = memo(({ page, docId, pageIndex, scale, row, col, viewport, onRender
             if (onRenderFinish) onRenderFinish();
         } else {
             // Fallback for browsers without OffscreenCanvas support
-            console.warn('OffscreenCanvas not supported, rendering on main thread');
 
             (async () => {
                 try {
@@ -94,16 +93,13 @@ const Tile = memo(({ page, docId, pageIndex, scale, row, col, viewport, onRender
 });
 
 const PDFPageTiles = ({ page, docId, scale, onFinishRender }) => {
-    console.log('PDFPageTiles render - page:', page, 'docId:', docId, 'scale:', scale);
 
     const viewport = useMemo(() => {
         const vp = page ? page.getViewport({ scale }) : null;
-        console.log('PDFPageTiles viewport:', vp);
         return vp;
     }, [page, scale]);
 
     if (!page || !viewport) {
-        console.log('PDFPageTiles: No page or viewport, returning null');
         return null;
     }
 

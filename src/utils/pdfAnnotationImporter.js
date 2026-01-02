@@ -63,7 +63,6 @@ function pdfColorToHex(colorInput, annotation = null) {
 
   // Default to black if no color found
   if (!color) {
-    console.log('[pdfAnnotationImporter] No color found, defaulting to black');
     return '#000000';
   }
 
@@ -83,13 +82,11 @@ function pdfColorToHex(colorInput, annotation = null) {
       g = color.g;
       b = color.b;
     } else {
-      console.log('[pdfAnnotationImporter] Unknown object color format:', color);
       return '#000000';
     }
   } else if (Array.isArray(color) || (color && typeof color.length === 'number')) {
     // Array or array-like
     if (color.length === 0) {
-      console.log('[pdfAnnotationImporter] Empty color array, defaulting to black');
       return '#000000';
     }
 
@@ -104,7 +101,6 @@ function pdfColorToHex(colorInput, annotation = null) {
     g = color[1];
     b = color[2];
   } else {
-    console.log('[pdfAnnotationImporter] Unknown color format:', typeof color, color);
     return '#000000';
   }
 
