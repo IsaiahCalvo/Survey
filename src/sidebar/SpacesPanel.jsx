@@ -687,12 +687,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               <div
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  console.log(`[OverlayToggleDebug] Overlay toggle clicked! isToggleEnabled=${isToggleEnabled}, isOverlayEnabled=${isOverlayEnabled}, spaceId=${space.id}, pageId=${page.pageId}`);
                                   if (!isToggleEnabled || !onToggleRegionOverlay) {
-                                    console.log('[OverlayToggleDebug] Toggle not enabled or no handler, returning');
                                     return;
                                   }
-                                  console.log(`[OverlayToggleDebug] Calling onToggleRegionOverlay to set overlay to ${!isOverlayEnabled}`);
                                   onToggleRegionOverlay(space.id, page.pageId);
                                 }}
                                 style={{
@@ -826,11 +823,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     // Use a data attribute on the button to track last click time (per-button debounce)
                                     const lastClick = parseInt(e.currentTarget.dataset.lastClick || '0', 10);
                                     const timeSinceLastClick = now - lastClick;
-                                    console.log(`[ToggleClickDebug] Button onClick fired! isDisabled=${isDisabled}, currentState=${regionLightbulbState}, newState=${!regionLightbulbState}, timeSinceLastClick=${timeSinceLastClick}ms`);
 
                                     // Debounce: ignore clicks within 300ms of each other
                                     if (timeSinceLastClick < 300) {
-                                      console.log('[ToggleClickDebug] IGNORING click - too soon after last click (debounce)');
                                       e.preventDefault();
                                       e.stopPropagation();
                                       return;
@@ -838,18 +833,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     e.currentTarget.dataset.lastClick = now.toString();
 
                                     if (isDisabled) {
-                                      console.log('[ToggleClickDebug] Button is disabled, returning early');
                                       return;
                                     }
                                     e.stopPropagation();
-                                    // #region agent log
-                                    fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'SpacesPanel.jsx:719', message: 'Button clicked', data: { currentValue: regionLightbulbState, newValue: !regionLightbulbState, spaceId: space.id, pageId: page.pageId, isActive, isSurveyContext }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
-                                    // #endregion
-                                    console.log(`[ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=${!regionLightbulbState}`);
                                     onToggleBackgroundAnnotations(space.id, page.pageId, !regionLightbulbState);
-                                  }}
-                                  onMouseDown={(e) => {
-                                    console.log(`[ToggleClickDebug] Button onMouseDown fired! target=${e.target.tagName}`);
                                   }}
                                   style={{
                                     background: regionLightbulbState ? 'rgba(74, 144, 226, 0.15)' : 'rgba(153, 153, 153, 0.1)',

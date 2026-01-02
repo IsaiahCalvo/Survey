@@ -29,42 +29,24 @@ workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 22 more frames
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-login.live.com/Me.htm?v=3:1 true
-login.live.com/Me.htm?v=3:1 true
-Me.htm:1 true
-AuthContext.jsx:102 Window focused, refetching subscription tier...
-App.jsx:3061 [DocumentSync] Opening document with Supabase ID: 55a07183-b6eb-4bb2-acf1-4f4194d0841e projectId: undefined
-App.jsx:11079 [DocumentSync] Document opened, loading annotations from Supabase: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
-App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
-App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
-App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
-App.jsx:12167 PDF load check: {size: 25699506, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
-App.jsx:12176 PDF Header Check: %PDF-
-documentAnnotationService.js:207 [AnnotationSync] Loaded 0 annotations from Supabase
-App.jsx:11136 [DocumentSync] Subscribing to real-time changes for document: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
-documentAnnotationService.js:271 [AnnotationSync] Subscribed to real-time changes for document: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
-fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-then @ PostgrestBuilder.ts:109
-Show 3 more frames
-fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-then @ PostgrestBuilder.ts:109
-Show 3 more frames
-documentAnnotationService.js:341 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
-updateDocumentPresence @ documentAnnotationService.js:341
-await in updateDocumentPresence (async)
-(anonymous) @ App.jsx:11258
+MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+createHiddenIframe @ SilentHandler.ts:260
+loadFrameSync @ SilentHandler.ts:235
+(anonymous) @ FunctionWrappers.ts:43
+initiateCodeRequest @ SilentHandler.ts:62
+(anonymous) @ FunctionWrappers.ts:102
+silentTokenHelper @ SilentIframeClient.ts:430
+await in silentTokenHelper (async)
+(anonymous) @ FunctionWrappers.ts:102
+executeCodeFlow @ SilentIframeClient.ts:177
+await in executeCodeFlow (async)
+acquireToken @ SilentIframeClient.ts:139
+await in acquireToken (async)
+ssoSilent @ StandardController.ts:1067
+ssoSilent @ PublicClientApplication.ts:343
+initializeMsal @ MSGraphContext.jsx:236
+await in initializeMsal (async)
+(anonymous) @ MSGraphContext.jsx:274
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -76,7 +58,58 @@ flushPassiveEffects @ chunk-DSUIPI7G.js:26336
 workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
+Show 22 more frames
+MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+createHiddenIframe @ SilentHandler.ts:260
+loadFrameSync @ SilentHandler.ts:235
+(anonymous) @ FunctionWrappers.ts:43
+initiateCodeRequest @ SilentHandler.ts:62
+(anonymous) @ FunctionWrappers.ts:102
+silentTokenHelper @ SilentIframeClient.ts:430
+await in silentTokenHelper (async)
+(anonymous) @ FunctionWrappers.ts:102
+executeCodeFlow @ SilentIframeClient.ts:177
+await in executeCodeFlow (async)
+acquireToken @ SilentIframeClient.ts:139
+await in acquireToken (async)
+ssoSilent @ StandardController.ts:1067
+ssoSilent @ PublicClientApplication.ts:343
+initializeMsal @ MSGraphContext.jsx:236
+await in initializeMsal (async)
+(anonymous) @ MSGraphContext.jsx:274
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 22 more frames
+App.jsx:3061 [DocumentSync] Opening document with Supabase ID: 55a07183-b6eb-4bb2-acf1-4f4194d0841e projectId: undefined
+App.jsx:11079 [DocumentSync] Document opened, loading annotations from Supabase: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
+App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
+App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
+App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
+App.jsx:12167 PDF load check: {size: 25699506, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
+App.jsx:12176 PDF Header Check: %PDF-
+documentAnnotationService.js:207 [AnnotationSync] Loaded 0 annotations from Supabase
+App.jsx:11136 [DocumentSync] Subscribing to real-time changes for document: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
 documentAnnotationService.js:341 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
 updateDocumentPresence @ documentAnnotationService.js:341
 await in updateDocumentPresence (async)
@@ -95,11 +128,27 @@ workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 11 more frames
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 2: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 3: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 4: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 5: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+documentAnnotationService.js:341 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
+updateDocumentPresence @ documentAnnotationService.js:341
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:11258
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+documentAnnotationService.js:271 [AnnotationSync] Subscribed to real-time changes for document: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
+login.live.com/Me.htm?v=3:1 true
+login.live.com/Me.htm?v=3:1 true
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI3Y2RiLWVjMGMtN2E5Ny04NjRiLTBiNWMwYjc0ZjIyNSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI3Y2RiLWViZWUtNzNkNi1iNGI5LTNjMTA0NDBmODU4OCIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 App.jsx:11238 [DocumentSync] Syncing 3 annotations to Supabase...
 documentAnnotationService.js:160 [AnnotationSync] Syncing 3 annotations to Supabase...
 App.jsx:11237     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
@@ -161,6 +210,11 @@ PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 2: Visibility useEffect trig
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 3: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 4: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 5: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 2: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 3: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 4: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 5: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:1452 [RegionIdDebug] No active space, not assigning regionId
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 2: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
@@ -182,32 +236,17 @@ PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 2: Visibility useEffect trig
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 3: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 4: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 5: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767316450564-h4o6x447c
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317186654-f9xv8lpq9
 PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767316450564-h4o6x447c
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317186654-f9xv8lpq9
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767326196167-rv2eoc4bu
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767326205091-3m2ge9csm
 PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767326196167-rv2eoc4bu
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767326205091-3m2ge9csm
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 6: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 7: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767316450564-h4o6x447c
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317186654-f9xv8lpq9
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
-PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
-PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 2: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 3: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 4: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 5: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 6: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 7: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 8: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 9: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326196167-rv2eoc4bu
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326205091-3m2ge9csm
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
@@ -223,109 +262,31 @@ PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 6: Visibility useEffect trig
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 7: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 8: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 9: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767316450564-h4o6x447c
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317186654-f9xv8lpq9
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 2: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 3: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 4: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 5: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 6: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 7: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 8: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 9: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+App.jsx:13712 [App] handleHighlightDeleted called {pageNumber: 1, bounds: {…}, highlightId: 'highlight-1767326205091-3m2ge9csm', selectedModuleId: 'module-1763727070665-0.5714253201980415', selectedTemplate: {…}}
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767326196167-rv2eoc4bu
+App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767316450564-h4o6x447c
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317186654-f9xv8lpq9
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767316450564-h4o6x447c
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317186654-f9xv8lpq9
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
-App.jsx:13712 [App] handleHighlightDeleted called {pageNumber: 1, bounds: {…}, highlightId: 'highlight-1767317186654-f9xv8lpq9', selectedModuleId: 'module-1763727070665-0.5714253201980415', selectedTemplate: {…}}
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767316450564-h4o6x447c
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326196167-rv2eoc4bu
+App.jsx:13712 [App] handleHighlightDeleted called {pageNumber: 1, bounds: {…}, highlightId: 'highlight-1767326196167-rv2eoc4bu', selectedModuleId: 'module-1763727070665-0.5714253201980415', selectedTemplate: {…}}
 PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
 App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767316450564-h4o6x447c
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-App.jsx:13712 [App] handleHighlightDeleted called {pageNumber: 1, bounds: {…}, highlightId: 'highlight-1767316450564-h4o6x447c', selectedModuleId: 'module-1763727070665-0.5714253201980415', selectedTemplate: {…}}
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12949
-App.jsx:12974     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12974
-App.jsx:12941     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12941
-App.jsx:12949     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-wheelHandler @ App.jsx:12949
 App.jsx:11238 [DocumentSync] Syncing 1 annotations to Supabase...
 documentAnnotationService.js:160 [AnnotationSync] Syncing 1 annotations to Supabase...
 App.jsx:11237     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
@@ -396,94 +357,18 @@ App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
 PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
-SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=true, newState=false, timeSinceLastClick=1767326189896ms
-SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=false
-App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=false
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
-PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
-App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
-SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-onClick @ SpacesPanel.jsx:846
-callCallback2 @ chunk-DSUIPI7G.js:10563
-invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
-invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
-invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
-executeDispatch @ chunk-DSUIPI7G.js:13903
-processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
-processDispatchQueue @ chunk-DSUIPI7G.js:13932
-dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
-(anonymous) @ chunk-DSUIPI7G.js:14063
-batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
-batchedUpdates @ chunk-DSUIPI7G.js:10468
-dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
-dispatchEvent @ chunk-DSUIPI7G.js:12361
-dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
-Show 15 more frames
-SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
-SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=false, newState=true, timeSinceLastClick=554ms
-SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=true
-App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
 PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
-App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
-SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-onClick @ SpacesPanel.jsx:846
-callCallback2 @ chunk-DSUIPI7G.js:10563
-invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
-invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
-invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
-executeDispatch @ chunk-DSUIPI7G.js:13903
-processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
-processDispatchQueue @ chunk-DSUIPI7G.js:13932
-dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
-(anonymous) @ chunk-DSUIPI7G.js:14063
-batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
-batchedUpdates @ chunk-DSUIPI7G.js:10468
-dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
-dispatchEvent @ chunk-DSUIPI7G.js:12361
-dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
-Show 15 more frames
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:1493 [RegionIdDebug] Page 1 - WILL assign regionId: 1767316062227-dhljgr8e5
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
 PageAnnotationLayer.jsx:1493 [RegionIdDebug] Page 1 - WILL assign regionId: 1767316062227-dhljgr8e5
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
@@ -492,27 +377,20 @@ App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1
 PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
 PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=1767316062227-dhljgr8e5 from rect with highlightId=highlight-1767326196167-rv2eoc4bu
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=1767316062227-dhljgr8e5 from rect with highlightId=highlight-1767326372498-8saxkc7x3
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
 App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=1767316062227-dhljgr8e5 from rect with highlightId=highlight-1767326196167-rv2eoc4bu
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=1767316062227-dhljgr8e5 from rect with highlightId=highlight-1767326372498-8saxkc7x3
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
 App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
-SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=BUTTON
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:11238 [DocumentSync] Syncing 2 annotations to Supabase...
 documentAnnotationService.js:160 [AnnotationSync] Syncing 2 annotations to Supabase...
 App.jsx:11237     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
@@ -572,12 +450,13 @@ performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
 flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
 (anonymous) @ chunk-DSUIPI7G.js:25516
 Show 12 more frames
-SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=true, newState=false, timeSinceLastClick=10091ms
+SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=path
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=true, newState=false, timeSinceLastClick=1767326377872ms
 SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=false
 App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=false
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
@@ -602,13 +481,13 @@ dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay 
 dispatchEvent @ chunk-DSUIPI7G.js:12361
 dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
 Show 15 more frames
-SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=BUTTON
-SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=false, newState=true, timeSinceLastClick=415ms
+SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=path
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=false, newState=true, timeSinceLastClick=883ms
 SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=true
 App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
@@ -648,73 +527,51 @@ PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no reg
 PageAnnotationLayer.jsx:1482 [RegionIdDebug] Page 1 overlay is OFF, not assigning regionId
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
 PageAnnotationLayer.jsx:1482 [RegionIdDebug] Page 1 overlay is OFF, not assigning regionId
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=1767316062227-dhljgr8e5 from rect with highlightId=highlight-1767326196167-rv2eoc4bu
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767326205091-3m2ge9csm
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=1767316062227-dhljgr8e5 from rect with highlightId=highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767326381524-agnx3ueb4
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326205091-3m2ge9csm
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=1767316062227-dhljgr8e5 from rect with highlightId=highlight-1767326196167-rv2eoc4bu
-PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767326205091-3m2ge9csm
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=1767316062227-dhljgr8e5 from rect with highlightId=highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5306 [RegionIdDebug] Bounds-based removal: Captured preservedRegionId=null from rect with highlightId=highlight-1767326381524-agnx3ueb4
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326205091-3m2ge9csm
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326205091-3m2ge9csm
-SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
-SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=true, newState=false, timeSinceLastClick=9051ms
-SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=false
-App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=false
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326205091-3m2ge9csm
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+SpacesPanel.jsx:690 [OverlayToggleDebug] Overlay toggle clicked! isToggleEnabled=true, isOverlayEnabled=false, spaceId=1767316058059-64kg1bglb, pageId=1
+SpacesPanel.jsx:695 [OverlayToggleDebug] Calling onToggleRegionOverlay to set overlay to true
+App.jsx:11514 [OverlayToggleDebug] handleToggleRegionOverlay: Overlay ENABLED for 1767316058059-64kg1bglb-1
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
-PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
-App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
-PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
-App.jsx:14360 [ActiveRegionDebug] Region 1767316062227-dhljgr8e5 exists but overlay is OFF - not setting activeRegionId
-App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
-SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-onClick @ SpacesPanel.jsx:846
-callCallback2 @ chunk-DSUIPI7G.js:10563
-invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
-invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
-invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
-executeDispatch @ chunk-DSUIPI7G.js:13903
-processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
-processDispatchQueue @ chunk-DSUIPI7G.js:13932
-dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
-(anonymous) @ chunk-DSUIPI7G.js:14063
-batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
-batchedUpdates @ chunk-DSUIPI7G.js:10468
-dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
-dispatchEvent @ chunk-DSUIPI7G.js:12361
-dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
-Show 15 more frames
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
 App.jsx:11238 [DocumentSync] Syncing 3 annotations to Supabase...
 documentAnnotationService.js:160 [AnnotationSync] Syncing 3 annotations to Supabase...
 App.jsx:11237     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
@@ -775,13 +632,48 @@ flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
 (anonymous) @ chunk-DSUIPI7G.js:25516
 Show 12 more frames
 SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
-SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=false, newState=true, timeSinceLastClick=509ms
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=true, newState=false, timeSinceLastClick=8857ms
+SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=false
+App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=false
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
+SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
+onClick @ SpacesPanel.jsx:846
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=false, newState=true, timeSinceLastClick=589ms
 SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=true
 App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326205091-3m2ge9csm
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
 PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
@@ -790,6 +682,281 @@ PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no reg
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
 PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
+SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
+onClick @ SpacesPanel.jsx:846
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=true, newState=false, timeSinceLastClick=4702ms
+SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=false
+App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=false
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
+SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
+onClick @ SpacesPanel.jsx:846
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=false, newState=true, timeSinceLastClick=373ms
+SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=true
+App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
+SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
+onClick @ SpacesPanel.jsx:846
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:1493 [RegionIdDebug] Page 1 - WILL assign regionId: 1767316062227-dhljgr8e5
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=true, newState=false, timeSinceLastClick=4975ms
+SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=false
+App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=false
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
+SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
+onClick @ SpacesPanel.jsx:846
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=false, newState=true, timeSinceLastClick=540ms
+SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=true
+App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
+SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
+onClick @ SpacesPanel.jsx:846
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+SpacesPanel.jsx:690 [OverlayToggleDebug] Overlay toggle clicked! isToggleEnabled=true, isOverlayEnabled=true, spaceId=1767316058059-64kg1bglb, pageId=1
+SpacesPanel.jsx:695 [OverlayToggleDebug] Calling onToggleRegionOverlay to set overlay to false
+App.jsx:11517 [OverlayToggleDebug] handleToggleRegionOverlay: Overlay DISABLED for 1767316058059-64kg1bglb-1
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14360 [ActiveRegionDebug] Region 1767316062227-dhljgr8e5 exists but overlay is OFF - not setting activeRegionId
+App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:1482 [RegionIdDebug] Page 1 overlay is OFF, not assigning regionId
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=true, newState=false, timeSinceLastClick=3760ms
+SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=false
+App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=false
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
+App.jsx:14360 [ActiveRegionDebug] Region 1767316062227-dhljgr8e5 exists but overlay is OFF - not setting activeRegionId
+App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
+SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
+onClick @ SpacesPanel.jsx:846
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=false, newState=true, timeSinceLastClick=453ms
+SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=true
+App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14360 [ActiveRegionDebug] Region 1767316062227-dhljgr8e5 exists but overlay is OFF - not setting activeRegionId
 App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
 SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
@@ -816,30 +983,32 @@ App.jsx:11514 [OverlayToggleDebug] handleToggleRegionOverlay: Overlay ENABLED fo
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
-SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=true, newState=false, timeSinceLastClick=1708ms
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=true, newState=false, timeSinceLastClick=1656ms
 SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=false
 App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=false
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326205091-3m2ge9csm
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
 PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
 PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: false, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: false, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=false, result=false
 App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
 SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
 onClick @ SpacesPanel.jsx:846
@@ -860,21 +1029,22 @@ dispatchEvent @ chunk-DSUIPI7G.js:12361
 dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
 Show 15 more frames
 SpacesPanel.jsx:852 [ToggleClickDebug] Button onMouseDown fired! target=svg
-SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=false, newState=true, timeSinceLastClick=494ms
+SpacesPanel.jsx:829 [ToggleClickDebug] Button onClick fired! isDisabled=false, currentState=false, newState=true, timeSinceLastClick=445ms
 SpacesPanel.jsx:848 [ToggleClickDebug] Calling onToggleBackgroundAnnotations with value=true
 App.jsx:14443 [ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=1767316058059-64kg1bglb, pageId=1, value=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767317194825-hkxi0j1s1
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326196167-rv2eoc4bu
-PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326205091-3m2ge9csm
-PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: 'module-1763727070665-0.5714253201980415', showSurveyPanel: true, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=1767316062227-dhljgr8e5 from highlight highlight-1767326372498-8saxkc7x3
+PageAnnotationLayer.jsx:5213 [RegionIdDebug] HighlightId-based check: Captured preservedRegionId=null from highlight highlight-1767326381524-agnx3ueb4
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: '1767316058059-64kg1bglb', activeSpaceId: '1767316058059-64kg1bglb', selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
 App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 PageAnnotationLayer.jsx:5668 [VisibilityDebug] Page 1: Survey annotation toggle check {selectedSpaceId: '1767316058059-64kg1bglb', pageNumber: 1, objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, lightbulbResult: true, …}
-PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
 App.jsx:14356 [ActiveRegionDebug] Setting activeRegionId: 1767316062227-dhljgr8e5 (overlay ON)
 SpacesPanel.jsx:846     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
 onClick @ SpacesPanel.jsx:846
@@ -894,4 +1064,34 @@ dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay 
 dispatchEvent @ chunk-DSUIPI7G.js:12361
 dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
 Show 15 more frames
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 2: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 3: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 4: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 5: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 6: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 7: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 8: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 9: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14366 [ActiveRegionDebug] Clearing activeRegionId
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 1: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5681 [VisibilityDebug] Page 1: Survey annotation - no space active, showing by default {selectedSpaceId: null, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5702 [VisibilityDebug] Page 1: Survey annotation (no regionId) visibility calc {matchesSpace: true, matchesModule: true, surveyAnnotationVisible: false, scopedRegionAnnotationVisible: true, backgroundAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 2: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 3: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 4: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 5: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 6: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 7: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 8: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+PageAnnotationLayer.jsx:5550 [VisibilityDebug] Page 9: Visibility useEffect triggered {selectedSpaceId: null, activeSpaceId: null, selectedModuleId: null, showSurveyPanel: false, getRegionLightbulbState: true}
+App.jsx:14391 [LightbulbDebug] Result: spaceId=1767316058059-64kg1bglb, pageId=1, showBackgroundAnnotations=true, result=true
  Window focused, refetching subscription tier...

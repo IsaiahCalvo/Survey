@@ -11508,13 +11508,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const key = `${spaceId}-${pageId}`;
       const newMap = new Map(prev);
       // Toggle: if currently disabled (true), enable it (delete); if enabled, disable it (set to true)
-      const wasDisabled = newMap.get(key) === true;
-      if (wasDisabled) {
+      if (newMap.get(key) === true) {
         newMap.delete(key);
-        console.log(`[OverlayToggleDebug] handleToggleRegionOverlay: Overlay ENABLED for ${key}`);
       } else {
         newMap.set(key, true);
-        console.log(`[OverlayToggleDebug] handleToggleRegionOverlay: Overlay DISABLED for ${key}`);
       }
       return newMap;
     });
@@ -14353,44 +14350,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             // Only set activeRegionId if region exists AND overlay toggle is ON
             const isOverlayOn = isRegionOverlayEnabled(activeSpaceId, assignedPage.pageId, assignedPage);
             if (firstRegion && firstRegion.regionId && isOverlayOn) {
-              console.log(`[ActiveRegionDebug] Setting activeRegionId: ${firstRegion.regionId} (overlay ON)`);
               setActiveRegionId(firstRegion.regionId);
               return;
-            } else if (firstRegion && firstRegion.regionId && !isOverlayOn) {
-              console.log(`[ActiveRegionDebug] Region ${firstRegion.regionId} exists but overlay is OFF - not setting activeRegionId`);
             }
           }
         }
       }
     }
-    console.log('[ActiveRegionDebug] Clearing activeRegionId');
     setActiveRegionId(null);
   }, [activeSpaceId, spaces, isRegionOverlayEnabled]);
 
   // Helper function to get region lightbulb state for a specific region
   const getRegionLightbulbState = useCallback((spaceId, pageId) => {
     const space = spaces.find(s => s.id === spaceId);
-    if (!space) {
-      console.log(`[LightbulbDebug] Space not found: ${spaceId}`);
-      return true; // Default to true if space not found
-    }
+    if (!space) return true;
 
     const page = space.assignedPages?.find(p => p.pageId === pageId);
-    if (!page) {
-      console.log(`[LightbulbDebug] Page not found: spaceId=${spaceId}, pageId=${pageId}, assignedPages=`, space.assignedPages?.map(p => ({ pageId: p.pageId, type: typeof p.pageId })));
-      return true; // Default to true if page not found
-    }
+    if (!page) return true;
 
-    const region = page.regions?.[0]; // Get first (and only) region
-    if (!region) {
-      console.log(`[LightbulbDebug] No region for page: spaceId=${spaceId}, pageId=${pageId}`);
-      return true; // Default to true if no region
-    }
+    const region = page.regions?.[0];
+    if (!region) return true;
 
-    const result = region.showBackgroundAnnotations !== false;
-    console.log(`[LightbulbDebug] Result: spaceId=${spaceId}, pageId=${pageId}, showBackgroundAnnotations=${region.showBackgroundAnnotations}, result=${result}`);
-    // Return region's lightbulb state, defaulting to true if not set
-    return result;
+    return region.showBackgroundAnnotations !== false;
   }, [spaces]);
 
   // Helper function to set region lightbulb state
@@ -14440,7 +14421,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Handler for toggling background annotations visibility (per-region)
   const handleToggleBackgroundAnnotations = useCallback((spaceId, pageId, value) => {
-    console.log(`[ToggleDebug] handleToggleBackgroundAnnotations called: spaceId=${spaceId}, pageId=${pageId}, value=${value}`);
     setRegionLightbulbState(spaceId, pageId, value);
   }, [activeSpaceId, selectedSpaceId, setRegionLightbulbState]);
 

@@ -1446,51 +1446,27 @@ const PageAnnotationLayer = memo(({
   // 4. The OVERLAY toggle is ON (isRegionOverlayEnabled returns true)
   // This ensures annotations created on pages without regions, or with overlay OFF, remain "global"
   const shouldAssignRegionId = useCallback(() => {
-    // Must have an active space
     const spaceId = selectedSpaceIdRef.current;
-    if (!spaceId) {
-      console.log('[RegionIdDebug] No active space, not assigning regionId');
-      return false;
-    }
+    if (!spaceId) return false;
 
-    // Find the active space in our spaces data
     const space = spacesRef.current?.find(s => s.id === spaceId);
-    if (!space) {
-      console.log('[RegionIdDebug] Space not found in spacesRef, not assigning regionId');
-      return false;
-    }
+    if (!space) return false;
 
-    // Check if current page is assigned to this space
     const assignedPage = space.assignedPages?.find(p => p.pageId === pageNumber);
-    if (!assignedPage) {
-      console.log(`[RegionIdDebug] Page ${pageNumber} not assigned to space ${spaceId}, not assigning regionId`);
-      return false;
-    }
+    if (!assignedPage) return false;
 
-    // Check if the page has a region
     const region = assignedPage.regions?.[0];
-    if (!region) {
-      console.log(`[RegionIdDebug] Page ${pageNumber} has no region, not assigning regionId`);
-      return false;
-    }
+    if (!region) return false;
 
     // Check if the OVERLAY toggle is ON (this is what determines regionId assignment)
     const isOverlayEnabled = isRegionOverlayEnabledRef.current;
     if (isOverlayEnabled) {
       const isOverlayOn = isOverlayEnabled(spaceId, pageNumber, assignedPage);
-      if (!isOverlayOn) {
-        console.log(`[RegionIdDebug] Page ${pageNumber} overlay is OFF, not assigning regionId`);
-        return false;
-      }
+      if (!isOverlayOn) return false;
     }
 
-    // Also need an activeRegionId to actually assign
-    if (!activeRegionIdRef.current) {
-      console.log('[RegionIdDebug] No activeRegionId available, not assigning regionId');
-      return false;
-    }
+    if (!activeRegionIdRef.current) return false;
 
-    console.log(`[RegionIdDebug] Page ${pageNumber} - WILL assign regionId: ${activeRegionIdRef.current}`);
     return true;
   }, [pageNumber]);
   const calloutsRef = useRef(callouts);
@@ -5210,7 +5186,6 @@ const PageAnnotationLayer = memo(({
           // Capture the existing regionId BEFORE any removal
           // Keep the exact value: could be null (no regionId), undefined, or a real ID
           preservedRegionId = existingRect.regionId !== undefined ? existingRect.regionId : null;
-          console.log(`[RegionIdDebug] HighlightId-based check: Captured preservedRegionId=${preservedRegionId} from highlight ${highlight.highlightId}`);
 
           // Check if properties match (color, needsBIC, bounds)
           const rawColor = highlight.color || highlightColor;
@@ -5303,7 +5278,6 @@ const PageAnnotationLayer = memo(({
         if (preservedRegionId === undefined) {
           // Capture the regionId - could be null (explicitly no regionId) or a real ID
           preservedRegionId = rect.regionId !== undefined ? rect.regionId : null;
-          console.log(`[RegionIdDebug] Bounds-based removal: Captured preservedRegionId=${preservedRegionId} from rect with highlightId=${rect.highlightId}`);
         }
         // Remove the old highlight
         canvas.remove(rect);
