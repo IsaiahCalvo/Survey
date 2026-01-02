@@ -5021,33 +5021,6 @@ const PageAnnotationLayer = memo(({
         }
 
         if (hitObject) {
-          // Check if we are clicking on an ALREADY selected callout
-          // If so, enter edit mode (Requirement: Two separate clicks -> Edit)
-          const activeObject = canvas.getActiveObject();
-          let targetObj = hitObject;
-          // If clicking a child of a callout group, target the group
-          if (hitObject.group && hitObject.group.data?.type === 'callout') {
-            targetObj = hitObject.group;
-          }
-
-          console.log('MouseUp Hit:', {
-            hitId: targetObj.id || 'obj',
-            type: targetObj.data?.type,
-            isActive: activeObject === targetObj,
-            activeType: activeObject?.data?.type
-          });
-
-          if (activeObject === targetObj && targetObj.data?.type === 'callout') {
-            console.log('Entering edit mode for callout');
-            const textObj = targetObj.getObjects().find(o => o.name === 'calloutText');
-            if (textObj) {
-              textObj.enterEditing();
-              textObj.selectAll();
-              canvas.requestRenderAll();
-              return;
-            }
-          }
-
           // If the hit object is a child of a callout group, select the parent group instead
           if (hitObject.group && hitObject.group.data?.type === 'callout') {
             const parentGroup = hitObject.group;
