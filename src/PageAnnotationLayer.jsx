@@ -26,7 +26,7 @@ import {
   getObjectGeometryBounds
 } from './utils/geometryHitTest';
 import { splitPathDataByEraser, booleanErasePath } from './utils/geometryEraser';
-import { configureFabricOverrides, renderPillControl, renderVerticalPillControl, renderRotationControl } from './utils/fabricCustomization';
+import { configureFabricOverrides } from './utils/fabricCustomization';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
 
 // Apply custom Drawboard-style controls and selection visuals
@@ -191,197 +191,6 @@ const createArrowhead = (x, y, angle, color, strokeWidth, style = ARROWHEAD_STYL
         evented: false
       });
   }
-};
-
-/**
- * Update the path of a quadratic curve based on 3 points (start, control, end).
- * Recalculates arrowhead position and angle if applicable.
- */
-const updateCurvePath = (pathObj, p1, cp, p2) => {
-  // Update the path command
-  // M startX startY Q cpX cpY endX endY
-  // Note: pathObj.path is an array of commands, e.g. [['M', x, y], ['Q', cx, cy, x2, y2]]
-  if (!pathObj.path || pathObj.path.length < 2) return;
-
-  pathObj.path[0][1] = p1.x;
-  pathObj.path[0][2] = p1.y;
-  pathObj.path[1][1] = cp.x;
-  pathObj.path[1][2] = cp.y;
-  pathObj.path[1][3] = p2.x;
-  pathObj.path[1][4] = p2.y;
-
-  // IMPORTANT: For Fabric.js Path objects, updating the path array directly doesn't automatically
-  // update the bounding box or dimensions. We need to handle this manually or create a new path.
-  // However, recreating path breaks the reference for controls.
-  // Force dimension update:
-  const dims = pathObj._calcDimensions();
-  pathObj.set(dims);
-  pathObj.setCoords();
-
-  // If part of an arrow group, update arrowhead
-  if (pathObj.group && pathObj.group.data?.type === 'arrow') {
-    const group = pathObj.group;
-    const arrowHead = group.getObjects().find(o => o.name === 'arrowHead');
-
-    if (arrowHead) {
-      // Calculate tangent at t=1 (end point)
-      // Derivative of Q-Bezier: 2(1-t)(P1-P0) + 2t(P2-P1)
-      // At t=1: 2(P2 - P1) where P1 is control point, P2 is end point
-      // Vector P2 - P1
-      let vx = p2.x - cp.x;
-      let vy = p2.y - cp.y;
-
-      // If straight line (cp is roughly on the segment p1-p2), use p2-p1
-      const isStraight = Math.abs(vx) < 0.1 && Math.abs(vy) < 0.1;
-
-      if (isStraight) {
-        vx = p2.x - p1.x;
-        vy = p2.y - p1.y;
-      }
-
-      const angle = Math.atan2(vy, vx);
-      const angleDeg = (angle * 180) / Math.PI;
-
-      arrowHead.set({
-        left: p2.x,
-        top: p2.y,
-        angle: angleDeg + 90 // Match createArrowhead logic (TRIANGLE is +90)
-      });
-    }
-    // Update group layout
-    group.addWithUpdate();
-  }
-};
-
-/**
- * Configure 3-point controls for Line/Arrow (Start, Mid, End)
- */
-const createCurveControls = (object) => {
-  // Disable standard controls
-  object.setControlsVisibility({
-    tl: false, tr: false, br: false, bl: false,
-    ml: false, mt: false, mr: false, mb: false,
-    mtr: false // No rotation for now
-  });
-
-  // Helper to get absolute coordinates of path points
-  const getPathPoints = (target) => {
-    let pathObject = target;
-    if (target.type === 'group') {
-      // Find the path object inside the group
-      // Assuming it's the valid path we created
-      pathObject = target.getObjects().find(o => o.type === 'path');
-    }
-    if (!pathObject || !pathObject.path) return { p1: { x: 0, y: 0 }, cp: { x: 0, y: 0 }, p2: { x: 0, y: 0 } };
-
-    const matrix = pathObject.calcTransformMatrix();
-    const path = pathObject.path;
-    // Transform local path points to canvas coordinates
-    const offsetX = pathObject.pathOffset.x;
-    const offsetY = pathObject.pathOffset.y;
-
-    const p1Local = { x: path[0][1] - offsetX, y: path[0][2] - offsetY };
-    const cpLocal = { x: path[1][1] - offsetX, y: path[1][2] - offsetY };
-    const p2Local = { x: path[1][3] - offsetX, y: path[1][4] - offsetY };
-
-    return {
-      p1: fabricLib.util.transformPoint(p1Local, matrix),
-      cp: fabricLib.util.transformPoint(cpLocal, matrix),
-      p2: fabricLib.util.transformPoint(p2Local, matrix)
-    };
-  };
-
-  // Helper to resolve pathObj from target
-  const getPathObj = (target) => {
-    if (target.type === 'group') {
-      return target.getObjects().find(o => o.type === 'path');
-    }
-    return target;
-  };
-
-  // Custom Control Definitions
-
-  // Start Point (p1)
-  const p1Control = new Control({
-    x: -0.5, y: 0,
-    cursorStyle: 'crosshair',
-    actionName: 'drag_p1',
-    render: renderPillControl,
-    positionHandler: function (dim, finalMatrix, fabricObject) {
-      const { p1 } = getPathPoints(fabricObject);
-      return p1;
-    },
-    actionHandler: function (eventData, transform, x, y) {
-      const target = transform.target;
-      const pathObj = getPathObj(target);
-      if (!pathObj) return false;
-
-      const { p1, cp, p2 } = getPathPoints(target);
-      updateCurvePath(pathObj, { x, y }, cp, p2);
-      return true;
-    }
-  });
-
-  // End Point (p2)
-  const p2Control = new Control({
-    x: 0.5, y: 0,
-    cursorStyle: 'crosshair',
-    actionName: 'drag_p2',
-    render: renderPillControl,
-    positionHandler: function (dim, finalMatrix, fabricObject) {
-      const { p2 } = getPathPoints(fabricObject);
-      return p2;
-    },
-    actionHandler: function (eventData, transform, x, y) {
-      const target = transform.target;
-      const pathObj = getPathObj(target);
-      if (!pathObj) return false;
-
-      const { p1, cp } = getPathPoints(target);
-      updateCurvePath(pathObj, p1, cp, { x, y });
-      return true;
-    }
-  });
-
-  // Control Point (Midpoint)
-  const cpControl = new Control({
-    x: 0, y: 0,
-    cursorStyle: 'move',
-    actionName: 'drag_cp',
-    render: renderPillControl,
-    cornerSize: 12,
-    positionHandler: function (dim, finalMatrix, fabricObject) {
-      const { cp } = getPathPoints(fabricObject);
-      return cp;
-    },
-    actionHandler: function (eventData, transform, x, y) {
-      const target = transform.target;
-      const pathObj = getPathObj(target);
-      if (!pathObj) return false;
-
-      const { p1, p2 } = getPathPoints(target);
-
-      // Snapping Logic
-      const midX = (p1.x + p2.x) / 2;
-      const midY = (p1.y + p2.y) / 2;
-      const SNAP_DIST = 20;
-      const dist = Math.sqrt(Math.pow(x - midX, 2) + Math.pow(y - midY, 2));
-
-      let newCp = { x, y };
-      if (dist < SNAP_DIST) {
-        newCp = { x: midX, y: midY };
-      }
-
-      updateCurvePath(pathObj, p1, newCp, p2);
-      return true;
-    }
-  });
-
-  object.controls = {
-    p1: p1Control,
-    p2: p2Control,
-    cp: cpControl
-  };
 };
 
 /**
@@ -2910,16 +2719,6 @@ const PageAnnotationLayer = memo(({
 
           obj.set({ visible: isVisible, selectable: isVisible && isInteractive, evented: isVisible && isInteractive });
 
-          // Apply custom controls for Curvable Lines and Arrows
-          if (obj.type === 'path' && obj.path && obj.path.length === 2 && obj.path[1][0] === 'Q') {
-            createCurveControls(obj);
-          } else if (obj.type === 'group' && obj.data?.type === 'arrow') {
-            const path = obj.getObjects().find(o => o.type === 'path');
-            if (path) {
-              createCurveControls(obj);
-            }
-          }
-
           canvas.add(obj);
           obj.setCoords();
         });
@@ -4043,14 +3842,10 @@ const PageAnnotationLayer = memo(({
         temp = new Rect({ left: x, top: y, width: 1, height: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'ellipse') {
         temp = new Circle({ left: x, top: y, radius: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, originX: 'left', originY: 'top', uniformScaling: false, lockUniScaling: false });
-      } else if (currentTool === 'line') {
-        const pathData = [['M', x, y], ['Q', x, y, x, y]];
-        temp = new Path(pathData, { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false, lockUniScaling: false });
-      } else if (currentTool === 'underline' || currentTool === 'strikeout') {
+      } else if (currentTool === 'line' || currentTool === 'underline' || currentTool === 'strikeout') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'arrow') {
-        const pathData = [['M', x, y], ['Q', x, y, x, y]];
-        temp = new Path(pathData, { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, fill: 'transparent', strokeUniform: true, uniformScaling: false, lockUniScaling: false });
+        temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'callout') {
         temp = new Line([x, y, x, y], { stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
       } else if (currentTool === 'squiggly') {
@@ -4539,66 +4334,42 @@ const PageAnnotationLayer = memo(({
             height: rectHeight
           });
         }
-      } else if (currentTool === 'arrow' && (ds.tempObj.type === 'line' || ds.tempObj.type === 'path')) {
+      } else if (currentTool === 'arrow' && ds.tempObj.type === 'line') {
         // CRITICAL: Save tempObj reference and clear state IMMEDIATELY
         const tempObjRef = ds.tempObj;
         ds.isDrawingShape = false;
         ds.tempObj = null;
 
-        let pathObj;
-        if (tempObjRef.type === 'path') {
-          // Reuse the path object created in handleMouseDown
-          pathObj = tempObjRef;
-          canvas.remove(tempObjRef);
-        } else {
-          // Fallback if it was a Line (e.g. slight race condition or logic change)
-          // Convert to Path for curvature support
-          const { x1, y1, x2, y2 } = tempObjRef;
-          canvas.remove(tempObjRef);
-          const pathData = `M ${x1} ${y1} Q ${(x1 + x2) / 2} ${(y1 + y2) / 2} ${x2} ${y2}`;
-          pathObj = new Path(pathData, {
-            stroke: tempObjRef.stroke,
-            strokeWidth: tempObjRef.strokeWidth,
-            fill: 'transparent',
-            strokeUniform: true,
-            uniformScaling: false,
-            lockUniScaling: false
-          });
-        }
+        // Extract properties from the temporary line
+        const { x1, y1, x2, y2 } = tempObjRef;
+        const lineOptions = {
+          stroke: tempObjRef.stroke,
+          strokeWidth: tempObjRef.strokeWidth,
+          strokeUniform: tempObjRef.strokeUniform,
+          // Copy any other relevant properties if needed
+        };
 
-        // Recover points for Arrowhead calculation
-        // Ensure we handle Path with pathOffset correctly if needed, but for initial straight line, 
-        // extracting from path command or bounds is safer if we know it's straight.
-        // Actually, handleMouseMove updated the path array directly in our new logic.
-        // path[0][1].. etc.
-        let x1, y1, x2, y2;
-        if (pathObj.path) {
-          // Arrays: ['M', x, y], ['Q', cx, cy, x2, y2]
-          x1 = pathObj.path[0][1];
-          y1 = pathObj.path[0][2];
-          x2 = pathObj.path[1][3];
-          y2 = pathObj.path[1][4];
-        } else {
-          // Fallback (shouldn't happen with Path)
-          x1 = pathObj.left; y1 = pathObj.top; x2 = pathObj.left + pathObj.width; y2 = pathObj.top + pathObj.height;
-        }
+        // Remove the temporary line from the canvas explicitly
+        canvas.remove(tempObjRef);
+
+        // Recreate the line for the group
+        const newLine = new Line([x1, y1, x2, y2], lineOptions);
 
         const angle = Math.atan2(y2 - y1, x2 - x1);
+        // Use the arrowhead style from toolbar settings
+        // Ensure we have a valid style, defaulting to SOLID_TRIANGLE
         const selectedArrowheadStyle = arrowheadStyleRef.current || ARROWHEAD_STYLES.SOLID_TRIANGLE;
 
         const head = createArrowhead(x2, y2, angle, currentStrokeColor, currentStrokeWidth, selectedArrowheadStyle);
 
         // Create group with new line and arrowhead
-        const groupObjects = head ? [pathObj, head] : [pathObj];
+        const groupObjects = head ? [newLine, head] : [newLine];
         const group = new Group(groupObjects, { selectable: true });
 
         // Store arrowhead style and mark as arrow type on the group
         group.set({
           data: { type: 'arrow', arrowheadStyle: selectedArrowheadStyle }
         });
-
-        // Apply 3-point controls
-        createCurveControls(group);
 
         // Store current moduleId on the arrow group
         if (selectedModuleIdRef.current) {
@@ -4626,29 +4397,6 @@ const PageAnnotationLayer = memo(({
 
         saveCanvas();
 
-        return;
-      } else if (currentTool === 'line' && ds.tempObj.type === 'path') {
-        // Finalize Line tool (which is now a Path/Curve)
-        const tempObj = ds.tempObj;
-        ds.isDrawingShape = false;
-        ds.tempObj = null;
-
-        // Apply 3-point controls
-        createCurveControls(tempObj);
-
-        tempObj.set({
-          selectable: true,
-          hasControls: true,
-          hasBorders: true
-        });
-        tempObj.setCoords();
-
-        // Standard finalization
-        justFinishedDrawingRef.current = true;
-        canvas.setActiveObject(tempObj);
-        canvas.requestRenderAll();
-        setTimeout(() => { justFinishedDrawingRef.current = false; }, 100);
-        saveCanvas();
         return;
       } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
         const { x1, y1, x2, y2 } = ds.tempObj;

@@ -41,7 +41,7 @@ const loadRotateIcon = (callback) => {
  * Renders a pill-shaped control (rounded rectangle)
  * Rotates with the object to stay parallel to bounding box edges
  */
-export const renderPillControl = (ctx, left, top, styleOverride, fabricObject) => {
+const renderPillControl = (ctx, left, top, styleOverride, fabricObject) => {
     const size = styleOverride.cornerSize || 24;
     const width = size * 1.5; // Wider than tall
     const height = size / 2.5; // Thinner height
@@ -78,7 +78,7 @@ export const renderPillControl = (ctx, left, top, styleOverride, fabricObject) =
  * Renders a vertical pill-shaped control (for left/right handles)
  * Rotates with the object to stay parallel to bounding box edges
  */
-export const renderVerticalPillControl = (ctx, left, top, styleOverride, fabricObject) => {
+const renderVerticalPillControl = (ctx, left, top, styleOverride, fabricObject) => {
     const size = styleOverride.cornerSize || 24;
     const width = size / 2.5; // Thinner width
     const height = size * 1.5; // Taller than wide
@@ -116,7 +116,7 @@ export const renderVerticalPillControl = (ctx, left, top, styleOverride, fabricO
  * Renders a circular rotation control with icon
  * Rotates with the object to maintain orientation relative to the object
  */
-export const renderRotationControl = (ctx, left, top, styleOverride, fabricObject) => {
+const renderRotationControl = (ctx, left, top, styleOverride, fabricObject) => {
     const size = 24;
 
     // Get object rotation angle in radians
