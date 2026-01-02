@@ -14205,9 +14205,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           // Determine if highlight needs BIC (Ball in Court) assignment
           const needsBIC = !highlight.ballInCourtColor && !highlight.ballInCourtEntityId;
 
-          // Determine highlight color
-          const highlightColor = highlight.ballInCourtColor
-            ? (normalizeHighlightColor(highlight.ballInCourtColor) || highlight.ballInCourtColor)
+          // Determine highlight color - use stored color first, then ballInCourtColor, then default
+          const storedColor = highlight.color || highlight.ballInCourtColor;
+          const highlightColor = storedColor
+            ? (normalizeHighlightColor(storedColor) || storedColor)
             : null;
 
           // Add highlight to the page array
@@ -19570,11 +19571,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 <div
                   onClick={() => {
                     // Cancel - save with default name
+                    // Compute color first so it can be saved with highlightData
+                    const highlightColor = pendingHighlightName.highlight.ballInCourtColor
+                      ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                      : 'rgba(255, 193, 7, 1.0)';
                     const highlightData = {
                       ...pendingHighlightName.highlight,
                       categoryId: pendingHighlightName.categoryId,
                       name: defaultName,
-                      checklistResponses: {}
+                      checklistResponses: {},
+                      color: highlightColor
                     };
                     setHighlightAnnotations(prev => ({
                       ...prev,
@@ -19583,9 +19589,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                     // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
                     // Replace the existing highlight (with needsBIC) with the new one that has the color
-                    const highlightColor = highlightData.ballInCourtColor
-                      ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                      : 'rgba(255, 193, 7, 1.0)';
                     setNewHighlightsByPage(prev => {
                       const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                       // Remove existing highlight with this highlightId (if it exists)
@@ -19654,11 +19657,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       <button
                         onClick={() => {
                           // Cancel - save with default name
+                          // Compute color first so it can be saved with highlightData
+                          const highlightColor = pendingHighlightName.highlight.ballInCourtColor
+                            ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                            : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
                             ...pendingHighlightName.highlight,
                             categoryId: pendingHighlightName.categoryId,
                             name: defaultName,
-                            checklistResponses: {}
+                            checklistResponses: {},
+                            color: highlightColor
                           };
                           setHighlightAnnotations(prev => ({
                             ...prev,
@@ -19747,9 +19755,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                           // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
                           // Replace the existing highlight (with needsBIC) with the new one that has the color
-                          const highlightColor = highlightData.ballInCourtColor
-                            ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                            : 'rgba(255, 193, 7, 1.0)';
                           setNewHighlightsByPage(prev => {
                             const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
@@ -19796,11 +19801,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           const name = (highlightNameInput || defaultName).trim() || defaultName;
+                          // Compute color first so it can be saved with highlightData
+                          const highlightColor = pendingHighlightName.highlight.ballInCourtColor
+                            ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                            : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
                             ...pendingHighlightName.highlight,
                             categoryId: pendingHighlightName.categoryId,
                             name: name,
-                            checklistResponses: {}
+                            checklistResponses: {},
+                            color: highlightColor
                           };
                           setHighlightAnnotations(prev => ({
                             ...prev,
@@ -19809,9 +19819,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                           // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
                           // Replace the existing highlight (with needsBIC) with the new one that has the color
-                          const highlightColor = highlightData.ballInCourtColor
-                            ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                            : 'rgba(255, 193, 7, 1.0)';
                           setNewHighlightsByPage(prev => {
                             const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
@@ -19836,11 +19843,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           setShowSurveyPanel(true);
                         } else if (e.key === 'Escape') {
                           // Cancel - save with default name
+                          // Compute color first so it can be saved with highlightData
+                          const highlightColor = pendingHighlightName.highlight.ballInCourtColor
+                            ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                            : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
                             ...pendingHighlightName.highlight,
                             categoryId: pendingHighlightName.categoryId,
                             name: defaultName,
-                            checklistResponses: {}
+                            checklistResponses: {},
+                            color: highlightColor
                           };
                           setHighlightAnnotations(prev => ({
                             ...prev,
@@ -19849,9 +19861,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                           // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
                           // Replace the existing highlight (with needsBIC) with the new one that has the color
-                          const highlightColor = highlightData.ballInCourtColor
-                            ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                            : 'rgba(255, 193, 7, 1.0)';
                           setNewHighlightsByPage(prev => {
                             const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
@@ -19895,11 +19904,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       <button
                         onClick={() => {
                           // Cancel - save with default name
+                          // Compute color first so it can be saved with highlightData
+                          const highlightColor = pendingHighlightName.highlight.ballInCourtColor
+                            ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                            : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
                             ...pendingHighlightName.highlight,
                             categoryId: pendingHighlightName.categoryId,
                             name: defaultName,
-                            checklistResponses: {}
+                            checklistResponses: {},
+                            color: highlightColor
                           };
                           setHighlightAnnotations(prev => ({
                             ...prev,
@@ -19988,9 +20002,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                           // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
                           // Replace the existing highlight (with needsBIC) with the new one that has the color
-                          const highlightColor = highlightData.ballInCourtColor
-                            ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                            : 'rgba(255, 193, 7, 1.0)';
                           setNewHighlightsByPage(prev => {
                             const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
@@ -20024,11 +20035,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       <button
                         onClick={() => {
                           const name = (highlightNameInput || defaultName).trim() || defaultName;
+                          // Compute color first so it can be saved with highlightData
+                          const highlightColor = pendingHighlightName.highlight.ballInCourtColor
+                            ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                            : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
                             ...pendingHighlightName.highlight,
                             categoryId: pendingHighlightName.categoryId,
                             name: name,
-                            checklistResponses: {}
+                            checklistResponses: {},
+                            color: highlightColor
                           };
                           setHighlightAnnotations(prev => ({
                             ...prev,
@@ -20117,9 +20133,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                           // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
                           // Replace the existing highlight (with needsBIC) with the new one that has the color
-                          const highlightColor = highlightData.ballInCourtColor
-                            ? (normalizeHighlightColor(highlightData.ballInCourtColor) || highlightData.ballInCourtColor)
-                            : 'rgba(255, 193, 7, 1.0)';
                           setNewHighlightsByPage(prev => {
                             const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
