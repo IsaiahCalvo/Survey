@@ -8051,7 +8051,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
   const [clipboardCallout, setClipboardCallout] = useState(null);
   const [clipboardCalloutType, setClipboardCalloutType] = useState(null); // 'cut' | 'copy'
-  
+
   // Clipboard handlers for callouts
   const handleCutCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
@@ -8075,14 +8075,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const handlePasteCallout = useCallback((pageNumber, cursorPosition) => {
     if (!clipboardCallout) return;
-    
+
     // Generate new ID
     const newId = `callout-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Create new callout with offset position
     const offsetX = 0.05; // 5% offset
     const offsetY = 0.05;
-    
+
     const newCallout = {
       ...clipboardCallout,
       id: newId,
@@ -8092,9 +8092,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         y: (cursorPosition?.y || clipboardCallout.textBoxPosition.y) + offsetY,
       },
     };
-    
+
     setCallouts(prev => [...prev, newCallout]);
-    
+
     // Clear clipboard if it was a cut operation
     if (clipboardCalloutType === 'cut') {
       setClipboardCallout(null);
@@ -8151,7 +8151,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showSurveyPanel, setShowSurveyPanel] = useState(false);
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(false);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
-  
+
   // Region annotation visibility state
   const [activeRegionId, setActiveRegionId] = useState(null);
   const [showTemplateSelection, setShowTemplateSelection] = useState(false);
@@ -9482,7 +9482,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const highlight = updated[highlightId];
         // Delete if matches spaceId+pageNumber OR regionId
         if ((highlight.spaceId === spaceId && highlight.pageNumber === pageId) ||
-            (regionId && highlight.regionId === regionId)) {
+          (regionId && highlight.regionId === regionId)) {
           delete updated[highlightId];
         }
       });
@@ -10808,7 +10808,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     window.electronAPI.startFileWatcher(selectedTemplate.linkedExcelPath, watchId)
       .then(() => {
         setFileWatcherActive(true);
-        console.log('File watcher started for:', selectedTemplate.linkedExcelPath);
+        // console.log('File watcher started for:', selectedTemplate.linkedExcelPath);
       })
       .catch(error => {
         console.error('Failed to start file watcher:', error);
@@ -10816,9 +10816,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     // Set up event listeners
     const removeChangeListener = window.electronAPI.onFileChanged(({ watchId: changedWatchId, filePath }) => {
-      console.log('File changed event received:', { changedWatchId, watchId, filePath });
+      // console.log('File changed event received:', { changedWatchId, watchId, filePath });
       if (changedWatchId === watchId) {
-        console.log('Excel file changed, auto-syncing...', filePath);
+        // console.log('Excel file changed, auto-syncing...', filePath);
         handleAutoSyncFromExcel();
       }
     });
@@ -10859,7 +10859,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     // Debounce the push to avoid too frequent writes
     pushTimeoutRef.current = setTimeout(async () => {
-      console.log('Auto-pushing to Excel...');
+      // console.log('Auto-pushing to Excel...');
       try {
         await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
         setLastPushMessage('Pushed to Excel');
@@ -10924,7 +10924,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         excelSessionRef.current = { sessionId, expiresAt };
         setExcelSessionId(sessionId);
         setLiveSyncStatus('connected');
-        console.log('Live sync session established');
+        // console.log('Live sync session established');
 
         // Set up session refresh (every 3 minutes to prevent 5-min timeout)
         sessionRefreshInterval = setInterval(async () => {
@@ -10995,7 +10995,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             const currentData = JSON.stringify(usedRange.values);
 
             if (lastData && lastData !== currentData) {
-              console.log(`Excel changes detected in sheet: ${sheet.name}`);
+              // console.log(`Excel changes detected in sheet: ${sheet.name}`);
               // Trigger sync from Excel
               handleAutoSyncFromExcel();
               break; // Only sync once per poll cycle
@@ -11041,7 +11041,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Debounce cell updates (5 seconds to avoid too frequent syncs)
     const pushTimeout = setTimeout(async () => {
       try {
-        console.log('Live sync: Pushing changes to Excel...');
+        // console.log('Live sync: Pushing changes to Excel...');
         // Use silent mode to prevent alert popups during live sync
         await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
         setLastPushMessage('Live synced');
@@ -11487,7 +11487,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     const coords = region.coordinates;
     return (region.shapeType === 'rectangular' && coords.length >= 8) ||
-           (region.shapeType === 'polygon' && coords.length >= 6);
+      (region.shapeType === 'polygon' && coords.length >= 6);
   }, []);
 
   // Toggle region overlay visibility
@@ -11744,24 +11744,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // within the same region.
     // Filter to only additive regions with valid coordinates
     // Regions with coordsLength: 0 are invalid/empty and should be excluded
-    const additiveRegions = Array.isArray(regions) 
+    const additiveRegions = Array.isArray(regions)
       ? regions.filter(r => {
-          const isAdditive = !r.operation || r.operation === 'add';
-          const hasValidCoords = Array.isArray(r.coordinates) && r.coordinates.length > 0;
-          return isAdditive && hasValidCoords;
-        })
+        const isAdditive = !r.operation || r.operation === 'add';
+        const hasValidCoords = Array.isArray(r.coordinates) && r.coordinates.length > 0;
+        return isAdditive && hasValidCoords;
+      })
       : [];
-    
+
     // If we have multiple additive regions (non-touching areas), we need to combine them
     // into a single region. However, the current data structure stores coordinates as a flat array
     // for a single polygon. For now, we'll use the first region and store the others in sourceRegions
     // so they can be preserved and rendered separately in the overlay.
     // The overlay component processes all regions in the array, so we can pass all additive regions
     // as separate region objects, but they'll be treated as areas within the same logical region.
-    const normalizedRegions = additiveRegions.length > 0 
+    const normalizedRegions = additiveRegions.length > 0
       ? additiveRegions // Keep all additive regions as separate areas within the region
       : [];
-    
+
     // Ensure region has showBackgroundAnnotations property (migration)
     const migratedRegions = normalizedRegions.map(region => ({
       ...region,
@@ -12149,16 +12149,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
 
         // console.log('ArrayBuffer created, size:', arrayBuffer.byteLength);
-        console.log('PDF load check:', {
-          size: arrayBuffer.byteLength,
-          version: pdfjsLib.version,
-          workerSrc: pdfjsLib.GlobalWorkerOptions.workerSrc
-        });
+        // console.log('PDF load check:', {
+        //   size: arrayBuffer.byteLength,
+        //   version: pdfjsLib.version,
+        //   workerSrc: pdfjsLib.GlobalWorkerOptions.workerSrc
+        // });
 
         try {
           const checkHeader = new Uint8Array(arrayBuffer.slice(0, 5));
           const headerStr = String.fromCharCode(...checkHeader);
-          console.log('PDF Header Check:', headerStr);
+          // console.log('PDF Header Check:', headerStr);
           if (headerStr.indexOf('%PDF-') !== 0) {
             console.error('CRITICAL: File does not start with %PDF-');
           }
@@ -12189,7 +12189,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             });
             pdf = await recoveryTask.promise;
             perfLoad.mark(docName, 'PDF.js document parsed (recovery mode)');
-            console.log('PDF loaded in recovery mode');
+            // console.log('PDF loaded in recovery mode');
           } catch (recoveryError) {
             // If recovery also fails, throw the original error
             throw firstError;
@@ -12919,31 +12919,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // This handles cases where overlay divs (like region selection tool) are positioned over the container
       const container = containerRef.current;
       if (!container) return;
-      
+
       // #region agent log
       const targetTag = e.target ? e.target.tagName : 'null';
       const targetClass = e.target ? (e.target.className || '') : '';
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12928',message:'wheelHandler called (capture phase)',data:{targetTag,targetClass,clientX:e.clientX,clientY:e.clientY,deltaY:e.deltaY,eventPhase:e.eventPhase},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,E'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:12928', message: 'wheelHandler called (capture phase)', data: { targetTag, targetClass, clientX: e.clientX, clientY: e.clientY, deltaY: e.deltaY, eventPhase: e.eventPhase }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A,B,E' }) }).catch(() => { });
       // #endregion
-      
+
       // Check if event target is inside a modal overlay (keyboard shortcuts modal)
       const modalOverlay = document.querySelector('[data-keyboard-shortcuts-modal="true"]');
       const isInModal = modalOverlay && modalOverlay.contains(e.target);
-      
+
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12935',message:'Modal check result',data:{isInModal:!!isInModal,modalFound:!!modalOverlay},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:12935', message: 'Modal check result', data: { isInModal: !!isInModal, modalFound: !!modalOverlay }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
       // #endregion
-      
+
       if (isInModal) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12938',message:'Skipping wheelHandler - event is in modal',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:12938', message: 'Skipping wheelHandler - event is in modal', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
         // #endregion
         return; // Don't handle wheel events inside modal
       }
-      
+
       const isTargetContained = container.contains(e.target);
       let isCoordInContainer = false;
-      
+
       if (!isTargetContained) {
         // Check if event coordinates are within container bounds
         const rect = container.getBoundingClientRect();
@@ -12954,11 +12954,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           e.clientY <= rect.bottom
         );
       }
-      
+
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:12952',message:'Container check result',data:{isTargetContained,isCoordInContainer,willHandle:isTargetContained||isCoordInContainer},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:12952', message: 'Container check result', data: { isTargetContained, isCoordInContainer, willHandle: isTargetContained || isCoordInContainer }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
       // #endregion
-      
+
       if (isTargetContained || isCoordInContainer) {
         handleWheel(e);
       }
@@ -13308,13 +13308,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // 'E' key to switch to Eraser Tool (only when no modifiers are pressed)
       if ((e.key === 'e' || e.key === 'E') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13320',message:'E key handler triggered',data:{key:e.key,shiftKey:e.shiftKey,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,isFormField:!!isFormField,activeToolBefore:activeTool,eraserModeBefore:eraserMode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13320', message: 'E key handler triggered', data: { key: e.key, shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey, isFormField: !!isFormField, activeToolBefore: activeTool, eraserModeBefore: eraserMode }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A,B' }) }).catch(() => { });
         // #endregion
-        
+
         // Don't trigger if user is focused on an input field, textbox, or callout
         if (isFormField) {
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13323',message:'E key handler blocked by isFormField',data:{tagName:activeElement?.tagName,isContentEditable:!!activeElement?.isContentEditable},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13323', message: 'E key handler blocked by isFormField', data: { tagName: activeElement?.tagName, isContentEditable: !!activeElement?.isContentEditable }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
           // #endregion
           return; // Don't trigger tool switch if focused on input
         }
@@ -13323,9 +13323,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         e.preventDefault();
         setActiveTool('eraser');
         setEraserMode('entire');
-        
+
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13335',message:'E key handler executed - set to entire eraser',data:{activeToolAfter:'eraser',eraserModeAfter:'entire'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13335', message: 'E key handler executed - set to entire eraser', data: { activeToolAfter: 'eraser', eraserModeAfter: 'entire' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
         // #endregion
         return;
       }
@@ -13333,13 +13333,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // 'Shift+E' key to switch to Partial Erase Tool
       if ((e.key === 'e' || e.key === 'E') && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13340',message:'Shift+E key handler triggered',data:{key:e.key,shiftKey:e.shiftKey,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,isFormField:!!isFormField,activeToolBefore:activeTool,eraserModeBefore:eraserMode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13340', message: 'Shift+E key handler triggered', data: { key: e.key, shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey, isFormField: !!isFormField, activeToolBefore: activeTool, eraserModeBefore: eraserMode }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A,B' }) }).catch(() => { });
         // #endregion
-        
+
         // Don't trigger if user is focused on an input field, textbox, or callout
         if (isFormField) {
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13343',message:'Shift+E key handler blocked by isFormField',data:{tagName:activeElement?.tagName,isContentEditable:!!activeElement?.isContentEditable},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13343', message: 'Shift+E key handler blocked by isFormField', data: { tagName: activeElement?.tagName, isContentEditable: !!activeElement?.isContentEditable }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
           // #endregion
           return; // Don't trigger tool switch if focused on input
         }
@@ -13348,9 +13348,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         e.preventDefault();
         setActiveTool('eraser');
         setEraserMode('partial');
-        
+
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:13355',message:'Shift+E key handler executed - set to partial eraser',data:{activeToolAfter:'eraser',eraserModeAfter:'partial'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'App.jsx:13355', message: 'Shift+E key handler executed - set to partial eraser', data: { activeToolAfter: 'eraser', eraserModeAfter: 'partial' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
         // #endregion
         return;
       }
@@ -13694,9 +13694,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     addHistoryCheckpoint();
 
 
-    console.log('[App] handleHighlightDeleted called', { pageNumber, bounds, highlightId, selectedModuleId, selectedTemplate });
+    // console.log('[App] handleHighlightDeleted called', { pageNumber, bounds, highlightId, selectedModuleId, selectedTemplate });
     if (!selectedModuleId || !selectedTemplate) {
-      console.warn('[App] handleHighlightDeleted aborted: Missing module or template');
+      // console.warn('[App] handleHighlightDeleted aborted: Missing module or template');
       return;
     }
 
@@ -14310,7 +14310,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // FIX: When region selection is active for this page, preserve regions even if wholePageIncluded is true
     // This ensures annotations remain visible during region editing
     const isEditingThisPage = showRegionSelection && regionSelectionPage === pageNumber;
-    
+
     if (assignedPage.wholePageIncluded !== false && !isEditingThisPage) {
       return null;
     }
@@ -14368,13 +14368,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (space.id !== spaceId) {
         return space;
       }
-      
+
       const assignedPages = space.assignedPages || [];
       const updatedPages = assignedPages.map(page => {
         if (page.pageId !== pageId) {
           return page;
         }
-        
+
         // Ensure regions array exists and has at least one region
         const regions = page.regions || [];
         if (regions.length === 0) {
@@ -14388,7 +14388,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }]
           };
         }
-        
+
         // Update all regions' lightbulb state (all areas share the same lightbulb)
         // Requirement: "Each region has exactly one lightbulb"
         return {
@@ -14399,7 +14399,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           }))
         };
       });
-      
+
       return {
         ...space,
         assignedPages: updatedPages
@@ -14885,17 +14885,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   activeSpaceId={activeSpaceId}
                                   selectedModuleId={selectedModuleId}
                                   selectedCategoryId={selectedCategoryId}
-                              activeRegions={(() => {
-                                return pageRegions;
-                              })()}
-                              spaces={spaces}
-                              getRegionLightbulbState={getRegionLightbulbState}
-                              activeRegionId={activeRegionId}
-                              isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNumber}
-                              eraserMode={eraserMode}
-                              eraserSize={eraserSize}
-                              showSurveyPanel={showSurveyPanel}
-                              isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                  activeRegions={(() => {
+                                    return pageRegions;
+                                  })()}
+                                  spaces={spaces}
+                                  getRegionLightbulbState={getRegionLightbulbState}
+                                  activeRegionId={activeRegionId}
+                                  isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNumber}
+                                  eraserMode={eraserMode}
+                                  eraserSize={eraserSize}
+                                  showSurveyPanel={showSurveyPanel}
+                                  isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
                                   callouts={callouts}
                                   setCallouts={setCallouts}
@@ -14922,22 +14922,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 // Get the page object from the active space to check overlay state
                                 const space = spaces.find(s => s.id === activeSpaceId);
                                 const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
-                                
+
                                 // Check if overlay should be shown for this page
                                 if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNumber, page)) {
                                   return null;
                                 }
-                                
+
                                 // Filter to only regions with valid areas
                                 const validRegions = pageRegions.filter(region => {
                                   if (!region || !Array.isArray(region.coordinates)) return false;
                                   const coords = region.coordinates;
                                   return (region.shapeType === 'rectangular' && coords.length >= 8) ||
-                                         (region.shapeType === 'polygon' && coords.length >= 6);
+                                    (region.shapeType === 'polygon' && coords.length >= 6);
                                 });
-                                
+
                                 if (validRegions.length === 0) return null;
-                                
+
                                 return (
                                   <SpaceRegionOverlay
                                     pageNumber={pageNumber}
@@ -15103,22 +15103,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           // Get the page object from the active space to check overlay state
                           const space = spaces.find(s => s.id === activeSpaceId);
                           const page = space?.assignedPages?.find(p => p.pageId === pageNum);
-                          
+
                           // Check if overlay should be shown for this page
                           if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNum, page)) {
                             return null;
                           }
-                          
+
                           // Filter to only regions with valid areas
                           const validRegions = pageRegions.filter(region => {
                             if (!region || !Array.isArray(region.coordinates)) return false;
                             const coords = region.coordinates;
                             return (region.shapeType === 'rectangular' && coords.length >= 8) ||
-                                   (region.shapeType === 'polygon' && coords.length >= 6);
+                              (region.shapeType === 'polygon' && coords.length >= 6);
                           });
-                          
+
                           if (validRegions.length === 0) return null;
-                          
+
                           return (
                             <SpaceRegionOverlay
                               pageNumber={pageNum}
@@ -19229,7 +19229,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     }
                     return updated;
                   });
-                  
+
                   // Add to removal list to ensure canvas cleanup
                   if (highlightToRemove.bounds) {
                     setHighlightsToRemoveByPage(prev => ({
@@ -19237,7 +19237,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       [highlightToRemove.pageNumber]: [...(prev[highlightToRemove.pageNumber] || []), highlightToRemove.bounds]
                     }));
                   }
-                  
+
                   setPendingHighlight(null);
                 }}
                 style={{
@@ -19301,7 +19301,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           }
                           return updated;
                         });
-                        
+
                         // Add to removal list to ensure canvas cleanup
                         if (highlightToRemove.bounds) {
                           setHighlightsToRemoveByPage(prev => ({
@@ -19309,7 +19309,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             [highlightToRemove.pageNumber]: [...(prev[highlightToRemove.pageNumber] || []), highlightToRemove.bounds]
                           }));
                         }
-                        
+
                         setPendingHighlight(null);
                       }}
                       className="btn btn-icon btn-icon-sm"
@@ -21305,9 +21305,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             border: '1px solid rgba(255, 255, 255, 0.08)',
             animation: 'fadeIn 0.2s ease-out'
           }}>
-            <h2 style={{ 
-              color: '#FFFFFF', 
-              marginBottom: '12px', 
+            <h2 style={{
+              color: '#FFFFFF',
+              marginBottom: '12px',
               fontSize: '22px',
               fontWeight: 600,
               letterSpacing: '-0.01em',
@@ -21315,9 +21315,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }}>
               Choose Export Location
             </h2>
-            <p style={{ 
-              color: '#C8C8C8', 
-              marginBottom: '32px', 
+            <p style={{
+              color: '#C8C8C8',
+              marginBottom: '32px',
               lineHeight: '1.5',
               fontSize: '14px',
               letterSpacing: '-0.01em'
