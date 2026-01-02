@@ -1776,102 +1776,102 @@ const PageAnnotationLayer = memo(({
   // Fine-tune context menu position after render using actual dimensions
   useEffect(() => {
     if (!contextMenu?.visible || !contextMenuRef.current || contextMenuPositionAdjustedRef.current) return;
-    
+
     // Use requestAnimationFrame to ensure the element is fully rendered
     const frameId = requestAnimationFrame(() => {
       if (!contextMenuRef.current) return;
-      
+
       const element = contextMenuRef.current;
       const rect = element.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       const padding = 10;
-      
+
       let adjustedX = contextMenu.x;
       let adjustedY = contextMenu.y;
       let needsUpdate = false;
-      
+
       // Check right edge overflow
       if (rect.right + padding > viewportWidth) {
         adjustedX = viewportWidth - rect.width - padding;
         needsUpdate = true;
       }
-      
+
       // Check left edge overflow
       if (rect.left < padding) {
         adjustedX = padding;
         needsUpdate = true;
       }
-      
+
       // Check bottom edge overflow
       if (rect.bottom + padding > viewportHeight) {
         adjustedY = viewportHeight - rect.height - padding;
         needsUpdate = true;
       }
-      
+
       // Check top edge overflow
       if (rect.top < padding) {
         adjustedY = padding;
         needsUpdate = true;
       }
-      
+
       if (needsUpdate) {
         setContextMenu(prev => prev ? { ...prev, x: adjustedX, y: adjustedY } : null);
       }
       contextMenuPositionAdjustedRef.current = true;
     });
-    
+
     return () => cancelAnimationFrame(frameId);
   }, [contextMenu?.visible]);
 
   // Fine-tune edit modal position after render using actual dimensions
   useEffect(() => {
     if (!editModal?.visible || !editModalRef.current || editModalPositionAdjustedRef.current) return;
-    
+
     // Use requestAnimationFrame to ensure the element is fully rendered
     const frameId = requestAnimationFrame(() => {
       if (!editModalRef.current) return;
-      
+
       const element = editModalRef.current;
       const rect = element.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       const padding = 10;
-      
+
       let adjustedX = editModal.x;
       let adjustedY = editModal.y;
       let needsUpdate = false;
-      
+
       // Check right edge overflow
       if (rect.right + padding > viewportWidth) {
         adjustedX = viewportWidth - rect.width - padding;
         needsUpdate = true;
       }
-      
+
       // Check left edge overflow
       if (rect.left < padding) {
         adjustedX = padding;
         needsUpdate = true;
       }
-      
+
       // Check bottom edge overflow
       if (rect.bottom + padding > viewportHeight) {
         adjustedY = viewportHeight - rect.height - padding;
         needsUpdate = true;
       }
-      
+
       // Check top edge overflow
       if (rect.top < padding) {
         adjustedY = padding;
         needsUpdate = true;
       }
-      
+
       if (needsUpdate) {
         setEditModal(prev => prev ? { ...prev, x: adjustedX, y: adjustedY } : null);
       }
       editModalPositionAdjustedRef.current = true;
     });
-    
+
     return () => cancelAnimationFrame(frameId);
   }, [editModal?.visible]);
 
@@ -2411,10 +2411,10 @@ const PageAnnotationLayer = memo(({
 
     const handleMouseMove = (e) => {
       if (!isDraggingModalRef.current) return;
-      
+
       const deltaX = e.clientX - modalDragStartRef.current.startX;
       const deltaY = e.clientY - modalDragStartRef.current.startY;
-      
+
       setEditModal(prev => {
         if (!prev) return prev;
         return {
@@ -3759,13 +3759,13 @@ const PageAnnotationLayer = memo(({
         // If so, don't create a new textbox - let Fabric handle resize/move
         const target = opt.target;
         const activeObject = canvas.getActiveObject();
-        
+
         // Check if clicking on an existing textbox
         const isClickingTextbox = target && (target.type === 'textbox' || target.type === 'i-text' || target.type === 'text');
-        
+
         // Check if active object is a textbox
         const isActiveTextbox = activeObject && (activeObject.type === 'textbox' || activeObject.type === 'i-text' || activeObject.type === 'text');
-        
+
         // Check if clicking on a control handle of an active textbox
         let isClickingControl = false;
         if (isActiveTextbox && activeObject._findTargetCorner) {
@@ -3778,13 +3778,13 @@ const PageAnnotationLayer = memo(({
             isClickingControl = corner !== undefined && corner !== '';
           }
         }
-        
+
         // If clicking on a textbox or its control handle, don't create new one
         // Let Fabric.js handle the interaction (resize, move, etc.)
         if (isClickingTextbox || isClickingControl || (isActiveTextbox && target === activeObject)) {
           return;
         }
-        
+
         const tb = new Textbox('Text', {
           left: x,
           top: y,
@@ -4413,14 +4413,14 @@ const PageAnnotationLayer = memo(({
           hasBorders: true
         });
         tempObj.setCoords(); // Ensure coordinates are updated
-        
+
         // Set flag to prevent deselection in handleMouseUpForSelection
         justFinishedDrawingRef.current = true;
-        
+
         // Select immediately so handles appear right away
         canvas.setActiveObject(tempObj);
         canvas.requestRenderAll();
-        
+
         // Clear flag after a brief delay to allow other handlers to see it
         setTimeout(() => {
           justFinishedDrawingRef.current = false;
@@ -4709,7 +4709,7 @@ const PageAnnotationLayer = memo(({
       if (drawingStateRef.current.isDrawingShape || justFinishedDrawingRef.current) {
         return;
       }
-      
+
       if (toolRef.current !== 'select') {
         selectionRectRef.current = null;
         return;
@@ -4767,7 +4767,7 @@ const PageAnnotationLayer = memo(({
           if (justFinishedDrawingRef.current) {
             return;
           }
-          
+
           // FIX: Before deselecting, check if click is inside the bounding box of the currently selected object
           const activeObject = canvas.getActiveObject();
           if (activeObject) {
@@ -4834,9 +4834,7 @@ const PageAnnotationLayer = memo(({
         // Selection rectangle for hit testing
         const selRect = { left: selLeft, top: selTop, right: selRight, bottom: selBottom };
 
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4853',message:'Selection rect created',data:{selRect,isWindowSelection,selWidth,selHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
+
 
         // Collect objects based on direction-determined selection mode
         const allObjects = canvas.getObjects();
@@ -4881,18 +4879,14 @@ const PageAnnotationLayer = memo(({
               objRect.top > selRect.bottom
             );
 
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4891',message:'Bounding box check',data:{objType:obj.type,objRect,selRect,boundingBoxIntersects,objId:obj.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
+
 
             if (boundingBoxIntersects) {
               // Bounding boxes intersect, now check if actual geometry intersects
               // Use geometry-based intersection for precise selection
               try {
                 const geoIntersects = doesRectIntersectObject(selRect, obj);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4902',message:'Geometry intersection result',data:{objType:obj.type,geoIntersects,objId:obj.id,objRect,selRect},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-                // #endregion
+
                 if (geoIntersects) {
                   objectsToSelect.push(obj);
                 }
@@ -4900,15 +4894,11 @@ const PageAnnotationLayer = memo(({
               } catch (e) {
                 // If geometry check fails, fall back to bounding box intersection
                 console.warn('Geometry check failed, using bounding box:', e.message);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4909',message:'Geometry check exception',data:{objType:obj.type,error:e.message,objId:obj.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                // #endregion
+
                 objectsToSelect.push(obj);
               }
             } else {
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4913',message:'Bounding box rejected',data:{objType:obj.type,objRect,selRect,objId:obj.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-              // #endregion
+
             }
           }
         });
@@ -6362,278 +6352,278 @@ const PageAnnotationLayer = memo(({
           {/* Content */}
           <div style={{ padding: '12px', background: '#2b2b2b' }}>
 
-          <div style={{ marginBottom: '8px' }}>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Color</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="color"
-                value={editValues.stroke}
-                onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
-                style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
-              />
-              <input
-                type="text"
-                value={editValues.stroke}
-                onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
-                style={{
-                  width: '80px',
-                  height: '30px',
-                  borderRadius: '4px',
-                  border: '1px solid #555',
-                  padding: '0 8px',
-                  fontSize: '12px',
-                  fontFamily: 'monospace',
-                  background: '#333',
-                  color: '#ddd'
-                }}
-              />
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Color</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="color"
+                  value={editValues.stroke}
+                  onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
+                  style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
+                />
+                <input
+                  type="text"
+                  value={editValues.stroke}
+                  onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
+                  style={{
+                    width: '80px',
+                    height: '30px',
+                    borderRadius: '4px',
+                    border: '1px solid #555',
+                    padding: '0 8px',
+                    fontSize: '12px',
+                    fontFamily: 'monospace',
+                    background: '#333',
+                    color: '#ddd'
+                  }}
+                />
+              </div>
             </div>
-          </div>
 
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Line Weight</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="range"
-                min="1"
-                max="50"
-                step="1"
-                value={editValues.strokeWidth}
-                onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
-                style={{ flex: 1, cursor: 'pointer' }}
-              />
-              <input
-                type="number"
-                min="1"
-                max="50"
-                value={editValues.strokeWidth}
-                onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
-                style={{
-                  width: '50px',
-                  height: '30px',
-                  borderRadius: '4px',
-                  border: '1px solid #555',
-                  padding: '0 4px',
-                  fontSize: '12px',
-                  textAlign: 'center',
-                  background: '#333',
-                  color: '#ddd'
-                }}
-              />
-              <span style={{ fontSize: '12px', color: '#999' }}>px</span>
-            </div>
-          </div>
-
-          {/* Arrowhead Style - only show for arrow objects */}
-          {editModal.object.data?.type === 'arrow' && (
             <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Arrowhead Style</label>
-              <select
-                value={editValues.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE}
-                onChange={(e) => setEditValues(prev => ({ ...prev, arrowheadStyle: e.target.value }))}
-                style={{
-                  width: '100%',
-                  height: '32px',
-                  borderRadius: '4px',
-                  border: '1px solid #555',
-                  padding: '0 8px',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  backgroundColor: '#333',
-                  color: '#ddd'
-                }}
-              >
-                {Object.entries(ARROWHEAD_STYLE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
+              <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Line Weight</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="range"
+                  min="1"
+                  max="50"
+                  step="1"
+                  value={editValues.strokeWidth}
+                  onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
+                  style={{ flex: 1, cursor: 'pointer' }}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={editValues.strokeWidth}
+                  onChange={(e) => setEditValues(prev => ({ ...prev, strokeWidth: parseInt(e.target.value, 10) || 1 }))}
+                  style={{
+                    width: '50px',
+                    height: '30px',
+                    borderRadius: '4px',
+                    border: '1px solid #555',
+                    padding: '0 4px',
+                    fontSize: '12px',
+                    textAlign: 'center',
+                    background: '#333',
+                    color: '#ddd'
+                  }}
+                />
+                <span style={{ fontSize: '12px', color: '#999' }}>px</span>
+              </div>
             </div>
-          )}
 
-          {(editModal.object.data?.type === 'callout' || editModal.object.data?.reactCalloutId) && (
-            <>
+            {/* Arrowhead Style - only show for arrow objects */}
+            {editModal.object.data?.type === 'arrow' && (
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Text Style</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                  {/* Text Color */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Arrowhead Style</label>
+                <select
+                  value={editValues.arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE}
+                  onChange={(e) => setEditValues(prev => ({ ...prev, arrowheadStyle: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    height: '32px',
+                    borderRadius: '4px',
+                    border: '1px solid #555',
+                    padding: '0 8px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    backgroundColor: '#333',
+                    color: '#ddd'
+                  }}
+                >
+                  {Object.entries(ARROWHEAD_STYLE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {(editModal.object.data?.type === 'callout' || editModal.object.data?.reactCalloutId) && (
+              <>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Text Style</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                    {/* Text Color */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <input
+                        type="color"
+                        value={editValues.fill || '#000000'}
+                        onChange={(e) => setEditValues(prev => ({ ...prev, fill: e.target.value }))}
+                        style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
+                        title="Text Color"
+                      />
+                    </div>
+
+                    {/* Font Family */}
+                    <select
+                      value={editValues.fontFamily || 'Arial'}
+                      onChange={(e) => setEditValues(prev => ({ ...prev, fontFamily: e.target.value }))}
+                      style={{ height: '24px', borderRadius: '4px', border: '1px solid #555', fontSize: '12px', cursor: 'pointer', background: '#333', color: '#ddd' }}
+                      title="Font Family"
+                    >
+                      <option value="Arial">Arial</option>
+                      <option value="Helvetica">Helvetica</option>
+                      <option value="Times New Roman">Times New Roman</option>
+                      <option value="Georgia">Georgia</option>
+                      <option value="Courier New">Courier New</option>
+                      <option value="Verdana">Verdana</option>
+                    </select>
+
+                    {/* Font Size */}
                     <input
-                      type="color"
-                      value={editValues.fill || '#000000'}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, fill: e.target.value }))}
-                      style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
-                      title="Text Color"
+                      type="number"
+                      min="8"
+                      max="72"
+                      value={editValues.fontSize || 16}
+                      onChange={(e) => setEditValues(prev => ({ ...prev, fontSize: parseInt(e.target.value, 10) }))}
+                      style={{ width: '50px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: '0 4px', fontSize: '12px', background: '#333', color: '#ddd' }}
+                      title="Font Size"
                     />
+
+                    {/* Bold */}
+                    <button
+                      onClick={() => setEditValues(prev => ({ ...prev, fontWeight: prev.fontWeight === 'bold' ? 'normal' : 'bold' }))}
+                      style={{
+                        padding: '6px 10px', borderRadius: '4px', border: editValues.fontWeight === 'bold' ? '1px solid #4A90E2' : '1px solid #555',
+                        background: editValues.fontWeight === 'bold' ? '#4A90E2' : '#333',
+                        color: editValues.fontWeight === 'bold' ? 'white' : '#ddd',
+                        fontWeight: 'bold', cursor: 'pointer', fontSize: '14px'
+                      }}
+                    >B</button>
+
+                    {/* Italic */}
+                    <button
+                      onClick={() => setEditValues(prev => ({ ...prev, fontStyle: prev.fontStyle === 'italic' ? 'normal' : 'italic' }))}
+                      style={{
+                        padding: '6px 10px', borderRadius: '4px', border: editValues.fontStyle === 'italic' ? '1px solid #4A90E2' : '1px solid #555',
+                        background: editValues.fontStyle === 'italic' ? '#4A90E2' : '#333',
+                        color: editValues.fontStyle === 'italic' ? 'white' : '#ddd',
+                        fontStyle: 'italic', cursor: 'pointer', fontSize: '14px'
+                      }}
+                    >I</button>
                   </div>
 
-                  {/* Font Family */}
-                  <select
-                    value={editValues.fontFamily || 'Arial'}
-                    onChange={(e) => setEditValues(prev => ({ ...prev, fontFamily: e.target.value }))}
-                    style={{ height: '24px', borderRadius: '4px', border: '1px solid #555', fontSize: '12px', cursor: 'pointer', background: '#333', color: '#ddd' }}
-                    title="Font Family"
-                  >
-                    <option value="Arial">Arial</option>
-                    <option value="Helvetica">Helvetica</option>
-                    <option value="Times New Roman">Times New Roman</option>
-                    <option value="Georgia">Georgia</option>
-                    <option value="Courier New">Courier New</option>
-                    <option value="Verdana">Verdana</option>
-                  </select>
-
-                  {/* Font Size */}
-                  <input
-                    type="number"
-                    min="8"
-                    max="72"
-                    value={editValues.fontSize || 16}
-                    onChange={(e) => setEditValues(prev => ({ ...prev, fontSize: parseInt(e.target.value, 10) }))}
-                    style={{ width: '50px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: '0 4px', fontSize: '12px', background: '#333', color: '#ddd' }}
-                    title="Font Size"
-                  />
-
-                  {/* Bold */}
-                  <button
-                    onClick={() => setEditValues(prev => ({ ...prev, fontWeight: prev.fontWeight === 'bold' ? 'normal' : 'bold' }))}
-                    style={{
-                      padding: '6px 10px', borderRadius: '4px', border: editValues.fontWeight === 'bold' ? '1px solid #4A90E2' : '1px solid #555',
-                      background: editValues.fontWeight === 'bold' ? '#4A90E2' : '#333',
-                      color: editValues.fontWeight === 'bold' ? 'white' : '#ddd',
-                      fontWeight: 'bold', cursor: 'pointer', fontSize: '14px'
-                    }}
-                  >B</button>
-
-                  {/* Italic */}
-                  <button
-                    onClick={() => setEditValues(prev => ({ ...prev, fontStyle: prev.fontStyle === 'italic' ? 'normal' : 'italic' }))}
-                    style={{
-                      padding: '6px 10px', borderRadius: '4px', border: editValues.fontStyle === 'italic' ? '1px solid #4A90E2' : '1px solid #555',
-                      background: editValues.fontStyle === 'italic' ? '#4A90E2' : '#333',
-                      color: editValues.fontStyle === 'italic' ? 'white' : '#ddd',
-                      fontStyle: 'italic', cursor: 'pointer', fontSize: '14px'
-                    }}
-                  >I</button>
+                  {/* Alignment */}
+                  <div style={{ marginTop: '8px', display: 'flex', gap: '4px' }}>
+                    {['left', 'center', 'right'].map(align => (
+                      <button
+                        key={align}
+                        onClick={() => setEditValues(prev => ({ ...prev, textAlign: align }))}
+                        style={{
+                          flex: 1, padding: '6px 12px', borderRadius: '4px', border: editValues.textAlign === align ? '1px solid #4A90E2' : '1px solid #555',
+                          background: editValues.textAlign === align ? '#4A90E2' : '#333',
+                          color: editValues.textAlign === align ? 'white' : '#ddd',
+                          cursor: 'pointer', fontSize: '12px', textTransform: 'capitalize'
+                        }}
+                      >
+                        {align}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Alignment */}
-                <div style={{ marginTop: '8px', display: 'flex', gap: '4px' }}>
-                  {['left', 'center', 'right'].map(align => (
-                    <button
-                      key={align}
-                      onClick={() => setEditValues(prev => ({ ...prev, textAlign: align }))}
-                      style={{
-                        flex: 1, padding: '6px 12px', borderRadius: '4px', border: editValues.textAlign === align ? '1px solid #4A90E2' : '1px solid #555',
-                        background: editValues.textAlign === align ? '#4A90E2' : '#333',
-                        color: editValues.textAlign === align ? 'white' : '#ddd',
-                        cursor: 'pointer', fontSize: '12px', textTransform: 'capitalize'
+                {/* Fill Color (Background) */}
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Fill Color</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="color"
+                      value={editValues.fillColor === 'transparent' || !editValues.fillColor ? '#ffffff' : editValues.fillColor}
+                      onChange={(e) => setEditValues(prev => ({ ...prev, fillColor: e.target.value }))}
+                      style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
+                      disabled={editValues.fillColor === 'transparent'}
+                    />
+                    <input
+                      type="text"
+                      value={editValues.fillColor === 'transparent' ? 'No Fill' : (editValues.fillColor || '#ffffff')}
+                      onChange={(e) => {
+                        if (e.target.value.toLowerCase() === 'no fill') {
+                          setEditValues(prev => ({ ...prev, fillColor: 'transparent' }));
+                        } else {
+                          setEditValues(prev => ({ ...prev, fillColor: e.target.value }));
+                        }
                       }}
-                    >
-                      {align}
-                    </button>
-                  ))}
+                      style={{
+                        width: '80px',
+                        height: '30px',
+                        borderRadius: '4px',
+                        border: '1px solid #555',
+                        padding: '0 8px',
+                        fontSize: '12px',
+                        fontFamily: 'monospace',
+                        background: '#333',
+                        color: '#ddd'
+                      }}
+                    />
+                    <button
+                      onClick={() => setEditValues(prev => ({ ...prev, fillColor: 'transparent' }))}
+                      style={{
+                        padding: '4px 8px', borderRadius: '4px', border: editValues.fillColor === 'transparent' ? '1px solid #4A90E2' : '1px solid #555',
+                        background: editValues.fillColor === 'transparent' ? '#4A90E2' : '#333',
+                        color: editValues.fillColor === 'transparent' ? 'white' : '#ddd',
+                        cursor: 'pointer', fontSize: '11px'
+                      }}
+                    >No Fill</button>
+                  </div>
                 </div>
-              </div>
+              </>
+            )}
 
-              {/* Fill Color (Background) */}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Fill Color</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="color"
-                    value={editValues.fillColor === 'transparent' || !editValues.fillColor ? '#ffffff' : editValues.fillColor}
-                    onChange={(e) => setEditValues(prev => ({ ...prev, fillColor: e.target.value }))}
-                    style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
-                    disabled={editValues.fillColor === 'transparent'}
-                  />
-                  <input
-                    type="text"
-                    value={editValues.fillColor === 'transparent' ? 'No Fill' : (editValues.fillColor || '#ffffff')}
-                    onChange={(e) => {
-                      if (e.target.value.toLowerCase() === 'no fill') {
-                        setEditValues(prev => ({ ...prev, fillColor: 'transparent' }));
-                      } else {
-                        setEditValues(prev => ({ ...prev, fillColor: e.target.value }));
-                      }
-                    }}
-                    style={{
-                      width: '80px',
-                      height: '30px',
-                      borderRadius: '4px',
-                      border: '1px solid #555',
-                      padding: '0 8px',
-                      fontSize: '12px',
-                      fontFamily: 'monospace',
-                      background: '#333',
-                      color: '#ddd'
-                    }}
-                  />
-                  <button
-                    onClick={() => setEditValues(prev => ({ ...prev, fillColor: 'transparent' }))}
-                    style={{
-                      padding: '4px 8px', borderRadius: '4px', border: editValues.fillColor === 'transparent' ? '1px solid #4A90E2' : '1px solid #555',
-                      background: editValues.fillColor === 'transparent' ? '#4A90E2' : '#333',
-                      color: editValues.fillColor === 'transparent' ? 'white' : '#ddd',
-                      cursor: 'pointer', fontSize: '11px'
-                    }}
-                  >No Fill</button>
-                </div>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Opacity</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round((editValues.opacity !== undefined ? editValues.opacity : 1) * 100)}
+                  onChange={(e) => setEditValues(prev => ({ ...prev, opacity: parseFloat(e.target.value) / 100 }))}
+                  style={{ flex: 1, cursor: 'pointer' }}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={Math.round((editValues.opacity !== undefined ? editValues.opacity : 1) * 100)}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      setEditValues(prev => ({ ...prev, opacity: Math.min(100, Math.max(0, val)) / 100 }));
+                    }
+                  }}
+                  style={{
+                    width: '50px',
+                    height: '30px',
+                    borderRadius: '4px',
+                    border: '1px solid #555',
+                    padding: '0 4px',
+                    fontSize: '12px',
+                    textAlign: 'center',
+                    background: '#333',
+                    color: '#ddd'
+                  }}
+                />
+                <span style={{ fontSize: '12px', color: '#999' }}>%</span>
               </div>
-            </>
-          )}
-
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Opacity</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={Math.round((editValues.opacity !== undefined ? editValues.opacity : 1) * 100)}
-                onChange={(e) => setEditValues(prev => ({ ...prev, opacity: parseFloat(e.target.value) / 100 }))}
-                style={{ flex: 1, cursor: 'pointer' }}
-              />
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={Math.round((editValues.opacity !== undefined ? editValues.opacity : 1) * 100)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) {
-                    setEditValues(prev => ({ ...prev, opacity: Math.min(100, Math.max(0, val)) / 100 }));
-                  }
-                }}
-                style={{
-                  width: '50px',
-                  height: '30px',
-                  borderRadius: '4px',
-                  border: '1px solid #555',
-                  padding: '0 4px',
-                  fontSize: '12px',
-                  textAlign: 'center',
-                  background: '#333',
-                  color: '#ddd'
-                }}
-              />
-              <span style={{ fontSize: '12px', color: '#999' }}>%</span>
             </div>
-          </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-            <button
-              onClick={cancelEdit}
-              style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #555', background: '#333', color: '#ddd', cursor: 'pointer', fontSize: '12px' }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={saveEdit}
-              style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', background: '#4A90E2', color: 'white', cursor: 'pointer', fontSize: '12px' }}
-            >
-              Save
-            </button>
-          </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                onClick={cancelEdit}
+                style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #555', background: '#333', color: '#ddd', cursor: 'pointer', fontSize: '12px' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEdit}
+                style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', background: '#4A90E2', color: 'white', cursor: 'pointer', fontSize: '12px' }}
+              >
+                Save
+              </button>
+            </div>
           </div>
         </div>
       )}

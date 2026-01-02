@@ -1,212 +1,46 @@
 chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-MSGraphContext.jsx:236 Unrecognized feature: 'local-network-access'.
+SilentHandler.ts:259 Unrecognized feature: 'local-network-access'.
 createHiddenIframe @ SilentHandler.ts:259
 loadFrameSync @ SilentHandler.ts:235
 (anonymous) @ FunctionWrappers.ts:43
 initiateCodeRequest @ SilentHandler.ts:62
 (anonymous) @ FunctionWrappers.ts:102
 silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 createHiddenIframe @ SilentHandler.ts:260
 loadFrameSync @ SilentHandler.ts:235
 (anonymous) @ FunctionWrappers.ts:43
 initiateCodeRequest @ SilentHandler.ts:62
 (anonymous) @ FunctionWrappers.ts:102
 silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 createHiddenIframe @ SilentHandler.ts:260
 loadFrameSync @ SilentHandler.ts:235
 (anonymous) @ FunctionWrappers.ts:43
 initiateCodeRequest @ SilentHandler.ts:62
 (anonymous) @ FunctionWrappers.ts:102
 silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 22 more frames
-App.jsx:3061 [DocumentSync] Opening document with Supabase ID: 55a07183-b6eb-4bb2-acf1-4f4194d0841e projectId: undefined
-App.jsx:11079 [DocumentSync] Document opened, loading annotations from Supabase: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
-App.jsx:12164 PDF load check: {size: 25699506, version: '3.11.174', workerSrc: '/node_modules/pdfjs-dist/build/pdf.worker.min.js'}
-App.jsx:12173 PDF Header Check: %PDF-
-documentAnnotationService.js:207 [AnnotationSync] Loaded 5 annotations from Supabase
-App.jsx:11090 [DocumentSync] Loaded 5 annotations from Supabase
-App.jsx:11136 [DocumentSync] Subscribing to real-time changes for document: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
-login.live.com/Me.htm?v=3:1 true
-login.live.com/Me.htm?v=3:1 true
-documentAnnotationService.js:271 [AnnotationSync] Subscribed to real-time changes for document: 55a07183-b6eb-4bb2-acf1-4f4194d0841e
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI3Y2VjLWEwYzgtNzRjMy04OWExLTMxMjJlOWI5NThlNiIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI3Y2VjLWEwYTItNzQ4ZS1iZTQxLTE5ZGYxZjhjMTNhMyIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-App.jsx:11238 [DocumentSync] Syncing 5 annotations to Supabase...
-documentAnnotationService.js:160 [AnnotationSync] Syncing 5 annotations to Supabase...
-documentAnnotationService.js:168 [AnnotationSync] Successfully synced 5 annotations
-App.jsx:11243 [DocumentSync] Successfully synced 5 annotations
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767317194825-hkxi0j1s1
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767327226285-f4w2sckhe
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767327234270-5o0uc38mi
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767326372498-8saxkc7x3
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767326381524-agnx3ueb4
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:13709 [App] handleHighlightDeleted called {pageNumber: 1, bounds: {…}, highlightId: 'highlight-1767327234270-5o0uc38mi', selectedModuleId: 'module-1763727070665-0.5714253201980415', selectedTemplate: {…}}
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:13709 [App] handleHighlightDeleted called {pageNumber: 1, bounds: {…}, highlightId: 'highlight-1767326372498-8saxkc7x3', selectedModuleId: 'module-1763727070665-0.5714253201980415', selectedTemplate: {…}}
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:13709 [App] handleHighlightDeleted called {pageNumber: 1, bounds: {…}, highlightId: 'highlight-1767327226285-f4w2sckhe', selectedModuleId: 'module-1763727070665-0.5714253201980415', selectedTemplate: {…}}
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:13709 [App] handleHighlightDeleted called {pageNumber: 1, bounds: {…}, highlightId: 'highlight-1767326381524-agnx3ueb4', selectedModuleId: 'module-1763727070665-0.5714253201980415', selectedTemplate: {…}}
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:13709 [App] handleHighlightDeleted called {pageNumber: 1, bounds: {…}, highlightId: 'highlight-1767317194825-hkxi0j1s1', selectedModuleId: 'module-1763727070665-0.5714253201980415', selectedTemplate: {…}}
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:11238 [DocumentSync] Syncing 1 annotations to Supabase...
-documentAnnotationService.js:160 [AnnotationSync] Syncing 1 annotations to Supabase...
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-App.jsx:12938     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12938
-App.jsx:12946     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12946
-App.jsx:12971     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-wheelHandler @ App.jsx:12971
-documentAnnotationService.js:233 [AnnotationSync] Real-time INSERT: highlight-1767327468749-dyu8rv2gz
-documentAnnotationService.js:168 [AnnotationSync] Successfully synced 1 annotations
-App.jsx:11243 [DocumentSync] Successfully synced 1 annotations
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:11238 [DocumentSync] Syncing 2 annotations to Supabase...
-documentAnnotationService.js:160 [AnnotationSync] Syncing 2 annotations to Supabase...
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767327468749-dyu8rv2gz
-documentAnnotationService.js:233 [AnnotationSync] Real-time INSERT: highlight-1767327478881-dv8vk9y6a
-documentAnnotationService.js:168 [AnnotationSync] Successfully synced 2 annotations
-App.jsx:11243 [DocumentSync] Successfully synced 2 annotations
+Show 6 more frames
+AuthContext.jsx:102 Window focused, refetching subscription tier...
+PageAnnotationLayer.jsx:4838     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4838
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+PageAnnotationLayer.jsx:4838     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4838
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
 main.jsx:25 Navigation guards have been active for >2s, resetting for safety
 console.warn @ main.jsx:25
-(anonymous) @ App.jsx:12463
+(anonymous) @ App.jsx:12451
 setInterval (async)
-(anonymous) @ App.jsx:12461
+(anonymous) @ App.jsx:12449
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -219,71 +53,11 @@ workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 11 more frames
-SpacesPanel.jsx:130     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
-(anonymous) @ SpacesPanel.jsx:130
-(anonymous) @ SpacesPanel.jsx:162
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 12 more frames
-SpacesPanel.jsx:140     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-(anonymous) @ SpacesPanel.jsx:140
-(anonymous) @ SpacesPanel.jsx:162
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 12 more frames
-SpacesPanel.jsx:146     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_ABORTED 404 (Not Found)
-(anonymous) @ SpacesPanel.jsx:146
-(anonymous) @ SpacesPanel.jsx:162
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 12 more frames
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:11238 [DocumentSync] Syncing 3 annotations to Supabase...
-documentAnnotationService.js:160 [AnnotationSync] Syncing 3 annotations to Supabase...
-documentAnnotationService.js:168 [AnnotationSync] Successfully synced 3 annotations
-App.jsx:11243 [DocumentSync] Successfully synced 3 annotations
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767327468749-dyu8rv2gz
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767327478881-dv8vk9y6a
-documentAnnotationService.js:233 [AnnotationSync] Real-time INSERT: highlight-1767327507094-erp5ayg8i
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:10813 File watcher started for: /Documents/Security_export.xlsx
-App.jsx:11238 [DocumentSync] Syncing 4 annotations to Supabase...
-documentAnnotationService.js:160 [AnnotationSync] Syncing 4 annotations to Supabase...
-documentAnnotationService.js:168 [AnnotationSync] Successfully synced 4 annotations
-App.jsx:11243 [DocumentSync] Successfully synced 4 annotations
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767327468749-dyu8rv2gz
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767327478881-dv8vk9y6a
-documentAnnotationService.js:248 [AnnotationSync] Real-time UPDATE: highlight-1767327507094-erp5ayg8i
-documentAnnotationService.js:233 [AnnotationSync] Real-time INSERT: highlight-1767327515269-p07b5gm5t
+PageAnnotationLayer.jsx:4838     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 404 (Not Found)
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:4838
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
  Window focused, refetching subscription tier...
