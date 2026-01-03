@@ -373,7 +373,15 @@ export const MSGraphProvider = ({ children }) => {
     const login = async () => {
         if (!msalInstance) return;
         try {
-            const response = await msalInstance.loginPopup(loginRequest);
+            // Configure popup with proper settings to avoid COOP issues
+            const popupRequest = {
+                ...loginRequest,
+                popupWindowAttributes: {
+                    popupSize: { width: 483, height: 600 },
+                    popupPosition: { top: 100, left: 100 }
+                }
+            };
+            const response = await msalInstance.loginPopup(popupRequest);
             if (response && response.account) {
                 setAccount(response.account);
                 setIsAuthenticated(true);
@@ -396,7 +404,11 @@ export const MSGraphProvider = ({ children }) => {
             await removeConnection();
 
             await msalInstance.logoutPopup({
-                postLogoutRedirectUri: window.location.origin
+                postLogoutRedirectUri: window.location.origin,
+                popupWindowAttributes: {
+                    popupSize: { width: 483, height: 600 },
+                    popupPosition: { top: 100, left: 100 }
+                }
             });
             setAccount(null);
             setIsAuthenticated(false);

@@ -1,22 +1,129 @@
-chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-SilentHandler.ts:259 Unrecognized feature: 'local-network-access'.
-createHiddenIframe @ SilentHandler.ts:259
-SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-createHiddenIframe @ SilentHandler.ts:260
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI4MTFjLTdkNTAtN2E5MC1hZWNjLThjM2Y1YjFiYTlkYSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
-(anonymous) @ PopupClient.ts:799
-PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
-(anonymous) @ PopupClient.ts:799
-PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
-(anonymous) @ PopupClient.ts:799
-PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
-(anonymous) @ PopupClient.ts:799
-PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
-(anonymous) @ PopupClient.ts:799
-PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
-(anonymous) @ PopupClient.ts:799
-PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
-(anonymous) @ PopupClient.ts:799
-PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
-(anonymous) @ PopupClient.ts:799
+chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+App.jsx:11998 Document saved successfully
+App.jsx:11998 Document saved successfully
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames
+geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
+doesRectIntersectObject @ geometryHitTest.js:1809
+(anonymous) @ PageAnnotationLayer.jsx:5696
+handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+fire @ fabric.js:334
+_handleEvent @ fabric.js:13513
+__onMouseUp @ fabric.js:13448
+_onMouseUp @ fabric.js:13315
+Show 4 more frames

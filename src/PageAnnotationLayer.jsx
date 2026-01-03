@@ -1038,28 +1038,19 @@ const setupLineControls = (line, canvas) => {
   };
 
   // Define render function for controls (must be local, not global reference)
+  // IMPORTANT: left/top are already in the correct coordinate space - use translate like callout
   const renderControlHandle = (ctx, left, top, styleOverride, fabricObject) => {
     // #region agent log
     fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1030',message:'renderControlHandle LINE called',data:{left,top,hasCtx:!!ctx,canvasWidth:ctx?.canvas?.width,canvasHeight:ctx?.canvas?.height},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
     // #endregion
-    const size = 16; // Make larger for debugging
+    const size = 12;
     ctx.save();
-    // Reset any transforms
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    // Draw a very visible debug circle
+    ctx.translate(left, top);
     ctx.beginPath();
-    ctx.arc(left, top, size / 2, 0, Math.PI * 2);
-    ctx.fillStyle = '#FF0000'; // Bright red for debugging
-    ctx.fill();
-    ctx.strokeStyle = '#FFFF00'; // Bright yellow border
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    // Also draw the normal control
-    ctx.beginPath();
-    ctx.arc(left, top, 6, 0, Math.PI * 2);
+    ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#4a90e2';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1;
     ctx.shadowColor = 'rgba(0,0,0,0.3)';
     ctx.shadowBlur = 3;
     ctx.fill();
@@ -1297,28 +1288,19 @@ const setupArrowControls = (group, canvas) => {
   };
 
   // Define render function for controls (must be local, not global reference)
+  // IMPORTANT: left/top are already in the correct coordinate space - use translate like callout
   const renderControlHandle = (ctx, left, top, styleOverride, fabricObject) => {
     // #region agent log
     fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1271',message:'renderControlHandle ARROW called',data:{left,top,hasCtx:!!ctx,canvasWidth:ctx?.canvas?.width,canvasHeight:ctx?.canvas?.height},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
     // #endregion
-    const size = 16; // Make larger for debugging
+    const size = 12;
     ctx.save();
-    // Reset any transforms
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    // Draw a very visible debug circle
+    ctx.translate(left, top);
     ctx.beginPath();
-    ctx.arc(left, top, size / 2, 0, Math.PI * 2);
-    ctx.fillStyle = '#FF0000'; // Bright red for debugging
-    ctx.fill();
-    ctx.strokeStyle = '#FFFF00'; // Bright yellow border
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    // Also draw the normal control
-    ctx.beginPath();
-    ctx.arc(left, top, 6, 0, Math.PI * 2);
+    ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#4a90e2';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1;
     ctx.shadowColor = 'rgba(0,0,0,0.3)';
     ctx.shadowBlur = 3;
     ctx.fill();
