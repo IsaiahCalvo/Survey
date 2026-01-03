@@ -28,106 +28,28 @@ flushPassiveEffects @ chunk-DSUIPI7G.js:26336
 workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 22 more frames
-MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-createHiddenIframe @ SilentHandler.ts:260
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 22 more frames
-MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-createHiddenIframe @ SilentHandler.ts:260
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 22 more frames
+Show 11 more frames
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 Me.htm:1 true
-Me.htm:1 true
-MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-createHiddenIframe @ SilentHandler.ts:260
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 22 more frames
 login.live.com/Me.htm?v=3:1 true
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI4NGYzLTZhYjEtNzVmOS1hNDEzLTA4NmQzY2M5NzM4OSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-main.jsx:25 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:25
-(anonymous) @ App.jsx:12447
-setInterval (async)
-(anonymous) @ App.jsx:12445
+Me.htm:1 true
+PageAnnotationLayer.jsx:6249 [Page 1] Save error: TypeError: Cannot read properties of undefined (reading '0')
+    at Object.stylesToArray (fabric.js:1885:14)
+    at klass.toObject (fabric.js:27403:32)
+    at klass.toObject (fabric.js:3098:52)
+    at klass.callSuper (fabric.js:3144:22)
+    at klass.toObject (fabric.js:31090:19)
+    at klass.toObject (fabric.js:3098:52)
+    at klass._toObject (fabric.js:10086:39)
+    at klass.callSuper (fabric.js:3144:22)
+    at klass._toObject (fabric.js:12894:25)
+    at klass._toObject (fabric.js:3098:52)
+(anonymous) @ PageAnnotationLayer.jsx:6249
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -140,71 +62,3 @@ workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 11 more frames
-PageAnnotationLayer.jsx:3656 [Page 1] Save error: TypeError: Cannot read properties of undefined (reading '0')
-    at Object.stylesToArray (fabric.js:1885:14)
-    at klass.toObject (fabric.js:27403:32)
-    at klass.toObject (fabric.js:3098:52)
-    at klass.callSuper (fabric.js:3144:22)
-    at klass.toObject (fabric.js:31090:19)
-    at klass.toObject (fabric.js:3098:52)
-    at klass._toObject (fabric.js:10086:39)
-    at klass.callSuper (fabric.js:3144:22)
-    at klass._toObject (fabric.js:12894:25)
-    at klass._toObject (fabric.js:3098:52)
-saveCanvas @ PageAnnotationLayer.jsx:3656
-handleMouseUp @ PageAnnotationLayer.jsx:5246
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-PageAnnotationLayer.jsx:6223 [Page 1] Save error: TypeError: Cannot read properties of undefined (reading '0')
-    at Object.stylesToArray (fabric.js:1885:14)
-    at klass.toObject (fabric.js:27403:32)
-    at klass.toObject (fabric.js:3098:52)
-    at klass.callSuper (fabric.js:3144:22)
-    at klass.toObject (fabric.js:31090:19)
-    at klass.toObject (fabric.js:3098:52)
-    at klass._toObject (fabric.js:10086:39)
-    at klass.callSuper (fabric.js:3144:22)
-    at klass._toObject (fabric.js:12894:25)
-    at klass._toObject (fabric.js:3098:52)
-(anonymous) @ PageAnnotationLayer.jsx:6223
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 12 more frames
-PageAnnotationLayer.jsx:6223 [Page 1] Save error: TypeError: Cannot read properties of undefined (reading '0')
-    at Object.stylesToArray (fabric.js:1885:14)
-    at klass.toObject (fabric.js:27403:32)
-    at klass.toObject (fabric.js:3098:52)
-    at klass.callSuper (fabric.js:3144:22)
-    at klass.toObject (fabric.js:31090:19)
-    at klass.toObject (fabric.js:3098:52)
-    at klass._toObject (fabric.js:10086:39)
-    at klass.callSuper (fabric.js:3144:22)
-    at klass._toObject (fabric.js:12894:25)
-    at klass._toObject (fabric.js:3098:52)
-(anonymous) @ PageAnnotationLayer.jsx:6223
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 12 more frames

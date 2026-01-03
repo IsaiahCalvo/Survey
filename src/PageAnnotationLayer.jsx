@@ -32,6 +32,38 @@ import { calculateViewportSafePosition } from './utils/menuPositioning';
 // Apply custom Drawboard-style controls and selection visuals
 configureFabricOverrides();
 
+/**
+ * Sanitizes text objects on a Fabric.js canvas to prevent stylesToArray errors
+ * This fixes "Cannot read properties of undefined (reading '0')" errors when serializing
+ * @param {fabric.Canvas} canvas - The Fabric.js canvas instance
+ */
+const sanitizeTextStyles = (canvas) => {
+  if (!canvas) return;
+  canvas.getObjects().forEach(obj => {
+    if (obj.type === 'i-text' || obj.type === 'textbox' || obj.type === 'text') {
+      // Clean up malformed styles - ensure styles is a proper object
+      if (obj.styles) {
+        const cleanStyles = {};
+        Object.keys(obj.styles).forEach(lineIndex => {
+          if (obj.styles[lineIndex] && typeof obj.styles[lineIndex] === 'object') {
+            cleanStyles[lineIndex] = {};
+            Object.keys(obj.styles[lineIndex]).forEach(charIndex => {
+              if (obj.styles[lineIndex][charIndex] !== undefined) {
+                cleanStyles[lineIndex][charIndex] = obj.styles[lineIndex][charIndex];
+              }
+            });
+            // Remove empty line style objects
+            if (Object.keys(cleanStyles[lineIndex]).length === 0) {
+              delete cleanStyles[lineIndex];
+            }
+          }
+        });
+        obj.styles = cleanStyles;
+      }
+    }
+  });
+};
+
 // --- Arrowhead Style Constants ---
 export const ARROWHEAD_STYLES = {
   NONE: 'none',
@@ -2267,6 +2299,7 @@ const PageAnnotationLayer = memo(({
   const triggerSave = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+    sanitizeTextStyles(canvas);
     const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
     onSaveAnnotations(pageNumber, canvasJSON);
   }, [pageNumber, onSaveAnnotations]);
@@ -3649,30 +3682,7 @@ const PageAnnotationLayer = memo(({
       if (!fabricRef.current) return;
       try {
         // Sanitize text objects to prevent Fabric.js stylesToArray errors
-        // This fixes "Cannot read properties of undefined (reading '0')" errors
-        fabricRef.current.getObjects().forEach(obj => {
-          if (obj.type === 'i-text' || obj.type === 'textbox' || obj.type === 'text') {
-            // Clean up malformed styles - ensure styles is a proper object
-            if (obj.styles) {
-              const cleanStyles = {};
-              Object.keys(obj.styles).forEach(lineIndex => {
-                if (obj.styles[lineIndex] && typeof obj.styles[lineIndex] === 'object') {
-                  cleanStyles[lineIndex] = {};
-                  Object.keys(obj.styles[lineIndex]).forEach(charIndex => {
-                    if (obj.styles[lineIndex][charIndex] !== undefined) {
-                      cleanStyles[lineIndex][charIndex] = obj.styles[lineIndex][charIndex];
-                    }
-                  });
-                  // Remove empty line style objects
-                  if (Object.keys(cleanStyles[lineIndex]).length === 0) {
-                    delete cleanStyles[lineIndex];
-                  }
-                }
-              });
-              obj.styles = cleanStyles;
-            }
-          }
-        });
+        sanitizeTextStyles(fabricRef.current);
 
         // Include spaceId in the saved JSON to preserve space associations
         const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
@@ -6243,6 +6253,7 @@ const PageAnnotationLayer = memo(({
 
       // Save annotations
       try {
+        sanitizeTextStyles(canvas);
         const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
@@ -6321,6 +6332,7 @@ const PageAnnotationLayer = memo(({
 
       // Save annotations
       try {
+        sanitizeTextStyles(canvas);
         const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (e) {
@@ -6581,6 +6593,7 @@ const PageAnnotationLayer = memo(({
 
       // Save the canvas state
       try {
+        sanitizeTextStyles(canvas);
         const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         onSaveAnnotations(pageNumber, canvasJSON);
       } catch (error) {
