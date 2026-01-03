@@ -9473,6 +9473,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     // Remove all highlight annotations associated with this space and page (or regionId)
+    // First, collect the highlight IDs to delete for syncing
+    const highlightIdsToDelete = Object.keys(highlightAnnotations).filter(highlightId => {
+      const highlight = highlightAnnotations[highlightId];
+      return (highlight.spaceId === spaceId && highlight.pageNumber === pageId) ||
+        (regionId && highlight.regionId === regionId);
+    });
+
     setHighlightAnnotations(prev => {
       const updated = { ...prev };
       Object.keys(updated).forEach(highlightId => {
@@ -9485,6 +9492,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       });
       return updated;
     });
+
+    // Delete from Supabase document_annotations table
+    const documentId = pdfFile?.id;
+    if (documentId && user?.id && documentSyncEnabled && highlightIdsToDelete.length > 0) {
+      deleteAnnotations(documentId, highlightIdsToDelete).catch(err => {
+        console.error('[App] Error deleting annotations from Supabase:', err);
+      });
+    }
+
+    // Delete from survey_items table via surveySession (real-time sync)
+    if (surveySession?.deleteAndSync) {
+      highlightIdsToDelete.forEach(highlightId => {
+        surveySession.deleteAndSync(highlightId);
+      });
+    }
 
     // Then update the spaces to remove the page
     setSpaces(prev => {
@@ -9509,7 +9531,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       return nextSpaces;
     });
-  }, [activeSpaceId, spaces]);
+  }, [activeSpaceId, spaces, highlightAnnotations, pdfFile?.id, user?.id, documentSyncEnabled, surveySession]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     const trimmedLabel = typeof newLabel === 'string' ? newLabel.trim() : '';
@@ -13857,6 +13879,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       }
 
+      // Delete from survey_items table via surveySession (real-time sync)
+      // This ensures deleted highlights don't reappear when re-entering survey mode
+      if (surveySession?.deleteAndSync) {
+        matchingHighlightIds.forEach(highlightId => {
+          surveySession.deleteAndSync(highlightId);
+        });
+      }
+
       // Clear the removal queue after a short delay
       setTimeout(() => {
         setHighlightsToRemoveByPage(prev => {
@@ -13877,7 +13907,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       }, 100);
     }
-  }, [selectedModuleId, selectedTemplate, highlightAnnotations, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
+  }, [selectedModuleId, selectedTemplate, highlightAnnotations, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled, surveySession]);
 
   // Handle deletion of a highlight item (from survey panel)
   const handleDeleteHighlightItem = useCallback((highlightId) => {
@@ -17342,6 +17372,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     }
                                   });
 
+                                  // Delete from Supabase document_annotations table
+                                  const documentId = pdfFile?.id;
+                                  if (documentId && user?.id && documentSyncEnabled) {
+                                    deleteAnnotations(documentId, selectedIds).catch(err => {
+                                      console.error('[App] Error deleting annotations from Supabase:', err);
+                                    });
+                                  }
+
+                                  // Delete from survey_items table via surveySession (real-time sync)
+                                  if (surveySession?.deleteAndSync) {
+                                    selectedIds.forEach(highlightId => {
+                                      surveySession.deleteAndSync(highlightId);
+                                    });
+                                  }
+
                                   // Clear selection (copy mode will be automatically exited if all items in space are deleted)
                                   setCopiedItemSelection({});
                                 }}
@@ -17532,6 +17577,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                             });
                                             return updated;
                                           });
+
+                                          // Delete from Supabase document_annotations table
+                                          const documentId = pdfFile?.id;
+                                          const highlightIdsToDelete = highlightsInCategory.map(([id]) => id);
+                                          if (documentId && user?.id && documentSyncEnabled && highlightIdsToDelete.length > 0) {
+                                            deleteAnnotations(documentId, highlightIdsToDelete).catch(err => {
+                                              console.error('[App] Error deleting annotations from Supabase:', err);
+                                            });
+                                          }
+
+                                          // Delete from survey_items table via surveySession (real-time sync)
+                                          if (surveySession?.deleteAndSync) {
+                                            highlightsInCategory.forEach(([highlightId]) => {
+                                              surveySession.deleteAndSync(highlightId);
+                                            });
+                                          }
 
                                           // Delete category from module
                                           deleteCategory(selectedModuleId, catId);
