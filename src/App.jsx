@@ -9493,16 +9493,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return updated;
     });
 
-    // Delete from Supabase document_annotations table
-    const documentId = pdfFile?.id;
-    if (documentId && user?.id && documentSyncEnabled && highlightIdsToDelete.length > 0) {
-      deleteAnnotations(documentId, highlightIdsToDelete).catch(err => {
-        console.error('[App] Error deleting annotations from Supabase:', err);
-      });
-    }
-
     // Delete from survey_items table via surveySession (real-time sync)
-    if (surveySession?.deleteAndSync) {
+    // This ensures deleted highlights don't reappear when re-entering survey mode
+    if (surveySession?.deleteAndSync && highlightIdsToDelete.length > 0) {
       highlightIdsToDelete.forEach(highlightId => {
         surveySession.deleteAndSync(highlightId);
       });
@@ -9531,7 +9524,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       return nextSpaces;
     });
-  }, [activeSpaceId, spaces, highlightAnnotations, pdfFile?.id, user?.id, documentSyncEnabled, surveySession]);
+  }, [activeSpaceId, spaces, highlightAnnotations, surveySession]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     const trimmedLabel = typeof newLabel === 'string' ? newLabel.trim() : '';
