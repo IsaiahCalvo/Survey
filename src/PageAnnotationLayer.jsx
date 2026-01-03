@@ -798,6 +798,8 @@ const linePositionHandler = (type) => {
       return result;
     } else if (fabricObject.type === 'line') {
       // Handle Line (straight)
+      // For Line objects, return object-relative coordinates
+      // Fabric.js will transform them using finalMatrix
       let point;
       if (type === 'start') {
         point = { x: fabricObject.x1, y: fabricObject.y1 };
@@ -811,16 +813,12 @@ const linePositionHandler = (type) => {
         point = { x: fabricObject.x2, y: fabricObject.y2 };
       }
 
-      // Transform point to canvas space
-      // Use finalMatrix if provided (Fabric.js passes it), otherwise calculate
-      const matrix = finalMatrix || fabricObject.calcTransformMatrix();
-      const result = finalMatrix 
-        ? util.transformPoint(point, finalMatrix)
-        : util.transformPoint(point, matrix);
+      // For Line objects, return object-relative coordinates
+      // Fabric.js will apply finalMatrix transformation
       // #region agent log
-      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:812',message:'linePositionHandler line result',data:{type,localX:point.x,localY:point.y,canvasX:result.x,canvasY:result.y,usingFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:812',message:'linePositionHandler line returning object-relative',data:{type,localX:point.x,localY:point.y,hasFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
       // #endregion
-      return result;
+      return point;
     }
 
     return { x: 0, y: 0 };
@@ -900,7 +898,16 @@ const setupLineControls = (line, canvas) => {
   line.controls = {};
   // Note: Callout uses hasBorders: false but controls still work. However, for Line objects,
   // we might need borders enabled for controls to render. Let's try with borders enabled.
-  line.set({ hasControls: true, hasBorders: true });
+  line.set({ 
+    hasControls: true, 
+    hasBorders: true,
+    selectable: true,
+    evented: true
+  });
+  
+  // #region agent log
+  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:905',message:'Line object properties after setup',data:{hasControls:line.hasControls,hasBorders:line.hasBorders,selectable:line.selectable,evented:line.evented,type:line.type,controlKeys:Object.keys(line.controls||{})},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+  // #endregion
 
   // Update line geometry handler
   const updateLineGeometry = (transform, x, y, handleType) => {
@@ -1088,7 +1095,7 @@ const setupLineControls = (line, canvas) => {
     visible: true
   });
   // #region agent log
-  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1007',message:'setupLineControls completed',data:{controlCount:Object.keys(line.controls).length,hasStart:!!line.controls.start,hasMidpoint:!!line.controls.midpoint,hasEnd:!!line.controls.end},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1015',message:'setupLineControls completed',data:{controlCount:Object.keys(line.controls).length,hasStart:!!line.controls.start,hasMidpoint:!!line.controls.midpoint,hasEnd:!!line.controls.end,startVisible:line.controls.start?.visible,midpointVisible:line.controls.midpoint?.visible,endVisible:line.controls.end?.visible},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
   // #endregion
 };
 
