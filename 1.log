@@ -1,129 +1,314 @@
 chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-App.jsx:11998 Document saved successfully
-App.jsx:11998 Document saved successfully
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+MSGraphContext.jsx:236 Unrecognized feature: 'local-network-access'.
+createHiddenIframe @ SilentHandler.ts:259
+loadFrameSync @ SilentHandler.ts:235
+(anonymous) @ FunctionWrappers.ts:43
+initiateCodeRequest @ SilentHandler.ts:62
+(anonymous) @ FunctionWrappers.ts:102
+silentTokenHelper @ SilentIframeClient.ts:430
+await in silentTokenHelper (async)
+(anonymous) @ FunctionWrappers.ts:102
+executeCodeFlow @ SilentIframeClient.ts:177
+await in executeCodeFlow (async)
+acquireToken @ SilentIframeClient.ts:139
+await in acquireToken (async)
+ssoSilent @ StandardController.ts:1067
+ssoSilent @ PublicClientApplication.ts:343
+initializeMsal @ MSGraphContext.jsx:236
+await in initializeMsal (async)
+(anonymous) @ MSGraphContext.jsx:274
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 22 more frames
+MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+createHiddenIframe @ SilentHandler.ts:260
+loadFrameSync @ SilentHandler.ts:235
+(anonymous) @ FunctionWrappers.ts:43
+initiateCodeRequest @ SilentHandler.ts:62
+(anonymous) @ FunctionWrappers.ts:102
+silentTokenHelper @ SilentIframeClient.ts:430
+await in silentTokenHelper (async)
+(anonymous) @ FunctionWrappers.ts:102
+executeCodeFlow @ SilentIframeClient.ts:177
+await in executeCodeFlow (async)
+acquireToken @ SilentIframeClient.ts:139
+await in acquireToken (async)
+ssoSilent @ StandardController.ts:1067
+ssoSilent @ PublicClientApplication.ts:343
+initializeMsal @ MSGraphContext.jsx:236
+await in initializeMsal (async)
+(anonymous) @ MSGraphContext.jsx:274
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 22 more frames
+MSGraphContext.jsx:236 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+createHiddenIframe @ SilentHandler.ts:260
+loadFrameSync @ SilentHandler.ts:235
+(anonymous) @ FunctionWrappers.ts:43
+initiateCodeRequest @ SilentHandler.ts:62
+(anonymous) @ FunctionWrappers.ts:102
+silentTokenHelper @ SilentIframeClient.ts:430
+await in silentTokenHelper (async)
+(anonymous) @ FunctionWrappers.ts:102
+executeCodeFlow @ SilentIframeClient.ts:177
+await in executeCodeFlow (async)
+acquireToken @ SilentIframeClient.ts:139
+await in acquireToken (async)
+ssoSilent @ StandardController.ts:1067
+ssoSilent @ PublicClientApplication.ts:343
+initializeMsal @ MSGraphContext.jsx:236
+await in initializeMsal (async)
+(anonymous) @ MSGraphContext.jsx:274
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 22 more frames
+login.live.com/Me.htm?v=3:1 true
+login.live.com/Me.htm?v=3:1 true
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI4Mjc0LTAyODktN2UxZS05NzIyLTQ0NmZjNjFiMjZjMCIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI4Mjc0LTAyNjItNzI5NC1hOGY1LTdkNjM2NTk1NGUxZCIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+documentAnnotationService.js:329 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
+updateDocumentPresence @ documentAnnotationService.js:329
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:11109
+Promise.then (async)
+(anonymous) @ App.jsx:11080
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+documentAnnotationService.js:329 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
+updateDocumentPresence @ documentAnnotationService.js:329
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:11246
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:11228     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+setTimeout (async)
+(anonymous) @ App.jsx:11228
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 14 more frames
+documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
+upsertAnnotations @ documentAnnotationService.js:71
+await in upsertAnnotations (async)
+syncAnnotationsToSupabase @ documentAnnotationService.js:158
+(anonymous) @ App.jsx:11229
+setTimeout (async)
+(anonymous) @ App.jsx:11228
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:11234 [DocumentSync] Sync failed: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
+(anonymous) @ App.jsx:11234
+setTimeout (async)
+(anonymous) @ App.jsx:11228
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+PageAnnotationLayer.jsx:6223 [Page 1] Save error: TypeError: Cannot read properties of undefined (reading '0')
+    at Object.stylesToArray (fabric.js:1885:14)
+    at klass.toObject (fabric.js:27403:32)
+    at klass.toObject (fabric.js:3098:52)
+    at klass.callSuper (fabric.js:3144:22)
+    at klass.toObject (fabric.js:31090:19)
+    at klass.toObject (fabric.js:3098:52)
+    at klass._toObject (fabric.js:10086:39)
+    at klass.callSuper (fabric.js:3144:22)
+    at klass._toObject (fabric.js:12894:25)
+    at klass._toObject (fabric.js:3098:52)
+(anonymous) @ PageAnnotationLayer.jsx:6223
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+PageAnnotationLayer.jsx:3656 [Page 1] Save error: TypeError: Cannot read properties of undefined (reading '0')
+    at Object.stylesToArray (fabric.js:1885:14)
+    at klass.toObject (fabric.js:27403:32)
+    at klass.toObject (fabric.js:3098:52)
+    at klass.callSuper (fabric.js:3144:22)
+    at klass.toObject (fabric.js:31090:19)
+    at klass.toObject (fabric.js:3098:52)
+    at klass._toObject (fabric.js:10086:39)
+    at klass.callSuper (fabric.js:3144:22)
+    at klass._toObject (fabric.js:12894:25)
+    at klass._toObject (fabric.js:3098:52)
+saveCanvas @ PageAnnotationLayer.jsx:3656
+handleMouseUp @ PageAnnotationLayer.jsx:5246
 fire @ fabric.js:334
 _handleEvent @ fabric.js:13513
 __onMouseUp @ fabric.js:13448
 _onMouseUp @ fabric.js:13315
 Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
+PageAnnotationLayer.jsx:6561 [Page 1] Error saving after deletion: TypeError: Cannot read properties of undefined (reading '0')
+    at Object.stylesToArray (fabric.js:1885:14)
+    at klass.toObject (fabric.js:27403:32)
+    at klass.toObject (fabric.js:3098:52)
+    at klass.callSuper (fabric.js:3144:22)
+    at klass.toObject (fabric.js:31090:19)
+    at klass.toObject (fabric.js:3098:52)
+    at klass._toObject (fabric.js:10086:39)
+    at klass.callSuper (fabric.js:3144:22)
+    at klass._toObject (fabric.js:12894:25)
+    at klass._toObject (fabric.js:3098:52)
+handleKeyDown @ PageAnnotationLayer.jsx:6561
+PageAnnotationLayer.jsx:3656 [Page 1] Save error: TypeError: Cannot read properties of undefined (reading '0')
+    at Object.stylesToArray (fabric.js:1885:14)
+    at klass.toObject (fabric.js:27403:32)
+    at klass.toObject (fabric.js:3098:52)
+    at klass.callSuper (fabric.js:3144:22)
+    at klass.toObject (fabric.js:31090:19)
+    at klass.toObject (fabric.js:3098:52)
+    at klass._toObject (fabric.js:10086:39)
+    at klass.callSuper (fabric.js:3144:22)
+    at klass._toObject (fabric.js:12894:25)
+    at klass._toObject (fabric.js:3098:52)
+saveCanvas @ PageAnnotationLayer.jsx:3656
+handleMouseUp @ PageAnnotationLayer.jsx:5246
 fire @ fabric.js:334
 _handleEvent @ fabric.js:13513
 __onMouseUp @ fabric.js:13448
 _onMouseUp @ fabric.js:13315
 Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
-geometryHitTest.js:1809     POST http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65 net::ERR_NETWORK_CHANGED
-doesRectIntersectObject @ geometryHitTest.js:1809
-(anonymous) @ PageAnnotationLayer.jsx:5696
-handleMouseUpForSelection @ PageAnnotationLayer.jsx:5651
-fire @ fabric.js:334
-_handleEvent @ fabric.js:13513
-__onMouseUp @ fabric.js:13448
-_onMouseUp @ fabric.js:13315
-Show 4 more frames
+App.jsx:12013 Document saved successfully
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+documentAnnotationService.js:329 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
+updateDocumentPresence @ documentAnnotationService.js:329
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:11109
+Promise.then (async)
+(anonymous) @ App.jsx:11080
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+documentAnnotationService.js:329 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
+updateDocumentPresence @ documentAnnotationService.js:329
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:11246
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
