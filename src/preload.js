@@ -31,5 +31,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('app:beforeQuit', subscription);
     return () => ipcRenderer.removeListener('app:beforeQuit', subscription);
   },
-  notifySaveComplete: () => ipcRenderer.send('app:saveComplete')
+  notifySaveComplete: () => ipcRenderer.send('app:saveComplete'),
+
+  // OAuth APIs - opens a separate window for authentication
+  openOAuthWindow: (authUrl, redirectUri) => ipcRenderer.invoke('oauth:openWindow', { authUrl, redirectUri })
 });

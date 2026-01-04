@@ -358,6 +358,94 @@ ipcMain.handle('fileWatcher:stop', async (event, watchId) => {
   }
 });
 
+// OAuth window handler for Microsoft authentication
+// Opens a separate window for OAuth flow, captures the redirect, and returns the result
+ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
+  return new Promise((resolve, reject) => {
+    const authWindow = new BrowserWindow({
+      width: 500,
+      height: 700,
+      show: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+      // Make it a child of the main window
+      parent: BrowserWindow.fromWebContents(event.sender),
+      modal: false,
+      title: 'Sign in to Microsoft',
+    });
+
+    // Remove menu bar from auth window
+    authWindow.setMenuBarVisibility(false);
+
+    // Track if we've already resolved (to prevent double resolution)
+    let resolved = false;
+
+    // Listen for navigation to the redirect URI
+    const handleNavigation = (url) => {
+      if (resolved) return;
+
+      // Check if this is the redirect URL
+      if (url.startsWith(redirectUri)) {
+        resolved = true;
+
+        // Extract the hash or query parameters
+        const urlObj = new URL(url);
+        const hash = urlObj.hash;
+        const search = urlObj.search;
+
+        // Close the auth window
+        authWindow.close();
+
+        // Return the full redirect URL so MSAL can parse it
+        resolve({ success: true, url: url });
+      }
+    };
+
+    // Listen for URL changes
+    authWindow.webContents.on('will-navigate', (e, url) => {
+      handleNavigation(url);
+    });
+
+    authWindow.webContents.on('will-redirect', (e, url) => {
+      handleNavigation(url);
+    });
+
+    // Also check after page loads (for hash-based redirects)
+    authWindow.webContents.on('did-navigate', (e, url) => {
+      handleNavigation(url);
+    });
+
+    authWindow.webContents.on('did-navigate-in-page', (e, url) => {
+      handleNavigation(url);
+    });
+
+    // Handle window close (user cancelled)
+    authWindow.on('closed', () => {
+      if (!resolved) {
+        resolved = true;
+        resolve({ success: false, error: 'User cancelled authentication' });
+      }
+    });
+
+    // Handle load errors
+    authWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      // Ignore aborted loads (happens during redirects)
+      if (errorCode === -3) return;
+
+      if (!resolved) {
+        resolved = true;
+        authWindow.close();
+        resolve({ success: false, error: `Failed to load: ${errorDescription}` });
+      }
+    });
+
+    // Load the auth URL
+    authWindow.loadURL(authUrl);
+  });
+});
+
 // Track if we're in the process of quitting
 let isQuitting = false;
 
