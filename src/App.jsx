@@ -19356,14 +19356,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 return;
                               }
 
-                              // Handle OneDrive files - open in browser
+                              // Handle OneDrive files - open in desktop Excel via Office URI scheme
                               if (isOneDrive) {
                                 try {
                                   // Get the file's web URL from OneDrive
                                   if (graphClient) {
                                     const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
                                     if (driveItem && driveItem.webUrl) {
-                                      window.open(driveItem.webUrl, '_blank');
+                                      // Use Office URI scheme to open in desktop Excel
+                                      // Format: ms-excel:ofe|u|<encoded-url>
+                                      // ofe = Office File Edit (allows editing)
+                                      // This opens the OneDrive file in desktop Excel while maintaining sync
+                                      const officeUri = `ms-excel:ofe|u|${encodeURIComponent(driveItem.webUrl)}`;
+                                      window.open(officeUri, '_self');
                                     } else {
                                       alert('Could not get the OneDrive file URL. Please open the file manually from OneDrive.');
                                     }
