@@ -1,4 +1,5 @@
-MSGraphContext.jsx:421 Unrecognized feature: 'local-network-access'.
+chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+MSGraphContext.jsx:331 Unrecognized feature: 'local-network-access'.
 createHiddenIframe @ SilentHandler.ts:259
 loadFrameSync @ SilentHandler.ts:235
 (anonymous) @ FunctionWrappers.ts:43
@@ -13,9 +14,9 @@ acquireToken @ SilentIframeClient.ts:139
 await in acquireToken (async)
 ssoSilent @ StandardController.ts:1067
 ssoSilent @ PublicClientApplication.ts:343
-refreshToken @ MSGraphContext.jsx:421
-await in refreshToken (async)
-(anonymous) @ MSGraphContext.jsx:452
+initializeMsal @ MSGraphContext.jsx:331
+await in initializeMsal (async)
+(anonymous) @ MSGraphContext.jsx:369
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -28,139 +29,78 @@ workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 22 more frames
-MSGraphContext.jsx:421 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-createHiddenIframe @ SilentHandler.ts:260
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-refreshToken @ MSGraphContext.jsx:421
-await in refreshToken (async)
-(anonymous) @ MSGraphContext.jsx:452
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 22 more frames
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
 Me.htm:1 true
-:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI4NmY0LTdlMWMtN2NlOC04YTlhLTI0NTY1YmQ3ZjljMSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-excelGraphService.js:52     PUT https://graph.microsoft.com/v1.0/me/drive/root:/Documents/Security_export.xlsx:/content 409
-(anonymous) @ HTTPMessageHandler.ts:29
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ HTTPMessageHandler.ts:28
-(anonymous) @ TelemetryHandler.ts:91
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ TelemetryHandler.ts:66
-(anonymous) @ RedirectHandler.ts:193
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-executeWithRedirect @ RedirectHandler.ts:192
-(anonymous) @ RedirectHandler.ts:225
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ RedirectHandler.ts:220
-(anonymous) @ RetryHandler.ts:173
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-executeWithRetry @ RetryHandler.ts:172
-(anonymous) @ RetryHandler.ts:196
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ RetryHandler.ts:192
-(anonymous) @ AuthenticationHandler.ts:88
-fulfilled @ tslib.es6.mjs:118
-Promise.then (async)
-step @ tslib.es6.mjs:120
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ AuthenticationHandler.ts:63
-(anonymous) @ HTTPClient.ts:88
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-sendRequest @ HTTPClient.ts:81
-(anonymous) @ GraphRequest.ts:372
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-send @ GraphRequest.ts:366
-(anonymous) @ GraphRequest.ts:691
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-put @ GraphRequest.ts:684
-uploadExcelFile @ excelGraphService.js:52
-(anonymous) @ App.jsx:10316
-(anonymous) @ App.jsx:10365
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 53 more frames
-excelGraphService.js:56 Failed to upload Excel file: Error: Name already exists
-    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
-    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
-    at Generator.next (<anonymous>)
-    at tslib.es6.mjs:121:69
-    at new Promise (<anonymous>)
-    at __awaiter (tslib.es6.mjs:117:10)
-    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
-    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
-    at Generator.throw (<anonymous>)
-    at rejected (tslib.es6.mjs:119:62)
-uploadExcelFile @ excelGraphService.js:56
-await in uploadExcelFile (async)
-(anonymous) @ App.jsx:10316
-(anonymous) @ App.jsx:10365
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:10350 Failed to export to OneDrive: Error: Failed to upload Excel file: Name already exists
-    at uploadExcelFile (excelGraphService.js:57:11)
-    at async App.jsx:10316:7
-(anonymous) @ App.jsx:10350
-await in (anonymous) (async)
-(anonymous) @ App.jsx:10365
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
+Me.htm:1 true
+Me.htm:1 true
+Me.htm:1 true
+Me.htm:1 true
+chunk-DSUIPI7G.js:7410 Warning: Updating a style property during rerender (border) when a conflicting property is set (borderRight) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values.
+    at button
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1767544349359:9571:22)
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1767544349359:23217:99)
+    at SurveySessionProvider (http://localhost:5173/src/contexts/SurveySessionContext.jsx:29:41)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:57:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+printWarning @ chunk-DSUIPI7G.js:7410
+error @ chunk-DSUIPI7G.js:7394
+validateShorthandPropertyCollisionInDev @ chunk-DSUIPI7G.js:9544
+diffProperties @ chunk-DSUIPI7G.js:14636
+prepareUpdate @ chunk-DSUIPI7G.js:15256
+updateHostComponent$1 @ chunk-DSUIPI7G.js:22936
+completeWork @ chunk-DSUIPI7G.js:23160
+completeUnitOfWork @ chunk-DSUIPI7G.js:26113
+performUnitOfWork @ chunk-DSUIPI7G.js:26095
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 14 more frames
+chunk-DSUIPI7G.js:7410 Warning: Updating a style property during rerender (border) when a conflicting property is set (borderLeft) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values.
+    at button
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1767544349359:9571:22)
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1767544349359:23217:99)
+    at SurveySessionProvider (http://localhost:5173/src/contexts/SurveySessionContext.jsx:29:41)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:57:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+printWarning @ chunk-DSUIPI7G.js:7410
+error @ chunk-DSUIPI7G.js:7394
+validateShorthandPropertyCollisionInDev @ chunk-DSUIPI7G.js:9544
+diffProperties @ chunk-DSUIPI7G.js:14636
+prepareUpdate @ chunk-DSUIPI7G.js:15256
+updateHostComponent$1 @ chunk-DSUIPI7G.js:22936
+completeWork @ chunk-DSUIPI7G.js:23160
+completeUnitOfWork @ chunk-DSUIPI7G.js:26113
+performUnitOfWork @ chunk-DSUIPI7G.js:26095
+workLoopSync @ chunk-DSUIPI7G.js:26026
+renderRootSync @ chunk-DSUIPI7G.js:26005
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 14 more frames

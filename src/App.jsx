@@ -19096,7 +19096,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         style={{
                           flex: 1,
                           background: isExporting ? '#6c7a89' : '#4A90E2',
-                          border: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
+                          borderTop: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
+                          borderBottom: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
+                          borderLeft: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
                           borderRight: 'none',
                           borderTopLeftRadius: '6px',
                           borderBottomLeftRadius: '6px',
@@ -19126,7 +19128,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         style={{
                           width: '40px',
                           background: isExporting ? '#6c7a89' : '#4A90E2',
-                          border: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
+                          borderTop: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
+                          borderBottom: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
+                          borderRight: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
                           borderLeft: '1px solid rgba(0,0,0,0.1)',
                           borderTopRightRadius: '6px',
                           borderBottomRightRadius: '6px',
