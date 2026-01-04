@@ -10337,6 +10337,46 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     checkLinkedExcelExists();
   }, [selectedTemplate?.linkedExcelPath, selectedTemplate?.isOneDrive, graphClient]);
 
+  // Unlink Excel file from template (when file is deleted or user wants to relink)
+  const handleUnlinkExcel = useCallback(async () => {
+    if (!selectedTemplate) return;
+
+    const updatedTemplate = {
+      ...selectedTemplate,
+      linkedExcelPath: null,
+      isOneDrive: undefined,
+      lastSyncTime: null
+    };
+    setSelectedTemplate(updatedTemplate);
+    setLinkedExcelExists(null);
+    setAutoPushToExcel(false);
+    setLiveSyncEnabled(false);
+    setShowExportMenu(false);
+
+    // Persist to Supabase
+    const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+    if (updateSupabaseTemplate && supabaseTemplateId) {
+      try {
+        const configPayload = sanitizeTemplateConfig(updatedTemplate);
+        await updateSupabaseTemplate(supabaseTemplateId, {
+          config: configPayload
+        });
+      } catch (err) {
+        console.warn('Failed to update template in Supabase:', err);
+      }
+    }
+
+    // Update local templates array
+    if (handleTemplatesChange && appTemplates) {
+      const updatedTemplates = appTemplates.map(t =>
+        (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
+          ? updatedTemplate
+          : t
+      );
+      handleTemplatesChange(updatedTemplates);
+    }
+  }, [selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, sanitizeTemplateConfig]);
+
   const handleSyncToExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
       alert('No Excel file linked to this survey.');
@@ -19100,7 +19140,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   background: '#252525',
                   position: 'relative' // For dropdown positioning
                 }}>
-                  {!selectedTemplate.linkedExcelPath ? (
+                  {(!selectedTemplate.linkedExcelPath || linkedExcelExists === false) ? (
                     <button
                       type="button"
                       onClick={handleExportSurveyToExcel}
