@@ -30,6 +30,7 @@ export const MSGraphProvider = ({ children }) => {
     const [connectionRestored, setConnectionRestored] = useState(false);
     const [needsReconnect, setNeedsReconnect] = useState(false);
     const tokenRef = useRef(null);
+    const oauthProcessing = useRef(false); // Prevent duplicate OAuth callback processing
 
     // Initialize Graph client
     const initializeGraphClient = useCallback((accessToken) => {
@@ -49,10 +50,7 @@ export const MSGraphProvider = ({ children }) => {
 
     // Store tokens in Supabase database
     const storeTokens = useCallback(async (tokens, accountInfo) => {
-        if (!user || !isSupabaseAvailable()) {
-            console.log('[Microsoft] Cannot store tokens - no user or Supabase unavailable');
-            return false;
-        }
+        if (!user || !isSupabaseAvailable()) return false;
 
         try {
             const { error } = await supabase
@@ -75,14 +73,8 @@ export const MSGraphProvider = ({ children }) => {
                     last_used_at: new Date().toISOString(),
                 }, { onConflict: 'user_id,service_name' });
 
-            if (error) {
-                console.error('[Microsoft] Failed to store tokens:', error.message);
-                return false;
-            }
-            console.log('[Microsoft] Tokens stored successfully');
-            return true;
+            return !error;
         } catch (err) {
-            console.error('[Microsoft] Exception storing tokens:', err);
             return false;
         }
     }, [user]);
@@ -102,7 +94,6 @@ export const MSGraphProvider = ({ children }) => {
             if (error || !data) return null;
             return data;
         } catch (err) {
-            console.error('[Microsoft] Error fetching stored tokens:', err);
             return null;
         }
     }, [user]);
@@ -110,7 +101,6 @@ export const MSGraphProvider = ({ children }) => {
     // Refresh access token using refresh token
     const refreshAccessToken = useCallback(async (refreshToken) => {
         try {
-            console.log('[Microsoft] Refreshing access token...');
             const tokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
             const response = await fetch(tokenUrl, {
                 method: 'POST',
@@ -123,14 +113,9 @@ export const MSGraphProvider = ({ children }) => {
                 }).toString(),
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error('[Microsoft] Token refresh failed:', errorData);
-                return null;
-            }
+            if (!response.ok) return null;
 
             const tokens = await response.json();
-            console.log('[Microsoft] Token refreshed successfully');
             return {
                 access_token: tokens.access_token,
                 refresh_token: tokens.refresh_token || refreshToken,
@@ -138,7 +123,6 @@ export const MSGraphProvider = ({ children }) => {
                 expires_at: Math.floor(Date.now() / 1000) + tokens.expires_in,
             };
         } catch (err) {
-            console.error('[Microsoft] Token refresh error:', err);
             return null;
         }
     }, []);
@@ -154,7 +138,7 @@ export const MSGraphProvider = ({ children }) => {
                 .eq('user_id', user.id)
                 .eq('service_name', 'microsoft');
         } catch (err) {
-            console.error('[Microsoft] Error removing connection:', err);
+            // Silently fail
         }
     }, [user]);
 
@@ -178,8 +162,6 @@ export const MSGraphProvider = ({ children }) => {
         let isMounted = true;
 
         const restoreConnection = async () => {
-            console.log('[Microsoft] Restoring connection, user:', !!user);
-
             if (!user) {
                 setIsLoading(false);
                 setConnectionRestored(true);
@@ -190,13 +172,8 @@ export const MSGraphProvider = ({ children }) => {
 
             try {
                 const storedData = await fetchStoredTokens();
-                console.log('[Microsoft] Stored data:', storedData ? {
-                    is_connected: storedData.is_connected,
-                    hasRefreshToken: !!storedData.metadata?.refresh_token,
-                } : null);
 
                 if (!storedData?.is_connected || !storedData?.metadata?.refresh_token) {
-                    console.log('[Microsoft] No valid stored connection');
                     if (isMounted) {
                         setIsAuthenticated(false);
                         setAccount(null);
@@ -215,11 +192,9 @@ export const MSGraphProvider = ({ children }) => {
                 let currentAccessToken = access_token;
 
                 if (!expires_at || expires_at < now + 300) {
-                    console.log('[Microsoft] Token expired, refreshing...');
                     const newTokens = await refreshAccessToken(refresh_token);
 
                     if (!newTokens) {
-                        console.log('[Microsoft] Refresh failed, needs reconnect');
                         if (isMounted) {
                             setNeedsReconnect(true);
                             setAccount({ username: account_email, name: account_name, homeAccountId: account_id });
@@ -238,7 +213,6 @@ export const MSGraphProvider = ({ children }) => {
                     });
                 }
 
-                console.log('[Microsoft] Connection restored successfully');
                 if (isMounted) {
                     setAccount({ username: account_email, name: account_name, homeAccountId: account_id });
                     setIsAuthenticated(true);
@@ -246,7 +220,6 @@ export const MSGraphProvider = ({ children }) => {
                     initializeGraphClient(currentAccessToken);
                 }
             } catch (err) {
-                console.error('[Microsoft] Error restoring connection:', err);
                 if (isMounted) setError(err.message);
             } finally {
                 if (isMounted) {
@@ -289,7 +262,6 @@ export const MSGraphProvider = ({ children }) => {
     const login = async () => {
         try {
             setError(null);
-            console.log('[Microsoft] Starting OAuth flow...');
 
             // Generate PKCE code verifier and challenge
             const generatePKCE = () => {
@@ -326,7 +298,6 @@ export const MSGraphProvider = ({ children }) => {
             // Redirect to Microsoft login
             window.location.href = authUrl.toString();
         } catch (err) {
-            console.error('[Microsoft] Login error:', err);
             setError(err.message);
             throw err;
         }
@@ -334,39 +305,40 @@ export const MSGraphProvider = ({ children }) => {
 
     // Handle OAuth callback (call this from App.jsx on mount)
     const handleOAuthCallback = useCallback(async () => {
+        // Prevent duplicate processing
+        if (oauthProcessing.current) return false;
+
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
         const state = urlParams.get('state');
-        const error = urlParams.get('error');
+        const errorParam = urlParams.get('error');
 
-        if (error) {
-            console.error('[Microsoft] OAuth error:', urlParams.get('error_description'));
-            setError(urlParams.get('error_description') || error);
-            // Clean up URL
+        if (errorParam) {
+            setError(urlParams.get('error_description') || errorParam);
             window.history.replaceState({}, document.title, window.location.pathname);
             return false;
         }
 
         if (!code) return false;
 
+        oauthProcessing.current = true;
+
         const storedState = sessionStorage.getItem('ms_oauth_state');
         const codeVerifier = sessionStorage.getItem('ms_pkce_verifier');
 
         if (state !== storedState) {
-            console.error('[Microsoft] State mismatch');
             setError('OAuth state mismatch - possible CSRF attack');
             window.history.replaceState({}, document.title, window.location.pathname);
+            oauthProcessing.current = false;
             return false;
         }
 
         if (!codeVerifier) {
-            console.error('[Microsoft] No PKCE verifier found');
             setError('OAuth session expired - please try again');
             window.history.replaceState({}, document.title, window.location.pathname);
+            oauthProcessing.current = false;
             return false;
         }
-
-        console.log('[Microsoft] Processing OAuth callback...');
 
         try {
             // Exchange code for tokens
@@ -390,7 +362,6 @@ export const MSGraphProvider = ({ children }) => {
             }
 
             const tokens = await tokenResponse.json();
-            console.log('[Microsoft] Tokens received, has refresh_token:', !!tokens.refresh_token);
 
             // Decode ID token to get user info
             const idTokenParts = tokens.id_token.split('.');
@@ -422,21 +393,21 @@ export const MSGraphProvider = ({ children }) => {
                 setIsAuthenticated(true);
                 setNeedsReconnect(false);
                 initializeGraphClient(tokens.access_token);
-                console.log('[Microsoft] Successfully connected!');
             }
 
             // Clean up
             sessionStorage.removeItem('ms_pkce_verifier');
             sessionStorage.removeItem('ms_oauth_state');
             window.history.replaceState({}, document.title, window.location.pathname);
+            oauthProcessing.current = false;
 
             return true;
         } catch (err) {
-            console.error('[Microsoft] OAuth callback error:', err);
             setError(err.message);
             sessionStorage.removeItem('ms_pkce_verifier');
             sessionStorage.removeItem('ms_oauth_state');
             window.history.replaceState({}, document.title, window.location.pathname);
+            oauthProcessing.current = false;
             return false;
         }
     }, [storeTokens, initializeGraphClient]);
@@ -456,9 +427,7 @@ export const MSGraphProvider = ({ children }) => {
             setGraphClient(null);
             setNeedsReconnect(false);
             tokenRef.current = null;
-            console.log('[Microsoft] Logged out');
         } catch (err) {
-            console.error('[Microsoft] Logout error:', err);
             setError(err.message);
         }
     };

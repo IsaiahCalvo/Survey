@@ -1,0 +1,51 @@
+chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+MSGraphContext.jsx:181 [Microsoft] Restoring connection, user: false
+MSGraphContext.jsx:181 [Microsoft] Restoring connection, user: true
+MSGraphContext.jsx:369 [Microsoft] Processing OAuth callback...
+MSGraphContext.jsx:181 [Microsoft] Restoring connection, user: true
+MSGraphContext.jsx:369 [Microsoft] Processing OAuth callback...
+MSGraphContext.jsx:193 [Microsoft] Stored data: {is_connected: true, hasRefreshToken: false}
+MSGraphContext.jsx:199 [Microsoft] No valid stored connection
+MSGraphContext.jsx:193 [Microsoft] Stored data: {is_connected: true, hasRefreshToken: false}
+MSGraphContext.jsx:199 [Microsoft] No valid stored connection
+MSGraphContext.jsx:374     POST https://login.microsoftonline.com/common/oauth2/v2.0/token 400
+(anonymous) @ MSGraphContext.jsx:374
+(anonymous) @ MSGraphContext.jsx:447
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+MSGraphContext.jsx:435 [Microsoft] OAuth callback error: Error: AADSTS70000: The provided value for the 'code' parameter is not valid. The code has expired. Trace ID: 74d45878-fbf6-48ff-9dca-79358b81c808 Correlation ID: 7ebc66e7-3405-4e11-9751-b5daf0687ff2 Timestamp: 2026-01-04 22:20:14Z
+    at MSGraphContext.jsx:389:23
+(anonymous) @ MSGraphContext.jsx:435
+await in (anonymous) (async)
+(anonymous) @ MSGraphContext.jsx:447
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+MSGraphContext.jsx:393 [Microsoft] Tokens received, has refresh_token: true
+MSGraphContext.jsx:82 [Microsoft] Tokens stored successfully
+MSGraphContext.jsx:425 [Microsoft] Successfully connected!
+MSGraphContext.jsx:181 [Microsoft] Restoring connection, user: true
+MSGraphContext.jsx:193 [Microsoft] Stored data: {is_connected: true, hasRefreshToken: true}
+MSGraphContext.jsx:241 [Microsoft] Connection restored successfully
+MSGraphContext.jsx:181 [Microsoft] Restoring connection, user: true
+MSGraphContext.jsx:193 [Microsoft] Stored data: {is_connected: true, hasRefreshToken: true}
+MSGraphContext.jsx:241 [Microsoft] Connection restored successfully
