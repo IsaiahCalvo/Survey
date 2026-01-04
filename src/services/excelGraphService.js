@@ -46,8 +46,9 @@ export async function uploadExcelFile(graphClient, filePath, fileContent) {
     });
 
     // Upload file to OneDrive with explicit content-type header
+    // Use @microsoft.graph.conflictBehavior=replace to overwrite existing files
     const response = await graphClient
-      .api(`/me/drive/root:${filePath}:/content`)
+      .api(`/me/drive/root:${filePath}:/content?@microsoft.graph.conflictBehavior=replace`)
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .put(blob);
 
