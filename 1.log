@@ -1,64 +1,25 @@
-chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-MSGraphContext.jsx:236 Unrecognized feature: 'local-network-access'.
+chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+SilentHandler.ts:259 Unrecognized feature: 'local-network-access'.
 createHiddenIframe @ SilentHandler.ts:259
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:236
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:274
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-Me.htm:1 true
-login.live.com/Me.htm?v=3:1 true
-Me.htm:1 true
-PageAnnotationLayer.jsx:6249 [Page 1] Save error: TypeError: Cannot read properties of undefined (reading '0')
-    at Object.stylesToArray (fabric.js:1885:14)
-    at klass.toObject (fabric.js:27403:32)
-    at klass.toObject (fabric.js:3098:52)
-    at klass.callSuper (fabric.js:3144:22)
-    at klass.toObject (fabric.js:31090:19)
-    at klass.toObject (fabric.js:3098:52)
-    at klass._toObject (fabric.js:10086:39)
-    at klass.callSuper (fabric.js:3144:22)
-    at klass._toObject (fabric.js:12894:25)
-    at klass._toObject (fabric.js:3098:52)
-(anonymous) @ PageAnnotationLayer.jsx:6249
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
+SilentHandler.ts:260 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+createHiddenIframe @ SilentHandler.ts:260
+Show 1 more frame
+:5173/#error=interaction_required&error_description=Silent+authentication+was+denied.+The+user+must+first+sign+in+and+if+needed+grant+the+client+application+access+to+the+scope+'User.Read+Files.ReadWrite.All+Sites.ReadWrite.All+openid+profile+offline_access'.&state=eyJpZCI6IjAxOWI4NmM3LWQ0M2ItN2IzNy05MGMyLTFhMmY4MWNlNzliNCIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoic2lsZW50In19:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+Show 1 more frame
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+Show 1 more frame
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+Show 1 more frame
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+Show 1 more frame
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+Show 1 more frame
+PopupClient.ts:799 Cross-Origin-Opener-Policy policy would block the window.closed call.
+(anonymous) @ PopupClient.ts:799
+Show 1 more frame

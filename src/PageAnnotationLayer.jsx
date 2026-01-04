@@ -33,33 +33,61 @@ import { calculateViewportSafePosition } from './utils/menuPositioning';
 configureFabricOverrides();
 
 /**
+ * Sanitizes a single text object to prevent stylesToArray errors
+ * @param {fabric.Object} obj - The Fabric.js object to sanitize
+ */
+const sanitizeTextObject = (obj) => {
+  if (!obj) return;
+  if (obj.type === 'i-text' || obj.type === 'textbox' || obj.type === 'text') {
+    // Clean up malformed styles - ensure styles is a proper object
+    if (obj.styles) {
+      const cleanStyles = {};
+      Object.keys(obj.styles).forEach(lineIndex => {
+        if (obj.styles[lineIndex] && typeof obj.styles[lineIndex] === 'object') {
+          cleanStyles[lineIndex] = {};
+          Object.keys(obj.styles[lineIndex]).forEach(charIndex => {
+            if (obj.styles[lineIndex][charIndex] !== undefined) {
+              cleanStyles[lineIndex][charIndex] = obj.styles[lineIndex][charIndex];
+            }
+          });
+          // Remove empty line style objects
+          if (Object.keys(cleanStyles[lineIndex]).length === 0) {
+            delete cleanStyles[lineIndex];
+          }
+        }
+      });
+      obj.styles = cleanStyles;
+    }
+    // Ensure styles exists even if empty (prevents undefined errors)
+    if (!obj.styles) {
+      obj.styles = {};
+    }
+  }
+};
+
+/**
  * Sanitizes text objects on a Fabric.js canvas to prevent stylesToArray errors
  * This fixes "Cannot read properties of undefined (reading '0')" errors when serializing
+ * Handles both top-level objects and text objects inside Groups (like callouts)
  * @param {fabric.Canvas} canvas - The Fabric.js canvas instance
  */
 const sanitizeTextStyles = (canvas) => {
   if (!canvas) return;
   canvas.getObjects().forEach(obj => {
-    if (obj.type === 'i-text' || obj.type === 'textbox' || obj.type === 'text') {
-      // Clean up malformed styles - ensure styles is a proper object
-      if (obj.styles) {
-        const cleanStyles = {};
-        Object.keys(obj.styles).forEach(lineIndex => {
-          if (obj.styles[lineIndex] && typeof obj.styles[lineIndex] === 'object') {
-            cleanStyles[lineIndex] = {};
-            Object.keys(obj.styles[lineIndex]).forEach(charIndex => {
-              if (obj.styles[lineIndex][charIndex] !== undefined) {
-                cleanStyles[lineIndex][charIndex] = obj.styles[lineIndex][charIndex];
-              }
-            });
-            // Remove empty line style objects
-            if (Object.keys(cleanStyles[lineIndex]).length === 0) {
-              delete cleanStyles[lineIndex];
-            }
-          }
-        });
-        obj.styles = cleanStyles;
-      }
+    // Handle text objects directly on canvas
+    sanitizeTextObject(obj);
+
+    // Handle text objects inside Groups (callouts, arrows with text, etc.)
+    if (obj.type === 'group' && obj.getObjects) {
+      obj.getObjects().forEach(child => {
+        sanitizeTextObject(child);
+        // Handle nested groups (rare but possible)
+        if (child.type === 'group' && child.getObjects) {
+          child.getObjects().forEach(grandchild => {
+            sanitizeTextObject(grandchild);
+          });
+        }
+      });
     }
   });
 };

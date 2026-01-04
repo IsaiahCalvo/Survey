@@ -166,6 +166,26 @@ export const MSGraphProvider = ({ children }) => {
                 if (!isMounted) return;
                 setMsalInstance(pca);
 
+                // Handle redirect response (for Electron redirect flow)
+                try {
+                    const redirectResponse = await pca.handleRedirectPromise();
+                    if (redirectResponse && redirectResponse.account && isMounted) {
+                        setAccount(redirectResponse.account);
+                        setIsAuthenticated(true);
+                        setNeedsReconnect(false);
+                        initializeGraphClient(pca, redirectResponse.account);
+                        // Persist the connection
+                        if (user) {
+                            await persistConnection(redirectResponse.account);
+                        }
+                        setIsLoading(false);
+                        setConnectionRestored(true);
+                        return; // Early return - redirect auth completed
+                    }
+                } catch (redirectErr) {
+                    console.error('[Microsoft Init] Redirect handling error:', redirectErr);
+                }
+
                 // Check for existing accounts in MSAL cache
                 const accounts = pca.getAllAccounts();
 
@@ -372,24 +392,33 @@ export const MSGraphProvider = ({ children }) => {
 
     const login = async () => {
         if (!msalInstance) return;
-        try {
-            // Configure popup with proper settings to avoid COOP issues
-            const popupRequest = {
-                ...loginRequest,
-                popupWindowAttributes: {
-                    popupSize: { width: 483, height: 600 },
-                    popupPosition: { top: 100, left: 100 }
-                }
-            };
-            const response = await msalInstance.loginPopup(popupRequest);
-            if (response && response.account) {
-                setAccount(response.account);
-                setIsAuthenticated(true);
-                setNeedsReconnect(false); // Clear reconnect flag on successful login
-                initializeGraphClient(msalInstance, response.account);
 
-                // Persist the connection to Supabase
-                await persistConnection(response.account);
+        // Detect if running in Electron
+        const isElectron = window.electronAPI !== undefined;
+
+        try {
+            if (isElectron) {
+                // Use redirect flow for Electron to avoid COOP popup issues
+                // This will redirect the page, and handleRedirectPromise will catch the response on reload
+                await msalInstance.loginRedirect(loginRequest);
+                // Note: Code after loginRedirect won't execute - page will redirect
+            } else {
+                // Use popup for regular browser
+                const popupRequest = {
+                    ...loginRequest,
+                    popupWindowAttributes: {
+                        popupSize: { width: 483, height: 600 },
+                        popupPosition: { top: 100, left: 100 }
+                    }
+                };
+                const response = await msalInstance.loginPopup(popupRequest);
+                if (response && response.account) {
+                    setAccount(response.account);
+                    setIsAuthenticated(true);
+                    setNeedsReconnect(false);
+                    initializeGraphClient(msalInstance, response.account);
+                    await persistConnection(response.account);
+                }
             }
         } catch (err) {
             console.error("Microsoft login failed:", err.message);
@@ -399,17 +428,29 @@ export const MSGraphProvider = ({ children }) => {
 
     const logout = async () => {
         if (!msalInstance) return;
+
+        // Detect if running in Electron
+        const isElectron = window.electronAPI !== undefined;
+
         try {
             // Remove from Supabase first
             await removeConnection();
 
-            await msalInstance.logoutPopup({
-                postLogoutRedirectUri: window.location.origin,
-                popupWindowAttributes: {
-                    popupSize: { width: 483, height: 600 },
-                    popupPosition: { top: 100, left: 100 }
-                }
-            });
+            if (isElectron) {
+                // Use redirect for Electron
+                await msalInstance.logoutRedirect({
+                    postLogoutRedirectUri: window.location.origin
+                });
+            } else {
+                // Use popup for regular browser
+                await msalInstance.logoutPopup({
+                    postLogoutRedirectUri: window.location.origin,
+                    popupWindowAttributes: {
+                        popupSize: { width: 483, height: 600 },
+                        popupPosition: { top: 100, left: 100 }
+                    }
+                });
+            }
             setAccount(null);
             setIsAuthenticated(false);
             setGraphClient(null);
