@@ -21533,90 +21533,79 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               </button>
               <button
                 onClick={async () => {
-                  setShowExportLocationModal(false);
                   // Check if authenticated
                   if (!isMSAuthenticated) {
+                    // Set pending flag so export auto-resumes after login
+                    setPendingOneDriveExport(true);
+                    setShowExportLocationModal(false);
                     setShowMSLoginModal(true);
                     return;
                   }
 
-                  // Export to OneDrive
-                  try {
-                    const fileName = `${exportPendingData.fileName}_export.xlsx`;
-                    const filePath = `/Documents/${fileName}`;
-
-                    await uploadExcelFile(graphClient, filePath, exportPendingData.buffer);
-
-                    const updatedTemplate = {
-                      ...selectedTemplate,
-                      linkedExcelPath: filePath,
-                      isOneDrive: true,
-                      lastSyncTime: new Date().toISOString()
-                    };
-                    setSelectedTemplate(updatedTemplate);
-
-                    // Persist to Supabase (store in config JSONB)
-                    const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
-                    if (updateSupabaseTemplate && supabaseTemplateId) {
-                      try {
-                        const configPayload = sanitizeTemplateConfig(updatedTemplate);
-                        await updateSupabaseTemplate(supabaseTemplateId, {
-                          config: configPayload
-                        });
-                      } catch (err) {
-                        console.warn('Failed to persist Excel link to Supabase:', err);
-                      }
-                    }
-
-                    // Update local templates array to propagate linkedExcelPath to parent
-                    if (handleTemplatesChange && appTemplates) {
-                      const updatedTemplates = appTemplates.map(t =>
-                        (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
-                          ? updatedTemplate
-                          : t
-                      );
-                      handleTemplatesChange(updatedTemplates);
-                    }
-
-                    alert('Export to OneDrive successful!');
-                  } catch (error) {
-                    console.error('Failed to export to OneDrive:', error);
-                    alert(`Failed to export to OneDrive: ${error.message}`);
-                  }
-                  setExportPendingData(null);
+                  // Already authenticated - perform export directly
+                  setShowExportLocationModal(false);
+                  await performOneDriveExport();
                 }}
+                disabled={isExportingToOneDrive}
                 style={{
                   padding: '16px 20px',
-                  background: '#4A90E2',
+                  background: isExportingToOneDrive ? '#6BA3D6' : '#4A90E2',
                   border: '1px solid #4A90E2',
                   borderRadius: '8px',
                   color: '#FFFFFF',
                   fontSize: '14px',
                   fontWeight: 500,
-                  cursor: 'pointer',
+                  cursor: isExportingToOneDrive ? 'wait' : 'pointer',
                   transition: 'all 0.2s ease',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '10px',
                   letterSpacing: '-0.01em',
-                  boxShadow: '0 2px 8px rgba(74, 144, 226, 0.2)'
+                  boxShadow: '0 2px 8px rgba(74, 144, 226, 0.2)',
+                  opacity: isExportingToOneDrive ? 0.8 : 1
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#3A7BC8';
-                  e.currentTarget.style.borderColor = '#3A7BC8';
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(74, 144, 226, 0.3)';
+                  if (!isExportingToOneDrive) {
+                    e.currentTarget.style.background = '#3A7BC8';
+                    e.currentTarget.style.borderColor = '#3A7BC8';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(74, 144, 226, 0.3)';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = '#4A90E2';
-                  e.currentTarget.style.borderColor = '#4A90E2';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.2)';
+                  if (!isExportingToOneDrive) {
+                    e.currentTarget.style.background = '#4A90E2';
+                    e.currentTarget.style.borderColor = '#4A90E2';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.2)';
+                  }
                 }}
               >
-                <span style={{ fontSize: '18px' }}>☁️</span>
-                <span>Save to OneDrive</span>
+                {isExportingToOneDrive ? (
+                  <>
+                    <span style={{
+                      width: '18px',
+                      height: '18px',
+                      border: '2px solid #FFFFFF',
+                      borderTopColor: 'transparent',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }} />
+                    <span>Exporting...</span>
+                    <style>{`
+                      @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                      }
+                    `}</style>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize: '18px' }}>☁️</span>
+                    <span>Save to OneDrive</span>
+                  </>
+                )}
               </button>
               <button
                 onClick={() => {
