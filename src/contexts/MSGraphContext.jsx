@@ -642,6 +642,34 @@ export const MSGraphProvider = ({ children }) => {
                     }));
                 }
 
+                // CRITICAL: Store MSAL's internal index keys so getAllAccounts() works on restart
+                // MSAL uses these to track which accounts and tokens exist in the cache
+
+                // 1. Account keys index - tells MSAL which account entries exist
+                const existingAccountKeys = JSON.parse(localStorage.getItem('msal.account.keys') || '[]');
+                if (!existingAccountKeys.includes(accountCacheKey)) {
+                    existingAccountKeys.push(accountCacheKey);
+                    localStorage.setItem('msal.account.keys', JSON.stringify(existingAccountKeys));
+                }
+
+                // 2. Token keys index - tells MSAL which token entries exist for this client
+                const tokenKeysKey = `msal.token.keys.${msalConfig.auth.clientId}`;
+                const existingTokenKeys = JSON.parse(localStorage.getItem(tokenKeysKey) || '{"idToken":[],"accessToken":[],"refreshToken":[]}');
+
+                if (!existingTokenKeys.idToken.includes(idTokenKey)) {
+                    existingTokenKeys.idToken.push(idTokenKey);
+                }
+                if (!existingTokenKeys.accessToken.includes(accessTokenKey)) {
+                    existingTokenKeys.accessToken.push(accessTokenKey);
+                }
+                if (tokens.refresh_token) {
+                    const refreshTokenKey = `${msalAccount.homeAccountId}-login.microsoftonline.com-refreshtoken-${msalConfig.auth.clientId}--`;
+                    if (!existingTokenKeys.refreshToken.includes(refreshTokenKey)) {
+                        existingTokenKeys.refreshToken.push(refreshTokenKey);
+                    }
+                }
+                localStorage.setItem(tokenKeysKey, JSON.stringify(existingTokenKeys));
+
                 // Set state
                 setAccount(msalAccount);
                 setIsAuthenticated(true);
