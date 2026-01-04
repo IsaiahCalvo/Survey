@@ -10296,16 +10296,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [selectedTemplate]);
 
-  // Check if linked Excel file exists when template changes or dropdown opens
+  // Check if linked Excel file exists when template changes
+  // If file is deleted, automatically clear the link
+  const lastCheckedExcelPathRef = useRef(null);
   useEffect(() => {
     const checkLinkedExcelExists = async () => {
-      if (!selectedTemplate?.linkedExcelPath) {
+      const excelPath = selectedTemplate?.linkedExcelPath;
+      const isOneDrive = selectedTemplate?.isOneDrive;
+
+      if (!excelPath) {
         setLinkedExcelExists(null);
+        lastCheckedExcelPathRef.current = null;
         return;
       }
 
-      const excelPath = selectedTemplate.linkedExcelPath;
-      const isOneDrive = selectedTemplate.isOneDrive;
+      // Skip if we already checked this path and it doesn't exist (avoid infinite loop)
+      if (lastCheckedExcelPathRef.current === excelPath) {
+        return;
+      }
 
       try {
         if (isOneDrive) {
@@ -10313,6 +10321,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (graphClient) {
             await getFileMetadata(graphClient, excelPath);
             setLinkedExcelExists(true);
+            lastCheckedExcelPathRef.current = excelPath;
           } else {
             // Not authenticated, can't check - assume exists
             setLinkedExcelExists(null);
@@ -10321,23 +10330,90 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           // For local files, use Electron API
           if (window.electronAPI) {
             const exists = await window.electronAPI.fileExists(excelPath);
-            setLinkedExcelExists(exists);
+            if (exists) {
+              setLinkedExcelExists(true);
+              lastCheckedExcelPathRef.current = excelPath;
+            } else {
+              // File deleted - automatically clear the link
+              console.log('Linked Excel file not found, clearing link:', excelPath);
+              lastCheckedExcelPathRef.current = excelPath; // Prevent re-checking
+
+              setLinkedExcelExists(false);
+              setAutoPushToExcel(false);
+              setLiveSyncEnabled(false);
+
+              // Clear the link from the template
+              setSelectedTemplate(prev => ({
+                ...prev,
+                linkedExcelPath: null,
+                isOneDrive: undefined,
+                lastSyncTime: null
+              }));
+
+              // Persist to Supabase
+              const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+              if (updateSupabaseTemplate && supabaseTemplateId) {
+                try {
+                  const configPayload = sanitizeTemplateConfig({
+                    ...selectedTemplate,
+                    linkedExcelPath: null,
+                    isOneDrive: undefined,
+                    lastSyncTime: null
+                  });
+                  await updateSupabaseTemplate(supabaseTemplateId, {
+                    config: configPayload
+                  });
+                } catch (err) {
+                  console.warn('Failed to update template in Supabase:', err);
+                }
+              }
+            }
           } else {
             // Not in Electron, can't check - assume exists
             setLinkedExcelExists(null);
           }
         }
       } catch (error) {
-        // File not found or other error
-        console.warn('Linked Excel file not found:', error.message);
+        // File not found or other error (OneDrive)
+        console.log('Linked Excel file not found, clearing link:', error.message);
+        lastCheckedExcelPathRef.current = excelPath; // Prevent re-checking
+
         setLinkedExcelExists(false);
+        setAutoPushToExcel(false);
+        setLiveSyncEnabled(false);
+
+        // Clear the link from the template
+        setSelectedTemplate(prev => ({
+          ...prev,
+          linkedExcelPath: null,
+          isOneDrive: undefined,
+          lastSyncTime: null
+        }));
+
+        // Persist to Supabase
+        const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+        if (updateSupabaseTemplate && supabaseTemplateId) {
+          try {
+            const configPayload = sanitizeTemplateConfig({
+              ...selectedTemplate,
+              linkedExcelPath: null,
+              isOneDrive: undefined,
+              lastSyncTime: null
+            });
+            await updateSupabaseTemplate(supabaseTemplateId, {
+              config: configPayload
+            });
+          } catch (err) {
+            console.warn('Failed to update template in Supabase:', err);
+          }
+        }
       }
     };
 
     checkLinkedExcelExists();
-  }, [selectedTemplate?.linkedExcelPath, selectedTemplate?.isOneDrive, graphClient]);
+  }, [selectedTemplate?.linkedExcelPath, selectedTemplate?.isOneDrive, selectedTemplate?.id, selectedTemplate?.supabaseId, graphClient, updateSupabaseTemplate, sanitizeTemplateConfig]);
 
-  // Unlink Excel file from template (when file is deleted or user wants to relink)
+  // Keep handleUnlinkExcel for manual unlinking if needed in future
   const handleUnlinkExcel = useCallback(async () => {
     if (!selectedTemplate) return;
 
