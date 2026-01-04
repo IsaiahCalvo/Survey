@@ -10304,11 +10304,46 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
   }, [selectedTemplate, handleExportSurveyToExcel, isMSAuthenticated]);
 
+  // Ref to prevent multiple export triggers
+  const isExportInProgressRef = useRef(false);
+
+  // Helper to get user-friendly error messages
+  const getExportErrorMessage = (error) => {
+    const msg = error?.message?.toLowerCase() || '';
+
+    if (msg.includes('name already exists') || msg.includes('409')) {
+      return 'A file with this name already exists and may be open in another application. Please close the file and try again.';
+    }
+    if (msg.includes('locked') || msg.includes('in use')) {
+      return 'The file is currently open in another application. Please close it and try again.';
+    }
+    if (msg.includes('authentication') || msg.includes('unauthorized') || msg.includes('401')) {
+      return 'Your session has expired. Please reconnect your Microsoft account.';
+    }
+    if (msg.includes('forbidden') || msg.includes('403')) {
+      return 'You don\'t have permission to save to this location. Please check your OneDrive access.';
+    }
+    if (msg.includes('not found') || msg.includes('404')) {
+      return 'The destination folder could not be found in OneDrive.';
+    }
+    if (msg.includes('network') || msg.includes('timeout') || msg.includes('offline')) {
+      return 'Network connection issue. Please check your internet connection and try again.';
+    }
+    if (msg.includes('quota') || msg.includes('storage')) {
+      return 'Your OneDrive storage is full. Please free up space and try again.';
+    }
+
+    return 'Unable to save to OneDrive. Please try again or save to your computer instead.';
+  };
+
   // Function to perform OneDrive export (reusable for auto-resume after login)
   const performOneDriveExport = useCallback(async () => {
-    if (!exportPendingData || !graphClient) return false;
+    // Prevent multiple simultaneous exports
+    if (isExportInProgressRef.current || !exportPendingData || !graphClient) return false;
 
+    isExportInProgressRef.current = true;
     setIsExportingToOneDrive(true);
+
     try {
       const fileName = `${exportPendingData.fileName}_export.xlsx`;
       const filePath = `/Documents/${fileName}`;
@@ -10348,9 +10383,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return true;
     } catch (error) {
       console.error('Failed to export to OneDrive:', error);
-      alert(`Failed to export to OneDrive: ${error.message}`);
+      alert(getExportErrorMessage(error));
       return false;
     } finally {
+      isExportInProgressRef.current = false;
       setIsExportingToOneDrive(false);
       setExportPendingData(null);
       setPendingOneDriveExport(false);
@@ -10359,7 +10395,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Auto-resume OneDrive export after Microsoft login
   useEffect(() => {
-    if (isMSAuthenticated && pendingOneDriveExport && exportPendingData && graphClient) {
+    // Only trigger if all conditions are met AND export is not already in progress
+    if (isMSAuthenticated && pendingOneDriveExport && exportPendingData && graphClient && !isExportInProgressRef.current) {
       // Close the login modal and perform the export
       setShowMSLoginModal(false);
       performOneDriveExport();
