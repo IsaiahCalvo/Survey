@@ -10258,7 +10258,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             buffer: workbookBuffer,
             fileName: fileName
           });
-          setIsExporting(false); // Reset loading - modal will handle the rest
+          // Keep isExporting true - modal buttons will reset it when export completes
           setShowExportLocationModal(true);
           return; // Exit - modal will handle the actual save
         }
@@ -10401,6 +10401,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     } finally {
       isExportInProgressRef.current = false;
       setIsExportingToOneDrive(false);
+      setIsExporting(false);
       setExportPendingData(null);
       setPendingOneDriveExport(false);
     }
@@ -21572,6 +21573,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     alert('Failed to export to computer.');
                   }
                   setExportPendingData(null);
+                  setIsExporting(false);
                 }}
                 style={{
                   padding: '16px 20px',
@@ -21686,6 +21688,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 onClick={() => {
                   setShowExportLocationModal(false);
                   setExportPendingData(null);
+                  setIsExporting(false);
                 }}
                 style={{
                   padding: '12px 20px',
@@ -21813,7 +21816,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   Connect Microsoft Account
                 </button>
                 <button
-                  onClick={() => setShowMSLoginModal(false)}
+                  onClick={() => {
+                    setShowMSLoginModal(false);
+                    // If user cancels during export flow, reset export state
+                    if (pendingOneDriveExport) {
+                      setPendingOneDriveExport(false);
+                      setExportPendingData(null);
+                      setIsExporting(false);
+                    }
+                  }}
                   style={{
                     width: '100%',
                     padding: '12px',
