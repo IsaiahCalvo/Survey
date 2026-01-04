@@ -141,7 +141,7 @@ export async function syncAnnotationsToSupabase(documentId, userId, highlightAnn
     name: annotation.name || null,
     notes: annotation.notes || annotation.note || null,
     ball_in_court_entity_id: annotation.ballInCourtEntityId || null,
-    ball_in_court_name: annotation.ballInCourtName || null,
+    ball_in_court_name: annotation.ballInCourtEntityName || annotation.ballInCourtName || null,
     checklist_responses: annotation.checklistResponses || {},
     changed_by: annotation.changedBy || null,
     changed_date: annotation.changedDate || null,
@@ -187,7 +187,8 @@ export async function loadAnnotationsFromSupabase(documentId) {
       notes: annotation.notes,
       note: annotation.notes, // Alias
       ballInCourtEntityId: annotation.ball_in_court_entity_id,
-      ballInCourtName: annotation.ball_in_court_name,
+      ballInCourtEntityName: annotation.ball_in_court_name,
+      ballInCourtName: annotation.ball_in_court_name, // Legacy alias
       checklistResponses: annotation.checklist_responses || {},
       changedBy: annotation.changed_by,
       changedDate: annotation.changed_date,
@@ -286,7 +287,8 @@ function convertToLocalFormat(record) {
     notes: record.notes,
     note: record.notes,
     ballInCourtEntityId: record.ball_in_court_entity_id,
-    ballInCourtName: record.ball_in_court_name,
+    ballInCourtEntityName: record.ball_in_court_name,
+    ballInCourtName: record.ball_in_court_name, // Legacy alias
     checklistResponses: record.checklist_responses || {},
     changedBy: record.changed_by,
     changedDate: record.changed_date,
