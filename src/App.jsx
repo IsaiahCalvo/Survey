@@ -8572,6 +8572,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [liveSyncStatus, setLiveSyncStatus] = useState(''); // 'connecting', 'connected', 'error', ''
   const [oneDriveFileId, setOneDriveFileId] = useState(null);
   const [excelSessionId, setExcelSessionId] = useState(null);
+  const [linkedExcelExists, setLinkedExcelExists] = useState(null); // null = not checked, true/false = result
   const excelSessionRef = useRef({ sessionId: null, expiresAt: null });
   const liveSyncPollRef = useRef(null);
   const lastPollDataRef = useRef(null);
@@ -10294,6 +10295,47 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       await window.electronAPI.openPath(selectedTemplate.linkedExcelPath);
     }
   }, [selectedTemplate]);
+
+  // Check if linked Excel file exists when template changes or dropdown opens
+  useEffect(() => {
+    const checkLinkedExcelExists = async () => {
+      if (!selectedTemplate?.linkedExcelPath) {
+        setLinkedExcelExists(null);
+        return;
+      }
+
+      const excelPath = selectedTemplate.linkedExcelPath;
+      const isOneDrive = selectedTemplate.isOneDrive;
+
+      try {
+        if (isOneDrive) {
+          // For OneDrive files, try to get file metadata
+          if (graphClient) {
+            await getFileMetadata(graphClient, excelPath);
+            setLinkedExcelExists(true);
+          } else {
+            // Not authenticated, can't check - assume exists
+            setLinkedExcelExists(null);
+          }
+        } else {
+          // For local files, use Electron API
+          if (window.electronAPI) {
+            const exists = await window.electronAPI.fileExists(excelPath);
+            setLinkedExcelExists(exists);
+          } else {
+            // Not in Electron, can't check - assume exists
+            setLinkedExcelExists(null);
+          }
+        }
+      } catch (error) {
+        // File not found or other error
+        console.warn('Linked Excel file not found:', error.message);
+        setLinkedExcelExists(false);
+      }
+    };
+
+    checkLinkedExcelExists();
+  }, [selectedTemplate?.linkedExcelPath, selectedTemplate?.isOneDrive, graphClient]);
 
   const handleSyncToExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
