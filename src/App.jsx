@@ -8580,6 +8580,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showExportLocationModal, setShowExportLocationModal] = useState(false);
   const [showMSLoginModal, setShowMSLoginModal] = useState(false);
   const [exportPendingData, setExportPendingData] = useState(null); // Store Excel data while waiting for user choice
+  const [pendingOneDriveExport, setPendingOneDriveExport] = useState(false); // Flag to auto-resume export after MS login
+  const [isExportingToOneDrive, setIsExportingToOneDrive] = useState(false); // Loading state for export
 
   const zoomControllerRef = useRef(null);
   const zoomMenuRef = useRef(null);
@@ -10301,6 +10303,68 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Proceed with sync
     await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
   }, [selectedTemplate, handleExportSurveyToExcel, isMSAuthenticated]);
+
+  // Function to perform OneDrive export (reusable for auto-resume after login)
+  const performOneDriveExport = useCallback(async () => {
+    if (!exportPendingData || !graphClient) return false;
+
+    setIsExportingToOneDrive(true);
+    try {
+      const fileName = `${exportPendingData.fileName}_export.xlsx`;
+      const filePath = `/Documents/${fileName}`;
+
+      await uploadExcelFile(graphClient, filePath, exportPendingData.buffer);
+
+      const updatedTemplate = {
+        ...selectedTemplate,
+        linkedExcelPath: filePath,
+        isOneDrive: true,
+        lastSyncTime: new Date().toISOString()
+      };
+      setSelectedTemplate(updatedTemplate);
+
+      // Persist to Supabase
+      const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+      if (updateSupabaseTemplate && supabaseTemplateId) {
+        try {
+          const configPayload = sanitizeTemplateConfig(updatedTemplate);
+          await updateSupabaseTemplate(supabaseTemplateId, { config: configPayload });
+        } catch (err) {
+          console.warn('Failed to persist Excel link to Supabase:', err);
+        }
+      }
+
+      // Update local templates array
+      if (handleTemplatesChange && appTemplates) {
+        const updatedTemplates = appTemplates.map(t =>
+          (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
+            ? updatedTemplate
+            : t
+        );
+        handleTemplatesChange(updatedTemplates);
+      }
+
+      alert('Export to OneDrive successful!');
+      return true;
+    } catch (error) {
+      console.error('Failed to export to OneDrive:', error);
+      alert(`Failed to export to OneDrive: ${error.message}`);
+      return false;
+    } finally {
+      setIsExportingToOneDrive(false);
+      setExportPendingData(null);
+      setPendingOneDriveExport(false);
+    }
+  }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates]);
+
+  // Auto-resume OneDrive export after Microsoft login
+  useEffect(() => {
+    if (isMSAuthenticated && pendingOneDriveExport && exportPendingData && graphClient) {
+      // Close the login modal and perform the export
+      setShowMSLoginModal(false);
+      performOneDriveExport();
+    }
+  }, [isMSAuthenticated, pendingOneDriveExport, exportPendingData, graphClient, performOneDriveExport]);
 
   const handleSyncFromExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
