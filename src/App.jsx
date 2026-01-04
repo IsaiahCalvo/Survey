@@ -8582,6 +8582,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [exportPendingData, setExportPendingData] = useState(null); // Store Excel data while waiting for user choice
   const [pendingOneDriveExport, setPendingOneDriveExport] = useState(false); // Flag to auto-resume export after MS login
   const [isExportingToOneDrive, setIsExportingToOneDrive] = useState(false); // Loading state for export
+  const [isExporting, setIsExporting] = useState(false); // Loading state for main export button
 
   const zoomControllerRef = useRef(null);
   const zoomMenuRef = useRef(null);
@@ -9724,6 +9725,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
+    // Set loading state (only for non-silent exports)
+    if (!silent) {
+      setIsExporting(true);
+    }
+
     try {
       const workbook = new ExcelJS.Workbook();
       const modulesList = selectedTemplate.modules || selectedTemplate.spaces || [];
@@ -10228,11 +10234,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               handleTemplatesChange(updatedTemplates);
             }
 
-            if (!silent) alert('Sync to Excel successful!');
+            if (!silent) {
+              setIsExporting(false);
+              alert('Sync to Excel successful!');
+            }
           } catch (err) {
             console.error('Failed to write file:', err);
             // Check for OneDrive locked file error
             if (!silent) {
+              setIsExporting(false);
               if (err.message && err.message.includes('locked')) {
                 alert('Failed to sync: The Excel file is locked. Please close it in Excel or OneDrive and try again.');
               } else {
@@ -10248,6 +10258,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             buffer: workbookBuffer,
             fileName: fileName
           });
+          setIsExporting(false); // Reset loading - modal will handle the rest
           setShowExportLocationModal(true);
           return; // Exit - modal will handle the actual save
         }
@@ -10264,9 +10275,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         link.click();
         document.body.removeChild(link);
         setTimeout(() => URL.revokeObjectURL(url), 0);
+        setIsExporting(false);
       }
     } catch (error) {
       console.error('Failed to create Excel export', error);
+      setIsExporting(false);
       alert('Unable to create the Excel file. Please try again.');
     }
   }, [selectedTemplate, items, highlightAnnotations, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus]);
@@ -19048,10 +19061,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     <button
                       type="button"
                       onClick={handleExportSurveyToExcel}
+                      disabled={isExporting}
                       style={{
                         width: '100%',
-                        background: '#4A90E2',
-                        border: '1px solid #3277c7',
+                        background: isExporting ? '#6c7a89' : '#4A90E2',
+                        border: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
                         color: '#fff',
                         fontSize: '14px',
                         fontWeight: 600,
@@ -19059,27 +19073,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         borderRadius: '6px',
                         textTransform: 'uppercase',
                         letterSpacing: '0.08em',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
+                        cursor: isExporting ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s',
+                        opacity: isExporting ? 0.7 : 1
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#357abd';
+                        if (!isExporting) e.currentTarget.style.background = '#357abd';
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#4A90E2';
+                        if (!isExporting) e.currentTarget.style.background = '#4A90E2';
                       }}
                     >
-                      EXPORT
+                      {isExporting ? 'EXPORTING...' : 'EXPORT'}
                     </button>
                   ) : (
                     <div ref={exportMenuRef} style={{ display: 'flex', width: '100%' }}>
                       <button
                         type="button"
                         onClick={() => handleExportSurveyToExcel()} // Default action: Export new
+                        disabled={isExporting}
                         style={{
                           flex: 1,
-                          background: '#4A90E2',
-                          border: '1px solid #3277c7',
+                          background: isExporting ? '#6c7a89' : '#4A90E2',
+                          border: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
                           borderRight: 'none',
                           borderTopLeftRadius: '6px',
                           borderBottomLeftRadius: '6px',
@@ -19089,25 +19105,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           padding: '10px 16px',
                           textTransform: 'uppercase',
                           letterSpacing: '0.08em',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
+                          cursor: isExporting ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s',
+                          opacity: isExporting ? 0.7 : 1
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#357abd';
+                          if (!isExporting) e.currentTarget.style.background = '#357abd';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#4A90E2';
+                          if (!isExporting) e.currentTarget.style.background = '#4A90E2';
                         }}
                       >
-                        EXPORT
+                        {isExporting ? 'EXPORTING...' : 'EXPORT'}
                       </button>
                       <button
                         type="button"
-                        onClick={() => setShowExportMenu(!showExportMenu)}
+                        onClick={() => !isExporting && setShowExportMenu(!showExportMenu)}
+                        disabled={isExporting}
                         style={{
                           width: '40px',
-                          background: '#4A90E2',
-                          border: '1px solid #3277c7',
+                          background: isExporting ? '#6c7a89' : '#4A90E2',
+                          border: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
                           borderLeft: '1px solid rgba(0,0,0,0.1)',
                           borderTopRightRadius: '6px',
                           borderBottomRightRadius: '6px',
@@ -19115,17 +19133,37 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
+                          cursor: isExporting ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s',
+                          opacity: isExporting ? 0.7 : 1
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#357abd';
+                          if (!isExporting) e.currentTarget.style.background = '#357abd';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#4A90E2';
+                          if (!isExporting) e.currentTarget.style.background = '#4A90E2';
                         }}
                       >
-                        <Icon name={showExportMenu ? "chevronUp" : "chevronDown"} size={16} />
+                        {isExporting ? (
+                          <div
+                            style={{
+                              width: '14px',
+                              height: '14px',
+                              border: '2px solid rgba(255,255,255,0.3)',
+                              borderTop: '2px solid #fff',
+                              borderRadius: '50%',
+                              animation: 'spin 0.8s linear infinite'
+                            }}
+                          />
+                        ) : (
+                          <Icon name={showExportMenu ? "chevronUp" : "chevronDown"} size={16} />
+                        )}
+                        <style>{`
+                          @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                          }
+                        `}</style>
                       </button>
 
                       {showExportMenu && (
