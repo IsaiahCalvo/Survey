@@ -1,0 +1,17 @@
+chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+MSGraphContext.jsx:237 [Microsoft] restoreConnection called, user: false session: false
+MSGraphContext.jsx:240 [Microsoft] No user, skipping restore
+MSGraphContext.jsx:184 [Microsoft] Auth state changed: INITIAL_SESSION {hasProviderToken: false, hasProviderRefreshToken: false, provider: 'email', providers: Array(3)}
+MSGraphContext.jsx:237 [Microsoft] restoreConnection called, user: true session: true
+MSGraphContext.jsx:250 [Microsoft] Checking session tokens: {hasProviderToken: false, hasProviderRefreshToken: false, provider: 'email', providers: Array(3)}
+MSGraphContext.jsx:297 [Microsoft] Checking for stored tokens in database...
+MSGraphContext.jsx:237 [Microsoft] restoreConnection called, user: true session: true
+MSGraphContext.jsx:250 [Microsoft] Checking session tokens: {hasProviderToken: false, hasProviderRefreshToken: false, provider: 'email', providers: Array(3)}
+MSGraphContext.jsx:297 [Microsoft] Checking for stored tokens in database...
+MSGraphContext.jsx:184 [Microsoft] Auth state changed: INITIAL_SESSION {hasProviderToken: false, hasProviderRefreshToken: false, provider: 'email', providers: Array(3)}
+MSGraphContext.jsx:299 [Microsoft] Stored data: {is_connected: true, hasMetadata: true, hasRefreshToken: false}
+MSGraphContext.jsx:320 [Microsoft] Found stored tokens, refresh_token exists: false
+MSGraphContext.jsx:324 [Microsoft] No refresh token, needs reconnect
+MSGraphContext.jsx:299 [Microsoft] Stored data: {is_connected: true, hasMetadata: true, hasRefreshToken: false}
+MSGraphContext.jsx:320 [Microsoft] Found stored tokens, refresh_token exists: false
+MSGraphContext.jsx:324 [Microsoft] No refresh token, needs reconnect

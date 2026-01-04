@@ -1,117 +1,16 @@
 chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-MSGraphContext.jsx:331 Unrecognized feature: 'local-network-access'.
-createHiddenIframe @ SilentHandler.ts:259
-loadFrameSync @ SilentHandler.ts:235
-(anonymous) @ FunctionWrappers.ts:43
-initiateCodeRequest @ SilentHandler.ts:62
-(anonymous) @ FunctionWrappers.ts:102
-silentTokenHelper @ SilentIframeClient.ts:430
-await in silentTokenHelper (async)
-(anonymous) @ FunctionWrappers.ts:102
-executeCodeFlow @ SilentIframeClient.ts:177
-await in executeCodeFlow (async)
-acquireToken @ SilentIframeClient.ts:139
-await in acquireToken (async)
-ssoSilent @ StandardController.ts:1067
-ssoSilent @ PublicClientApplication.ts:343
-initializeMsal @ MSGraphContext.jsx:331
-await in initializeMsal (async)
-(anonymous) @ MSGraphContext.jsx:369
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 22 more frames
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-login.live.com/Me.htm?v=3:1 true
-login.live.com/Me.htm?v=3:1 true
-Me.htm:1 true
-excelGraphService.js:104     GET https://graph.microsoft.com/v1.0/me/drive/root:/Documents/Security_export.xlsx 404
-(anonymous) @ HTTPMessageHandler.ts:29
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ HTTPMessageHandler.ts:28
-(anonymous) @ TelemetryHandler.ts:91
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ TelemetryHandler.ts:66
-(anonymous) @ RedirectHandler.ts:193
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-executeWithRedirect @ RedirectHandler.ts:192
-(anonymous) @ RedirectHandler.ts:225
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ RedirectHandler.ts:220
-(anonymous) @ RetryHandler.ts:173
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-executeWithRetry @ RetryHandler.ts:172
-(anonymous) @ RetryHandler.ts:196
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ RetryHandler.ts:192
-(anonymous) @ AuthenticationHandler.ts:88
-fulfilled @ tslib.es6.mjs:118
-Promise.then (async)
-step @ tslib.es6.mjs:120
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ AuthenticationHandler.ts:63
-(anonymous) @ HTTPClient.ts:88
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-sendRequest @ HTTPClient.ts:81
-(anonymous) @ GraphRequest.ts:372
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-send @ GraphRequest.ts:366
-(anonymous) @ GraphRequest.ts:635
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-get @ GraphRequest.ts:630
-getFileMetadata @ excelGraphService.js:104
-checkLinkedExcelExists @ App.jsx:10322
-(anonymous) @ App.jsx:10413
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 53 more frames
-excelGraphService.js:108 Failed to get file metadata: Error: The resource could not be found.
-    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
-    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
-    at Generator.next (<anonymous>)
-    at tslib.es6.mjs:121:69
-    at new Promise (<anonymous>)
-    at __awaiter (tslib.es6.mjs:117:10)
-    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
-    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
-    at Generator.throw (<anonymous>)
-    at rejected (tslib.es6.mjs:119:62)
-getFileMetadata @ excelGraphService.js:108
-await in getFileMetadata (async)
-checkLinkedExcelExists @ App.jsx:10322
-(anonymous) @ App.jsx:10413
+MSGraphContext.jsx:181 [Microsoft] Restoring connection, user: false
+MSGraphContext.jsx:181 [Microsoft] Restoring connection, user: true
+MSGraphContext.jsx:369 [Microsoft] Processing OAuth callback...
+MSGraphContext.jsx:181 [Microsoft] Restoring connection, user: true
+MSGraphContext.jsx:369 [Microsoft] Processing OAuth callback...
+MSGraphContext.jsx:193 [Microsoft] Stored data: {is_connected: true, hasRefreshToken: false}
+MSGraphContext.jsx:199 [Microsoft] No valid stored connection
+MSGraphContext.jsx:193 [Microsoft] Stored data: {is_connected: true, hasRefreshToken: false}
+MSGraphContext.jsx:199 [Microsoft] No valid stored connection
+MSGraphContext.jsx:374     POST https://login.microsoftonline.com/common/oauth2/v2.0/token 400
+(anonymous) @ MSGraphContext.jsx:374
+(anonymous) @ MSGraphContext.jsx:447
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -124,81 +23,11 @@ workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 11 more frames
-App.jsx:10378 Linked Excel file not found, clearing link: Failed to get file metadata: The resource could not be found.
-excelGraphService.js:104     GET https://graph.microsoft.com/v1.0/me/drive/root:/Documents/Security_export.xlsx 404
-(anonymous) @ HTTPMessageHandler.ts:29
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ HTTPMessageHandler.ts:28
-(anonymous) @ TelemetryHandler.ts:91
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ TelemetryHandler.ts:66
-(anonymous) @ RedirectHandler.ts:193
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-executeWithRedirect @ RedirectHandler.ts:192
-(anonymous) @ RedirectHandler.ts:225
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ RedirectHandler.ts:220
-(anonymous) @ RetryHandler.ts:173
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-executeWithRetry @ RetryHandler.ts:172
-(anonymous) @ RetryHandler.ts:196
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ RetryHandler.ts:192
-(anonymous) @ AuthenticationHandler.ts:88
-fulfilled @ tslib.es6.mjs:118
-Promise.then (async)
-step @ tslib.es6.mjs:120
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ AuthenticationHandler.ts:63
-(anonymous) @ HTTPClient.ts:88
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-sendRequest @ HTTPClient.ts:81
-(anonymous) @ GraphRequest.ts:372
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-send @ GraphRequest.ts:366
-(anonymous) @ GraphRequest.ts:635
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-get @ GraphRequest.ts:630
-getFileMetadata @ excelGraphService.js:104
-checkLinkedExcelExists @ App.jsx:10322
-(anonymous) @ App.jsx:10413
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 53 more frames
-excelGraphService.js:108 Failed to get file metadata: Error: The resource could not be found.
-    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
-    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
-    at Generator.next (<anonymous>)
-    at tslib.es6.mjs:121:69
-    at new Promise (<anonymous>)
-    at __awaiter (tslib.es6.mjs:117:10)
-    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
-    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
-    at Generator.throw (<anonymous>)
-    at rejected (tslib.es6.mjs:119:62)
-getFileMetadata @ excelGraphService.js:108
-await in getFileMetadata (async)
-checkLinkedExcelExists @ App.jsx:10322
-(anonymous) @ App.jsx:10413
+MSGraphContext.jsx:435 [Microsoft] OAuth callback error: Error: AADSTS70000: The provided value for the 'code' parameter is not valid. The code has expired. Trace ID: 74d45878-fbf6-48ff-9dca-79358b81c808 Correlation ID: 7ebc66e7-3405-4e11-9751-b5daf0687ff2 Timestamp: 2026-01-04 22:20:14Z
+    at MSGraphContext.jsx:389:23
+(anonymous) @ MSGraphContext.jsx:435
+await in (anonymous) (async)
+(anonymous) @ MSGraphContext.jsx:447
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -211,4 +40,6 @@ workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 11 more frames
-App.jsx:10378 Linked Excel file not found, clearing link: Failed to get file metadata: The resource could not be found.
+MSGraphContext.jsx:393 [Microsoft] Tokens received, has refresh_token: true
+MSGraphContext.jsx:82 [Microsoft] Tokens stored successfully
+MSGraphContext.jsx:425 [Microsoft] Successfully connected!
