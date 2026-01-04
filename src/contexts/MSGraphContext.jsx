@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
@@ -13,6 +13,9 @@ const MICROSOFT_SCOPES = [
     'https://graph.microsoft.com/Files.ReadWrite.All',
     'https://graph.microsoft.com/Sites.ReadWrite.All',
 ];
+
+// Azure app client ID
+const AZURE_CLIENT_ID = '0da81a9e-2b05-46ee-b826-5efc5114c765';
 
 export const useMSGraph = () => {
     const context = useContext(MSGraphContext);
@@ -31,109 +34,36 @@ export const MSGraphProvider = ({ children }) => {
     const [error, setError] = useState(null);
     const [connectionRestored, setConnectionRestored] = useState(false);
     const [needsReconnect, setNeedsReconnect] = useState(false);
+    const tokenRef = useRef(null); // Store current access token
 
-    // Initialize Graph client with the provider token from Supabase session
+    // Initialize Graph client with a dynamic auth provider that uses current token
     const initializeGraphClient = useCallback((accessToken) => {
+        tokenRef.current = accessToken;
         const client = Client.init({
             authProvider: (done) => {
-                done(null, accessToken);
+                if (tokenRef.current) {
+                    done(null, tokenRef.current);
+                } else {
+                    done(new Error('No access token available'), null);
+                }
             }
         });
         setGraphClient(client);
         return client;
     }, []);
 
-    // Check if user is connected to Microsoft via Supabase
-    useEffect(() => {
-        const checkMicrosoftConnection = async () => {
-            setIsLoading(true);
-
-            try {
-                if (!session) {
-                    setIsAuthenticated(false);
-                    setAccount(null);
-                    setGraphClient(null);
-                    setConnectionRestored(true);
-                    setIsLoading(false);
-                    return;
-                }
-
-                // Check if the user authenticated with Azure/Microsoft
-                const provider = session.user?.app_metadata?.provider;
-                const providers = session.user?.app_metadata?.providers || [];
-
-                // Check if Microsoft/Azure is one of the linked providers
-                const isMicrosoftLinked = provider === 'azure' || providers.includes('azure');
-
-                if (isMicrosoftLinked && session.provider_token) {
-                    // User has Microsoft linked and we have a valid token
-                    setAccount({
-                        username: session.user.email,
-                        name: session.user.user_metadata?.full_name || session.user.email,
-                        homeAccountId: session.user.id,
-                    });
-                    setIsAuthenticated(true);
-                    setNeedsReconnect(false);
-                    initializeGraphClient(session.provider_token);
-                } else if (isMicrosoftLinked && !session.provider_token) {
-                    // Microsoft was linked but token expired - need to reconnect
-                    setAccount({
-                        username: session.user.email,
-                        name: session.user.user_metadata?.full_name || session.user.email,
-                        homeAccountId: session.user.id,
-                    });
-                    setIsAuthenticated(false);
-                    setNeedsReconnect(true);
-                } else {
-                    // Microsoft not linked
-                    setIsAuthenticated(false);
-                    setAccount(null);
-                }
-
-                setConnectionRestored(true);
-            } catch (err) {
-                console.error('[Microsoft] Error checking connection:', err);
-                setError(err.message);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        checkMicrosoftConnection();
-    }, [session, initializeGraphClient]);
-
-    // Listen for auth state changes to update Microsoft connection
-    useEffect(() => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                if (newSession?.provider_token) {
-                    const provider = newSession.user?.app_metadata?.provider;
-                    const providers = newSession.user?.app_metadata?.providers || [];
-
-                    if (provider === 'azure' || providers.includes('azure')) {
-                        setAccount({
-                            username: newSession.user.email,
-                            name: newSession.user.user_metadata?.full_name || newSession.user.email,
-                            homeAccountId: newSession.user.id,
-                        });
-                        setIsAuthenticated(true);
-                        setNeedsReconnect(false);
-                        initializeGraphClient(newSession.provider_token);
-                    }
-                }
-            } else if (event === 'SIGNED_OUT') {
-                setAccount(null);
-                setIsAuthenticated(false);
-                setGraphClient(null);
-            }
+    // Store Microsoft tokens in Supabase database
+    const storeTokens = useCallback(async (tokens, accountInfo) => {
+        console.log('[Microsoft] storeTokens called:', {
+            hasAccessToken: !!tokens.access_token,
+            hasRefreshToken: !!tokens.refresh_token,
+            accountEmail: accountInfo.email || accountInfo.username,
         });
 
-        return () => subscription.unsubscribe();
-    }, [initializeGraphClient]);
-
-    // Persist connection metadata to Supabase (for UI purposes)
-    const persistConnection = useCallback(async (accountInfo) => {
-        if (!user || !isSupabaseAvailable()) return;
+        if (!user || !isSupabaseAvailable()) {
+            console.log('[Microsoft] Cannot store tokens - no user or Supabase');
+            return;
+        }
 
         try {
             const { error } = await supabase
@@ -142,20 +72,80 @@ export const MSGraphProvider = ({ children }) => {
                     user_id: user.id,
                     service_name: 'microsoft',
                     is_connected: true,
-                    account_id: accountInfo.homeAccountId,
-                    account_email: accountInfo.username,
+                    account_id: accountInfo.id || accountInfo.homeAccountId,
+                    account_email: accountInfo.email || accountInfo.username,
                     account_name: accountInfo.name,
+                    metadata: {
+                        access_token: tokens.access_token,
+                        refresh_token: tokens.refresh_token,
+                        expires_at: tokens.expires_at || (Math.floor(Date.now() / 1000) + (tokens.expires_in || 3600)),
+                    },
                     connected_at: new Date().toISOString(),
                     last_used_at: new Date().toISOString(),
                 }, { onConflict: 'user_id,service_name' });
 
             if (error) {
-                console.error('[Microsoft] Failed to persist connection:', error.message);
+                console.error('[Microsoft] Failed to store tokens:', error.message, error);
+            } else {
+                console.log('[Microsoft] Tokens stored successfully in database');
             }
         } catch (err) {
-            console.error('[Microsoft] Exception during persist:', err.message);
+            console.error('[Microsoft] Exception storing tokens:', err.message, err);
         }
     }, [user]);
+
+    // Fetch stored tokens from Supabase database
+    const fetchStoredTokens = useCallback(async () => {
+        if (!user || !isSupabaseAvailable()) return null;
+
+        try {
+            const { data, error } = await supabase
+                .from('connected_services')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('service_name', 'microsoft')
+                .maybeSingle();
+
+            if (error || !data) return null;
+            return data;
+        } catch (err) {
+            console.error('[Microsoft] Error fetching stored tokens:', err.message);
+            return null;
+        }
+    }, [user]);
+
+    // Refresh access token using refresh token
+    const refreshAccessToken = useCallback(async (refreshToken) => {
+        try {
+            const tokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+            const response = await fetch(tokenUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    client_id: AZURE_CLIENT_ID,
+                    scope: MICROSOFT_SCOPES.join(' '),
+                    refresh_token: refreshToken,
+                    grant_type: 'refresh_token',
+                }).toString(),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error_description || 'Token refresh failed');
+            }
+
+            const tokens = await response.json();
+            return {
+                access_token: tokens.access_token,
+                refresh_token: tokens.refresh_token || refreshToken, // Use new refresh token if provided
+                expires_in: tokens.expires_in,
+                expires_at: Math.floor(Date.now() / 1000) + tokens.expires_in,
+            };
+        } catch (err) {
+            console.error('[Microsoft] Token refresh failed:', err.message);
+            return null;
+        }
+    }, []);
 
     // Remove connection from Supabase
     const removeConnection = useCallback(async () => {
@@ -187,6 +177,206 @@ export const MSGraphProvider = ({ children }) => {
         }
     }, [user]);
 
+    // Check and restore Microsoft connection on mount
+    useEffect(() => {
+        let isMounted = true;
+
+        const restoreConnection = async () => {
+            console.log('[Microsoft] restoreConnection called, user:', !!user, 'session:', !!session);
+
+            if (!user) {
+                console.log('[Microsoft] No user, skipping restore');
+                setIsLoading(false);
+                setConnectionRestored(true);
+                return;
+            }
+
+            setIsLoading(true);
+
+            try {
+                // First check if we just came back from OAuth (provider_token available)
+                console.log('[Microsoft] Checking session tokens:', {
+                    hasProviderToken: !!session?.provider_token,
+                    hasProviderRefreshToken: !!session?.provider_refresh_token,
+                    provider: session?.user?.app_metadata?.provider,
+                    providers: session?.user?.app_metadata?.providers,
+                });
+
+                if (session?.provider_token) {
+                    console.log('[Microsoft] Found provider_token in session');
+                    const providers = session.user?.app_metadata?.providers || [];
+                    const isAzure = providers.includes('azure') || session.user?.app_metadata?.provider === 'azure';
+                    console.log('[Microsoft] Is Azure provider?', isAzure);
+
+                    if (isAzure) {
+                        // Just completed OAuth - store the tokens
+                        const accountInfo = {
+                            id: session.user.id,
+                            email: session.user.email,
+                            name: session.user.user_metadata?.full_name || session.user.email,
+                        };
+
+                        console.log('[Microsoft] Storing tokens from OAuth...');
+                        await storeTokens({
+                            access_token: session.provider_token,
+                            refresh_token: session.provider_refresh_token,
+                            expires_in: 3600, // Default 1 hour
+                        }, accountInfo);
+                        console.log('[Microsoft] Tokens stored successfully');
+
+                        if (isMounted) {
+                            setAccount({
+                                username: accountInfo.email,
+                                name: accountInfo.name,
+                                homeAccountId: accountInfo.id,
+                            });
+                            setIsAuthenticated(true);
+                            setNeedsReconnect(false);
+                            initializeGraphClient(session.provider_token);
+                        }
+
+                        setIsLoading(false);
+                        setConnectionRestored(true);
+                        return;
+                    }
+                }
+
+                // Check for stored tokens in database
+                console.log('[Microsoft] Checking for stored tokens in database...');
+                const storedData = await fetchStoredTokens();
+                console.log('[Microsoft] Stored data:', storedData ? {
+                    is_connected: storedData.is_connected,
+                    hasMetadata: !!storedData.metadata,
+                    hasRefreshToken: !!storedData.metadata?.refresh_token
+                } : null);
+
+                if (!storedData || !storedData.is_connected || !storedData.metadata) {
+                    // No stored connection
+                    console.log('[Microsoft] No valid stored connection found');
+                    if (isMounted) {
+                        setIsAuthenticated(false);
+                        setAccount(null);
+                        setConnectionRestored(true);
+                    }
+                    setIsLoading(false);
+                    return;
+                }
+
+                const { metadata, account_email, account_name, account_id } = storedData;
+                const { access_token, refresh_token, expires_at } = metadata;
+
+                console.log('[Microsoft] Found stored tokens, refresh_token exists:', !!refresh_token);
+
+                if (!refresh_token) {
+                    // No refresh token - need to reconnect
+                    console.log('[Microsoft] No refresh token, needs reconnect');
+                    if (isMounted) {
+                        setNeedsReconnect(true);
+                        setAccount({
+                            username: account_email,
+                            name: account_name,
+                            homeAccountId: account_id,
+                        });
+                    }
+                    setIsLoading(false);
+                    setConnectionRestored(true);
+                    return;
+                }
+
+                // Check if access token is still valid (with 5 min buffer)
+                const now = Math.floor(Date.now() / 1000);
+                let currentAccessToken = access_token;
+
+                console.log('[Microsoft] Token expires_at:', expires_at, 'now:', now, 'expired:', expires_at < now + 300);
+
+                if (!expires_at || expires_at < now + 300) {
+                    // Token expired or expiring soon - refresh it
+                    console.log('[Microsoft] Token expired, refreshing...');
+                    const newTokens = await refreshAccessToken(refresh_token);
+
+                    if (!newTokens) {
+                        // Refresh failed - need to reconnect
+                        console.log('[Microsoft] Token refresh failed, needs reconnect');
+                        if (isMounted) {
+                            setNeedsReconnect(true);
+                            setAccount({
+                                username: account_email,
+                                name: account_name,
+                                homeAccountId: account_id,
+                            });
+                        }
+                        setIsLoading(false);
+                        setConnectionRestored(true);
+                        return;
+                    }
+
+                    console.log('[Microsoft] Token refreshed successfully');
+                    currentAccessToken = newTokens.access_token;
+
+                    // Update stored tokens
+                    await storeTokens(newTokens, {
+                        id: account_id,
+                        email: account_email,
+                        name: account_name,
+                    });
+                }
+
+                // Successfully restored connection
+                console.log('[Microsoft] Connection restored successfully');
+                if (isMounted) {
+                    setAccount({
+                        username: account_email,
+                        name: account_name,
+                        homeAccountId: account_id,
+                    });
+                    setIsAuthenticated(true);
+                    setNeedsReconnect(false);
+                    initializeGraphClient(currentAccessToken);
+                }
+            } catch (err) {
+                console.error('[Microsoft] Error restoring connection:', err);
+                if (isMounted) {
+                    setError(err.message);
+                }
+            } finally {
+                if (isMounted) {
+                    setIsLoading(false);
+                    setConnectionRestored(true);
+                }
+            }
+        };
+
+        restoreConnection();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [user, session, fetchStoredTokens, storeTokens, refreshAccessToken, initializeGraphClient]);
+
+    // Periodic token refresh (every 30 minutes)
+    useEffect(() => {
+        if (!isAuthenticated || !user) return;
+
+        const refreshInterval = setInterval(async () => {
+            const storedData = await fetchStoredTokens();
+            if (storedData?.metadata?.refresh_token) {
+                const newTokens = await refreshAccessToken(storedData.metadata.refresh_token);
+                if (newTokens) {
+                    tokenRef.current = newTokens.access_token;
+                    await storeTokens(newTokens, {
+                        id: storedData.account_id,
+                        email: storedData.account_email,
+                        name: storedData.account_name,
+                    });
+                } else {
+                    setNeedsReconnect(true);
+                }
+            }
+        }, 30 * 60 * 1000); // 30 minutes
+
+        return () => clearInterval(refreshInterval);
+    }, [isAuthenticated, user, fetchStoredTokens, refreshAccessToken, storeTokens]);
+
     const login = async () => {
         try {
             setError(null);
@@ -198,14 +388,13 @@ export const MSGraphProvider = ({ children }) => {
                 : window.location.origin;
 
             // Use Supabase's linkIdentity to add Microsoft to existing account
-            // Or signInWithOAuth if user wants to sign in with Microsoft
             const { data, error } = await supabase.auth.linkIdentity({
                 provider: 'azure',
                 options: {
                     redirectTo,
                     scopes: MICROSOFT_SCOPES.join(' '),
                     queryParams: {
-                        prompt: 'select_account', // Always show account picker
+                        prompt: 'select_account',
                     },
                 },
             });
@@ -240,16 +429,19 @@ export const MSGraphProvider = ({ children }) => {
 
     const logout = async () => {
         try {
-            // Remove from connected_services table
+            // Remove tokens from database
             await removeConnection();
 
-            // Unlink Microsoft identity from Supabase account
-            // Note: This doesn't sign out from Supabase, just removes Microsoft link
-            const { data: identities } = await supabase.auth.getUserIdentities();
-            const azureIdentity = identities?.identities?.find(i => i.provider === 'azure');
-
-            if (azureIdentity) {
-                await supabase.auth.unlinkIdentity(azureIdentity);
+            // Try to unlink Microsoft identity from Supabase
+            try {
+                const { data: identities } = await supabase.auth.getUserIdentities();
+                const azureIdentity = identities?.identities?.find(i => i.provider === 'azure');
+                if (azureIdentity) {
+                    await supabase.auth.unlinkIdentity(azureIdentity);
+                }
+            } catch (unlinkErr) {
+                // Ignore unlink errors - the important part is removing stored tokens
+                console.warn('[Microsoft] Could not unlink identity:', unlinkErr.message);
             }
 
             // Clear state
@@ -257,6 +449,7 @@ export const MSGraphProvider = ({ children }) => {
             setIsAuthenticated(false);
             setGraphClient(null);
             setNeedsReconnect(false);
+            tokenRef.current = null;
         } catch (err) {
             console.error('[Microsoft] Logout failed:', err.message);
             setError(err.message);
