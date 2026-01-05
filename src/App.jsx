@@ -19460,42 +19460,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     if (webUrl) {
                                       console.log('Opening with webUrl:', webUrl);
 
-                                      // Try to open in desktop Excel first using Office URI scheme
-                                      // Format: ms-excel:ofe|u|<encoded-url>
-                                      // ofe = Office File Edit (allows editing)
-                                      const officeUri = `ms-excel:ofe|u|${encodeURIComponent(webUrl)}`;
-
-                                      // Use blur detection to check if desktop app launched
-                                      let desktopAppLaunched = false;
-
-                                      const handleBlur = () => {
-                                        desktopAppLaunched = true;
-                                      };
-
-                                      window.addEventListener('blur', handleBlur);
-
-                                      // Try to open desktop Excel via hidden iframe (doesn't navigate away)
-                                      const iframe = document.createElement('iframe');
-                                      iframe.style.display = 'none';
-                                      document.body.appendChild(iframe);
-
-                                      try {
-                                        iframe.contentWindow.location.href = officeUri;
-                                      } catch (e) {
-                                        // Protocol might be blocked, will fall back to web
-                                      }
-
-                                      // Wait to see if desktop app launched
-                                      setTimeout(() => {
-                                        window.removeEventListener('blur', handleBlur);
-                                        document.body.removeChild(iframe);
-
-                                        // If window didn't lose focus, desktop app didn't launch - open web version
-                                        if (!desktopAppLaunched) {
-                                          console.log('Desktop Excel not available, opening web version');
+                                      // In Electron, use shell.openExternal to open the URL
+                                      // This will open in the default browser and Excel Online can handle it
+                                      if (window.electronAPI?.openExternal) {
+                                        try {
+                                          await window.electronAPI.openExternal(webUrl);
+                                          console.log('Opened webUrl with shell.openExternal');
+                                        } catch (e) {
+                                          console.error('Failed to open with openExternal:', e);
+                                          // Fallback to window.open
                                           window.open(webUrl, '_blank');
                                         }
-                                      }, 1500);
+                                      } else {
+                                        // Not in Electron, just open in new tab
+                                        window.open(webUrl, '_blank');
+                                      }
                                     } else {
                                       alert('Could not get the OneDrive file URL. Please open the file manually from OneDrive.');
                                     }
