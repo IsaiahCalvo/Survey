@@ -10513,13 +10513,43 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     try {
       const fileName = `${exportPendingData.fileName}_export.xlsx`;
-      const filePath = `/Documents/${fileName}`;
+      const oneDriveApiPath = `/Documents/${fileName}`;
 
-      await uploadExcelFile(graphClient, filePath, exportPendingData.buffer);
+      // Upload to OneDrive via Graph API
+      await uploadExcelFile(graphClient, oneDriveApiPath, exportPendingData.buffer);
+
+      // Also save a local copy to the OneDrive sync folder so it's available immediately
+      let localOneDrivePath = null;
+      if (window.electronAPI) {
+        try {
+          const homeDir = await window.electronAPI.getHomeDir();
+          const cloudStoragePath = `${homeDir}/Library/CloudStorage`;
+          const cloudStorageContents = await window.electronAPI.listDir(cloudStoragePath);
+          const oneDriveFolders = cloudStorageContents.filter(name =>
+            name.startsWith('OneDrive') || name.includes('OneDrive')
+          );
+
+          if (oneDriveFolders.length > 0) {
+            // Use the first OneDrive folder found
+            localOneDrivePath = `${cloudStoragePath}/${oneDriveFolders[0]}${oneDriveApiPath}`;
+
+            // Ensure the Documents folder exists
+            const documentsPath = `${cloudStoragePath}/${oneDriveFolders[0]}/Documents`;
+            // Write the file locally
+            await window.electronAPI.writeFile(localOneDrivePath, exportPendingData.buffer);
+            console.log('Saved local copy to OneDrive sync folder:', localOneDrivePath);
+          }
+        } catch (localErr) {
+          console.warn('Failed to save local copy to OneDrive sync folder:', localErr);
+          // Continue anyway - the file is still in OneDrive cloud
+        }
+      }
 
       const updatedTemplate = {
         ...selectedTemplate,
-        linkedExcelPath: filePath,
+        // Store the local path if available, otherwise fall back to OneDrive API path
+        linkedExcelPath: localOneDrivePath || oneDriveApiPath,
+        oneDriveApiPath: oneDriveApiPath, // Keep the API path for reference
         isOneDrive: true,
         lastSyncTime: new Date().toISOString()
       };
