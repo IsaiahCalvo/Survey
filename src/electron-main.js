@@ -3,6 +3,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { exec } = require('child_process');
 
 
 // Suppress security warnings in development
@@ -212,8 +213,23 @@ ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, d
   }
 });
 
-ipcMain.handle('shell:openPath', async (event, path) => {
-  return await shell.openPath(path);
+ipcMain.handle('shell:openPath', async (event, filePath) => {
+  const result = await shell.openPath(filePath);
+
+  // On macOS, bring Excel to the foreground after opening the file
+  if (process.platform === 'darwin' && filePath.endsWith('.xlsx')) {
+    // Wait a moment for Excel to open, then bring it to front
+    setTimeout(() => {
+      exec('osascript -e \'tell application "Microsoft Excel" to activate\'', (error) => {
+        if (error) {
+          // Try generic approach if Excel-specific fails
+          exec(`osascript -e 'tell application "Finder" to open POSIX file "${filePath}"' -e 'tell application "Microsoft Excel" to activate'`);
+        }
+      });
+    }, 500);
+  }
+
+  return result;
 });
 
 ipcMain.handle('shell:openExternal', async (event, url) => {
