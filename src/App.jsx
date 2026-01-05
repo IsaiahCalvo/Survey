@@ -10515,8 +10515,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const fileName = `${exportPendingData.fileName}_export.xlsx`;
       const oneDriveApiPath = `/Documents/${fileName}`;
 
-      // Upload to OneDrive via Graph API
-      await uploadExcelFile(graphClient, oneDriveApiPath, exportPendingData.buffer);
+      // Upload to OneDrive via Graph API and get the file ID
+      const uploadResult = await uploadExcelFile(graphClient, oneDriveApiPath, exportPendingData.buffer);
+      const oneDriveFileId = uploadResult?.id; // Store the unique file ID for tracking
+      console.log('Uploaded to OneDrive, file ID:', oneDriveFileId);
 
       // Also save a local copy to the OneDrive sync folder so it's available immediately
       let localOneDrivePath = null;
@@ -10550,6 +10552,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // Store the local path if available, otherwise fall back to OneDrive API path
         linkedExcelPath: localOneDrivePath || oneDriveApiPath,
         oneDriveApiPath: oneDriveApiPath, // Keep the API path for reference
+        oneDriveFileId: oneDriveFileId, // Unique file ID for tracking (persists across moves)
         isOneDrive: true,
         lastSyncTime: new Date().toISOString()
       };
