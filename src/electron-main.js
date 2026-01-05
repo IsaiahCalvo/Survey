@@ -267,6 +267,23 @@ ipcMain.handle('fs:fileExists', async (event, filePath) => {
   }
 });
 
+ipcMain.handle('os:getHomeDir', async () => {
+  const os = require('os');
+  return os.homedir();
+});
+
+ipcMain.handle('fs:listDir', async (event, dirPath) => {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      return [];
+    }
+    return fs.readdirSync(dirPath);
+  } catch (error) {
+    console.error('Failed to list directory:', error);
+    return [];
+  }
+});
+
 // Atomic file write - ensures crash-safe saves by writing to temp file first
 ipcMain.handle('fs:writeFileAtomic', async (event, { path: filePath, data }) => {
   const tempPath = filePath + '.tmp';

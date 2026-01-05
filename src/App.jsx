@@ -10317,15 +10317,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       try {
         if (isOneDrive) {
-          // For OneDrive files, try to get file metadata
-          if (graphClient) {
-            await getFileMetadata(graphClient, excelPath);
-            setLinkedExcelExists(true);
-            lastCheckedExcelPathRef.current = excelPath;
-          } else {
-            // Not authenticated, can't check - assume exists
-            setLinkedExcelExists(null);
-          }
+          // For OneDrive files, don't aggressively check via API
+          // The Graph API can return 404 due to sync delays or permissions
+          // Just assume the file exists - user can manually unlink if needed
+          setLinkedExcelExists(true);
+          lastCheckedExcelPathRef.current = excelPath;
         } else {
           // For local files, use Electron API
           if (window.electronAPI) {
@@ -19363,12 +19359,85 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 excelPath.match(/^[A-Za-z]:[\\/]/) || // Windows drive letter
                                 excelPath.includes('/CloudStorage/'); // OneDrive sync folder
 
+                              // For OneDrive API paths (like /Documents/file.xlsx), try to construct local sync folder path
+                              if (isOneDrive && !isLocalFilePath && window.electronAPI) {
+                                try {
+                                  // Get home directory and find OneDrive folders
+                                  const homeDir = await window.electronAPI.getHomeDir();
+                                  const cloudStoragePath = `${homeDir}/Library/CloudStorage`;
+
+                                  console.log('Looking for OneDrive file. Excel path:', excelPath);
+                                  console.log('Home dir:', homeDir);
+                                  console.log('CloudStorage path:', cloudStoragePath);
+
+                                  // List CloudStorage directory to find OneDrive folders
+                                  const cloudStorageContents = await window.electronAPI.listDir(cloudStoragePath);
+                                  console.log('CloudStorage contents:', cloudStorageContents);
+
+                                  const oneDriveFolders = cloudStorageContents.filter(name =>
+                                    name.startsWith('OneDrive') || name.includes('OneDrive')
+                                  );
+                                  console.log('OneDrive folders found:', oneDriveFolders);
+
+                                  // Build list of possible paths
+                                  const possibleLocalPaths = [];
+
+                                  // Add CloudStorage OneDrive folders
+                                  for (const folder of oneDriveFolders) {
+                                    possibleLocalPaths.push(`${cloudStoragePath}/${folder}${excelPath}`);
+                                  }
+
+                                  // Also try legacy OneDrive locations in home directory
+                                  possibleLocalPaths.push(`${homeDir}/OneDrive${excelPath}`);
+                                  possibleLocalPaths.push(`${homeDir}/OneDrive - Personal${excelPath}`);
+
+                                  console.log('Trying these local paths:', possibleLocalPaths);
+
+                                  let localPathFound = null;
+                                  for (const localPath of possibleLocalPaths) {
+                                    try {
+                                      const exists = await window.electronAPI.fileExists(localPath);
+                                      console.log(`Checking ${localPath}: ${exists ? 'EXISTS' : 'not found'}`);
+                                      if (exists) {
+                                        localPathFound = localPath;
+                                        break;
+                                      }
+                                    } catch (e) {
+                                      console.log(`Error checking ${localPath}:`, e);
+                                      // Continue trying other paths
+                                    }
+                                  }
+
+                                  if (localPathFound) {
+                                    console.log('Found local file at:', localPathFound);
+                                    // Open the local file directly
+                                    const result = await window.electronAPI.openPath(localPathFound);
+                                    if (result) {
+                                      console.error('Failed to open local OneDrive file:', result);
+                                      alert(`Failed to open Excel file:\n${result}`);
+                                    }
+                                    setShowExportMenu(false);
+                                    return;
+                                  }
+
+                                  // If local file not found, fall through to web approach
+                                  console.log('Local OneDrive file not found, trying web approach...');
+                                } catch (err) {
+                                  console.error('Error searching for local OneDrive file:', err);
+                                  // Fall through to web approach
+                                }
+                              }
+
                               // Handle OneDrive API files - try desktop Excel first, fall back to web
                               if (isOneDrive && !isLocalFilePath) {
+                                console.log('Trying web approach for OneDrive file...');
+                                console.log('graphClient available:', !!graphClient);
                                 try {
                                   // Get the file's web URL from OneDrive
                                   if (graphClient) {
+                                    console.log('Fetching file metadata from Graph API:', `/me/drive/root:${excelPath}`);
                                     const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
+                                    console.log('Drive item response:', driveItem);
                                     if (driveItem && driveItem.webUrl) {
                                       const webUrl = driveItem.webUrl;
 
