@@ -214,22 +214,25 @@ ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, d
 });
 
 ipcMain.handle('shell:openPath', async (event, filePath) => {
-  const result = await shell.openPath(filePath);
-
-  // On macOS, bring Excel to the foreground after opening the file
-  if (process.platform === 'darwin' && filePath.endsWith('.xlsx')) {
-    // Wait a moment for Excel to open, then bring it to front
-    setTimeout(() => {
-      exec('osascript -e \'tell application "Microsoft Excel" to activate\'', (error) => {
+  // On macOS, use the native 'open' command which works more reliably than shell.openPath
+  if (process.platform === 'darwin') {
+    return new Promise((resolve) => {
+      // Use 'open' command which is what Finder uses when you double-click
+      // The -a flag specifies the application, -W waits for the app to open
+      const escapedPath = filePath.replace(/"/g, '\\"');
+      exec(`open "${escapedPath}"`, (error, stdout, stderr) => {
         if (error) {
-          // Try generic approach if Excel-specific fails
-          exec(`osascript -e 'tell application "Finder" to open POSIX file "${filePath}"' -e 'tell application "Microsoft Excel" to activate'`);
+          console.error('Failed to open file with open command:', error);
+          resolve(error.message);
+        } else {
+          resolve('');
         }
       });
-    }, 500);
+    });
   }
 
-  return result;
+  // On other platforms, use the standard shell.openPath
+  return await shell.openPath(filePath);
 });
 
 ipcMain.handle('shell:openExternal', async (event, url) => {
