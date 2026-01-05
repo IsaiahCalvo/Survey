@@ -111,6 +111,39 @@ export async function getFileMetadata(graphClient, filePath) {
 }
 
 /**
+ * Get file metadata by OneDrive item ID
+ * This is useful for tracking files across moves/renames
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string} fileId - The OneDrive item ID
+ * @returns {Promise<Object|null>} - File metadata or null if not found
+ */
+export async function getFileById(graphClient, fileId) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  if (!fileId) {
+    return null;
+  }
+
+  try {
+    const response = await graphClient
+      .api(`/me/drive/items/${fileId}`)
+      .select('id,name,parentReference,webUrl,@microsoft.graph.downloadUrl')
+      .get();
+
+    return response;
+  } catch (error) {
+    // 404 means file was deleted
+    if (error.statusCode === 404 || error.code === 'itemNotFound') {
+      return null;
+    }
+    console.error('Failed to get file by ID:', error);
+    throw error;
+  }
+}
+
+/**
  * List files in a OneDrive folder
  * @param {Object} graphClient - Microsoft Graph client
  * @param {string} folderPath - Path to folder (e.g., '/Documents')
