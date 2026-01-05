@@ -19356,8 +19356,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 return;
                               }
 
-                              // Handle OneDrive files - try desktop Excel first, fall back to web
-                              if (isOneDrive) {
+                              // Check if the path is actually a local file path (even if isOneDrive flag is set)
+                              // Local paths start with / and contain /Users/ or /Library/ or drive letters on Windows
+                              const isLocalFilePath = excelPath.startsWith('/Users/') ||
+                                excelPath.startsWith('/Library/') ||
+                                excelPath.match(/^[A-Za-z]:[\\/]/) || // Windows drive letter
+                                excelPath.includes('/CloudStorage/'); // OneDrive sync folder
+
+                              // Handle OneDrive API files - try desktop Excel first, fall back to web
+                              if (isOneDrive && !isLocalFilePath) {
                                 try {
                                   // Get the file's web URL from OneDrive
                                   if (graphClient) {
