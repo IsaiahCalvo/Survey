@@ -1,2 +1,15 @@
-chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-App.jsx:19412 Local OneDrive file not found, trying web approach...
+chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+App.jsx:19369 Looking for OneDrive file. Excel path: /Documents/Security_export.xlsx
+App.jsx:19370 Home dir: /Users/isaiahcalvo
+App.jsx:19371 CloudStorage path: /Users/isaiahcalvo/Library/CloudStorage
+App.jsx:19375 CloudStorage contents: (2) ['.DS_Store', 'OneDrive-Personal']
+App.jsx:19380 OneDrive folders found: ['OneDrive-Personal']
+App.jsx:19394 Trying these local paths: (3) ['/Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx', '/Users/isaiahcalvo/OneDrive/Documents/Security_export.xlsx', '/Users/isaiahcalvo/OneDrive - Personal/Documents/Security_export.xlsx']
+App.jsx:19400 Checking /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx: not found
+App.jsx:19400 Checking /Users/isaiahcalvo/OneDrive/Documents/Security_export.xlsx: not found
+App.jsx:19400 Checking /Users/isaiahcalvo/OneDrive - Personal/Documents/Security_export.xlsx: not found
+App.jsx:19424 Local OneDrive file not found, trying web approach...
+App.jsx:19433 Trying web approach for OneDrive file...
+App.jsx:19434 graphClient available: true
+App.jsx:19438 Fetching file metadata from Graph API: /me/drive/root:/Documents/Security_export.xlsx
+App.jsx:19440 Drive item response: {@odata.context: "https://graph.microsoft.com/v1.0/$metadata#users('isaiahcalvo123%40outlook.com')/drive/root/$entity", @microsoft.graph.downloadUrl: 'https://my.microsoftpersonalcontent.com/personal/d…jk4crlWDOYbyYTyTXu6AWoW3-s-pQF5YoA&ApiVersion=2.0', createdDateTime: '2026-01-05T20:35:48Z', eTag: '"{527CD4B1-221D-45E1-AE77-9BACAE1E3B55},1"', id: 'DC046716012CC0F4!s527cd4b1221d45e1ae779bacae1e3b55', …}

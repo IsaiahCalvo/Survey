@@ -19438,8 +19438,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     console.log('Fetching file metadata from Graph API:', `/me/drive/root:${excelPath}`);
                                     const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
                                     console.log('Drive item response:', driveItem);
-                                    if (driveItem && driveItem.webUrl) {
-                                      const webUrl = driveItem.webUrl;
+                                    console.log('webUrl:', driveItem?.webUrl);
+                                    console.log('downloadUrl:', driveItem?.['@microsoft.graph.downloadUrl']);
+
+                                    // Get webUrl, or construct one from the downloadUrl/id
+                                    let webUrl = driveItem?.webUrl;
+
+                                    // If no webUrl, try to open the file directly using downloadUrl
+                                    if (!webUrl && driveItem?.['@microsoft.graph.downloadUrl']) {
+                                      // For personal OneDrive, construct the web URL
+                                      // Format: https://onedrive.live.com/edit.aspx?cid=<driveId>&resid=<itemId>
+                                      const downloadUrl = driveItem['@microsoft.graph.downloadUrl'];
+                                      console.log('No webUrl, using downloadUrl to open file');
+
+                                      // Open the download URL which should trigger Excel to open
+                                      window.open(downloadUrl, '_blank');
+                                      setShowExportMenu(false);
+                                      return;
+                                    }
+
+                                    if (webUrl) {
+                                      console.log('Opening with webUrl:', webUrl);
 
                                       // Try to open in desktop Excel first using Office URI scheme
                                       // Format: ms-excel:ofe|u|<encoded-url>
