@@ -1,58 +1,158 @@
 chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-App.jsx:19369 Looking for OneDrive file. Excel path: /Documents/Security_export.xlsx
-App.jsx:19370 Home dir: /Users/isaiahcalvo
-App.jsx:19371 CloudStorage path: /Users/isaiahcalvo/Library/CloudStorage
-App.jsx:19375 CloudStorage contents: Array(2)
-App.jsx:19380 OneDrive folders found: Array(1)
-App.jsx:19394 Trying these local paths: Array(3)
-App.jsx:19400 Checking /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx: EXISTS
-App.jsx:19412 Found local file at: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
-main.jsx:25 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:25
-App.jsx:19369 Looking for OneDrive file. Excel path: /Documents/Security_export.xlsx
-App.jsx:19370 Home dir: /Users/isaiahcalvo
-App.jsx:19371 CloudStorage path: /Users/isaiahcalvo/Library/CloudStorage
-App.jsx:19375 CloudStorage contents: (2) ['.DS_Store', 'OneDrive-Personal']
-App.jsx:19380 OneDrive folders found: ['OneDrive-Personal']
-App.jsx:19394 Trying these local paths: (3) ['/Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx', '/Users/isaiahcalvo/OneDrive/Documents/Security_export.xlsx', '/Users/isaiahcalvo/OneDrive - Personal/Documents/Security_export.xlsx']
-App.jsx:19400 Checking /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx: not found
-App.jsx:19400 Checking /Users/isaiahcalvo/OneDrive/Documents/Security_export.xlsx: not found
-App.jsx:19400 Checking /Users/isaiahcalvo/OneDrive - Personal/Documents/Security_export.xlsx: not found
-App.jsx:19424 Local OneDrive file not found, trying web approach...
-App.jsx:19433 Trying web approach for OneDrive file...
-App.jsx:19434 graphClient available: true
-App.jsx:19438 Fetching file metadata from Graph API: /me/drive/root:/Documents/Security_export.xlsx
-App.jsx:19440 Drive item response: {@odata.context: "https://graph.microsoft.com/v1.0/$metadata#users('isaiahcalvo123%40outlook.com')/drive/root/$entity", @microsoft.graph.downloadUrl: 'https://my.microsoftpersonalcontent.com/personal/d…xQX-4ESm8Ol7rKQ3_cZTOerIx0ZV4U_lyU&ApiVersion=2.0', createdDateTime: '2026-01-05T20:53:43Z', eTag: '"{C04B28CF-E27C-48D1-895A-DD8498786035},1"', id: 'DC046716012CC0F4!sc04b28cfe27c48d1895add8498786035', …}
-App.jsx:19441 webUrl: https://onedrive.live.com/personal/dc046716012cc0f4/_layouts/15/doc.aspx?resid=c04b28cf-e27c-48d1-895a-dd8498786035&cid=dc046716012cc0f4
-App.jsx:19442 downloadUrl: https://my.microsoftpersonalcontent.com/personal/dc046716012cc0f4/_layouts/15/download.aspx?UniqueId=c04b28cf-e27c-48d1-895a-dd8498786035&Translate=false&tempauth=v1e.eyJzaXRlaWQiOiIzYjhmNGE4ZS01OTU0LTQ2ZWEtODdhNi01ODY3NzljY2EzMjUiLCJhcHBfZGlzcGxheW5hbWUiOiJTdXJ2ZXkgQXBwIFN5bmMiLCJhcHBpZCI6IjBkYTgxYTllLTJiMDUtNDZlZS1iODI2LTVlZmM1MTE0Yzc2NSIsImF1ZCI6IjAwMDAwMDAzLTAwMDAtMGZmMS1jZTAwLTAwMDAwMDAwMDAwMC9teS5taWNyb3NvZnRwZXJzb25hbGNvbnRlbnQuY29tQDkxODgwNDBkLTZjNjctNGM1Yi1iMTEyLTM2YTMwNGI2NmRhZCIsImV4cCI6IjE3Njc2NTAwMjcifQ.m0MEqXh-XCvnw8anl3U_lm8aFiILhcPCiPsSFMDWnZsU3s9tklTlIHBdFhF-LQzUUFv4NPwf-TDLkIBHMbIeqThHrKuie1Gf8XvQEKOeE3vw9YFyD5W_Ki1lIbrnXE_7LMaFwsmbeMMT5JYUp9HomH54JZHQ-FBlzDJrASRDpKOoyqAxgp6ZyjjNko2fcbA_FQTv8HXaBkUVroP2aXXtd4eysqcjq950Lc_th44auE3OH2WXpaFzNIyeXJ75LLTMv-sJ2N10axmNUxxNVohhDvB22FOAPi8ur3KjhhD6iH7TN9Hefbw9KyQ53_LQoXWK_yGKZSzF7MSNgNwwxNiquB0MeOYndBh2zayc-exwPRvgA_zo8kehlFgbp4SMN_XY32Zz2jXAolThVbeF09Dt1fQQe0_UCoIIoVEvLmHXybX3QFi1Rfd1MhchNfCTy2sOGkZ0PU_63UCs6v_KDyqVwg.Fwr-3_UmrxQX-4ESm8Ol7rKQ3_cZTOerIx0ZV4U_lyU&ApiVersion=2.0
-App.jsx:19461 Opening with webUrl: https://onedrive.live.com/personal/dc046716012cc0f4/_layouts/15/doc.aspx?resid=c04b28cf-e27c-48d1-895a-dd8498786035&cid=dc046716012cc0f4
-App.jsx:19468 Opened webUrl with shell.openExternal
-App.jsx:19369 Looking for OneDrive file. Excel path: /Documents/Security_export.xlsx
-App.jsx:19370 Home dir: /Users/isaiahcalvo
-App.jsx:19371 CloudStorage path: /Users/isaiahcalvo/Library/CloudStorage
-App.jsx:19375 CloudStorage contents: (2) ['.DS_Store', 'OneDrive-Personal']
-App.jsx:19380 OneDrive folders found: ['OneDrive-Personal']
-App.jsx:19394 Trying these local paths: (3) ['/Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx', '/Users/isaiahcalvo/OneDrive/Documents/Security_export.xlsx', '/Users/isaiahcalvo/OneDrive - Personal/Documents/Security_export.xlsx']
-App.jsx:19400 Checking /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx: not found
-App.jsx:19400 Checking /Users/isaiahcalvo/OneDrive/Documents/Security_export.xlsx: not found
-App.jsx:19400 Checking /Users/isaiahcalvo/OneDrive - Personal/Documents/Security_export.xlsx: not found
-App.jsx:19424 Local OneDrive file not found, trying web approach...
-App.jsx:19433 Trying web approach for OneDrive file...
-App.jsx:19434 graphClient available: true
-App.jsx:19438 Fetching file metadata from Graph API: /me/drive/root:/Documents/Security_export.xlsx
-App.jsx:19440 Drive item response: {@odata.context: "https://graph.microsoft.com/v1.0/$metadata#users('isaiahcalvo123%40outlook.com')/drive/root/$entity", @microsoft.graph.downloadUrl: 'https://my.microsoftpersonalcontent.com/personal/d…9QVVo2NxPRvoxeL6gqwh23-zicGdnDFtyw&ApiVersion=2.0', createdDateTime: '2026-01-05T20:53:43Z', eTag: '"{C04B28CF-E27C-48D1-895A-DD8498786035},2"', id: 'DC046716012CC0F4!sc04b28cfe27c48d1895add8498786035', …}
-App.jsx:19441 webUrl: https://onedrive.live.com/personal/dc046716012cc0f4/_layouts/15/doc.aspx?resid=c04b28cf-e27c-48d1-895a-dd8498786035&cid=dc046716012cc0f4
-App.jsx:19442 downloadUrl: https://my.microsoftpersonalcontent.com/personal/dc046716012cc0f4/_layouts/15/download.aspx?UniqueId=c04b28cf-e27c-48d1-895a-dd8498786035&Translate=false&tempauth=v1e.eyJzaXRlaWQiOiIzYjhmNGE4ZS01OTU0LTQ2ZWEtODdhNi01ODY3NzljY2EzMjUiLCJhcHBfZGlzcGxheW5hbWUiOiJTdXJ2ZXkgQXBwIFN5bmMiLCJhcHBpZCI6IjBkYTgxYTllLTJiMDUtNDZlZS1iODI2LTVlZmM1MTE0Yzc2NSIsImF1ZCI6IjAwMDAwMDAzLTAwMDAtMGZmMS1jZTAwLTAwMDAwMDAwMDAwMC9teS5taWNyb3NvZnRwZXJzb25hbGNvbnRlbnQuY29tQDkxODgwNDBkLTZjNjctNGM1Yi1iMTEyLTM2YTMwNGI2NmRhZCIsImV4cCI6IjE3Njc2NTAwMzkifQ.9wqKUE4-tPwgUkvJY24Vvkk3sKcwYGnF3qqFSntIoA08pilc3fxiFnyTgbRx9v15b3bpsdVazRTC6bwgIYSZLSeoF7Zo6W08FP2ClJ9M10fM3IDXwWMJNcRXzXaEvEYhjGuYIbvGlv6w4wgCGlZE22aNpM7XB6Pkcx4L9vdrOVAgVv5mmR4Sw_RINkjMe1fpxVE4xuVQhrOgbFTqzDESf2CLfClLptiz6lllj0EDGXx-aWROeb5HXBRlC8zRjYKHv33xcLiH9Nn-ZmRELMYe9ftKfWRRodPvf0SlOPXxWoDZl_KkQun1949X--SnEobnfVGnah8LajT9iG689XTCGixBbXeI-PQKHmGe0ker5XI_GgmAfK_L5Eb0LBAgssm7urq_prYbFC3M8a245yHHHBu7IHqM_cA8CIH9d4druKjvj1qH-ZBZbEPVcmuWZmrSWckSPqgGY3HPym_19eUduw.jD5pswl129QVVo2NxPRvoxeL6gqwh23-zicGdnDFtyw&ApiVersion=2.0
-App.jsx:19461 Opening with webUrl: https://onedrive.live.com/personal/dc046716012cc0f4/_layouts/15/doc.aspx?resid=c04b28cf-e27c-48d1-895a-dd8498786035&cid=dc046716012cc0f4
-App.jsx:19468 Opened webUrl with shell.openExternal
-App.jsx:19369 Looking for OneDrive file. Excel path: /Documents/Security_export.xlsx
-App.jsx:19370 Home dir: /Users/isaiahcalvo
-App.jsx:19371 CloudStorage path: /Users/isaiahcalvo/Library/CloudStorage
-App.jsx:19375 CloudStorage contents: (2) ['.DS_Store', 'OneDrive-Personal']
-App.jsx:19380 OneDrive folders found: ['OneDrive-Personal']
-App.jsx:19394 Trying these local paths: (3) ['/Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx', '/Users/isaiahcalvo/OneDrive/Documents/Security_export.xlsx', '/Users/isaiahcalvo/OneDrive - Personal/Documents/Security_export.xlsx']
-App.jsx:19400 Checking /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx: EXISTS
-App.jsx:19412 Found local file at: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
-main.jsx:25 Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:25
-(anonymous) @ App.jsx:12716
+App.jsx:10540 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
+excelGraphService.js:176     GET https://graph.microsoft.com/v1.0/me/drive/root:/Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx?$select=@microsoft.graph.downloadUrl 404
+(anonymous) @ HTTPMessageHandler.ts:29
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ HTTPMessageHandler.ts:28
+(anonymous) @ TelemetryHandler.ts:91
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ TelemetryHandler.ts:66
+(anonymous) @ RedirectHandler.ts:193
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRedirect @ RedirectHandler.ts:192
+(anonymous) @ RedirectHandler.ts:225
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RedirectHandler.ts:220
+(anonymous) @ RetryHandler.ts:173
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRetry @ RetryHandler.ts:172
+(anonymous) @ RetryHandler.ts:196
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RetryHandler.ts:192
+(anonymous) @ AuthenticationHandler.ts:88
+fulfilled @ tslib.es6.mjs:118
+Promise.then (async)
+step @ tslib.es6.mjs:120
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ AuthenticationHandler.ts:63
+(anonymous) @ HTTPClient.ts:88
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+sendRequest @ HTTPClient.ts:81
+(anonymous) @ GraphRequest.ts:372
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+send @ GraphRequest.ts:366
+(anonymous) @ GraphRequest.ts:635
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ GraphRequest.ts:630
+downloadExcelFileByPath @ excelGraphService.js:176
+(anonymous) @ App.jsx:10864
+(anonymous) @ App.jsx:11121
+subscription @ VM5:21
+emit @ VM4 sandbox_bundle:2
+onMessage @ VM4 sandbox_bundle:2
+Show 42 more frames
+excelGraphService.js:191 Failed to download Excel file by path: Error: The resource could not be found.
+    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+downloadExcelFileByPath @ excelGraphService.js:191
+await in downloadExcelFileByPath (async)
+(anonymous) @ App.jsx:10864
+(anonymous) @ App.jsx:11121
+subscription @ VM5:21
+emit @ VM4 sandbox_bundle:2
+onMessage @ VM4 sandbox_bundle:2
+App.jsx:11085 Failed to auto-sync from Excel: Error: Failed to download Excel file: The resource could not be found.
+    at downloadExcelFileByPath (excelGraphService.js:194:11)
+    at async App.jsx:10864:22
+(anonymous) @ App.jsx:11085
+await in (anonymous) (async)
+(anonymous) @ App.jsx:11121
+subscription @ VM5:21
+emit @ VM4 sandbox_bundle:2
+onMessage @ VM4 sandbox_bundle:2
+excelGraphService.js:176     GET https://graph.microsoft.com/v1.0/me/drive/root:/Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx?$select=@microsoft.graph.downloadUrl 404
+(anonymous) @ HTTPMessageHandler.ts:29
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ HTTPMessageHandler.ts:28
+(anonymous) @ TelemetryHandler.ts:91
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ TelemetryHandler.ts:66
+(anonymous) @ RedirectHandler.ts:193
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRedirect @ RedirectHandler.ts:192
+(anonymous) @ RedirectHandler.ts:225
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RedirectHandler.ts:220
+(anonymous) @ RetryHandler.ts:173
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRetry @ RetryHandler.ts:172
+(anonymous) @ RetryHandler.ts:196
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RetryHandler.ts:192
+(anonymous) @ AuthenticationHandler.ts:88
+fulfilled @ tslib.es6.mjs:118
+Promise.then (async)
+step @ tslib.es6.mjs:120
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ AuthenticationHandler.ts:63
+(anonymous) @ HTTPClient.ts:88
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+sendRequest @ HTTPClient.ts:81
+(anonymous) @ GraphRequest.ts:372
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+send @ GraphRequest.ts:366
+(anonymous) @ GraphRequest.ts:635
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ GraphRequest.ts:630
+downloadExcelFileByPath @ excelGraphService.js:176
+(anonymous) @ App.jsx:10864
+(anonymous) @ App.jsx:11121
+subscription @ VM5:21
+emit @ VM4 sandbox_bundle:2
+onMessage @ VM4 sandbox_bundle:2
+Show 42 more frames
+excelGraphService.js:191 Failed to download Excel file by path: Error: The resource could not be found.
+    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+downloadExcelFileByPath @ excelGraphService.js:191
+await in downloadExcelFileByPath (async)
+(anonymous) @ App.jsx:10864
+(anonymous) @ App.jsx:11121
+subscription @ VM5:21
+emit @ VM4 sandbox_bundle:2
+onMessage @ VM4 sandbox_bundle:2
+App.jsx:11085 Failed to auto-sync from Excel: Error: Failed to download Excel file: The resource could not be found.
+    at downloadExcelFileByPath (excelGraphService.js:194:11)
+    at async App.jsx:10864:22
+(anonymous) @ App.jsx:11085
+await in (anonymous) (async)
+(anonymous) @ App.jsx:11121
+subscription @ VM5:21
+emit @ VM4 sandbox_bundle:2
+onMessage @ VM4 sandbox_bundle:2

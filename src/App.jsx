@@ -10616,7 +10616,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             alert('Please sign in to Microsoft to sync with OneDrive.');
             return;
           }
-          fileData = await downloadExcelFileByPath(graphClient, selectedTemplate.linkedExcelPath);
+          // Use oneDriveApiPath for Graph API calls, fall back to linkedExcelPath for legacy data
+          const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
+          fileData = await downloadExcelFileByPath(graphClient, apiPath);
         } else {
           // Use local filesystem
           fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
@@ -10861,7 +10863,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (!graphClient) {
             return;
           }
-          fileData = await downloadExcelFileByPath(graphClient, selectedTemplate.linkedExcelPath);
+          // Use oneDriveApiPath for Graph API calls, fall back to linkedExcelPath for legacy data
+          const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
+          fileData = await downloadExcelFileByPath(graphClient, apiPath);
         } else {
           // Use local filesystem
           fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
@@ -11198,8 +11202,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       try {
         setLiveSyncStatus('connecting');
 
-        // Get file ID from path
-        const fileId = await getFileIdFromPath(graphClient, selectedTemplate.linkedExcelPath);
+        // Get file ID from path - use oneDriveApiPath for Graph API calls
+        const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
+        const fileId = await getFileIdFromPath(graphClient, apiPath);
         if (!isMounted) return;
         setOneDriveFileId(fileId);
 
