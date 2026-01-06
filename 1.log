@@ -1,2 +1,230 @@
-chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-login.microsoftonline.com/common/oauth2/v2.0/token:1     Failed to load resource: the server responded with a status of 400 ()
+chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+main.jsx:25 Navigation guards have been active for >2s, resetting for safety
+console.warn @ main.jsx:25
+(anonymous) @ App.jsx:12867
+setInterval (async)
+(anonymous) @ App.jsx:12865
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+excelSessionService.js:51     POST https://graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s7aa45e85cf4d4ca6a1493f08523b6b87/workbook/createSession 409
+(anonymous) @ HTTPMessageHandler.ts:29
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ HTTPMessageHandler.ts:28
+(anonymous) @ TelemetryHandler.ts:91
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ TelemetryHandler.ts:66
+(anonymous) @ RedirectHandler.ts:193
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRedirect @ RedirectHandler.ts:192
+(anonymous) @ RedirectHandler.ts:225
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RedirectHandler.ts:220
+(anonymous) @ RetryHandler.ts:173
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRetry @ RetryHandler.ts:172
+(anonymous) @ RetryHandler.ts:196
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RetryHandler.ts:192
+(anonymous) @ AuthenticationHandler.ts:88
+fulfilled @ tslib.es6.mjs:118
+Promise.then (async)
+step @ tslib.es6.mjs:120
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ AuthenticationHandler.ts:63
+(anonymous) @ HTTPClient.ts:88
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+sendRequest @ HTTPClient.ts:81
+(anonymous) @ GraphRequest.ts:372
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+send @ GraphRequest.ts:366
+(anonymous) @ GraphRequest.ts:661
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+post @ GraphRequest.ts:647
+createWorkbookSession @ excelSessionService.js:51
+initSession @ App.jsx:11341
+await in initSession (async)
+(anonymous) @ App.jsx:11378
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 53 more frames
+excelSessionService.js:63 Failed to create workbook session: Error: Isaiah Calvo is editing this workbook. You'll be able to make edits after they've closed the workbook.
+    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+createWorkbookSession @ excelSessionService.js:63
+await in createWorkbookSession (async)
+initSession @ App.jsx:11341
+await in initSession (async)
+(anonymous) @ App.jsx:11378
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:11370 Failed to initialize live sync session: Error: Failed to create session: Isaiah Calvo is editing this workbook. You'll be able to make edits after they've closed the workbook.
+    at createWorkbookSession (excelSessionService.js:73:11)
+    at async initSession (App.jsx:11341:42)
+initSession @ App.jsx:11370
+await in initSession (async)
+(anonymous) @ App.jsx:11378
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+excelSessionService.js:51     POST https://graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s7aa45e85cf4d4ca6a1493f08523b6b87/workbook/createSession 409
+(anonymous) @ HTTPMessageHandler.ts:29
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ HTTPMessageHandler.ts:28
+(anonymous) @ TelemetryHandler.ts:91
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ TelemetryHandler.ts:66
+(anonymous) @ RedirectHandler.ts:193
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRedirect @ RedirectHandler.ts:192
+(anonymous) @ RedirectHandler.ts:225
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RedirectHandler.ts:220
+(anonymous) @ RetryHandler.ts:173
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRetry @ RetryHandler.ts:172
+(anonymous) @ RetryHandler.ts:196
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RetryHandler.ts:192
+(anonymous) @ AuthenticationHandler.ts:88
+fulfilled @ tslib.es6.mjs:118
+Promise.then (async)
+step @ tslib.es6.mjs:120
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ AuthenticationHandler.ts:63
+(anonymous) @ HTTPClient.ts:88
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+sendRequest @ HTTPClient.ts:81
+(anonymous) @ GraphRequest.ts:372
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+send @ GraphRequest.ts:366
+(anonymous) @ GraphRequest.ts:661
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+post @ GraphRequest.ts:647
+createWorkbookSession @ excelSessionService.js:51
+initSession @ App.jsx:11341
+await in initSession (async)
+(anonymous) @ App.jsx:11378
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 53 more frames
+excelSessionService.js:63 Failed to create workbook session: Error: Isaiah Calvo is editing this workbook. You'll be able to make edits after they've closed the workbook.
+    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+createWorkbookSession @ excelSessionService.js:63
+await in createWorkbookSession (async)
+initSession @ App.jsx:11341
+await in initSession (async)
+(anonymous) @ App.jsx:11378
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:11370 Failed to initialize live sync session: Error: Failed to create session: Isaiah Calvo is editing this workbook. You'll be able to make edits after they've closed the workbook.
+    at createWorkbookSession (excelSessionService.js:73:11)
+    at async initSession (App.jsx:11341:42)
+initSession @ App.jsx:11370
+await in initSession (async)
+(anonymous) @ App.jsx:11378
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames

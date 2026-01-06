@@ -10983,6 +10983,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
         const newHighlightAnnotations = { ...highlightAnnotations };
         let updatesCount = 0;
+        // Track highlights that need canvas color updates
+        const highlightsWithColorChanges = [];
 
         workbook.worksheets.forEach(worksheet => {
           const sheetName = worksheet.name;
@@ -11095,12 +11097,32 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     ann.ballInCourtEntityName = entity.name;
                     ann.ballInCourtColor = entity.color;
                     changed = true;
+                    // Track this highlight for canvas color update
+                    if (ann.pageNumber && ann.bounds) {
+                      highlightsWithColorChanges.push({
+                        highlightId: key,
+                        pageNumber: ann.pageNumber,
+                        bounds: ann.bounds,
+                        color: entity.color,
+                        needsBIC: false
+                      });
+                    }
                   } else if (bicName === '') {
                     // Clear if empty string
                     ann.ballInCourtEntityId = null;
                     ann.ballInCourtEntityName = null;
                     ann.ballInCourtColor = null;
                     changed = true;
+                    // Track this highlight for canvas update - revert to needsBIC style
+                    if (ann.pageNumber && ann.bounds) {
+                      highlightsWithColorChanges.push({
+                        highlightId: key,
+                        pageNumber: ann.pageNumber,
+                        bounds: ann.bounds,
+                        color: null,
+                        needsBIC: true
+                      });
+                    }
                   }
                 }
               }
@@ -11199,6 +11221,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           setLastSyncMessage(`Auto-synced ${updatesCount} items from Excel`);
           // Clear message after 5 seconds
           setTimeout(() => setLastSyncMessage(''), 5000);
+
+          // Update canvas highlights for any that had color changes
+          if (highlightsWithColorChanges.length > 0) {
+            setNewHighlightsByPage(prev => {
+              const updated = { ...prev };
+              highlightsWithColorChanges.forEach(({ highlightId, pageNumber, bounds, color, needsBIC }) => {
+                const pageHighlights = updated[pageNumber] || [];
+                // Remove any existing highlight with this highlightId or same bounds
+                const filtered = pageHighlights.filter(h => {
+                  const hasMatchingId = h.highlightId === highlightId;
+                  const hasMatchingBounds = h.x === bounds.x &&
+                    h.y === bounds.y &&
+                    h.width === bounds.width &&
+                    h.height === bounds.height;
+                  return !hasMatchingId && !hasMatchingBounds;
+                });
+                // Add the updated highlight with new color
+                updated[pageNumber] = [
+                  ...filtered,
+                  {
+                    ...bounds,
+                    color: color,
+                    highlightId: highlightId,
+                    needsBIC: needsBIC
+                  }
+                ];
+              });
+              return updated;
+            });
+          }
         }
 
       } catch (error) {
