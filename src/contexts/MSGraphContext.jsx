@@ -233,7 +233,8 @@ export const MSGraphProvider = ({ children }) => {
         return () => { isMounted = false; };
     }, [user, fetchStoredTokens, storeTokens, refreshAccessToken, initializeGraphClient]);
 
-    // Periodic token refresh
+    // Periodic token refresh - refresh every 10 minutes to stay ahead of expiry
+    // Microsoft access tokens typically last 60-90 minutes, but can be revoked anytime
     useEffect(() => {
         if (!isAuthenticated || !user) return;
 
@@ -253,10 +254,44 @@ export const MSGraphProvider = ({ children }) => {
                     setNeedsReconnect(true);
                 }
             }
-        }, 30 * 60 * 1000);
+        }, 10 * 60 * 1000); // Refresh every 10 minutes
 
         return () => clearInterval(refreshInterval);
     }, [isAuthenticated, user, fetchStoredTokens, refreshAccessToken, storeTokens]);
+
+    // Ensure fresh token before API operations - call this before making Graph API calls
+    const ensureFreshToken = useCallback(async () => {
+        if (!user) return false;
+
+        const storedData = await fetchStoredTokens();
+        if (!storedData?.metadata?.refresh_token) {
+            setNeedsReconnect(true);
+            return false;
+        }
+
+        const { metadata } = storedData;
+        const now = Math.floor(Date.now() / 1000);
+
+        // Refresh if token expires within 10 minutes
+        if (!metadata.expires_at || metadata.expires_at < now + 600) {
+            const newTokens = await refreshAccessToken(metadata.refresh_token);
+            if (newTokens) {
+                tokenRef.current = newTokens.access_token;
+                await storeTokens(newTokens, {
+                    homeAccountId: storedData.account_id,
+                    username: storedData.account_email,
+                    name: storedData.account_name,
+                    tenantId: metadata.tenant_id,
+                });
+                return true;
+            } else {
+                setNeedsReconnect(true);
+                return false;
+            }
+        }
+
+        return true;
+    }, [user, fetchStoredTokens, refreshAccessToken, storeTokens]);
 
     // Login using direct OAuth flow (not Supabase linkIdentity)
     const login = async () => {
@@ -445,6 +480,7 @@ export const MSGraphProvider = ({ children }) => {
         connectionRestored,
         needsReconnect,
         handleOAuthCallback,
+        ensureFreshToken, // Call this before Graph API operations to ensure valid token
     };
 
     return <MSGraphContext.Provider value={value}>{children}</MSGraphContext.Provider>;

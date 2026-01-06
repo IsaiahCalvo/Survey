@@ -7956,7 +7956,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 });
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange }) {
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
@@ -10372,6 +10372,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       try {
         if (isOneDrive) {
+          // Ensure fresh token before OneDrive API calls
+          if (ensureFreshToken) {
+            const tokenValid = await ensureFreshToken();
+            if (!tokenValid) {
+              console.log('Token refresh failed, skipping OneDrive check');
+              checkInProgressRef.current = false;
+              return;
+            }
+          }
+
           // For OneDrive files, check by file ID first (tracks moves/renames)
           if (graphClient && fileId) {
             const fileInfo = await getFileById(graphClient, fileId);
@@ -10476,7 +10486,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
 
     checkLinkedExcelExists();
-  }, [selectedTemplate?.linkedExcelPath, selectedTemplate?.isOneDrive, selectedTemplate?.oneDriveFileId, selectedTemplate?.id, selectedTemplate?.supabaseId, graphClient, updateSupabaseTemplate, sanitizeTemplateConfig]);
+  }, [selectedTemplate?.linkedExcelPath, selectedTemplate?.isOneDrive, selectedTemplate?.oneDriveFileId, selectedTemplate?.id, selectedTemplate?.supabaseId, graphClient, updateSupabaseTemplate, sanitizeTemplateConfig, ensureFreshToken]);
 
   // Keep handleUnlinkExcel for manual unlinking if needed in future
   const handleUnlinkExcel = useCallback(async () => {
@@ -10581,6 +10591,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setIsExportingToOneDrive(true);
 
     try {
+      // Ensure we have a fresh token before making the API call
+      if (ensureFreshToken) {
+        const tokenValid = await ensureFreshToken();
+        if (!tokenValid) {
+          throw new Error('Microsoft session expired. Please reconnect your account.');
+        }
+      }
+
       const fileName = `${exportPendingData.fileName}_export.xlsx`;
       const oneDriveApiPath = `/Documents/${fileName}`;
 
@@ -10661,7 +10679,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setExportPendingData(null);
       setPendingOneDriveExport(false);
     }
-  }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates]);
+  }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken]);
 
   // Auto-resume OneDrive export after Microsoft login
   useEffect(() => {
@@ -10688,6 +10706,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             alert('Please sign in to Microsoft to sync with OneDrive.');
             return;
           }
+
+          // Ensure fresh token before API call
+          if (ensureFreshToken) {
+            const tokenValid = await ensureFreshToken();
+            if (!tokenValid) {
+              alert('Microsoft session expired. Please reconnect your account.');
+              return;
+            }
+          }
+
           // Use oneDriveApiPath for Graph API calls, fall back to linkedExcelPath for legacy data
           const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
           fileData = await downloadExcelFileByPath(graphClient, apiPath);
@@ -10923,7 +10951,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         alert('Failed to read or parse the linked Excel file.');
       }
     }
-  }, [selectedTemplate, highlightAnnotations, graphClient]);
+  }, [selectedTemplate, highlightAnnotations, graphClient, ensureFreshToken]);
 
   // Auto-sync from Excel when file changes (file watcher)
   const handleAutoSyncFromExcel = useCallback(async () => {
@@ -22305,7 +22333,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 // Main App Component
 export default function App() {
   // Microsoft Graph authentication hook
-  const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
+  const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken } = useMSGraph();
 
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedPDF, setSelectedPDF] = useState(null);
@@ -22652,6 +22680,7 @@ export default function App() {
                 graphClient={graphClient}
                 msAccount={msAccount}
                 msNeedsReconnect={msNeedsReconnect}
+                ensureFreshToken={ensureFreshToken}
                 ballInCourtEntities={ballInCourtEntities}
                 setBallInCourtEntities={setBallInCourtEntities}
               />
