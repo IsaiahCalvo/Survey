@@ -11089,16 +11089,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               // Update Ball in Court
               if (ballInCourtIndex !== -1) {
                 const bicName = row[ballInCourtIndex];
+                console.log('[AutoSync DEBUG] Checking BIC for item:', itemName, 'Excel BIC:', bicName, 'Current BIC:', ann.ballInCourtEntityName);
                 if (bicName && bicName !== ann.ballInCourtEntityName) {
                   const entities = selectedTemplate.ballInCourtEntities || [];
                   const entity = entities.find(e => e.name === bicName);
+                  console.log('[AutoSync DEBUG] BIC changed! Found entity:', entity?.name, 'Color:', entity?.color);
                   if (entity) {
                     ann.ballInCourtEntityId = entity.id;
                     ann.ballInCourtEntityName = entity.name;
                     ann.ballInCourtColor = entity.color;
                     changed = true;
                     // Track this highlight for canvas color update
+                    console.log('[AutoSync DEBUG] Checking if highlight has location - pageNumber:', ann.pageNumber, 'bounds:', ann.bounds);
                     if (ann.pageNumber && ann.bounds) {
+                      console.log('[AutoSync DEBUG] Adding to highlightsWithColorChanges:', {
+                        highlightId: key,
+                        pageNumber: ann.pageNumber,
+                        bounds: ann.bounds,
+                        color: entity.color
+                      });
                       highlightsWithColorChanges.push({
                         highlightId: key,
                         pageNumber: ann.pageNumber,
@@ -11106,6 +11115,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         color: entity.color,
                         needsBIC: false
                       });
+                    } else {
+                      console.log('[AutoSync DEBUG] Highlight missing pageNumber or bounds, cannot update canvas');
                     }
                   } else if (bicName === '') {
                     // Clear if empty string
@@ -11115,6 +11126,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     changed = true;
                     // Track this highlight for canvas update - revert to needsBIC style
                     if (ann.pageNumber && ann.bounds) {
+                      console.log('[AutoSync DEBUG] Clearing BIC, adding to highlightsWithColorChanges (needsBIC)');
                       highlightsWithColorChanges.push({
                         highlightId: key,
                         pageNumber: ann.pageNumber,
@@ -11217,6 +11229,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
 
         if (updatesCount > 0) {
+          console.log('[AutoSync DEBUG] Updates found:', updatesCount);
+          console.log('[AutoSync DEBUG] highlightsWithColorChanges:', highlightsWithColorChanges);
           setHighlightAnnotations(newHighlightAnnotations);
           setLastSyncMessage(`Auto-synced ${updatesCount} items from Excel`);
           // Clear message after 5 seconds
@@ -11224,9 +11238,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
           // Update canvas highlights for any that had color changes
           if (highlightsWithColorChanges.length > 0) {
+            console.log('[AutoSync DEBUG] Updating canvas for', highlightsWithColorChanges.length, 'highlights');
             setNewHighlightsByPage(prev => {
+              console.log('[AutoSync DEBUG] Previous newHighlightsByPage:', prev);
               const updated = { ...prev };
               highlightsWithColorChanges.forEach(({ highlightId, pageNumber, bounds, color, needsBIC }) => {
+                console.log('[AutoSync DEBUG] Processing highlight:', { highlightId, pageNumber, bounds, color, needsBIC });
                 const pageHighlights = updated[pageNumber] || [];
                 // Remove any existing highlight with this highlightId or same bounds
                 const filtered = pageHighlights.filter(h => {
@@ -11238,18 +11255,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   return !hasMatchingId && !hasMatchingBounds;
                 });
                 // Add the updated highlight with new color
+                const newHighlight = {
+                  ...bounds,
+                  color: color,
+                  highlightId: highlightId,
+                  needsBIC: needsBIC
+                };
+                console.log('[AutoSync DEBUG] Adding new highlight to page', pageNumber, ':', newHighlight);
                 updated[pageNumber] = [
                   ...filtered,
-                  {
-                    ...bounds,
-                    color: color,
-                    highlightId: highlightId,
-                    needsBIC: needsBIC
-                  }
+                  newHighlight
                 ];
               });
+              console.log('[AutoSync DEBUG] Updated newHighlightsByPage:', updated);
               return updated;
             });
+          } else {
+            console.log('[AutoSync DEBUG] No color changes to update on canvas');
           }
         }
 

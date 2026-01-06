@@ -6029,13 +6029,18 @@ const PageAnnotationLayer = memo(({
 
   // Add highlights when newHighlights prop changes
   useEffect(() => {
-    if (!fabricRef.current || !newHighlights || newHighlights.length === 0) return;
+    console.log('[PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page', pageNumber, '- newHighlights:', newHighlights);
+    if (!fabricRef.current || !newHighlights || newHighlights.length === 0) {
+      console.log('[PageAnnotationLayer DEBUG] Early return - fabricRef:', !!fabricRef.current, 'newHighlights:', newHighlights);
+      return;
+    }
 
     const canvas = fabricRef.current;
     const currentZoom = canvas.getZoom();
     let addedAny = false;
 
     newHighlights.forEach((highlight, index) => {
+      console.log('[PageAnnotationLayer DEBUG] Processing highlight', index, ':', highlight);
       // Create a unique key for this highlight to avoid duplicates
       // Use highlightId if available, otherwise use coordinates
       const highlightKey = highlight.highlightId || `${highlight.x}-${highlight.y}-${highlight.width}-${highlight.height}`;
@@ -6083,18 +6088,24 @@ const PageAnnotationLayer = memo(({
           const existingNeedsBIC = !!existingRect.needsBIC;
 
           // If everything matches, skip update
+          console.log('[PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch:', boundsMatch, 'needsBIC:', needsBIC, 'existingNeedsBIC:', existingNeedsBIC, 'existingFill:', existingRect.fill, 'targetColor:', color);
           if (boundsMatch && needsBIC === existingNeedsBIC) {
             // For solid highlights, check color
             if (!needsBIC) {
               if (existingRect.fill === color) {
+                console.log('[PageAnnotationLayer DEBUG] Skipping - already rendered correctly with same color');
                 return; // Skip, already rendered correctly
+              } else {
+                console.log('[PageAnnotationLayer DEBUG] Color mismatch! existingFill:', existingRect.fill, 'targetColor:', color);
               }
             } else {
+              console.log('[PageAnnotationLayer DEBUG] Skipping - needsBIC style is constant');
               return; // Skip, already rendered correctly (BIC style is constant)
             }
           }
 
           // If we get here, something changed. Remove the old one and let it be re-added.
+          console.log('[PageAnnotationLayer DEBUG] Removing old highlight to re-add with new properties');
           canvas.remove(existingRect);
           renderedHighlightsRef.current.delete(highlight.highlightId);
           processedHighlightsRef.current.delete(highlightKey);
