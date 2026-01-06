@@ -531,23 +531,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                 {/* Subscription View Tabs - Always visible when subscription tab is active */}
                 <div className="account-subscription-tabs" style={{ marginBottom: '16px' }}>
                   <button
-                    onClick={() => {
-                      // #region agent log
-                      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountSettings.jsx:535',message:'Manage tab clicked, setting subscriptionViewTab to manage',data:{previousTab:subscriptionViewTab},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-                      // #endregion
-                      setSubscriptionViewTab('manage');
-                    }}
+                    onClick={() => setSubscriptionViewTab('manage')}
                     className={`account-subscription-tab ${subscriptionViewTab === 'manage' ? 'active' : ''}`}
                   >
                     Manage Subscription
                   </button>
                   <button
-                    onClick={() => {
-                      // #region agent log
-                      fetch('http://127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountSettings.jsx:547',message:'Usage tab clicked, setting subscriptionViewTab to usage',data:{previousTab:subscriptionViewTab},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-                      // #endregion
-                      setSubscriptionViewTab('usage');
-                    }}
+                    onClick={() => setSubscriptionViewTab('usage')}
                     className={`account-subscription-tab ${subscriptionViewTab === 'usage' ? 'active' : ''}`}
                   >
                     Usage

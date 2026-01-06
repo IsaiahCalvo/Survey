@@ -1481,7 +1481,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Ball in Court entities: { id, name, color }
   // Auth state and user dropdown menu
   const { user, isAuthenticated, signOut, signInWithGoogle, features } = useAuth();
-  const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount } = useMSGraph();
+  const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const userDropdownRef = useRef(null);
@@ -7956,7 +7956,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 });
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient, msAccount, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange }) {
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
@@ -19288,6 +19288,45 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 </>
               )}
 
+              {/* Microsoft Reconnect Banner */}
+              {!isSurveyPanelCollapsed && msNeedsReconnect && selectedTemplate?.isOneDrive && (
+                <div style={{
+                  padding: '10px 12px',
+                  borderTop: '1px solid #3a3a3a',
+                  background: '#3d2c00',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <span style={{ color: '#ffb800', fontSize: '16px' }}>⚠️</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#ffcc00', fontSize: '12px', fontWeight: 600, marginBottom: '2px' }}>
+                      Microsoft session expired
+                    </div>
+                    <div style={{ color: '#cca800', fontSize: '11px' }}>
+                      Reconnect to sync with OneDrive
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={msLogin}
+                    style={{
+                      background: '#ff9500',
+                      border: 'none',
+                      color: '#000',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Reconnect
+                  </button>
+                </div>
+              )}
+
               {/* Export / Sync Button at Bottom */}
               {!isSurveyPanelCollapsed && selectedTemplate && (
                 <div style={{
@@ -22107,7 +22146,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             <p style={{ color: '#ccc', marginBottom: '24px', lineHeight: '1.6' }}>
               To sync with Excel files in OneDrive or Microsoft Teams, you need to connect your Microsoft account.
             </p>
-            {isMSAuthenticated ? (
+            {isMSAuthenticated && !msNeedsReconnect ? (
               <div>
                 <div style={{
                   background: '#1e1e1e',
@@ -22137,6 +22176,64 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   }}
                 >
                   Continue
+                </button>
+              </div>
+            ) : msNeedsReconnect ? (
+              <div>
+                <div style={{
+                  background: '#3d2c00',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  marginBottom: '24px'
+                }}>
+                  <p style={{ color: '#ffcc00', marginBottom: '8px', fontSize: '14px' }}>
+                    ⚠️ Session expired
+                  </p>
+                  <p style={{ color: '#ccc', fontSize: '13px' }}>
+                    Your Microsoft session has expired. Please reconnect to continue syncing with OneDrive.
+                  </p>
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await msLogin();
+                    } catch (error) {
+                      console.error('Reconnect failed:', error);
+                      alert('Failed to reconnect to Microsoft.');
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '16px',
+                    background: '#ff9500',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: '#000',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    marginBottom: '12px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#e68500'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#ff9500'}
+                >
+                  Reconnect Microsoft Account
+                </button>
+                <button
+                  onClick={() => setShowMSLoginModal(false)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    background: 'transparent',
+                    border: '1px solid #666',
+                    borderRadius: '8px',
+                    color: '#ccc',
+                    fontSize: '14px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
                 </button>
               </div>
             ) : (
@@ -22208,7 +22305,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 // Main App Component
 export default function App() {
   // Microsoft Graph authentication hook
-  const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount } = useMSGraph();
+  const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
 
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedPDF, setSelectedPDF] = useState(null);
@@ -22554,6 +22651,7 @@ export default function App() {
                 msLogin={msLogin}
                 graphClient={graphClient}
                 msAccount={msAccount}
+                msNeedsReconnect={msNeedsReconnect}
                 ballInCourtEntities={ballInCourtEntities}
                 setBallInCourtEntities={setBallInCourtEntities}
               />
