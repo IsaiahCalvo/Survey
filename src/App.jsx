@@ -10299,16 +10299,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Check if linked Excel file exists when template changes
   // Uses file ID for OneDrive to track files across moves/renames
   // If file is deleted, automatically clear the link
-  const lastCheckedExcelRef = useRef({ path: null, fileId: null });
+  const lastCheckedExcelRef = useRef({ path: null, fileId: null, cleared: false });
+  const checkInProgressRef = useRef(false);
   useEffect(() => {
     const checkLinkedExcelExists = async () => {
+      // Prevent concurrent checks
+      if (checkInProgressRef.current) {
+        return;
+      }
+
       const excelPath = selectedTemplate?.linkedExcelPath;
       const isOneDrive = selectedTemplate?.isOneDrive;
       const fileId = selectedTemplate?.oneDriveFileId;
 
       if (!excelPath) {
         setLinkedExcelExists(null);
-        lastCheckedExcelRef.current = { path: null, fileId: null };
+        lastCheckedExcelRef.current = { path: null, fileId: null, cleared: false };
         return;
       }
 
@@ -10318,10 +10324,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return;
       }
 
+      // Skip if we already cleared this path (prevent infinite loop)
+      if (lastCheckedExcelRef.current.cleared &&
+          lastCheckedExcelRef.current.path === excelPath) {
+        return;
+      }
+
+      checkInProgressRef.current = true;
+
       // Helper function to clear the Excel link
       const clearExcelLink = async (reason) => {
         console.log('Clearing Excel link:', reason);
-        lastCheckedExcelRef.current = { path: excelPath, fileId }; // Prevent re-checking
+        lastCheckedExcelRef.current = { path: excelPath, fileId, cleared: true }; // Prevent re-checking
 
         setLinkedExcelExists(false);
         setAutoPushToExcel(false);
@@ -10394,7 +10408,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               }
 
               setLinkedExcelExists(true);
-              lastCheckedExcelRef.current = { path: excelPath, fileId };
+              lastCheckedExcelRef.current = { path: excelPath, fileId, cleared: false };
             } else {
               // File was deleted from OneDrive
               await clearExcelLink('OneDrive file was deleted (not found by ID)');
@@ -10427,7 +10441,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 }
 
                 setLinkedExcelExists(true);
-                lastCheckedExcelRef.current = { path: excelPath, fileId: fileInfo.id };
+                lastCheckedExcelRef.current = { path: excelPath, fileId: fileInfo.id, cleared: false };
               }
             } catch (pathError) {
               // File not found by path either
@@ -10443,7 +10457,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             const exists = await window.electronAPI.fileExists(excelPath);
             if (exists) {
               setLinkedExcelExists(true);
-              lastCheckedExcelRef.current = { path: excelPath, fileId: null };
+              lastCheckedExcelRef.current = { path: excelPath, fileId: null, cleared: false };
             } else {
               await clearExcelLink('Local Excel file not found at path: ' + excelPath);
             }
@@ -10456,6 +10470,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         console.error('Error checking Excel file existence:', error);
         // Don't clear the link on transient errors
         setLinkedExcelExists(null);
+      } finally {
+        checkInProgressRef.current = false;
       }
     };
 
@@ -10810,7 +10826,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               if (notesIndex !== -1) {
                 const noteText = row[notesIndex];
                 if (noteText !== undefined) {
-                  if (!ann.note) ann.note = {};
+                  // Handle case where ann.note might be a string (serialized JSON)
+                  if (typeof ann.note === 'string') {
+                    try {
+                      ann.note = JSON.parse(ann.note);
+                    } catch {
+                      ann.note = {};
+                    }
+                  }
+                  if (!ann.note || typeof ann.note !== 'object') ann.note = {};
                   if (ann.note.text !== noteText) {
                     ann.note.text = noteText;
                     changed = true;
@@ -11057,7 +11081,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               if (notesIndex !== -1) {
                 const noteText = row[notesIndex];
                 if (noteText !== undefined) {
-                  if (!ann.note) ann.note = {};
+                  // Handle case where ann.note might be a string (serialized JSON)
+                  if (typeof ann.note === 'string') {
+                    try {
+                      ann.note = JSON.parse(ann.note);
+                    } catch {
+                      ann.note = {};
+                    }
+                  }
+                  if (!ann.note || typeof ann.note !== 'object') ann.note = {};
                   if (ann.note.text !== noteText) {
                     ann.note.text = noteText;
                     changed = true;
