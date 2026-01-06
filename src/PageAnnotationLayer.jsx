@@ -6029,18 +6029,13 @@ const PageAnnotationLayer = memo(({
 
   // Add highlights when newHighlights prop changes
   useEffect(() => {
-    console.log('[PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page', pageNumber, '- newHighlights:', newHighlights);
-    if (!fabricRef.current || !newHighlights || newHighlights.length === 0) {
-      console.log('[PageAnnotationLayer DEBUG] Early return - fabricRef:', !!fabricRef.current, 'newHighlights:', newHighlights);
-      return;
-    }
+    if (!fabricRef.current || !newHighlights || newHighlights.length === 0) return;
 
     const canvas = fabricRef.current;
     const currentZoom = canvas.getZoom();
     let addedAny = false;
 
     newHighlights.forEach((highlight, index) => {
-      console.log('[PageAnnotationLayer DEBUG] Processing highlight', index, ':', highlight);
       // Create a unique key for this highlight to avoid duplicates
       // Use highlightId if available, otherwise use coordinates
       const highlightKey = highlight.highlightId || `${highlight.x}-${highlight.y}-${highlight.width}-${highlight.height}`;
@@ -6088,24 +6083,18 @@ const PageAnnotationLayer = memo(({
           const existingNeedsBIC = !!existingRect.needsBIC;
 
           // If everything matches, skip update
-          console.log('[PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch:', boundsMatch, 'needsBIC:', needsBIC, 'existingNeedsBIC:', existingNeedsBIC, 'existingFill:', existingRect.fill, 'targetColor:', color);
           if (boundsMatch && needsBIC === existingNeedsBIC) {
             // For solid highlights, check color
             if (!needsBIC) {
               if (existingRect.fill === color) {
-                console.log('[PageAnnotationLayer DEBUG] Skipping - already rendered correctly with same color');
                 return; // Skip, already rendered correctly
-              } else {
-                console.log('[PageAnnotationLayer DEBUG] Color mismatch! existingFill:', existingRect.fill, 'targetColor:', color);
               }
             } else {
-              console.log('[PageAnnotationLayer DEBUG] Skipping - needsBIC style is constant');
               return; // Skip, already rendered correctly (BIC style is constant)
             }
           }
 
           // If we get here, something changed. Remove the old one and let it be re-added.
-          console.log('[PageAnnotationLayer DEBUG] Removing old highlight to re-add with new properties');
           canvas.remove(existingRect);
           renderedHighlightsRef.current.delete(highlight.highlightId);
           processedHighlightsRef.current.delete(highlightKey);
@@ -6171,10 +6160,8 @@ const PageAnnotationLayer = memo(({
 
       // Check if we've already processed this highlight (by coordinates if no ID)
       const alreadyProcessed = processedHighlightsRef.current.has(highlightKey);
-      console.log('[PageAnnotationLayer DEBUG] alreadyProcessed:', alreadyProcessed, 'highlightKey:', highlightKey);
       if (!alreadyProcessed) {
         // Check if this highlight needs BIC assignment (transparent with dashed outline)
-        console.log('[PageAnnotationLayer DEBUG] Creating new highlight rect - needsBIC:', highlight.needsBIC, 'color:', highlight.color);
         if (highlight.needsBIC) {
           // Render as transparent with dashed outline (indicating it needs BIC)
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
@@ -6234,7 +6221,6 @@ const PageAnnotationLayer = memo(({
           // Use color from highlight data if provided, otherwise use default, and preserve stored opacity
           const rawColor = highlight.color || highlightColor;
           const color = normalizeHighlightColor(rawColor) || highlightColor;
-          console.log('[PageAnnotationLayer DEBUG] Creating solid highlight - rawColor:', rawColor, 'normalizedColor:', color);
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
@@ -6283,20 +6269,15 @@ const PageAnnotationLayer = memo(({
           const isSurveyAnnotation = objModuleId !== null;
           const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
           rect.set({ visible: surveyAnnotationVisible });
-          console.log('[PageAnnotationLayer DEBUG] Adding rect to canvas - fill:', rect.fill, 'visible:', surveyAnnotationVisible, 'highlightId:', highlight.highlightId);
           canvas.add(rect);
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
         }
-      } else {
-        console.log('[PageAnnotationLayer DEBUG] Skipping already processed highlight:', highlightKey);
       }
     });
 
-    console.log('[PageAnnotationLayer DEBUG] Finished processing highlights - addedAny:', addedAny);
     if (addedAny) {
       canvas.renderAll();
-      console.log('[PageAnnotationLayer DEBUG] Canvas rendered, saving annotations');
 
       // Save annotations
       try {
