@@ -13,7 +13,7 @@
     "declaration": false,
     "declarationMap": false,
     "isolatedModules": true,
-    "noEmit": true,
+    "noEmit": false,
     "allowSyntheticDefaultImports": true,
     "outDir": "./dist",
     "rootDir": "./src",

@@ -22,7 +22,8 @@ const UserPresence: React.FC<UserPresenceProps> = ({ sessionId }) => {
 
     // Subscribe to real-time presence changes
     const supabase = getSupabase();
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let channel: any = null;
 
     if (supabase) {
       channel = supabase
