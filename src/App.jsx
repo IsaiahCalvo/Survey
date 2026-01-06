@@ -9735,6 +9735,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const workbook = new ExcelJS.Workbook();
       const modulesList = selectedTemplate.modules || selectedTemplate.spaces || [];
       const sheetNames = new Set();
+      const schemaMappings = []; // Track schema mappings for Excel add-in sync
 
       const createSheetName = (categoryName, moduleName) => {
         const rawName = `${categoryName || 'Category'} - ${moduleName || 'Module'}`.trim() || 'Sheet';
@@ -9805,6 +9806,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             });
             headerRow.push('Ball in Court');
             headerRow.push('Notes');
+
+            // Build column mapping for Excel add-in sync
+            // Column mapping: A = changed_by, B = changed_date, C = name, D+ = checklist items, then ball_in_court, notes
+            const columnMapping = {
+              'A': 'changed_by',
+              'B': 'changed_date',
+              'C': 'name'
+            };
+            checklistItems.forEach((checklistItem, idx) => {
+              const colLetter = String.fromCharCode(68 + idx); // D, E, F, ...
+              columnMapping[colLetter] = `checklist_${checklistItem.id}`;
+            });
+            const ballInCourtColIdx = 3 + checklistItems.length;
+            const notesColIdx = ballInCourtColIdx + 1;
+            columnMapping[String.fromCharCode(65 + ballInCourtColIdx)] = 'ball_in_court_name';
+            columnMapping[String.fromCharCode(65 + notesColIdx)] = 'notes';
+
+            // Add to schema mappings
+            schemaMappings.push({
+              sheetName,
+              sheetIndex: workbook.worksheets.length - 1,
+              moduleId,
+              categoryId: category.id,
+              columnMapping,
+              headerRow: 1,
+              dataStartRow: 2
+            });
 
             // Get ball in court entities from template
             const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
@@ -10235,6 +10263,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               handleTemplatesChange(updatedTemplates);
             }
 
+            // Save Excel schema mappings for Excel add-in sync
+            if (surveySession?.saveSchemaMapping && schemaMappings.length > 0) {
+              try {
+                console.log('[SurveySync] Saving', schemaMappings.length, 'Excel schema mappings');
+                for (const mapping of schemaMappings) {
+                  await surveySession.saveSchemaMapping(mapping);
+                }
+              } catch (schemaErr) {
+                console.warn('[SurveySync] Failed to save schema mappings:', schemaErr);
+                // Don't fail the export if schema save fails
+              }
+            }
+
             if (!silent) {
               setIsExporting(false);
               alert('Sync to Excel successful!');
@@ -10283,7 +10324,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setIsExporting(false);
       alert('Unable to create the Excel file. Please try again.');
     }
-  }, [selectedTemplate, items, highlightAnnotations, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus]);
+  }, [selectedTemplate, items, highlightAnnotations, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, surveySession]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -11530,6 +11571,126 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     return () => clearTimeout(pushTimeout);
   }, [liveSyncEnabled, excelSessionId, oneDriveFileId, graphClient, liveSyncStatus, autoPushToExcel, highlightAnnotations, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
+
+  // ============================================
+  // SURVEY SESSION SYNC (for Excel Add-in bidirectional sync)
+  // ============================================
+
+  // Track if we've initialized the survey session for this template
+  const surveySessionInitializedRef = useRef(null);
+  const lastSyncedHighlightsRef = useRef(null);
+
+  // Enable survey session sync when Excel is linked and auto-push or live-sync is enabled
+  useEffect(() => {
+    if (!surveySession) return;
+
+    const templateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+    const hasLinkedExcel = selectedTemplate?.linkedExcelPath;
+    const syncModeEnabled = autoPushToExcel || liveSyncEnabled;
+
+    // Enable sync if we have a template with linked Excel and sync is enabled
+    if (templateId && hasLinkedExcel && syncModeEnabled) {
+      // Only initialize once per template
+      if (surveySessionInitializedRef.current !== templateId) {
+        console.log('[SurveySync] Enabling survey session sync for template:', templateId);
+        surveySession.enableSync(templateId);
+        surveySessionInitializedRef.current = templateId;
+
+        // Link Excel file info to session
+        const excelFileId = selectedTemplate?.oneDriveFileId || null;
+        if (surveySession.linkExcelFile) {
+          surveySession.linkExcelFile(selectedTemplate.linkedExcelPath, excelFileId);
+        }
+      }
+    } else if (surveySession.syncEnabled && !syncModeEnabled) {
+      // Disable sync if sync mode is turned off
+      console.log('[SurveySync] Disabling survey session sync');
+      surveySession.disableSync();
+      surveySessionInitializedRef.current = null;
+    }
+  }, [
+    surveySession,
+    selectedTemplate?.supabaseId,
+    selectedTemplate?.id,
+    selectedTemplate?.linkedExcelPath,
+    selectedTemplate?.oneDriveFileId,
+    autoPushToExcel,
+    liveSyncEnabled
+  ]);
+
+  // Sync highlight annotation changes to Supabase (for Excel add-in to receive)
+  useEffect(() => {
+    if (!surveySession?.syncEnabled || !surveySession?.session) return;
+    if (!autoPushToExcel && !liveSyncEnabled) return;
+
+    // Compare with last synced state to avoid unnecessary syncs
+    const currentHighlightsJson = JSON.stringify(highlightAnnotations);
+    if (lastSyncedHighlightsRef.current === currentHighlightsJson) return;
+
+    // Debounce sync to avoid rapid-fire updates
+    const syncTimeout = setTimeout(() => {
+      console.log('[SurveySync] Syncing highlight changes to Supabase for Excel add-in');
+      surveySession.syncAllNow(highlightAnnotations);
+      lastSyncedHighlightsRef.current = currentHighlightsJson;
+    }, 2500); // 2.5s debounce (slightly longer than Excel push to let it complete first)
+
+    return () => clearTimeout(syncTimeout);
+  }, [surveySession?.syncEnabled, surveySession?.session, highlightAnnotations, autoPushToExcel, liveSyncEnabled]);
+
+  // Consume remote changes from Excel add-in and update local state
+  useEffect(() => {
+    if (!surveySession?.syncEnabled) return;
+
+    const pendingChanges = surveySession.pendingRemoteChanges || [];
+    if (pendingChanges.length === 0) return;
+
+    console.log('[SurveySync] Received', pendingChanges.length, 'remote changes from Excel add-in');
+
+    // Process each pending change
+    const changes = surveySession.consumePendingChanges();
+
+    changes.forEach(change => {
+      const { type, item } = change;
+
+      if (type === 'insert' || type === 'update') {
+        // Update local highlight annotations
+        setHighlightAnnotations(prev => ({
+          ...prev,
+          [item.highlightId]: {
+            ...prev[item.highlightId],
+            ...item,
+            // Map database fields back to app format
+            moduleId: item.moduleId,
+            categoryId: item.categoryId,
+            name: item.name,
+            pageNumber: item.pageNumber,
+            bounds: item.bounds,
+            ballInCourtEntityId: item.ballInCourt?.entityId || item.ballInCourtEntityId,
+            ballInCourtEntityName: item.ballInCourt?.name || item.ballInCourtName,
+            changedBy: item.changedBy,
+            changedDate: item.changedDate,
+            notes: item.notes,
+            checklistResponses: item.checklistResponses || {},
+            // Mark as synced from remote to avoid re-syncing
+            _fromRemote: true
+          }
+        }));
+      } else if (type === 'delete') {
+        // Remove from local state
+        setHighlightAnnotations(prev => {
+          const updated = { ...prev };
+          delete updated[item.highlightId];
+          return updated;
+        });
+      }
+    });
+
+    // Update the lastSyncedHighlights ref to prevent re-sync
+    setHighlightAnnotations(current => {
+      lastSyncedHighlightsRef.current = JSON.stringify(current);
+      return current;
+    });
+  }, [surveySession?.syncEnabled, surveySession?.pendingRemoteChanges]);
 
   // ============================================
   // DOCUMENT-BASED SUPABASE REAL-TIME SYNC
