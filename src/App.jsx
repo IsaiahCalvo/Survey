@@ -8577,6 +8577,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const liveSyncPollRef = useRef(null);
   const lastPollDataRef = useRef(null);
 
+  // Excel Add-in state (for bidirectional sync via Office.js)
+  const [addinEnabled, setAddinEnabled] = useState(false);
+  const [addinStatus, setAddinStatus] = useState('stopped'); // 'stopped', 'starting', 'running', 'error'
+  const [addinEnabling, setAddinEnabling] = useState(false);
+
   // Export/Sync modal states
   const [showExportLocationModal, setShowExportLocationModal] = useState(false);
   const [showMSLoginModal, setShowMSLoginModal] = useState(false);
@@ -10263,8 +10268,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               handleTemplatesChange(updatedTemplates);
             }
 
-            // Save Excel schema mappings for Excel add-in sync
-            if (surveySession?.saveSchemaMapping && schemaMappings.length > 0) {
+            // Save Excel schema mappings for Excel add-in sync (only on manual export, not auto-push)
+            if (!silent && surveySession?.saveSchemaMapping && schemaMappings.length > 0) {
               try {
                 console.log('[SurveySync] Saving', schemaMappings.length, 'Excel schema mappings');
                 for (const mapping of schemaMappings) {
@@ -11691,6 +11696,71 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return current;
     });
   }, [surveySession?.syncEnabled, surveySession?.pendingRemoteChanges]);
+
+  // ============================================
+  // EXCEL ADD-IN MANAGEMENT
+  // ============================================
+
+  // Handle enabling/disabling the Excel add-in
+  const handleToggleAddin = useCallback(async () => {
+    if (!window.electronAPI?.addin) {
+      alert('Excel add-in is only available in the desktop app.');
+      return;
+    }
+
+    if (addinEnabling) return; // Prevent double-clicks
+
+    setAddinEnabling(true);
+
+    try {
+      if (addinEnabled) {
+        // Disable the add-in
+        const result = await window.electronAPI.addin.disable();
+        if (result.success) {
+          setAddinEnabled(false);
+          setAddinStatus('stopped');
+          alert('Excel add-in disabled. Restart Excel to remove it from the ribbon.');
+        } else {
+          alert('Failed to disable add-in: ' + result.error);
+        }
+      } else {
+        // Enable the add-in
+        setAddinStatus('starting');
+        const result = await window.electronAPI.addin.enable();
+        if (result.success) {
+          setAddinEnabled(true);
+          setAddinStatus('running');
+          alert(result.message || 'Excel add-in enabled! Restart Excel to see the Survey Sync button in the Home ribbon.');
+        } else {
+          setAddinStatus('error');
+          alert('Failed to enable add-in: ' + result.error);
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling add-in:', error);
+      setAddinStatus('error');
+      alert('Error: ' + error.message);
+    } finally {
+      setAddinEnabling(false);
+    }
+  }, [addinEnabled, addinEnabling]);
+
+  // Check add-in status on mount
+  useEffect(() => {
+    const checkAddinStatus = async () => {
+      if (!window.electronAPI?.addin) return;
+
+      try {
+        const status = await window.electronAPI.addin.getStatus();
+        setAddinEnabled(status.isRunning);
+        setAddinStatus(status.status);
+      } catch (error) {
+        console.error('Error checking add-in status:', error);
+      }
+    };
+
+    checkAddinStatus();
+  }, []);
 
   // ============================================
   // DOCUMENT-BASED SUPABASE REAL-TIME SYNC
@@ -20021,6 +20091,57 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               </span>
                               Live Sync
                             </div>
+                          )}
+
+                          {/* Excel Add-in for true bidirectional sync */}
+                          {window.electronAPI?.addin && (
+                            <>
+                              <div style={{
+                                height: '1px',
+                                background: '#444',
+                                margin: '4px 0'
+                              }} />
+                              <div
+                                onClick={handleToggleAddin}
+                                style={{
+                                  padding: '8px 12px',
+                                  borderRadius: '4px',
+                                  color: addinStatus === 'error'
+                                    ? '#e74c3c'
+                                    : addinEnabled
+                                      ? '#2ecc71'
+                                      : '#fff',
+                                  fontSize: '14px',
+                                  cursor: addinEnabling ? 'wait' : 'pointer',
+                                  opacity: addinEnabling ? 0.6 : 1,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!addinEnabling) {
+                                    e.currentTarget.style.background = '#444';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'transparent';
+                                }}
+                                title={
+                                  addinEnabled
+                                    ? 'Click to disable the Excel add-in server'
+                                    : 'Enable Excel add-in for true bidirectional sync'
+                                }
+                              >
+                                <span style={{ fontSize: '14px' }}>
+                                  {addinEnabling
+                                    ? '...'
+                                    : addinEnabled
+                                      ? '●'
+                                      : '○'}
+                                </span>
+                                Excel Add-in
+                              </div>
+                            </>
                           )}
                         </div>
                       )}

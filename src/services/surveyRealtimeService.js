@@ -565,20 +565,51 @@ export function convertItemToDb(appItem, sessionId) {
 
 /**
  * Convert highlight annotations to survey items for sync
- * @param {Object} highlightAnnotations - Highlight annotations keyed by module/category
+ * Handles both formats:
+ * - Flat format: {highlightId: {moduleId, categoryId, ...}}
+ * - Nested format: {moduleId: {categoryId: [highlights]}}
+ * @param {Object} highlightAnnotations - Highlight annotations
  * @returns {Array<Object>} - Flat array of survey items
  */
 export function flattenHighlightAnnotations(highlightAnnotations) {
   const items = [];
 
-  for (const [moduleId, categories] of Object.entries(highlightAnnotations || {})) {
-    for (const [categoryId, highlights] of Object.entries(categories || {})) {
-      for (const highlight of highlights || []) {
+  if (!highlightAnnotations || typeof highlightAnnotations !== 'object') {
+    return items;
+  }
+
+  // Check if this is flat format (highlightId -> data) or nested format (moduleId -> categoryId -> array)
+  const firstValue = Object.values(highlightAnnotations)[0];
+
+  // Flat format: each value has moduleId/categoryId properties directly
+  if (firstValue && (firstValue.moduleId !== undefined || firstValue.categoryId !== undefined || firstValue.pageNumber !== undefined)) {
+    // Flat format: {highlightId: {moduleId, categoryId, ...}}
+    for (const [highlightId, highlight] of Object.entries(highlightAnnotations)) {
+      if (highlight && typeof highlight === 'object') {
         items.push({
           ...highlight,
-          moduleId,
-          categoryId,
+          highlightId: highlightId,
+          id: highlightId,
+          moduleId: highlight.moduleId || highlight.spaceId,
+          categoryId: highlight.categoryId,
         });
+      }
+    }
+  } else {
+    // Nested format: {moduleId: {categoryId: [highlights]}}
+    for (const [moduleId, categories] of Object.entries(highlightAnnotations)) {
+      if (categories && typeof categories === 'object') {
+        for (const [categoryId, highlights] of Object.entries(categories)) {
+          if (Array.isArray(highlights)) {
+            for (const highlight of highlights) {
+              items.push({
+                ...highlight,
+                moduleId,
+                categoryId,
+              });
+            }
+          }
+        }
       }
     }
   }

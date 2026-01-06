@@ -1,287 +1,133 @@
- Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 2 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 3 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 4 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 5 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [Module useEffect DEBUG] Rebuilding newHighlightsByPage for module: module-1763727070665-0.5714253201980415
- Navigation guards have been active for >2s, resetting for safety
-console.warn @ main.jsx:24
- [Module useEffect DEBUG] Previous newHighlightsByPage: Object
- [Module useEffect DEBUG] Final newHighlightsByPage result: Object
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 6 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 7 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 2 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 3 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 4 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 5 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 6 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 7 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 8 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s1757bb3073524d8aaec2de2edfe13807?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1  Failed to load resource: the server responded with a status of 404 ()
- Clearing Excel link: OneDrive file was deleted (not found by ID)
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 2 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 3 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 4 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 5 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 6 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 7 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 8 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
- [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
- [PageAnnotationLayer DEBUG] alreadyProcessed: false highlightKey: highlight-1767693479145-72490xvy9
- [PageAnnotationLayer DEBUG] Creating new highlight rect - needsBIC: true color: undefined
- [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: true
- [PageAnnotationLayer DEBUG] Canvas rendered, saving annotations
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 2 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 3 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 4 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 5 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 6 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 7 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 8 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
- [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
- [PageAnnotationLayer DEBUG] alreadyProcessed: false highlightKey: highlight-1767693479145-72490xvy9
- [PageAnnotationLayer DEBUG] Creating new highlight rect - needsBIC: true color: undefined
- [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: true
- [PageAnnotationLayer DEBUG] Canvas rendered, saving annotations
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
- [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
- [PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch: true needsBIC: false existingNeedsBIC: true existingFill: transparent targetColor: rgba(255, 245, 195, 0.5)
- [PageAnnotationLayer DEBUG] Removing old highlight to re-add with new properties
- [PageAnnotationLayer DEBUG] alreadyProcessed: false highlightKey: highlight-1767693479145-72490xvy9
- [PageAnnotationLayer DEBUG] Creating new highlight rect - needsBIC: undefined color: rgba(255, 245, 195, 0.5)
- [PageAnnotationLayer DEBUG] Creating solid highlight - rawColor: rgba(255, 245, 195, 0.5) normalizedColor: rgba(255, 245, 195, 0.5)
- [PageAnnotationLayer DEBUG] Adding rect to canvas - fill: rgba(255, 245, 195, 0.5) visible: true highlightId: highlight-1767693479145-72490xvy9
- [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: true
- [PageAnnotationLayer DEBUG] Canvas rendered, saving annotations
- [Module useEffect DEBUG] Rebuilding newHighlightsByPage for module: module-1763727070665-0.5714253201980415
- [Module useEffect DEBUG] Previous newHighlightsByPage: Object
- [Module useEffect DEBUG] Building highlight: highlight-1767693479145-72490xvy9 color: undefined ballInCourtColor: rgba(255, 245, 195, 0.5) finalColor: rgba(255, 245, 195, 0.5)
- [Module useEffect DEBUG] Final newHighlightsByPage result: Object
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
- [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
- [PageAnnotationLayer DEBUG] alreadyProcessed: false highlightKey: highlight-1767693479145-72490xvy9
- [PageAnnotationLayer DEBUG] Creating new highlight rect - needsBIC: undefined color: rgba(255, 245, 195, 0.5)
- [PageAnnotationLayer DEBUG] Creating solid highlight - rawColor: rgba(255, 245, 195, 0.5) normalizedColor: rgba(255, 245, 195, 0.5)
- [PageAnnotationLayer DEBUG] Adding rect to canvas - fill: rgba(255, 245, 195, 0.5) visible: true highlightId: highlight-1767693479145-72490xvy9
- [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: true
- [PageAnnotationLayer DEBUG] Canvas rendered, saving annotations
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
- [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
- [PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch: true needsBIC: false existingNeedsBIC: false existingFill: rgba(255, 245, 195, 0.5) targetColor: rgba(255, 245, 195, 0.5)
- [PageAnnotationLayer DEBUG] Skipping - already rendered correctly with same color
- [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: false
- [Module useEffect DEBUG] Rebuilding newHighlightsByPage for module: module-1763727070665-0.5714253201980415
- [Module useEffect DEBUG] Previous newHighlightsByPage: Object
- [Module useEffect DEBUG] Building highlight: highlight-1767693479145-72490xvy9 color: rgba(255, 245, 195, 0.5) ballInCourtColor: rgba(255, 245, 195, 0.5) finalColor: rgba(255, 245, 195, 0.5)
- [Module useEffect DEBUG] Final newHighlightsByPage result: Object
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
- [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
- [PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch: true needsBIC: false existingNeedsBIC: false existingFill: rgba(255, 245, 195, 0.5) targetColor: rgba(255, 245, 195, 0.5)
- [PageAnnotationLayer DEBUG] Skipping - already rendered correctly with same color
- [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: false
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 2 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 3 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 4 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 5 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 6 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 7 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 8 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
- [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
- [PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch: true needsBIC: false existingNeedsBIC: false existingFill: rgba(255, 245, 195, 0.5) targetColor: rgba(255, 245, 195, 0.5)
- [PageAnnotationLayer DEBUG] Skipping - already rendered correctly with same color
- [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: false
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 2 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 3 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 4 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 5 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 6 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
- [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 7 - newHighlights: null
- [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 8 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-App.jsx:14657 [Module useEffect DEBUG] Rebuilding newHighlightsByPage for module: module-1763727070665-0.5714253201980415
-App.jsx:14659 [Module useEffect DEBUG] Previous newHighlightsByPage: Object
-App.jsx:14718 [Module useEffect DEBUG] Building highlight: highlight-1767693479145-72490xvy9 color: rgba(255, 245, 195, 0.5) ballInCourtColor: rgba(255, 245, 195, 0.5) finalColor: rgba(255, 245, 195, 0.5)
-App.jsx:14737 [Module useEffect DEBUG] Final newHighlightsByPage result: Object
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
-PageAnnotationLayer.jsx:6043 [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
-PageAnnotationLayer.jsx:6091 [PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch: true needsBIC: false existingNeedsBIC: false existingFill: rgba(255, 245, 195, 0.5) targetColor: rgba(255, 245, 195, 0.5)
-PageAnnotationLayer.jsx:6096 [PageAnnotationLayer DEBUG] Skipping - already rendered correctly with same color
-PageAnnotationLayer.jsx:6296 [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: false
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
-PageAnnotationLayer.jsx:6043 [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
-PageAnnotationLayer.jsx:6091 [PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch: true needsBIC: false existingNeedsBIC: false existingFill: rgba(255, 245, 195, 0.5) targetColor: rgba(255, 245, 195, 0.5)
-PageAnnotationLayer.jsx:6096 [PageAnnotationLayer DEBUG] Skipping - already rendered correctly with same color
-PageAnnotationLayer.jsx:6296 [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: false
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 2 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 3 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 4 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 5 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 6 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 7 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 8 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s1757bb3073524d8aaec2de2edfe13807?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1     Failed to load resource: the server responded with a status of 404 ()
-App.jsx:10337 Clearing Excel link: OneDrive file was deleted (not found by ID)
-App.jsx:10608 Uploaded to OneDrive, file ID: DC046716012CC0F4!sa8549c5756a94669b286d5c04cc9b8c9
-App.jsx:10629 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
-App.jsx:11092 [AutoSync DEBUG] Checking BIC for item: Camera 1 Excel BIC: Subcontractor Current BIC: Subcontractor
-App.jsx:11235 [AutoSync DEBUG] Updates found: 1
-App.jsx:11236 [AutoSync DEBUG] highlightsWithColorChanges: Array(0)
-App.jsx:11277 [AutoSync DEBUG] No color changes to update on canvas
-App.jsx:14657 [Module useEffect DEBUG] Rebuilding newHighlightsByPage for module: module-1763727070665-0.5714253201980415
-App.jsx:14659 [Module useEffect DEBUG] Previous newHighlightsByPage: Object
-App.jsx:14718 [Module useEffect DEBUG] Building highlight: highlight-1767693479145-72490xvy9 color: rgba(255, 245, 195, 0.5) ballInCourtColor: rgba(255, 245, 195, 0.5) finalColor: rgba(255, 245, 195, 0.5)
-App.jsx:14737 [Module useEffect DEBUG] Final newHighlightsByPage result: Object
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
-PageAnnotationLayer.jsx:6043 [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
-PageAnnotationLayer.jsx:6091 [PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch: true needsBIC: false existingNeedsBIC: false existingFill: rgba(255, 245, 195, 0.5) targetColor: rgba(255, 245, 195, 0.5)
-PageAnnotationLayer.jsx:6096 [PageAnnotationLayer DEBUG] Skipping - already rendered correctly with same color
-PageAnnotationLayer.jsx:6296 [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: false
-App.jsx:11092 [AutoSync DEBUG] Checking BIC for item: Camera 1 Excel BIC: Subcontractor Current BIC: Subcontractor
-App.jsx:11092 [AutoSync DEBUG] Checking BIC for item: Camera 1 Excel BIC: Subcontractor Current BIC: Subcontractor
-App.jsx:11092 [AutoSync DEBUG] Checking BIC for item: Camera 1 Excel BIC: 100% Complete Current BIC: Subcontractor
-App.jsx:11096 [AutoSync DEBUG] BIC changed! Found entity: 100% Complete Color: rgba(178, 255, 178, 0.5)
-App.jsx:11105 [AutoSync DEBUG] Checking if highlight has location - pageNumber: 1 bounds: Object hasValidBounds: true
-App.jsx:11107 [AutoSync DEBUG] Adding to highlightsWithColorChanges: Object
-App.jsx:11235 [AutoSync DEBUG] Updates found: 1
-App.jsx:11236 [AutoSync DEBUG] highlightsWithColorChanges: Array(1)
-App.jsx:11244 [AutoSync DEBUG] Updating canvas for 1 highlights
-App.jsx:11246 [AutoSync DEBUG] Previous newHighlightsByPage: Object
-App.jsx:11249 [AutoSync DEBUG] Processing highlight: Object
-App.jsx:11267 [AutoSync DEBUG] Adding new highlight to page 1 : Object
-App.jsx:11273 [AutoSync DEBUG] Updated newHighlightsByPage: Object
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
-PageAnnotationLayer.jsx:6043 [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
-PageAnnotationLayer.jsx:6091 [PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch: true needsBIC: false existingNeedsBIC: false existingFill: rgba(255, 245, 195, 0.5) targetColor: rgba(178, 255, 178, 0.5)
-PageAnnotationLayer.jsx:6099 [PageAnnotationLayer DEBUG] Color mismatch! existingFill: rgba(255, 245, 195, 0.5) targetColor: rgba(178, 255, 178, 0.5)
-PageAnnotationLayer.jsx:6108 [PageAnnotationLayer DEBUG] Removing old highlight to re-add with new properties
-PageAnnotationLayer.jsx:6174 [PageAnnotationLayer DEBUG] alreadyProcessed: false highlightKey: highlight-1767693479145-72490xvy9
-PageAnnotationLayer.jsx:6177 [PageAnnotationLayer DEBUG] Creating new highlight rect - needsBIC: false color: rgba(178, 255, 178, 0.5)
-PageAnnotationLayer.jsx:6237 [PageAnnotationLayer DEBUG] Creating solid highlight - rawColor: rgba(178, 255, 178, 0.5) normalizedColor: rgba(178, 255, 178, 0.5)
-PageAnnotationLayer.jsx:6286 [PageAnnotationLayer DEBUG] Adding rect to canvas - fill: rgba(178, 255, 178, 0.5) visible: true highlightId: highlight-1767693479145-72490xvy9
-PageAnnotationLayer.jsx:6296 [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: true
-PageAnnotationLayer.jsx:6299 [PageAnnotationLayer DEBUG] Canvas rendered, saving annotations
-App.jsx:14657 [Module useEffect DEBUG] Rebuilding newHighlightsByPage for module: module-1763727070665-0.5714253201980415
-App.jsx:14659 [Module useEffect DEBUG] Previous newHighlightsByPage: Object
-App.jsx:14718 [Module useEffect DEBUG] Building highlight: highlight-1767693479145-72490xvy9 color: rgba(255, 245, 195, 0.5) ballInCourtColor: rgba(178, 255, 178, 0.5) finalColor: rgba(178, 255, 178, 0.5)
-App.jsx:14737 [Module useEffect DEBUG] Final newHighlightsByPage result: Object
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: Array(1)
-PageAnnotationLayer.jsx:6043 [PageAnnotationLayer DEBUG] Processing highlight 0 : Object
-PageAnnotationLayer.jsx:6174 [PageAnnotationLayer DEBUG] alreadyProcessed: false highlightKey: highlight-1767693479145-72490xvy9
-PageAnnotationLayer.jsx:6177 [PageAnnotationLayer DEBUG] Creating new highlight rect - needsBIC: undefined color: rgba(178, 255, 178, 0.5)
-PageAnnotationLayer.jsx:6237 [PageAnnotationLayer DEBUG] Creating solid highlight - rawColor: rgba(178, 255, 178, 0.5) normalizedColor: rgba(178, 255, 178, 0.5)
-PageAnnotationLayer.jsx:6286 [PageAnnotationLayer DEBUG] Adding rect to canvas - fill: rgba(178, 255, 178, 0.5) visible: true highlightId: highlight-1767693479145-72490xvy9
-PageAnnotationLayer.jsx:6296 [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: true
-PageAnnotationLayer.jsx:6299 [PageAnnotationLayer DEBUG] Canvas rendered, saving annotations
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: [{…}]
-PageAnnotationLayer.jsx:6043 [PageAnnotationLayer DEBUG] Processing highlight 0 : {x: 756.249917355372, y: 45.81818181818182, width: 116.4467865824015, height: 66.76363636363635, highlightId: 'highlight-1767693479145-72490xvy9', …}
-PageAnnotationLayer.jsx:6091 [PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch: true needsBIC: false existingNeedsBIC: false existingFill: rgba(178, 255, 178, 0.5) targetColor: rgba(178, 255, 178, 0.5)
-PageAnnotationLayer.jsx:6096 [PageAnnotationLayer DEBUG] Skipping - already rendered correctly with same color
-PageAnnotationLayer.jsx:6296 [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: false
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 2 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 3 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 4 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 5 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 6 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 7 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 8 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 9 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 10 - newHighlights: null
-PageAnnotationLayer.jsx:6034 [PageAnnotationLayer DEBUG] Early return - fabricRef: true newHighlights: null
-App.jsx:11092 [AutoSync DEBUG] Checking BIC for item: Camera 1 Excel BIC: My Company Current BIC: 100% Complete
-App.jsx:11096 [AutoSync DEBUG] BIC changed! Found entity: My Company Color: rgba(203, 220, 255, 0.5)
-App.jsx:11105 [AutoSync DEBUG] Checking if highlight has location - pageNumber: 1 bounds: {x: 756.249917355372, y: 45.81818181818182, width: 116.4467865824015, height: 66.76363636363635} hasValidBounds: true
-App.jsx:11107 [AutoSync DEBUG] Adding to highlightsWithColorChanges: {highlightId: 'highlight-1767693479145-72490xvy9', pageNumber: 1, bounds: {…}, color: 'rgba(203, 220, 255, 0.5)'}
-App.jsx:11235 [AutoSync DEBUG] Updates found: 1
-App.jsx:11236 [AutoSync DEBUG] highlightsWithColorChanges: [{…}]
-App.jsx:11244 [AutoSync DEBUG] Updating canvas for 1 highlights
-App.jsx:11246 [AutoSync DEBUG] Previous newHighlightsByPage: {1: Array(1)}
-App.jsx:11249 [AutoSync DEBUG] Processing highlight: {highlightId: 'highlight-1767693479145-72490xvy9', pageNumber: 1, bounds: {…}, color: 'rgba(203, 220, 255, 0.5)', needsBIC: false}
-App.jsx:11267 [AutoSync DEBUG] Adding new highlight to page 1 : {x: 756.249917355372, y: 45.81818181818182, width: 116.4467865824015, height: 66.76363636363635, color: 'rgba(203, 220, 255, 0.5)', …}
-App.jsx:11273 [AutoSync DEBUG] Updated newHighlightsByPage: {1: Array(1)}
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: [{…}]
-PageAnnotationLayer.jsx:6043 [PageAnnotationLayer DEBUG] Processing highlight 0 : {x: 756.249917355372, y: 45.81818181818182, width: 116.4467865824015, height: 66.76363636363635, color: 'rgba(203, 220, 255, 0.5)', …}
-PageAnnotationLayer.jsx:6091 [PageAnnotationLayer DEBUG] Checking if update needed - boundsMatch: true needsBIC: false existingNeedsBIC: false existingFill: rgba(178, 255, 178, 0.5) targetColor: rgba(203, 220, 255, 0.5)
-PageAnnotationLayer.jsx:6099 [PageAnnotationLayer DEBUG] Color mismatch! existingFill: rgba(178, 255, 178, 0.5) targetColor: rgba(203, 220, 255, 0.5)
-PageAnnotationLayer.jsx:6108 [PageAnnotationLayer DEBUG] Removing old highlight to re-add with new properties
-PageAnnotationLayer.jsx:6174 [PageAnnotationLayer DEBUG] alreadyProcessed: false highlightKey: highlight-1767693479145-72490xvy9
-PageAnnotationLayer.jsx:6177 [PageAnnotationLayer DEBUG] Creating new highlight rect - needsBIC: false color: rgba(203, 220, 255, 0.5)
-PageAnnotationLayer.jsx:6237 [PageAnnotationLayer DEBUG] Creating solid highlight - rawColor: rgba(203, 220, 255, 0.5) normalizedColor: rgba(203, 220, 255, 0.5)
-PageAnnotationLayer.jsx:6286 [PageAnnotationLayer DEBUG] Adding rect to canvas - fill: rgba(203, 220, 255, 0.5) visible: true highlightId: highlight-1767693479145-72490xvy9
-PageAnnotationLayer.jsx:6296 [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: true
-PageAnnotationLayer.jsx:6299 [PageAnnotationLayer DEBUG] Canvas rendered, saving annotations
-App.jsx:14657 [Module useEffect DEBUG] Rebuilding newHighlightsByPage for module: module-1763727070665-0.5714253201980415
-App.jsx:14659 [Module useEffect DEBUG] Previous newHighlightsByPage: {1: Array(1)}
-App.jsx:14718 [Module useEffect DEBUG] Building highlight: highlight-1767693479145-72490xvy9 color: rgba(255, 245, 195, 0.5) ballInCourtColor: rgba(203, 220, 255, 0.5) finalColor: rgba(203, 220, 255, 0.5)
-App.jsx:14737 [Module useEffect DEBUG] Final newHighlightsByPage result: {1: Array(1)}
-PageAnnotationLayer.jsx:6032 [PageAnnotationLayer DEBUG] newHighlights useEffect triggered for page 1 - newHighlights: [{…}]
-PageAnnotationLayer.jsx:6043 [PageAnnotationLayer DEBUG] Processing highlight 0 : {x: 756.249917355372, y: 45.81818181818182, width: 116.4467865824015, height: 66.76363636363635, highlightId: 'highlight-1767693479145-72490xvy9', …}
-PageAnnotationLayer.jsx:6174 [PageAnnotationLayer DEBUG] alreadyProcessed: false highlightKey: highlight-1767693479145-72490xvy9
-PageAnnotationLayer.jsx:6177 [PageAnnotationLayer DEBUG] Creating new highlight rect - needsBIC: undefined color: rgba(203, 220, 255, 0.5)
-PageAnnotationLayer.jsx:6237 [PageAnnotationLayer DEBUG] Creating solid highlight - rawColor: rgba(203, 220, 255, 0.5) normalizedColor: rgba(203, 220, 255, 0.5)
-PageAnnotationLayer.jsx:6286 [PageAnnotationLayer DEBUG] Adding rect to canvas - fill: rgba(203, 220, 255, 0.5) visible: true highlightId: highlight-1767693479145-72490xvy9
-PageAnnotationLayer.jsx:6296 [PageAnnotationLayer DEBUG] Finished processing highlights - addedAny: true
-PageAnnotationLayer.jsx:6299 [PageAnnotationLayer DEBUG] Canvas rendered, saving annotations
+chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!sa8549c5756a94669b286d5c04cc9b8c9?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1     Failed to load resource: the server responded with a status of 404 ()
+App.jsx:10378 Clearing Excel link: OneDrive file was deleted (not found by ID)
+App.jsx:10649 Uploaded to OneDrive, file ID: DC046716012CC0F4!se5df5148964a4520b378464196fd1698
+App.jsx:10670 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
+App.jsx:11595 [SurveySync] Enabling survey session sync for template: 67170136-3702-476e-bfe8-ada34f62550c
+App.jsx:11632 [SurveySync] Syncing highlight changes to Supabase for Excel add-in
+useSurveySync.js:320 [useSurveySync] Failed to sync all items: TypeError: (highlights || []) is not iterable
+    at flattenHighlightAnnotations (surveyRealtimeService.js:576:42)
+    at useSurveySync.js:304:21
+    at Object.syncAllNow (SurveySessionContext.jsx:139:5)
+    at App.jsx:11633:21
+(anonymous) @ useSurveySync.js:320
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:11632 [SurveySync] Syncing highlight changes to Supabase for Excel add-in
+useSurveySync.js:320 [useSurveySync] Failed to sync all items: TypeError: (highlights || []) is not iterable
+    at flattenHighlightAnnotations (surveyRealtimeService.js:576:42)
+    at useSurveySync.js:304:21
+    at Object.syncAllNow (SurveySessionContext.jsx:139:5)
+    at App.jsx:11633:21
+(anonymous) @ useSurveySync.js:320
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings
+App.jsx:10269 [SurveySync] Saving 4 Excel schema mappings

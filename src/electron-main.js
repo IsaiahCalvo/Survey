@@ -3,7 +3,237 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
+const os = require('os');
+
+// ============================================
+// EXCEL ADD-IN SERVER MANAGEMENT
+// ============================================
+let addinServerProcess = null;
+let addinServerStatus = 'stopped'; // 'stopped' | 'starting' | 'running' | 'error'
+
+// Get the add-in directory path
+function getAddinPath() {
+  // In development, it's a sibling directory
+  // In production, it should be bundled with the app
+  const devPath = path.join(__dirname, '..', 'survey-excel-addin');
+  const prodPath = path.join(app.getAppPath(), 'survey-excel-addin');
+
+  if (fs.existsSync(devPath)) return devPath;
+  if (fs.existsSync(prodPath)) return prodPath;
+  return null;
+}
+
+// Get Excel's wef folder for sideloading (Mac)
+function getExcelWefPath() {
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Containers', 'com.microsoft.Excel', 'Data', 'Documents', 'wef');
+  } else if (process.platform === 'win32') {
+    // Windows uses a different mechanism (registry or network share)
+    // For now, return null - would need more complex setup
+    return null;
+  }
+  return null;
+}
+
+// Sideload the add-in manifest to Excel
+async function sideloadAddinManifest() {
+  const addinPath = getAddinPath();
+  if (!addinPath) {
+    console.error('[AddinServer] Add-in directory not found');
+    return { success: false, error: 'Add-in directory not found' };
+  }
+
+  const manifestSource = path.join(addinPath, 'manifest.xml');
+  if (!fs.existsSync(manifestSource)) {
+    console.error('[AddinServer] manifest.xml not found');
+    return { success: false, error: 'manifest.xml not found' };
+  }
+
+  const wefPath = getExcelWefPath();
+  if (!wefPath) {
+    console.error('[AddinServer] Excel wef path not supported on this platform');
+    return { success: false, error: 'Sideloading not supported on this platform' };
+  }
+
+  try {
+    // Create wef directory if it doesn't exist
+    if (!fs.existsSync(wefPath)) {
+      fs.mkdirSync(wefPath, { recursive: true });
+    }
+
+    // Copy manifest to wef folder
+    const manifestDest = path.join(wefPath, 'survey-sync-manifest.xml');
+    fs.copyFileSync(manifestSource, manifestDest);
+    console.log('[AddinServer] Manifest sideloaded to:', manifestDest);
+
+    return { success: true, manifestPath: manifestDest };
+  } catch (error) {
+    console.error('[AddinServer] Failed to sideload manifest:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Remove sideloaded manifest
+async function removeSideloadedManifest() {
+  const wefPath = getExcelWefPath();
+  if (!wefPath) return { success: true };
+
+  const manifestPath = path.join(wefPath, 'survey-sync-manifest.xml');
+  try {
+    if (fs.existsSync(manifestPath)) {
+      fs.unlinkSync(manifestPath);
+      console.log('[AddinServer] Removed sideloaded manifest');
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('[AddinServer] Failed to remove manifest:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Start the add-in webpack dev server
+async function startAddinServer() {
+  if (addinServerProcess) {
+    console.log('[AddinServer] Server already running');
+    return { success: true, status: 'already_running' };
+  }
+
+  const addinPath = getAddinPath();
+  if (!addinPath) {
+    addinServerStatus = 'error';
+    return { success: false, error: 'Add-in directory not found' };
+  }
+
+  // Check if node_modules exists
+  const nodeModulesPath = path.join(addinPath, 'node_modules');
+  if (!fs.existsSync(nodeModulesPath)) {
+    console.log('[AddinServer] Installing add-in dependencies...');
+    addinServerStatus = 'starting';
+
+    try {
+      await new Promise((resolve, reject) => {
+        exec('npm install', { cwd: addinPath }, (error, stdout, stderr) => {
+          if (error) reject(error);
+          else resolve(stdout);
+        });
+      });
+    } catch (error) {
+      console.error('[AddinServer] Failed to install dependencies:', error);
+      addinServerStatus = 'error';
+      return { success: false, error: 'Failed to install add-in dependencies' };
+    }
+  }
+
+  addinServerStatus = 'starting';
+  console.log('[AddinServer] Starting webpack dev server...');
+
+  return new Promise((resolve) => {
+    // Use npm run dev to start the server
+    const isWindows = process.platform === 'win32';
+    const npmCmd = isWindows ? 'npm.cmd' : 'npm';
+
+    addinServerProcess = spawn(npmCmd, ['run', 'dev'], {
+      cwd: addinPath,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: isWindows
+    });
+
+    let startupOutput = '';
+    let resolved = false;
+
+    const checkStarted = (data) => {
+      startupOutput += data.toString();
+      // Check if webpack dev server is ready
+      if (startupOutput.includes('compiled successfully') ||
+          startupOutput.includes('webpack compiled') ||
+          startupOutput.includes('listening on')) {
+        if (!resolved) {
+          resolved = true;
+          addinServerStatus = 'running';
+          console.log('[AddinServer] Server started successfully');
+          resolve({ success: true, status: 'started' });
+        }
+      }
+    };
+
+    addinServerProcess.stdout.on('data', checkStarted);
+    addinServerProcess.stderr.on('data', checkStarted);
+
+    addinServerProcess.on('error', (error) => {
+      console.error('[AddinServer] Process error:', error);
+      addinServerStatus = 'error';
+      addinServerProcess = null;
+      if (!resolved) {
+        resolved = true;
+        resolve({ success: false, error: error.message });
+      }
+    });
+
+    addinServerProcess.on('exit', (code) => {
+      console.log('[AddinServer] Process exited with code:', code);
+      addinServerStatus = 'stopped';
+      addinServerProcess = null;
+    });
+
+    // Timeout after 30 seconds
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        if (addinServerProcess) {
+          addinServerStatus = 'running'; // Assume it's running even without confirmation
+          resolve({ success: true, status: 'started', warning: 'Started but no confirmation received' });
+        } else {
+          addinServerStatus = 'error';
+          resolve({ success: false, error: 'Server startup timed out' });
+        }
+      }
+    }, 30000);
+  });
+}
+
+// Stop the add-in server
+async function stopAddinServer() {
+  if (!addinServerProcess) {
+    console.log('[AddinServer] Server not running');
+    return { success: true, status: 'not_running' };
+  }
+
+  return new Promise((resolve) => {
+    console.log('[AddinServer] Stopping server...');
+
+    addinServerProcess.on('exit', () => {
+      addinServerProcess = null;
+      addinServerStatus = 'stopped';
+      console.log('[AddinServer] Server stopped');
+      resolve({ success: true, status: 'stopped' });
+    });
+
+    // Kill the process
+    if (process.platform === 'win32') {
+      exec(`taskkill /pid ${addinServerProcess.pid} /T /F`);
+    } else {
+      addinServerProcess.kill('SIGTERM');
+    }
+
+    // Force kill after 5 seconds
+    setTimeout(() => {
+      if (addinServerProcess) {
+        addinServerProcess.kill('SIGKILL');
+      }
+    }, 5000);
+  });
+}
+
+// Get add-in server status
+function getAddinServerStatus() {
+  return {
+    status: addinServerStatus,
+    isRunning: addinServerProcess !== null,
+    addinPath: getAddinPath(),
+    wefPath: getExcelWefPath()
+  };
+}
 
 
 // Suppress security warnings in development
@@ -237,6 +467,120 @@ ipcMain.handle('shell:openPath', async (event, filePath) => {
 
 ipcMain.handle('shell:openExternal', async (event, url) => {
   return await shell.openExternal(url);
+});
+
+// ============================================
+// EXCEL ADD-IN IPC HANDLERS
+// ============================================
+
+ipcMain.handle('addin:startServer', async () => {
+  return await startAddinServer();
+});
+
+ipcMain.handle('addin:stopServer', async () => {
+  return await stopAddinServer();
+});
+
+ipcMain.handle('addin:getStatus', () => {
+  return getAddinServerStatus();
+});
+
+ipcMain.handle('addin:sideload', async () => {
+  return await sideloadAddinManifest();
+});
+
+ipcMain.handle('addin:removeSideload', async () => {
+  return await removeSideloadedManifest();
+});
+
+// Install SSL certificates for Office.js add-in (requires npx office-addin-dev-certs)
+async function installAddinCertificates() {
+  const addinPath = getAddinPath();
+  if (!addinPath) {
+    return { success: false, error: 'Add-in directory not found' };
+  }
+
+  return new Promise((resolve) => {
+    console.log('[AddinServer] Installing SSL certificates...');
+
+    // Use npx to run office-addin-dev-certs install
+    exec('npx office-addin-dev-certs install --days 365', { cwd: addinPath }, (error, stdout, stderr) => {
+      if (error) {
+        // Check if certs are already installed
+        if (stderr.includes('already') || stdout.includes('already')) {
+          console.log('[AddinServer] SSL certificates already installed');
+          resolve({ success: true, alreadyInstalled: true });
+        } else {
+          console.error('[AddinServer] Failed to install certificates:', error);
+          resolve({ success: false, error: error.message });
+        }
+      } else {
+        console.log('[AddinServer] SSL certificates installed successfully');
+        resolve({ success: true });
+      }
+    });
+  });
+}
+
+// Check if SSL certificates are installed
+ipcMain.handle('addin:checkCerts', async () => {
+  const addinPath = getAddinPath();
+  if (!addinPath) {
+    return { installed: false, error: 'Add-in directory not found' };
+  }
+
+  return new Promise((resolve) => {
+    exec('npx office-addin-dev-certs verify', { cwd: addinPath }, (error, stdout, stderr) => {
+      const installed = !error && !stderr.includes('not installed');
+      resolve({ installed, output: stdout || stderr });
+    });
+  });
+});
+
+// Install SSL certificates
+ipcMain.handle('addin:installCerts', async () => {
+  return await installAddinCertificates();
+});
+
+// Start add-in server and sideload manifest (combined operation)
+ipcMain.handle('addin:enable', async () => {
+  console.log('[AddinServer] Enabling add-in...');
+
+  // First, check/install SSL certificates
+  const certResult = await installAddinCertificates();
+  if (!certResult.success && !certResult.alreadyInstalled) {
+    console.warn('[AddinServer] Certificate installation warning:', certResult.error);
+    // Continue anyway - certs might work
+  }
+
+  // Second, sideload the manifest
+  const sideloadResult = await sideloadAddinManifest();
+  if (!sideloadResult.success) {
+    return { success: false, error: 'Failed to sideload: ' + sideloadResult.error };
+  }
+
+  // Then start the server
+  const serverResult = await startAddinServer();
+  if (!serverResult.success) {
+    return { success: false, error: 'Failed to start server: ' + serverResult.error };
+  }
+
+  return {
+    success: true,
+    message: 'Add-in enabled. Restart Excel to see the Survey Sync button in the Home ribbon.',
+    manifestPath: sideloadResult.manifestPath,
+    certStatus: certResult.success ? 'installed' : 'warning'
+  };
+});
+
+// Stop add-in server and remove manifest (combined operation)
+ipcMain.handle('addin:disable', async () => {
+  console.log('[AddinServer] Disabling add-in...');
+
+  await stopAddinServer();
+  await removeSideloadedManifest();
+
+  return { success: true, message: 'Add-in disabled' };
 });
 
 ipcMain.handle('fs:readFile', async (event, path) => {
@@ -508,12 +852,19 @@ app.on('before-quit', (event) => {
       windowsResponded++;
       if (windowsResponded >= windows.length) {
         // All windows have responded, now quit
-        setTimeout(() => {
+        setTimeout(async () => {
           // Clean up file watchers
           fileWatchers.forEach((watcher) => {
             watcher.close();
           });
           fileWatchers.clear();
+
+          // Stop add-in server if running
+          if (addinServerProcess) {
+            console.log('[AddinServer] Stopping server on quit...');
+            await stopAddinServer();
+          }
+
           app.quit();
         }, 100);
       }

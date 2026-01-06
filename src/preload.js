@@ -36,5 +36,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notifySaveComplete: () => ipcRenderer.send('app:saveComplete'),
 
   // OAuth APIs - opens a separate window for authentication
-  openOAuthWindow: (authUrl, redirectUri) => ipcRenderer.invoke('oauth:openWindow', { authUrl, redirectUri })
+  openOAuthWindow: (authUrl, redirectUri) => ipcRenderer.invoke('oauth:openWindow', { authUrl, redirectUri }),
+
+  // Excel Add-in APIs
+  addin: {
+    enable: () => ipcRenderer.invoke('addin:enable'),
+    disable: () => ipcRenderer.invoke('addin:disable'),
+    startServer: () => ipcRenderer.invoke('addin:startServer'),
+    stopServer: () => ipcRenderer.invoke('addin:stopServer'),
+    getStatus: () => ipcRenderer.invoke('addin:getStatus'),
+    sideload: () => ipcRenderer.invoke('addin:sideload'),
+    removeSideload: () => ipcRenderer.invoke('addin:removeSideload')
+  }
 });
