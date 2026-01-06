@@ -14654,7 +14654,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Rebuild newHighlightsByPage by merging:
     // 1. Pending highlights (not yet in highlightAnnotations) for current module
     // 2. Saved highlights from highlightAnnotations for current module
+    console.log('[Module useEffect DEBUG] Rebuilding newHighlightsByPage for module:', selectedModuleId);
     setNewHighlightsByPage(prev => {
+      console.log('[Module useEffect DEBUG] Previous newHighlightsByPage:', prev);
       const highlightsByPage = {};
 
       // First, preserve pending highlights for this module (not yet saved to highlightAnnotations)
@@ -14708,11 +14710,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           // Determine if highlight needs BIC (Ball in Court) assignment
           const needsBIC = !highlight.ballInCourtColor && !highlight.ballInCourtEntityId;
 
-          // Determine highlight color - use stored color first, then ballInCourtColor, then default
-          const storedColor = highlight.color || highlight.ballInCourtColor;
+          // Determine highlight color - use ballInCourtColor first (current BIC state), then stored color
+          const storedColor = highlight.ballInCourtColor || highlight.color;
           const highlightColor = storedColor
             ? (normalizeHighlightColor(storedColor) || storedColor)
             : null;
+          console.log('[Module useEffect DEBUG] Building highlight:', highlightId, 'color:', highlight.color, 'ballInCourtColor:', highlight.ballInCourtColor, 'finalColor:', highlightColor);
 
           // Add highlight to the page array
           const highlightData = {
@@ -14730,7 +14733,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
 
       // Return merged highlights (pending + saved), or empty object if no highlights
-      return Object.keys(highlightsByPage).length > 0 ? highlightsByPage : prev;
+      const result = Object.keys(highlightsByPage).length > 0 ? highlightsByPage : prev;
+      console.log('[Module useEffect DEBUG] Final newHighlightsByPage result:', result);
+      return result;
     });
   }, [selectedModuleId, highlightAnnotations]);
 
