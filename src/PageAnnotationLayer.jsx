@@ -6171,8 +6171,10 @@ const PageAnnotationLayer = memo(({
 
       // Check if we've already processed this highlight (by coordinates if no ID)
       const alreadyProcessed = processedHighlightsRef.current.has(highlightKey);
+      console.log('[PageAnnotationLayer DEBUG] alreadyProcessed:', alreadyProcessed, 'highlightKey:', highlightKey);
       if (!alreadyProcessed) {
         // Check if this highlight needs BIC assignment (transparent with dashed outline)
+        console.log('[PageAnnotationLayer DEBUG] Creating new highlight rect - needsBIC:', highlight.needsBIC, 'color:', highlight.color);
         if (highlight.needsBIC) {
           // Render as transparent with dashed outline (indicating it needs BIC)
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
@@ -6232,6 +6234,7 @@ const PageAnnotationLayer = memo(({
           // Use color from highlight data if provided, otherwise use default, and preserve stored opacity
           const rawColor = highlight.color || highlightColor;
           const color = normalizeHighlightColor(rawColor) || highlightColor;
+          console.log('[PageAnnotationLayer DEBUG] Creating solid highlight - rawColor:', rawColor, 'normalizedColor:', color);
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
@@ -6280,15 +6283,20 @@ const PageAnnotationLayer = memo(({
           const isSurveyAnnotation = objModuleId !== null;
           const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
           rect.set({ visible: surveyAnnotationVisible });
+          console.log('[PageAnnotationLayer DEBUG] Adding rect to canvas - fill:', rect.fill, 'visible:', surveyAnnotationVisible, 'highlightId:', highlight.highlightId);
           canvas.add(rect);
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
         }
+      } else {
+        console.log('[PageAnnotationLayer DEBUG] Skipping already processed highlight:', highlightKey);
       }
     });
 
+    console.log('[PageAnnotationLayer DEBUG] Finished processing highlights - addedAny:', addedAny);
     if (addedAny) {
       canvas.renderAll();
+      console.log('[PageAnnotationLayer DEBUG] Canvas rendered, saving annotations');
 
       // Save annotations
       try {
