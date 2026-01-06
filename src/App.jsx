@@ -11100,8 +11100,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     ann.ballInCourtColor = entity.color;
                     changed = true;
                     // Track this highlight for canvas color update
-                    console.log('[AutoSync DEBUG] Checking if highlight has location - pageNumber:', ann.pageNumber, 'bounds:', ann.bounds);
-                    if (ann.pageNumber && ann.bounds) {
+                    // Check for actual bounds data (not just empty object)
+                    const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
+                    console.log('[AutoSync DEBUG] Checking if highlight has location - pageNumber:', ann.pageNumber, 'bounds:', ann.bounds, 'hasValidBounds:', hasValidBounds);
+                    if (ann.pageNumber && hasValidBounds) {
                       console.log('[AutoSync DEBUG] Adding to highlightsWithColorChanges:', {
                         highlightId: key,
                         pageNumber: ann.pageNumber,
@@ -11116,7 +11118,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         needsBIC: false
                       });
                     } else {
-                      console.log('[AutoSync DEBUG] Highlight missing pageNumber or bounds, cannot update canvas');
+                      console.log('[AutoSync DEBUG] Highlight missing pageNumber or valid bounds, cannot update canvas');
                     }
                   } else if (bicName === '') {
                     // Clear if empty string
@@ -11125,7 +11127,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     ann.ballInCourtColor = null;
                     changed = true;
                     // Track this highlight for canvas update - revert to needsBIC style
-                    if (ann.pageNumber && ann.bounds) {
+                    const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
+                    if (ann.pageNumber && hasValidBounds) {
                       console.log('[AutoSync DEBUG] Clearing BIC, adding to highlightsWithColorChanges (needsBIC)');
                       highlightsWithColorChanges.push({
                         highlightId: key,
