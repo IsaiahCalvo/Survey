@@ -49,28 +49,34 @@ const App: React.FC = () => {
   // Initialize on mount
   useEffect(() => {
     const init = async () => {
-      // Try to load saved config
-      const config = loadSupabaseConfig();
+      try {
+        // Try to load saved config
+        const config = loadSupabaseConfig();
 
-      if (config.url && config.anonKey) {
-        try {
-          initSupabase(config.url, config.anonKey);
-          setSupabaseUrl(config.url);
-          setSupabaseKey(config.anonKey);
+        if (config.url && config.anonKey) {
+          try {
+            initSupabase(config.url, config.anonKey);
+            setSupabaseUrl(config.url);
+            setSupabaseKey(config.anonKey);
 
-          // Check for existing user
-          const user = await getCurrentUser();
-          if (user) {
-            setUser({ id: user.id, email: user.email });
-            setAppState('session');
-          } else {
-            setAppState('login');
+            // Check for existing user
+            const user = await getCurrentUser();
+            if (user) {
+              setUser({ id: user.id, email: user.email });
+              setAppState('session');
+            } else {
+              setAppState('login');
+            }
+          } catch (e) {
+            console.error('Failed to initialize Supabase:', e);
+            setAppState('setup');
           }
-        } catch (e) {
-          console.error('Failed to initialize Supabase:', e);
+        } else {
           setAppState('setup');
         }
-      } else {
+      } catch (e) {
+        console.error('Initialization error:', e);
+        setError('Failed to initialize add-in');
         setAppState('setup');
       }
     };
@@ -78,16 +84,25 @@ const App: React.FC = () => {
     init();
 
     // Listen for auth changes
-    const subscription = onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setAppState('login');
-        handleDisconnect();
-      }
-    });
+    let subscription: { unsubscribe: () => void } | null = null;
+    try {
+      subscription = onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setAppState('login');
+          handleDisconnect();
+        }
+      });
+    } catch (e) {
+      console.error('Failed to set up auth listener:', e);
+    }
 
     return () => {
-      subscription?.unsubscribe();
+      try {
+        subscription?.unsubscribe();
+      } catch (e) {
+        console.error('Failed to unsubscribe:', e);
+      }
     };
   }, []);
 

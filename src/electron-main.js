@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { exec, spawn } = require('child_process');
 const os = require('os');
+const https = require('https');
 
 // ============================================
 // EXCEL ADD-IN SERVER MANAGEMENT
@@ -141,18 +142,34 @@ async function startAddinServer() {
 
     let startupOutput = '';
     let resolved = false;
+    let processExited = false;
+    let exitCode = null;
 
     const checkStarted = (data) => {
-      startupOutput += data.toString();
-      // Check if webpack dev server is ready
+      const chunk = data.toString();
+      startupOutput += chunk;
+      console.log('[AddinServer] Output:', chunk.trim());
+
+      // Check if webpack dev server is ready - multiple patterns
       if (startupOutput.includes('compiled successfully') ||
           startupOutput.includes('webpack compiled') ||
-          startupOutput.includes('listening on')) {
+          startupOutput.includes('Loopback:') ||
+          startupOutput.includes('localhost:3000')) {
         if (!resolved) {
           resolved = true;
           addinServerStatus = 'running';
           console.log('[AddinServer] Server started successfully');
           resolve({ success: true, status: 'started' });
+        }
+      }
+
+      // Check for errors
+      if (startupOutput.includes('EADDRINUSE') || startupOutput.includes('address already in use')) {
+        if (!resolved) {
+          resolved = true;
+          addinServerStatus = 'error';
+          console.error('[AddinServer] Port 3000 is already in use');
+          resolve({ success: false, error: 'Port 3000 is already in use. Close any other servers using this port.' });
         }
       }
     };
@@ -172,23 +189,56 @@ async function startAddinServer() {
 
     addinServerProcess.on('exit', (code) => {
       console.log('[AddinServer] Process exited with code:', code);
-      addinServerStatus = 'stopped';
-      addinServerProcess = null;
+      processExited = true;
+      exitCode = code;
+      if (code !== 0 && !resolved) {
+        addinServerStatus = 'error';
+        addinServerProcess = null;
+        resolved = true;
+        resolve({ success: false, error: `Server process exited with code ${code}. Output: ${startupOutput.slice(-500)}` });
+      } else if (!resolved) {
+        addinServerStatus = 'stopped';
+        addinServerProcess = null;
+      }
     });
 
-    // Timeout after 30 seconds
-    setTimeout(() => {
+    // Timeout after 45 seconds, but check if server is actually running
+    setTimeout(async () => {
       if (!resolved) {
+        // Try to check if server is actually responding
+        if (addinServerProcess && !processExited) {
+          try {
+            const checkServer = () => new Promise((resolveCheck) => {
+              const req = https.get('https://localhost:3000/taskpane.html', { rejectUnauthorized: false }, (res) => {
+                resolveCheck(res.statusCode === 200);
+              });
+              req.on('error', () => resolveCheck(false));
+              req.setTimeout(5000, () => { req.destroy(); resolveCheck(false); });
+            });
+
+            const isRunning = await checkServer();
+            if (isRunning) {
+              resolved = true;
+              addinServerStatus = 'running';
+              console.log('[AddinServer] Server confirmed running via HTTP check');
+              resolve({ success: true, status: 'started', warning: 'Started (confirmed via HTTP)' });
+              return;
+            }
+          } catch (e) {
+            console.error('[AddinServer] HTTP check failed:', e);
+          }
+        }
+
         resolved = true;
-        if (addinServerProcess) {
-          addinServerStatus = 'running'; // Assume it's running even without confirmation
-          resolve({ success: true, status: 'started', warning: 'Started but no confirmation received' });
+        if (processExited) {
+          addinServerStatus = 'error';
+          resolve({ success: false, error: `Server exited with code ${exitCode}` });
         } else {
           addinServerStatus = 'error';
-          resolve({ success: false, error: 'Server startup timed out' });
+          resolve({ success: false, error: 'Server startup timed out. Check if port 3000 is available.' });
         }
       }
-    }, 30000);
+    }, 45000);
   });
 }
 

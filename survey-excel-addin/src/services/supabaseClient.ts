@@ -107,11 +107,39 @@ const STORAGE_KEYS = {
 };
 
 /**
+ * Safe localStorage access (Office.js add-ins may have restrictions)
+ */
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch (e) {
+    console.warn('localStorage.getItem failed:', e);
+    return null;
+  }
+}
+
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    console.warn('localStorage.setItem failed:', e);
+  }
+}
+
+function safeRemoveItem(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    console.warn('localStorage.removeItem failed:', e);
+  }
+}
+
+/**
  * Save Supabase configuration to localStorage
  */
 export function saveSupabaseConfig(url: string, anonKey: string) {
-  localStorage.setItem(STORAGE_KEYS.SUPABASE_URL, url);
-  localStorage.setItem(STORAGE_KEYS.SUPABASE_KEY, anonKey);
+  safeSetItem(STORAGE_KEYS.SUPABASE_URL, url);
+  safeSetItem(STORAGE_KEYS.SUPABASE_KEY, anonKey);
 }
 
 /**
@@ -119,8 +147,8 @@ export function saveSupabaseConfig(url: string, anonKey: string) {
  */
 export function loadSupabaseConfig(): { url: string | null; anonKey: string | null } {
   return {
-    url: localStorage.getItem(STORAGE_KEYS.SUPABASE_URL),
-    anonKey: localStorage.getItem(STORAGE_KEYS.SUPABASE_KEY),
+    url: safeGetItem(STORAGE_KEYS.SUPABASE_URL),
+    anonKey: safeGetItem(STORAGE_KEYS.SUPABASE_KEY),
   };
 }
 
@@ -128,8 +156,8 @@ export function loadSupabaseConfig(): { url: string | null; anonKey: string | nu
  * Clear Supabase configuration
  */
 export function clearSupabaseConfig() {
-  localStorage.removeItem(STORAGE_KEYS.SUPABASE_URL);
-  localStorage.removeItem(STORAGE_KEYS.SUPABASE_KEY);
+  safeRemoveItem(STORAGE_KEYS.SUPABASE_URL);
+  safeRemoveItem(STORAGE_KEYS.SUPABASE_KEY);
 }
 
 export default supabaseClient;
