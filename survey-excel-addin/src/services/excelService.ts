@@ -18,17 +18,23 @@ let eventContexts: Excel.RequestContext[] = [];
  * Initialize Excel API and register event handlers
  */
 export async function initExcelEvents(): Promise<void> {
-  await Excel.run(async (context) => {
-    const workbook = context.workbook;
+  console.log('[ExcelService] Initializing Excel events...');
+  try {
+    await Excel.run(async (context) => {
+      const workbook = context.workbook;
 
-    // Register for worksheet change events on all sheets
-    workbook.worksheets.onChanged.add(handleWorksheetChange);
-    workbook.worksheets.onAdded.add(handleWorksheetAdded);
-    workbook.worksheets.onDeleted.add(handleWorksheetDeleted);
+      // Register for worksheet change events on all sheets
+      workbook.worksheets.onChanged.add(handleWorksheetChange);
+      workbook.worksheets.onAdded.add(handleWorksheetAdded);
+      workbook.worksheets.onDeleted.add(handleWorksheetDeleted);
 
-    await context.sync();
-    console.log('[ExcelService] Event handlers registered');
-  });
+      await context.sync();
+      console.log('[ExcelService] Event handlers registered successfully');
+    });
+  } catch (error) {
+    console.error('[ExcelService] Failed to initialize Excel events:', error);
+    throw error;
+  }
 }
 
 /**

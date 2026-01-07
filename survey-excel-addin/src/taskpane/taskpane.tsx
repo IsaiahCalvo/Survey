@@ -8,6 +8,25 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './taskpane.css';
 
+// Global error handler to catch and log all errors
+window.onerror = function(message, source, lineno, colno, error) {
+  console.error('[SurveyAddin] Global error:', {
+    message,
+    source,
+    lineno,
+    colno,
+    error: error?.stack || error
+  });
+  return false;
+};
+
+// Unhandled promise rejection handler
+window.onunhandledrejection = function(event) {
+  console.error('[SurveyAddin] Unhandled promise rejection:', event.reason);
+};
+
+console.log('[SurveyAddin] Taskpane script loaded');
+
 // Error boundary component
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -57,31 +76,42 @@ class ErrorBoundary extends React.Component<
 }
 
 // Wait for Office.js to be ready
+console.log('[SurveyAddin] Waiting for Office.onReady...');
+
 Office.onReady((info) => {
-  console.log('[SurveyAddin] Office.onReady called, info:', info);
+  console.log('[SurveyAddin] Office.onReady called, info:', JSON.stringify(info));
 
   if (info.host === Office.HostType.Excel) {
-    console.log('[SurveyAddin] Office.js ready, host:', info.host);
+    console.log('[SurveyAddin] Office.js ready, host: Excel');
 
     const container = document.getElementById('root');
-    if (container) {
-      try {
-        const root = createRoot(container);
-        root.render(
-          <ErrorBoundary>
-            <App />
-          </ErrorBoundary>
-        );
-      } catch (e) {
-        console.error('[SurveyAddin] Failed to render:', e);
-        container.innerHTML = `
-          <div style="padding: 20px; text-align: center;">
-            <h2>Error</h2>
-            <p>Failed to initialize the add-in.</p>
-            <p style="font-size: 12px; color: #e74c3c;">${e instanceof Error ? e.message : 'Unknown error'}</p>
-          </div>
-        `;
-      }
+    if (!container) {
+      console.error('[SurveyAddin] Root container not found!');
+      return;
+    }
+
+    try {
+      console.log('[SurveyAddin] Creating React root...');
+      const root = createRoot(container);
+      console.log('[SurveyAddin] Rendering App component...');
+      root.render(
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      );
+      console.log('[SurveyAddin] App rendered successfully');
+    } catch (e) {
+      console.error('[SurveyAddin] Failed to render:', e);
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      const errorStack = e instanceof Error ? e.stack : '';
+      container.innerHTML = `
+        <div style="padding: 20px; text-align: center;">
+          <h2>Error</h2>
+          <p>Failed to initialize the add-in.</p>
+          <p style="font-size: 12px; color: #e74c3c;">${errorMessage}</p>
+          <pre style="font-size: 10px; text-align: left; overflow: auto; max-height: 200px;">${errorStack}</pre>
+        </div>
+      `;
     }
   } else {
     console.log('[SurveyAddin] Not in Excel, host:', info.host);
@@ -96,15 +126,16 @@ Office.onReady((info) => {
       `;
     }
   }
-}).catch((error) => {
+}).catch((error: unknown) => {
   console.error('[SurveyAddin] Office.onReady failed:', error);
+  const errorMessage = error instanceof Error ? error.message : String(error);
   const container = document.getElementById('root');
   if (container) {
     container.innerHTML = `
       <div style="padding: 20px; text-align: center;">
         <h2>Error</h2>
         <p>Failed to connect to Office.js</p>
-        <p style="font-size: 12px; color: #e74c3c;">${error instanceof Error ? error.message : 'Unknown error'}</p>
+        <p style="font-size: 12px; color: #e74c3c;">${errorMessage}</p>
       </div>
     `;
   }
