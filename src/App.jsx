@@ -17765,13 +17765,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     });
                                   }
 
-                                  // Delete from survey_items table via surveySession (real-time sync)
-                                  if (surveySession?.deleteAndSync) {
-                                    selectedIds.forEach(highlightId => {
-                                      surveySession.deleteAndSync(highlightId);
-                                    });
-                                  }
-
                                   // Clear selection (copy mode will be automatically exited if all items in space are deleted)
                                   setCopiedItemSelection({});
                                 }}
@@ -17969,13 +17962,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           if (documentId && user?.id && documentSyncEnabled && highlightIdsToDelete.length > 0) {
                                             deleteAnnotations(documentId, highlightIdsToDelete).catch(err => {
                                               console.error('[App] Error deleting annotations from Supabase:', err);
-                                            });
-                                          }
-
-                                          // Delete from survey_items table via surveySession (real-time sync)
-                                          if (surveySession?.deleteAndSync) {
-                                            highlightsInCategory.forEach(([highlightId]) => {
-                                              surveySession.deleteAndSync(highlightId);
                                             });
                                           }
 
