@@ -8561,11 +8561,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [lastSyncMessage, setLastSyncMessage] = useState('');
   const fileWatcherCleanupRef = useRef(null);
 
-  // Auto-push to Excel state
-  const [autoPushToExcel, setAutoPushToExcel] = useState(false);
-  const [lastPushMessage, setLastPushMessage] = useState('');
-  const pushTimeoutRef = useRef(null);
-
   // Live sync state (for OneDrive real-time co-authoring)
   const [liveSyncEnabled, setLiveSyncEnabled] = useState(false);
   const [liveSyncSupported, setLiveSyncSupported] = useState(null); // null = unknown, true/false = checked
@@ -8576,11 +8571,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const excelSessionRef = useRef({ sessionId: null, expiresAt: null });
   const liveSyncPollRef = useRef(null);
   const lastPollDataRef = useRef(null);
-
-  // Excel Add-in state (for bidirectional sync via Office.js)
-  const [addinEnabled, setAddinEnabled] = useState(false);
-  const [addinStatus, setAddinStatus] = useState('stopped'); // 'stopped', 'starting', 'running', 'error'
-  const [addinEnabling, setAddinEnabling] = useState(false);
 
   // Export/Sync modal states
   const [showExportLocationModal, setShowExportLocationModal] = useState(false);
@@ -11366,38 +11356,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [selectedTemplate?.id, selectedTemplate?.linkedExcelPath, handleAutoSyncFromExcel]);
 
-  // Auto-push to Excel when highlight annotations change
-  useEffect(() => {
-    if (!autoPushToExcel || !selectedTemplate?.linkedExcelPath || !window.electronAPI) {
-      return;
-    }
-
-    // Clear any existing timeout
-    if (pushTimeoutRef.current) {
-      clearTimeout(pushTimeoutRef.current);
-    }
-
-    // Debounce the push to avoid too frequent writes
-    pushTimeoutRef.current = setTimeout(async () => {
-      // console.log('Auto-pushing to Excel...');
-      try {
-        await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
-        setLastPushMessage('Pushed to Excel');
-        setTimeout(() => setLastPushMessage(''), 3000);
-      } catch (error) {
-        console.error('Failed to auto-push to Excel:', error);
-        setLastPushMessage('Push failed');
-        setTimeout(() => setLastPushMessage(''), 3000);
-      }
-    }, 2000); // Wait 2 seconds after last change before pushing
-
-    return () => {
-      if (pushTimeoutRef.current) {
-        clearTimeout(pushTimeoutRef.current);
-      }
-    };
-  }, [autoPushToExcel, selectedTemplate?.linkedExcelPath, highlightAnnotations, handleExportSurveyToExcel]);
-
   // Live sync session lifecycle management (OneDrive only)
   useEffect(() => {
     // Only for OneDrive files with live sync enabled
@@ -11554,213 +11512,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
-    // Skip if autoPushToExcel is also enabled (avoid duplicate pushes)
-    if (autoPushToExcel) {
-      return;
-    }
-
     // Debounce cell updates (5 seconds to avoid too frequent syncs)
     const pushTimeout = setTimeout(async () => {
       try {
         // console.log('Live sync: Pushing changes to Excel...');
         // Use silent mode to prevent alert popups during live sync
         await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
-        setLastPushMessage('Live synced');
-        setTimeout(() => setLastPushMessage(''), 2000);
+        setLastSyncMessage('Live synced');
+        setTimeout(() => setLastSyncMessage(''), 2000);
       } catch (error) {
         console.error('Live sync push failed:', error);
-        setLastPushMessage('Sync failed');
-        setTimeout(() => setLastPushMessage(''), 3000);
+        setLastSyncMessage('Sync failed');
+        setTimeout(() => setLastSyncMessage(''), 3000);
       }
     }, 5000);
 
     return () => clearTimeout(pushTimeout);
-  }, [liveSyncEnabled, excelSessionId, oneDriveFileId, graphClient, liveSyncStatus, autoPushToExcel, highlightAnnotations, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
+  }, [liveSyncEnabled, excelSessionId, oneDriveFileId, graphClient, liveSyncStatus, highlightAnnotations, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
 
-  // ============================================
-  // SURVEY SESSION SYNC (for Excel Add-in bidirectional sync)
-  // ============================================
-
-  // Track if we've initialized the survey session for this template
-  const surveySessionInitializedRef = useRef(null);
-  const lastSyncedHighlightsRef = useRef(null);
-
-  // Enable survey session sync when Excel is linked and auto-push or live-sync is enabled
-  useEffect(() => {
-    if (!surveySession) return;
-
-    const templateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
-    const hasLinkedExcel = selectedTemplate?.linkedExcelPath;
-    const syncModeEnabled = autoPushToExcel || liveSyncEnabled;
-
-    // Enable sync if we have a template with linked Excel and sync is enabled
-    if (templateId && hasLinkedExcel && syncModeEnabled) {
-      // Only initialize once per template
-      if (surveySessionInitializedRef.current !== templateId) {
-        console.log('[SurveySync] Enabling survey session sync for template:', templateId);
-        surveySession.enableSync(templateId);
-        surveySessionInitializedRef.current = templateId;
-
-        // Link Excel file info to session
-        const excelFileId = selectedTemplate?.oneDriveFileId || null;
-        if (surveySession.linkExcelFile) {
-          surveySession.linkExcelFile(selectedTemplate.linkedExcelPath, excelFileId);
-        }
-      }
-    } else if (surveySession.syncEnabled && !syncModeEnabled) {
-      // Disable sync if sync mode is turned off
-      console.log('[SurveySync] Disabling survey session sync');
-      surveySession.disableSync();
-      surveySessionInitializedRef.current = null;
-    }
-  }, [
-    surveySession,
-    selectedTemplate?.supabaseId,
-    selectedTemplate?.id,
-    selectedTemplate?.linkedExcelPath,
-    selectedTemplate?.oneDriveFileId,
-    autoPushToExcel,
-    liveSyncEnabled
-  ]);
-
-  // Sync highlight annotation changes to Supabase (for Excel add-in to receive)
-  useEffect(() => {
-    if (!surveySession?.syncEnabled || !surveySession?.session) return;
-    if (!autoPushToExcel && !liveSyncEnabled) return;
-
-    // Compare with last synced state to avoid unnecessary syncs
-    const currentHighlightsJson = JSON.stringify(highlightAnnotations);
-    if (lastSyncedHighlightsRef.current === currentHighlightsJson) return;
-
-    // Debounce sync to avoid rapid-fire updates
-    const syncTimeout = setTimeout(() => {
-      console.log('[SurveySync] Syncing highlight changes to Supabase for Excel add-in');
-      surveySession.syncAllNow(highlightAnnotations);
-      lastSyncedHighlightsRef.current = currentHighlightsJson;
-    }, 2500); // 2.5s debounce (slightly longer than Excel push to let it complete first)
-
-    return () => clearTimeout(syncTimeout);
-  }, [surveySession?.syncEnabled, surveySession?.session, highlightAnnotations, autoPushToExcel, liveSyncEnabled]);
-
-  // Consume remote changes from Excel add-in and update local state
-  useEffect(() => {
-    if (!surveySession?.syncEnabled) return;
-
-    const pendingChanges = surveySession.pendingRemoteChanges || [];
-    if (pendingChanges.length === 0) return;
-
-    console.log('[SurveySync] Received', pendingChanges.length, 'remote changes from Excel add-in');
-
-    // Process each pending change
-    const changes = surveySession.consumePendingChanges();
-
-    changes.forEach(change => {
-      const { type, item } = change;
-
-      if (type === 'insert' || type === 'update') {
-        // Update local highlight annotations
-        setHighlightAnnotations(prev => ({
-          ...prev,
-          [item.highlightId]: {
-            ...prev[item.highlightId],
-            ...item,
-            // Map database fields back to app format
-            moduleId: item.moduleId,
-            categoryId: item.categoryId,
-            name: item.name,
-            pageNumber: item.pageNumber,
-            bounds: item.bounds,
-            ballInCourtEntityId: item.ballInCourt?.entityId || item.ballInCourtEntityId,
-            ballInCourtEntityName: item.ballInCourt?.name || item.ballInCourtName,
-            changedBy: item.changedBy,
-            changedDate: item.changedDate,
-            notes: item.notes,
-            checklistResponses: item.checklistResponses || {},
-            // Mark as synced from remote to avoid re-syncing
-            _fromRemote: true
-          }
-        }));
-      } else if (type === 'delete') {
-        // Remove from local state
-        setHighlightAnnotations(prev => {
-          const updated = { ...prev };
-          delete updated[item.highlightId];
-          return updated;
-        });
-      }
-    });
-
-    // Update the lastSyncedHighlights ref to prevent re-sync
-    setHighlightAnnotations(current => {
-      lastSyncedHighlightsRef.current = JSON.stringify(current);
-      return current;
-    });
-  }, [surveySession?.syncEnabled, surveySession?.pendingRemoteChanges]);
-
-  // ============================================
-  // EXCEL ADD-IN MANAGEMENT
-  // ============================================
-
-  // Handle enabling/disabling the Excel add-in
-  const handleToggleAddin = useCallback(async () => {
-    if (!window.electronAPI?.addin) {
-      alert('Excel add-in is only available in the desktop app.');
-      return;
-    }
-
-    if (addinEnabling) return; // Prevent double-clicks
-
-    setAddinEnabling(true);
-
-    try {
-      if (addinEnabled) {
-        // Disable the add-in
-        const result = await window.electronAPI.addin.disable();
-        if (result.success) {
-          setAddinEnabled(false);
-          setAddinStatus('stopped');
-          alert('Excel add-in disabled. Restart Excel to remove it from the ribbon.');
-        } else {
-          alert('Failed to disable add-in: ' + result.error);
-        }
-      } else {
-        // Enable the add-in
-        setAddinStatus('starting');
-        const result = await window.electronAPI.addin.enable();
-        if (result.success) {
-          setAddinEnabled(true);
-          setAddinStatus('running');
-          alert(result.message || 'Excel add-in enabled! Restart Excel to see the Survey Sync button in the Home ribbon.');
-        } else {
-          setAddinStatus('error');
-          alert('Failed to enable add-in: ' + result.error);
-        }
-      }
-    } catch (error) {
-      console.error('Error toggling add-in:', error);
-      setAddinStatus('error');
-      alert('Error: ' + error.message);
-    } finally {
-      setAddinEnabling(false);
-    }
-  }, [addinEnabled, addinEnabling]);
-
-  // Check add-in status on mount
-  useEffect(() => {
-    const checkAddinStatus = async () => {
-      if (!window.electronAPI?.addin) return;
-
-      try {
-        const status = await window.electronAPI.addin.getStatus();
-        setAddinEnabled(status.isRunning);
-        setAddinStatus(status.status);
-      } catch (error) {
-        console.error('Error checking add-in status:', error);
-      }
-    };
-
-    checkAddinStatus();
-  }, []);
 
   // ============================================
   // DOCUMENT-BASED SUPABASE REAL-TIME SYNC
@@ -17578,18 +17347,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   {lastSyncMessage}
                                 </div>
                               )}
-                              {lastPushMessage && (
-                                <div style={{
-                                  fontSize: '11px',
-                                  color: lastPushMessage.includes('failed') ? '#e74c3c' : '#9b59b6',
-                                  padding: '4px 8px',
-                                  background: lastPushMessage.includes('failed') ? 'rgba(231, 76, 60, 0.1)' : 'rgba(155, 89, 182, 0.1)',
-                                  borderRadius: '4px',
-                                  border: lastPushMessage.includes('failed') ? '1px solid rgba(231, 76, 60, 0.3)' : '1px solid rgba(155, 89, 182, 0.3)'
-                                }}>
-                                  {lastPushMessage}
-                                </div>
-                              )}
                             </>
                           )}
                         </>
@@ -20013,38 +19770,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             <Icon name="download" size={16} />
                             Pull from Excel
                           </div>
-                          <div
-                            onClick={() => {
-                              setAutoPushToExcel(!autoPushToExcel);
-                            }}
-                            style={{
-                              padding: '12px 16px',
-                              color: autoPushToExcel ? '#2ecc71' : '#fff',
-                              fontSize: '14px',
-                              cursor: 'pointer',
-                              borderBottom: '1px solid #444',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            title={autoPushToExcel ? 'Auto-push to Excel is ON' : 'Auto-push to Excel is OFF'}
-                          >
-                            <span style={{ fontSize: '14px' }}>{autoPushToExcel ? '●' : '○'}</span>
-                            Auto-push
-                          </div>
                           {selectedTemplate?.isOneDrive && (
                             <div
                               onClick={() => {
                                 if (liveSyncSupported === false) return;
-                                if (liveSyncEnabled) {
-                                  setLiveSyncEnabled(false);
-                                } else {
-                                  // Disable auto-push when enabling live sync to avoid conflicts
-                                  setAutoPushToExcel(false);
-                                  setLiveSyncEnabled(true);
-                                }
+                                setLiveSyncEnabled(!liveSyncEnabled);
                               }}
                               style={{
                                 padding: '12px 16px',
@@ -20091,57 +19821,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               </span>
                               Live Sync
                             </div>
-                          )}
-
-                          {/* Excel Add-in for true bidirectional sync */}
-                          {window.electronAPI?.addin && (
-                            <>
-                              <div style={{
-                                height: '1px',
-                                background: '#444',
-                                margin: '4px 0'
-                              }} />
-                              <div
-                                onClick={handleToggleAddin}
-                                style={{
-                                  padding: '8px 12px',
-                                  borderRadius: '4px',
-                                  color: addinStatus === 'error'
-                                    ? '#e74c3c'
-                                    : addinEnabled
-                                      ? '#2ecc71'
-                                      : '#fff',
-                                  fontSize: '14px',
-                                  cursor: addinEnabling ? 'wait' : 'pointer',
-                                  opacity: addinEnabling ? 0.6 : 1,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px'
-                                }}
-                                onMouseEnter={(e) => {
-                                  if (!addinEnabling) {
-                                    e.currentTarget.style.background = '#444';
-                                  }
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = 'transparent';
-                                }}
-                                title={
-                                  addinEnabled
-                                    ? 'Click to disable the Excel add-in server'
-                                    : 'Enable Excel add-in for true bidirectional sync'
-                                }
-                              >
-                                <span style={{ fontSize: '14px' }}>
-                                  {addinEnabling
-                                    ? '...'
-                                    : addinEnabled
-                                      ? '●'
-                                      : '○'}
-                                </span>
-                                Excel Add-in
-                              </div>
-                            </>
                           )}
                         </div>
                       )}
