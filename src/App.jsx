@@ -59,7 +59,6 @@ import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNot
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { supabase } from './supabaseClient';
-import { useSurveySessionOptional } from './contexts/SurveySessionContext';
 import {
   syncAnnotationsToSupabase,
   loadAnnotationsFromSupabase,
@@ -7980,8 +7979,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const { updateDocument: updateSupabaseDocument } = useDocuments(null);
   const { features } = useAuth();
 
-  // Multi-user real-time sync context (optional)
-  const surveySession = useSurveySessionOptional();
 
   const initialZoomPrefsRef = useRef(null);
   if (!initialZoomPrefsRef.current) {
@@ -9492,14 +9489,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return updated;
     });
 
-    // Delete from survey_items table via surveySession (real-time sync)
-    // This ensures deleted highlights don't reappear when re-entering survey mode
-    if (surveySession?.deleteAndSync && highlightIdsToDelete.length > 0) {
-      highlightIdsToDelete.forEach(highlightId => {
-        surveySession.deleteAndSync(highlightId);
-      });
-    }
-
     // Then update the spaces to remove the page
     setSpaces(prev => {
       const nextSpaces = prev.map(space => {
@@ -9523,7 +9512,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       return nextSpaces;
     });
-  }, [activeSpaceId, spaces, highlightAnnotations, surveySession]);
+  }, [activeSpaceId, spaces, highlightAnnotations]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     const trimmedLabel = typeof newLabel === 'string' ? newLabel.trim() : '';
@@ -10258,19 +10247,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               handleTemplatesChange(updatedTemplates);
             }
 
-            // Save Excel schema mappings for Excel add-in sync (only on manual export, not auto-push)
-            if (!silent && surveySession?.saveSchemaMapping && schemaMappings.length > 0) {
-              try {
-                console.log('[SurveySync] Saving', schemaMappings.length, 'Excel schema mappings');
-                for (const mapping of schemaMappings) {
-                  await surveySession.saveSchemaMapping(mapping);
-                }
-              } catch (schemaErr) {
-                console.warn('[SurveySync] Failed to save schema mappings:', schemaErr);
-                // Don't fail the export if schema save fails
-              }
-            }
-
             if (!silent) {
               setIsExporting(false);
               alert('Sync to Excel successful!');
@@ -10319,7 +10295,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setIsExporting(false);
       alert('Unable to create the Excel file. Please try again.');
     }
-  }, [selectedTemplate, items, highlightAnnotations, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, surveySession]);
+  }, [selectedTemplate, items, highlightAnnotations, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -14308,14 +14284,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       }
 
-      // Delete from survey_items table via surveySession (real-time sync)
-      // This ensures deleted highlights don't reappear when re-entering survey mode
-      if (surveySession?.deleteAndSync) {
-        matchingHighlightIds.forEach(highlightId => {
-          surveySession.deleteAndSync(highlightId);
-        });
-      }
-
       // Clear the removal queue after a short delay
       setTimeout(() => {
         setHighlightsToRemoveByPage(prev => {
@@ -14336,7 +14304,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       }, 100);
     }
-  }, [selectedModuleId, selectedTemplate, highlightAnnotations, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled, surveySession]);
+  }, [selectedModuleId, selectedTemplate, highlightAnnotations, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
 
   // Handle deletion of a highlight item (from survey panel)
   const handleDeleteHighlightItem = useCallback((highlightId) => {
