@@ -12,14 +12,8 @@ interface SessionPickerProps {
   onSelect: (session: SurveySession) => void;
 }
 
-interface SessionWithTemplate extends SurveySession {
-  template?: {
-    name: string;
-  };
-}
-
 const SessionPicker: React.FC<SessionPickerProps> = ({ userId, onSelect }) => {
-  const [sessions, setSessions] = useState<SessionWithTemplate[]>([]);
+  const [sessions, setSessions] = useState<SurveySession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,16 +31,17 @@ const SessionPicker: React.FC<SessionPickerProps> = ({ userId, onSelect }) => {
         throw new Error('Not connected to Supabase');
       }
 
-      // Load active sessions for this user with template info
+      // Load active sessions for this user
+      // Note: We don't join templates as it may not exist in all setups
+      console.log('[SessionPicker] Loading sessions for user:', userId);
       const { data, error } = await supabase
         .from('survey_sessions')
-        .select(`
-          *,
-          template:templates(name)
-        `)
+        .select('*')
         .eq('user_id', userId)
         .eq('is_active', true)
         .order('updated_at', { ascending: false });
+
+      console.log('[SessionPicker] Loaded sessions:', data?.length || 0);
 
       if (error) throw error;
 
@@ -114,7 +109,7 @@ const SessionPicker: React.FC<SessionPickerProps> = ({ userId, onSelect }) => {
             onClick={() => onSelect(session)}
           >
             <div className="session-name">
-              {session.template?.name || 'Untitled Survey'}
+              Session {session.id.slice(0, 8)}...
             </div>
             <div className="session-info">
               {session.excel_file_path ? (

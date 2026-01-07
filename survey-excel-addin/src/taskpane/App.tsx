@@ -49,33 +49,45 @@ const App: React.FC = () => {
   // Initialize on mount
   useEffect(() => {
     const init = async () => {
+      console.log('[SurveyAddin] App initialization starting...');
       try {
         // Try to load saved config
-        const config = loadSupabaseConfig();
+        let config = { url: null as string | null, anonKey: null as string | null };
+        try {
+          config = loadSupabaseConfig();
+          console.log('[SurveyAddin] Loaded config:', { hasUrl: !!config.url, hasKey: !!config.anonKey });
+        } catch (configError) {
+          console.error('[SurveyAddin] Failed to load config:', configError);
+        }
 
         if (config.url && config.anonKey) {
           try {
+            console.log('[SurveyAddin] Initializing Supabase client...');
             initSupabase(config.url, config.anonKey);
             setSupabaseUrl(config.url);
             setSupabaseKey(config.anonKey);
 
             // Check for existing user
+            console.log('[SurveyAddin] Checking for existing user...');
             const user = await getCurrentUser();
             if (user) {
+              console.log('[SurveyAddin] Found existing user:', user.email);
               setUser({ id: user.id, email: user.email });
               setAppState('session');
             } else {
+              console.log('[SurveyAddin] No existing user, showing login');
               setAppState('login');
             }
           } catch (e) {
-            console.error('Failed to initialize Supabase:', e);
+            console.error('[SurveyAddin] Failed to initialize Supabase:', e);
             setAppState('setup');
           }
         } else {
+          console.log('[SurveyAddin] No saved config, showing setup');
           setAppState('setup');
         }
       } catch (e) {
-        console.error('Initialization error:', e);
+        console.error('[SurveyAddin] Initialization error:', e);
         setError('Failed to initialize add-in');
         setAppState('setup');
       }
