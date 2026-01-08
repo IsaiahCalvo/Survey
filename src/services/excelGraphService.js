@@ -178,15 +178,35 @@ export async function downloadExcelFile(graphClient, fileId) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
 
+  if (!fileId) {
+    throw new Error('File ID is required');
+  }
+
   try {
-    const response = await graphClient
-      .api(`/me/drive/items/${fileId}/content`)
+    // First get the download URL (more reliable than direct /content endpoint)
+    const metadata = await graphClient
+      .api(`/me/drive/items/${fileId}`)
+      .select('@microsoft.graph.downloadUrl')
       .get();
 
-    return response;
+    if (!metadata['@microsoft.graph.downloadUrl']) {
+      throw new Error('Could not get download URL for the file');
+    }
+
+    // Fetch the file content directly from the download URL
+    const response = await fetch(metadata['@microsoft.graph.downloadUrl']);
+    if (!response.ok) {
+      throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return arrayBuffer;
   } catch (error) {
-    console.error('Failed to download Excel file:', error);
-    throw new Error(`Failed to download Excel file: ${error.message}`);
+    // Extract detailed error info from Graph API errors
+    const errorMessage = error.body?.error?.message || error.body?.message || error.message || 'Unknown error';
+    const statusCode = error.statusCode || error.code || '';
+    console.error('Failed to download Excel file:', { error, statusCode, errorMessage });
+    throw new Error(`Failed to download Excel file: ${statusCode ? `[${statusCode}] ` : ''}${errorMessage}`);
   }
 }
 

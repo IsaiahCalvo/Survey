@@ -1,5 +1,48 @@
 chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!se1c4033b71eb47cd88559744a69b9ad1?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1     Failed to load resource: the server responded with a status of 404 ()
-App.jsx:10383 Clearing Excel link: OneDrive file was deleted (not found by ID)
-App.jsx:10654 Uploaded to OneDrive, file ID: DC046716012CC0F4!sf20da32d15794b1e9ff34ebef84ffbf3
-App.jsx:10675 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
+App.jsx:10628 Uploaded to OneDrive, file ID: DC046716012CC0F4!s70da9573ac6c473cb32990e227798ee3
+App.jsx:10649 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
+excelGraphService.js:188 Failed to download Excel file: Error
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:108:13)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+downloadExcelFile @ excelGraphService.js:188
+App.jsx:11292 Failed to auto-sync from Excel: Error: Failed to download Excel file: 
+    at downloadExcelFile (excelGraphService.js:189:11)
+    at async App.jsx:11003:24
+(anonymous) @ App.jsx:11292
+excelGraphService.js:188 Failed to download Excel file: Error
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:108:13)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+downloadExcelFile @ excelGraphService.js:188
+App.jsx:11292 Failed to auto-sync from Excel: Error: Failed to download Excel file: 
+    at downloadExcelFile (excelGraphService.js:189:11)
+    at async App.jsx:11003:24
+(anonymous) @ App.jsx:11292
+excelGraphService.js:188 Failed to download Excel file: Error
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:108:13)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+downloadExcelFile @ excelGraphService.js:188
+App.jsx:11292 Failed to auto-sync from Excel: Error: Failed to download Excel file: 
+    at downloadExcelFile (excelGraphService.js:189:11)
+    at async App.jsx:11003:24
+(anonymous) @ App.jsx:11292

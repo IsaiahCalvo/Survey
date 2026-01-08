@@ -10360,7 +10360,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         lastCheckedExcelRef.current = { path: excelPath, fileId, cleared: true }; // Prevent re-checking
 
         setLinkedExcelExists(false);
-        setAutoPushToExcel(false);
         setLiveSyncEnabled(false);
 
         // Clear the link from the template
@@ -10522,7 +10521,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
     setSelectedTemplate(updatedTemplate);
     setLinkedExcelExists(null);
-    setAutoPushToExcel(false);
     setLiveSyncEnabled(false);
     setShowExportMenu(false);
 
@@ -10666,6 +10664,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         lastSyncTime: new Date().toISOString()
       };
       setSelectedTemplate(updatedTemplate);
+
+      // Update the oneDriveFileId state for Live Sync
+      if (oneDriveFileId) {
+        setOneDriveFileId(oneDriveFileId);
+      }
+
+      // Mark that linked Excel file exists (enables dropdown menu)
+      setLinkedExcelExists(true);
 
       // Persist to Supabase
       const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
