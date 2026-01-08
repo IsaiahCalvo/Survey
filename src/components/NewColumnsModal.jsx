@@ -9,13 +9,15 @@ const NewColumnsModal = ({
   templateName = ''
 }) => {
   const [selectedOption, setSelectedOption] = useState(null); // 'newTemplate' | 'surveyOnly'
+  const [newTemplateName, setNewTemplateName] = useState('');
 
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setSelectedOption(null);
+      setNewTemplateName(`${templateName} (Updated)`);
     }
-  }, [isOpen]);
+  }, [isOpen, templateName]);
 
   if (!isOpen) return null;
 
@@ -27,7 +29,12 @@ const NewColumnsModal = ({
       alert('Please select an option.');
       return;
     }
-    onConfirm(selectedOption);
+    if (selectedOption === 'newTemplate' && !newTemplateName.trim()) {
+      alert('Please enter a name for the new template.');
+      return;
+    }
+    // Pass both the decision and the template name
+    onConfirm(selectedOption, newTemplateName.trim());
   };
 
   const handleSkip = () => {
@@ -163,9 +170,44 @@ const NewColumnsModal = ({
               fontSize: TYPOGRAPHY.fontSize.sm,
               color: COLORS.text.muted,
               fontFamily: TYPOGRAPHY.fontFamily.default,
+              marginBottom: selectedOption === 'newTemplate' ? '12px' : '0',
             }}>
-              Creates a new template "{templateName} (Updated)" with the added checklist items. Original template remains unchanged.
+              Creates a new template with the added checklist items. Original template remains unchanged.
             </div>
+
+            {/* Template name input - only shown when this option is selected */}
+            {selectedOption === 'newTemplate' && (
+              <div style={{ marginTop: '8px' }} onClick={(e) => e.stopPropagation()}>
+                <div style={{
+                  fontSize: TYPOGRAPHY.fontSize.sm,
+                  fontWeight: TYPOGRAPHY.fontWeight.medium,
+                  color: COLORS.text.muted,
+                  marginBottom: '4px',
+                  fontFamily: TYPOGRAPHY.fontFamily.default,
+                }}>
+                  New Template Name
+                </div>
+                <input
+                  type="text"
+                  value={newTemplateName}
+                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  placeholder="Enter template name..."
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: BORDERS.radius.md,
+                    border: `1px solid ${COLORS.border.default}`,
+                    background: COLORS.background.dark,
+                    color: COLORS.text.secondary,
+                    fontSize: TYPOGRAPHY.fontSize.md,
+                    fontFamily: TYPOGRAPHY.fontFamily.default,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                  autoFocus
+                />
+              </div>
+            )}
           </div>
 
           {/* Option B: Add for survey only */}
@@ -220,16 +262,16 @@ const NewColumnsModal = ({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!selectedOption}
+            disabled={!selectedOption || (selectedOption === 'newTemplate' && !newTemplateName.trim())}
             style={{
               padding: '8px 16px',
-              background: selectedOption ? COLORS.accent.primary : COLORS.border.default,
+              background: (selectedOption && (selectedOption !== 'newTemplate' || newTemplateName.trim())) ? COLORS.accent.primary : COLORS.border.default,
               color: COLORS.text.primary,
               border: 'none',
               borderRadius: BORDERS.radius.md,
               fontSize: TYPOGRAPHY.fontSize.md,
               fontWeight: TYPOGRAPHY.fontWeight.medium,
-              cursor: selectedOption ? 'pointer' : 'not-allowed',
+              cursor: (selectedOption && (selectedOption !== 'newTemplate' || newTemplateName.trim())) ? 'pointer' : 'not-allowed',
               fontFamily: TYPOGRAPHY.fontFamily.default,
               transition: 'all 0.15s ease',
             }}

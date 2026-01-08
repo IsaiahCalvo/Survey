@@ -7956,7 +7956,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 });
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange }) {
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
@@ -11149,7 +11149,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [highlightAnnotations]);
 
   // Helper: Create new template with added checklist items from new columns
-  const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory) => {
+  const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory, templateName) => {
     const timestamp = new Date().toISOString();
     const newTemplateId = `tpl-${Date.now()}`;
 
@@ -11176,27 +11176,45 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     }
 
+    // Use provided template name or fallback to default
+    const newName = templateName || `${selectedTemplate.name} (Updated)`;
+
     const newTemplate = {
       ...selectedTemplate,
       id: newTemplateId,
-      name: `${selectedTemplate.name} (Updated)`,
+      name: newName,
       modules: clonedModules,
       spaces: clonedModules,
       createdAt: timestamp,
       updatedAt: timestamp
     };
 
-    // Save the new template via callback to parent
-    const nextTemplates = [newTemplate, ...templates];
-    if (onTemplatesChange) {
-      onTemplatesChange(nextTemplates);
+    // Persist the new template to Supabase
+    try {
+      const configPayload = sanitizeTemplateConfig(newTemplate);
+      await createSupabaseTemplate({
+        name: newName,
+        config: configPayload
+      });
+
+      // Refetch templates to sync state with database
+      if (onRefetchTemplates) {
+        await onRefetchTemplates();
+      }
+    } catch (err) {
+      console.error('Error creating template from new columns:', err);
+      // Fall back to local-only update if Supabase fails
+      const nextTemplates = [newTemplate, ...templates];
+      if (onTemplatesChange) {
+        onTemplatesChange(nextTemplates);
+      }
     }
 
     // Switch to the new template
     setSelectedTemplate(newTemplate);
 
     return newTemplate;
-  }, [selectedTemplate, templates, onTemplatesChange]);
+  }, [selectedTemplate, templates, onTemplatesChange, onRefetchTemplates, createSupabaseTemplate, sanitizeTemplateConfig]);
 
   // Helper: Add checklist items for survey only (not persisted to template)
   const handleAddColumnsForSurveyOnly = useCallback((newColumnsByCategory) => {
@@ -11236,14 +11254,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [selectedTemplate]);
 
   // Handler for new columns modal decision
-  const handleNewColumnsDecision = useCallback(async (decision) => {
+  const handleNewColumnsDecision = useCallback(async (decision, templateName) => {
     if (!pendingNewColumns) return;
 
     const { newColumnsByCategory, worksheetDataList, isAutoSync } = pendingNewColumns;
     let templateToUse = selectedTemplate;
 
     if (decision === 'newTemplate') {
-      templateToUse = await handleCreateNewTemplateFromColumns(newColumnsByCategory);
+      templateToUse = await handleCreateNewTemplateFromColumns(newColumnsByCategory, templateName);
     } else if (decision === 'surveyOnly') {
       templateToUse = handleAddColumnsForSurveyOnly(newColumnsByCategory);
     }
@@ -22682,6 +22700,9 @@ export default function App() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
+  // Template refetch for PDFViewer
+  const { refetch: refetchTemplates } = useTemplates();
+
   // Clean up any old localStorage data that might be causing issues
   useEffect(() => {
     // Remove old document data to prevent quota issues
@@ -22985,6 +23006,7 @@ export default function App() {
                 onViewStateChange={handleViewStateChange}
                 templates={appTemplates}
                 onTemplatesChange={handleTemplatesChange}
+                onRefetchTemplates={refetchTemplates}
                 user={user}
                 isMSAuthenticated={isMSAuthenticated}
                 msLogin={msLogin}
