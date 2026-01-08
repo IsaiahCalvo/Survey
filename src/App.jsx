@@ -10911,6 +10911,243 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [highlightAnnotations]);
 
+  // Helper: Execute auto-sync import with canvas color tracking
+  const executeAutoExcelImport = useCallback((worksheetDataList, templateToUse) => {
+    const newHighlightAnnotations = { ...highlightAnnotations };
+    let updatesCount = 0;
+    const highlightsWithColorChanges = [];
+
+    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
+      // Rebuild colToChecklistId using the updated category from templateToUse
+      const colToChecklistId = {};
+
+      // Get the updated category from templateToUse
+      const modules = templateToUse.modules || templateToUse.spaces || [];
+      let updatedCategory = matchedCategory;
+      for (const mod of modules) {
+        const cat = (mod.categories || []).find(c => c.id === matchedCategory.id);
+        if (cat) {
+          updatedCategory = cat;
+          break;
+        }
+      }
+
+      const checklistItems = updatedCategory.checklist || [];
+
+      headerRow.forEach((colText, index) => {
+        if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
+        if (!colText?.toString().trim()) return;
+
+        const trimmedText = colText.toString().trim();
+        const checklistItem = checklistItems.find(c => c.text === trimmedText);
+        if (checklistItem) {
+          colToChecklistId[index] = checklistItem.id;
+        }
+      });
+
+      const itemColumnIndex = headerRow.indexOf('Item');
+      const ballInCourtIndex = headerRow.indexOf('Ball in Court');
+      const notesIndex = headerRow.indexOf('Notes');
+
+      // Iterate data rows
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        const itemName = row[itemColumnIndex];
+        if (!itemName) continue;
+
+        // Find matching highlight by name
+        let matchedHighlightKey = null;
+
+        Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
+          const annModuleId = ann.moduleId || ann.spaceId;
+          if (annModuleId === matchedModuleId &&
+            ann.categoryId === matchedCategory.id &&
+            ann.name === itemName) {
+            matchedHighlightKey = key;
+          }
+        });
+
+        if (matchedHighlightKey) {
+          // Update existing highlight
+          const key = matchedHighlightKey;
+          const ann = newHighlightAnnotations[key];
+          let changed = false;
+
+          // Update checklist responses
+          if (!ann.checklistResponses) ann.checklistResponses = {};
+
+          Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
+            const value = row[colIndex];
+            const currentVal = ann.checklistResponses[checklistId]?.selection;
+
+            if (value !== undefined && value !== currentVal) {
+              ann.checklistResponses[checklistId] = {
+                ...ann.checklistResponses[checklistId],
+                selection: value
+              };
+              changed = true;
+            }
+          });
+
+          // Update Ball in Court
+          if (ballInCourtIndex !== -1) {
+            const bicName = row[ballInCourtIndex];
+            if (bicName && bicName !== ann.ballInCourtEntityName) {
+              const entities = templateToUse.ballInCourtEntities || [];
+              const entity = entities.find(e => e.name === bicName);
+              if (entity) {
+                ann.ballInCourtEntityId = entity.id;
+                ann.ballInCourtEntityName = entity.name;
+                ann.ballInCourtColor = entity.color;
+                changed = true;
+                const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
+                if (ann.pageNumber && hasValidBounds) {
+                  highlightsWithColorChanges.push({
+                    highlightId: key,
+                    pageNumber: ann.pageNumber,
+                    bounds: ann.bounds,
+                    color: entity.color,
+                    needsBIC: false
+                  });
+                }
+              } else if (bicName === '') {
+                ann.ballInCourtEntityId = null;
+                ann.ballInCourtEntityName = null;
+                ann.ballInCourtColor = null;
+                changed = true;
+                const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
+                if (ann.pageNumber && hasValidBounds) {
+                  highlightsWithColorChanges.push({
+                    highlightId: key,
+                    pageNumber: ann.pageNumber,
+                    bounds: ann.bounds,
+                    color: null,
+                    needsBIC: true
+                  });
+                }
+              }
+            }
+          }
+
+          // Update Notes
+          if (notesIndex !== -1) {
+            const noteText = row[notesIndex];
+            if (noteText !== undefined) {
+              if (typeof ann.note === 'string') {
+                try {
+                  ann.note = JSON.parse(ann.note);
+                } catch {
+                  ann.note = {};
+                }
+              }
+              if (!ann.note || typeof ann.note !== 'object') ann.note = {};
+              if (ann.note.text !== noteText) {
+                ann.note.text = noteText;
+                changed = true;
+              }
+            }
+          }
+
+          if (changed) {
+            updatesCount++;
+            newHighlightAnnotations[key] = { ...ann };
+          }
+        } else {
+          // Create new highlight for new row
+          const newHighlightId = `highlight-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+
+          const checklistResponses = {};
+          Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
+            const value = row[colIndex];
+            if (value !== undefined && value !== '') {
+              checklistResponses[checklistId] = {
+                selection: value
+              };
+            }
+          });
+
+          let ballInCourtEntityId = null;
+          let ballInCourtEntityName = null;
+          let ballInCourtColor = null;
+
+          if (ballInCourtIndex !== -1) {
+            const bicName = row[ballInCourtIndex];
+            if (bicName) {
+              const entities = templateToUse.ballInCourtEntities || [];
+              const entity = entities.find(e => e.name === bicName);
+              if (entity) {
+                ballInCourtEntityId = entity.id;
+                ballInCourtEntityName = entity.name;
+                ballInCourtColor = entity.color;
+              }
+            }
+          }
+
+          let noteText = '';
+          if (notesIndex !== -1) {
+            noteText = row[notesIndex] || '';
+          }
+
+          const newHighlight = {
+            id: newHighlightId,
+            name: itemName,
+            categoryId: matchedCategory.id,
+            moduleId: matchedModuleId,
+            checklistResponses: checklistResponses,
+            ballInCourtEntityId,
+            ballInCourtEntityName,
+            ballInCourtColor,
+            note: noteText ? { text: noteText } : {},
+            changedBy: '',
+            changedDate: new Date().toISOString(),
+            pageNumber: null,
+            bounds: null
+          };
+
+          newHighlightAnnotations[newHighlightId] = newHighlight;
+          updatesCount++;
+        }
+      }
+    });
+
+    if (updatesCount > 0) {
+      setHighlightAnnotations(newHighlightAnnotations);
+      setLastSyncMessage(`Auto-synced ${updatesCount} items from Excel`);
+      setTimeout(() => setLastSyncMessage(''), 5000);
+
+      // Update canvas highlights for any that had color changes
+      if (highlightsWithColorChanges.length > 0) {
+        setNewHighlightsByPage(prev => {
+          const updated = { ...prev };
+          highlightsWithColorChanges.forEach(({ highlightId, pageNumber, bounds, color, needsBIC }) => {
+            const pageHighlights = updated[pageNumber] || [];
+            const filtered = pageHighlights.filter(h => {
+              const hasMatchingId = h.highlightId === highlightId;
+              const hasMatchingBounds = h.x === bounds.x &&
+                h.y === bounds.y &&
+                h.width === bounds.width &&
+                h.height === bounds.height;
+              return !hasMatchingId && !hasMatchingBounds;
+            });
+            updated[pageNumber] = [
+              ...filtered,
+              {
+                ...bounds,
+                color: color,
+                highlightId: highlightId,
+                needsBIC: needsBIC
+              }
+            ];
+          });
+          return updated;
+        });
+      }
+    } else {
+      setLastSyncMessage('No changes found');
+      setTimeout(() => setLastSyncMessage(''), 5000);
+    }
+  }, [highlightAnnotations]);
+
   // Helper: Create new template with added checklist items from new columns
   const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory) => {
     const timestamp = new Date().toISOString();
@@ -11161,243 +11398,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     }
   }, [selectedTemplate, graphClient, ensureFreshToken, executeExcelImport]);
-
-  // Helper: Execute auto-sync import with canvas color tracking
-  const executeAutoExcelImport = useCallback((worksheetDataList, templateToUse) => {
-    const newHighlightAnnotations = { ...highlightAnnotations };
-    let updatesCount = 0;
-    const highlightsWithColorChanges = [];
-
-    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
-      // Rebuild colToChecklistId using the updated category from templateToUse
-      const colToChecklistId = {};
-
-      // Get the updated category from templateToUse
-      const modules = templateToUse.modules || templateToUse.spaces || [];
-      let updatedCategory = matchedCategory;
-      for (const mod of modules) {
-        const cat = (mod.categories || []).find(c => c.id === matchedCategory.id);
-        if (cat) {
-          updatedCategory = cat;
-          break;
-        }
-      }
-
-      const checklistItems = updatedCategory.checklist || [];
-
-      headerRow.forEach((colText, index) => {
-        if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
-        if (!colText?.toString().trim()) return;
-
-        const trimmedText = colText.toString().trim();
-        const checklistItem = checklistItems.find(c => c.text === trimmedText);
-        if (checklistItem) {
-          colToChecklistId[index] = checklistItem.id;
-        }
-      });
-
-      const itemColumnIndex = headerRow.indexOf('Item');
-      const ballInCourtIndex = headerRow.indexOf('Ball in Court');
-      const notesIndex = headerRow.indexOf('Notes');
-
-      // Iterate data rows
-      for (let i = 1; i < jsonData.length; i++) {
-        const row = jsonData[i];
-        const itemName = row[itemColumnIndex];
-        if (!itemName) continue;
-
-        // Find matching highlight by name
-        let matchedHighlightKey = null;
-
-        Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
-          const annModuleId = ann.moduleId || ann.spaceId;
-          if (annModuleId === matchedModuleId &&
-            ann.categoryId === matchedCategory.id &&
-            ann.name === itemName) {
-            matchedHighlightKey = key;
-          }
-        });
-
-        if (matchedHighlightKey) {
-          // Update existing highlight
-          const key = matchedHighlightKey;
-          const ann = newHighlightAnnotations[key];
-          let changed = false;
-
-          // Update checklist responses
-          if (!ann.checklistResponses) ann.checklistResponses = {};
-
-          Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
-            const value = row[colIndex];
-            const currentVal = ann.checklistResponses[checklistId]?.selection;
-
-            if (value !== undefined && value !== currentVal) {
-              ann.checklistResponses[checklistId] = {
-                ...ann.checklistResponses[checklistId],
-                selection: value
-              };
-              changed = true;
-            }
-          });
-
-          // Update Ball in Court
-          if (ballInCourtIndex !== -1) {
-            const bicName = row[ballInCourtIndex];
-            if (bicName && bicName !== ann.ballInCourtEntityName) {
-              const entities = templateToUse.ballInCourtEntities || [];
-              const entity = entities.find(e => e.name === bicName);
-              if (entity) {
-                ann.ballInCourtEntityId = entity.id;
-                ann.ballInCourtEntityName = entity.name;
-                ann.ballInCourtColor = entity.color;
-                changed = true;
-                const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
-                if (ann.pageNumber && hasValidBounds) {
-                  highlightsWithColorChanges.push({
-                    highlightId: key,
-                    pageNumber: ann.pageNumber,
-                    bounds: ann.bounds,
-                    color: entity.color,
-                    needsBIC: false
-                  });
-                }
-              } else if (bicName === '') {
-                ann.ballInCourtEntityId = null;
-                ann.ballInCourtEntityName = null;
-                ann.ballInCourtColor = null;
-                changed = true;
-                const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
-                if (ann.pageNumber && hasValidBounds) {
-                  highlightsWithColorChanges.push({
-                    highlightId: key,
-                    pageNumber: ann.pageNumber,
-                    bounds: ann.bounds,
-                    color: null,
-                    needsBIC: true
-                  });
-                }
-              }
-            }
-          }
-
-          // Update Notes
-          if (notesIndex !== -1) {
-            const noteText = row[notesIndex];
-            if (noteText !== undefined) {
-              if (typeof ann.note === 'string') {
-                try {
-                  ann.note = JSON.parse(ann.note);
-                } catch {
-                  ann.note = {};
-                }
-              }
-              if (!ann.note || typeof ann.note !== 'object') ann.note = {};
-              if (ann.note.text !== noteText) {
-                ann.note.text = noteText;
-                changed = true;
-              }
-            }
-          }
-
-          if (changed) {
-            updatesCount++;
-            newHighlightAnnotations[key] = { ...ann };
-          }
-        } else {
-          // Create new highlight for new row
-          const newHighlightId = `highlight-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-
-          const checklistResponses = {};
-          Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
-            const value = row[colIndex];
-            if (value !== undefined && value !== '') {
-              checklistResponses[checklistId] = {
-                selection: value
-              };
-            }
-          });
-
-          let ballInCourtEntityId = null;
-          let ballInCourtEntityName = null;
-          let ballInCourtColor = null;
-
-          if (ballInCourtIndex !== -1) {
-            const bicName = row[ballInCourtIndex];
-            if (bicName) {
-              const entities = templateToUse.ballInCourtEntities || [];
-              const entity = entities.find(e => e.name === bicName);
-              if (entity) {
-                ballInCourtEntityId = entity.id;
-                ballInCourtEntityName = entity.name;
-                ballInCourtColor = entity.color;
-              }
-            }
-          }
-
-          let noteText = '';
-          if (notesIndex !== -1) {
-            noteText = row[notesIndex] || '';
-          }
-
-          const newHighlight = {
-            id: newHighlightId,
-            name: itemName,
-            categoryId: matchedCategory.id,
-            moduleId: matchedModuleId,
-            checklistResponses: checklistResponses,
-            ballInCourtEntityId,
-            ballInCourtEntityName,
-            ballInCourtColor,
-            note: noteText ? { text: noteText } : {},
-            changedBy: '',
-            changedDate: new Date().toISOString(),
-            pageNumber: null,
-            bounds: null
-          };
-
-          newHighlightAnnotations[newHighlightId] = newHighlight;
-          updatesCount++;
-        }
-      }
-    });
-
-    if (updatesCount > 0) {
-      setHighlightAnnotations(newHighlightAnnotations);
-      setLastSyncMessage(`Auto-synced ${updatesCount} items from Excel`);
-      setTimeout(() => setLastSyncMessage(''), 5000);
-
-      // Update canvas highlights for any that had color changes
-      if (highlightsWithColorChanges.length > 0) {
-        setNewHighlightsByPage(prev => {
-          const updated = { ...prev };
-          highlightsWithColorChanges.forEach(({ highlightId, pageNumber, bounds, color, needsBIC }) => {
-            const pageHighlights = updated[pageNumber] || [];
-            const filtered = pageHighlights.filter(h => {
-              const hasMatchingId = h.highlightId === highlightId;
-              const hasMatchingBounds = h.x === bounds.x &&
-                h.y === bounds.y &&
-                h.width === bounds.width &&
-                h.height === bounds.height;
-              return !hasMatchingId && !hasMatchingBounds;
-            });
-            updated[pageNumber] = [
-              ...filtered,
-              {
-                ...bounds,
-                color: color,
-                highlightId: highlightId,
-                needsBIC: needsBIC
-              }
-            ];
-          });
-          return updated;
-        });
-      }
-    } else {
-      setLastSyncMessage('No changes found');
-      setTimeout(() => setLastSyncMessage(''), 5000);
-    }
-  }, [highlightAnnotations]);
 
   // Auto-sync from Excel when file changes (file watcher)
   const handleAutoSyncFromExcel = useCallback(async () => {
