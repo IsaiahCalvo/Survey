@@ -8334,7 +8334,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const bottomToolbarRef = useRef(null);
   const statusBarRef = useRef(null);
   const middleAreaRef = useRef(null);
-  const { updateTemplate: updateSupabaseTemplate } = useTemplates();
+  const { updateTemplate: updateSupabaseTemplate, createTemplate: createSupabaseTemplate } = useTemplates();
   const hasSwitchedToHighlightRef = useRef(false);
   const [toolbarHeights, setToolbarHeights] = useState({ top: 56, bottom: 56 });
   const [middleAreaBounds, setMiddleAreaBounds] = useState({ top: 56, height: 500 });
