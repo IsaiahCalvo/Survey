@@ -1,5 +1,37 @@
 chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!sf354c17a49714bd498ec916c1993e07e?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1     Failed to load resource: the server responded with a status of 404 ()
-App.jsx:10365 Clearing Excel link: OneDrive file was deleted (not found by ID)
-App.jsx:10634 Uploaded to OneDrive, file ID: DC046716012CC0F4!s59dcdce14ddd46529e8361cc09457be1
-App.jsx:10655 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
+graph.microsoft.com/v1.0/me/drive/root:/Documents/Security_export.xlsx:/content?@microsoft.graph.conflictBehavior=replace:1     Failed to load resource: the server responded with a status of 423 ()
+excelGraphService.js:57 Failed to upload Excel file: Error: The resource you are attempting to access is locked
+    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+uploadExcelFile @ excelGraphService.js:57
+App.jsx:10706 Failed to export to OneDrive: Error: Failed to upload Excel file: The resource you are attempting to access is locked
+    at uploadExcelFile (excelGraphService.js:58:11)
+    at async App.jsx:10632:28
+    at async onClick (App.jsx:22362:19)
+(anonymous) @ App.jsx:10706
+graph.microsoft.com/v1.0/me/drive/root:/Documents/Security_export.xlsx:/content?@microsoft.graph.conflictBehavior=replace:1     Failed to load resource: the server responded with a status of 423 ()
+excelGraphService.js:57 Failed to upload Excel file: Error: The resource you are attempting to access is locked
+    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+uploadExcelFile @ excelGraphService.js:57
+App.jsx:10706 Failed to export to OneDrive: Error: Failed to upload Excel file: The resource you are attempting to access is locked
+    at uploadExcelFile (excelGraphService.js:58:11)
+    at async App.jsx:10632:28
+    at async onClick (App.jsx:22362:19)
+(anonymous) @ App.jsx:10706
