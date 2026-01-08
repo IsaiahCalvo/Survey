@@ -1478,8 +1478,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [isMoveCopyModalOpen, setIsMoveCopyModalOpen] = useState(false);
   const [moveCopyType, setMoveCopyType] = useState(null); // 'module' | 'category' | 'checklistItem'
   const [moveCopyMode, setMoveCopyMode] = useState('copy'); // 'move' | 'copy'
-  const [showNewColumnsModal, setShowNewColumnsModal] = useState(false); // Modal for new Excel columns
-  const [pendingNewColumns, setPendingNewColumns] = useState(null); // { newColumnsByCategory, worksheetData }
   // Ball in Court entities: { id, name, color }
   // Auth state and user dropdown menu
   const { user, isAuthenticated, signOut, signInWithGoogle, features } = useAuth();
@@ -7953,18 +7951,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         isOpen={showAccountSettings}
         onClose={() => setShowAccountSettings(false)}
       />
-
-      {/* New Columns Modal - shown when Excel import detects new columns */}
-      <NewColumnsModal
-        isOpen={showNewColumnsModal}
-        onClose={() => {
-          setShowNewColumnsModal(false);
-          setPendingNewColumns(null);
-        }}
-        onConfirm={handleNewColumnsDecision}
-        newColumnsByCategory={pendingNewColumns?.newColumnsByCategory || {}}
-        templateName={selectedTemplate?.name || ''}
-      />
     </div >
   );
 });
@@ -8168,6 +8154,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [selectedModuleId, setSelectedModuleId] = useState(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef(null);
+  const [showNewColumnsModal, setShowNewColumnsModal] = useState(false); // Modal for new Excel columns
+  const [pendingNewColumns, setPendingNewColumns] = useState(null); // { newColumnsByCategory, worksheetDataList, isAutoSync }
 
   const [lastDrawTool, setLastDrawTool] = useState(() => {
     try {
@@ -10961,16 +10949,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       updatedAt: timestamp
     };
 
-    // Save the new template
+    // Save the new template via callback to parent
     const nextTemplates = [newTemplate, ...templates];
-    updateTemplates(nextTemplates);
-    await persistTemplates(nextTemplates);
+    if (onTemplatesChange) {
+      onTemplatesChange(nextTemplates);
+    }
 
     // Switch to the new template
     setSelectedTemplate(newTemplate);
 
     return newTemplate;
-  }, [selectedTemplate, templates, updateTemplates, persistTemplates]);
+  }, [selectedTemplate, templates, onTemplatesChange]);
 
   // Helper: Add checklist items for survey only (not persisted to template)
   const handleAddColumnsForSurveyOnly = useCallback((newColumnsByCategory) => {
@@ -22636,6 +22625,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           </div>
         </div>
       )}
+
+      {/* New Columns Modal - shown when Excel import detects new columns */}
+      <NewColumnsModal
+        isOpen={showNewColumnsModal}
+        onClose={() => {
+          setShowNewColumnsModal(false);
+          setPendingNewColumns(null);
+        }}
+        onConfirm={handleNewColumnsDecision}
+        newColumnsByCategory={pendingNewColumns?.newColumnsByCategory || {}}
+        templateName={selectedTemplate?.name || ''}
+      />
     </>
   );
 }
