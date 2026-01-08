@@ -10257,6 +10257,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               handleTemplatesChange(updatedTemplates);
             }
 
+            // Mark that linked Excel file exists (ensures dropdown menu shows)
+            setLinkedExcelExists(true);
+
             if (!silent) {
               setIsExporting(false);
               alert('Sync to Excel successful!');
