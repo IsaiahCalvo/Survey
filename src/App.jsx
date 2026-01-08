@@ -56,6 +56,7 @@ import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import BallInCourtIndicator from './components/BallInCourtIndicator';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
+import NewColumnsModal from './components/NewColumnsModal';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { supabase } from './supabaseClient';
@@ -1477,6 +1478,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [isMoveCopyModalOpen, setIsMoveCopyModalOpen] = useState(false);
   const [moveCopyType, setMoveCopyType] = useState(null); // 'module' | 'category' | 'checklistItem'
   const [moveCopyMode, setMoveCopyMode] = useState('copy'); // 'move' | 'copy'
+  const [showNewColumnsModal, setShowNewColumnsModal] = useState(false); // Modal for new Excel columns
+  const [pendingNewColumns, setPendingNewColumns] = useState(null); // { newColumnsByCategory, worksheetData }
   // Ball in Court entities: { id, name, color }
   // Auth state and user dropdown menu
   const { user, isAuthenticated, signOut, signInWithGoogle, features } = useAuth();
@@ -7950,6 +7953,18 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         isOpen={showAccountSettings}
         onClose={() => setShowAccountSettings(false)}
       />
+
+      {/* New Columns Modal - shown when Excel import detects new columns */}
+      <NewColumnsModal
+        isOpen={showNewColumnsModal}
+        onClose={() => {
+          setShowNewColumnsModal(false);
+          setPendingNewColumns(null);
+        }}
+        onConfirm={handleNewColumnsDecision}
+        newColumnsByCategory={pendingNewColumns?.newColumnsByCategory || {}}
+        templateName={selectedTemplate?.name || ''}
+      />
     </div >
   );
 });
@@ -10722,6 +10737,303 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [isMSAuthenticated, pendingOneDriveExport, exportPendingData, graphClient, performOneDriveExport]);
 
+  // Helper: Execute the actual Excel import after new columns are handled
+  const executeExcelImport = useCallback((worksheetDataList, templateToUse) => {
+    const newHighlightAnnotations = { ...highlightAnnotations };
+    let updatesCount = 0;
+
+    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
+      // Rebuild colToChecklistId using the updated category from templateToUse
+      const colToChecklistId = {};
+
+      // Get the updated category from templateToUse
+      const modules = templateToUse.modules || templateToUse.spaces || [];
+      let updatedCategory = matchedCategory;
+      for (const mod of modules) {
+        const cat = (mod.categories || []).find(c => c.id === matchedCategory.id);
+        if (cat) {
+          updatedCategory = cat;
+          break;
+        }
+      }
+
+      const checklistItems = updatedCategory.checklist || [];
+
+      headerRow.forEach((colText, index) => {
+        if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
+        if (!colText?.toString().trim()) return;
+
+        const trimmedText = colText.toString().trim();
+        const checklistItem = checklistItems.find(c => c.text === trimmedText);
+        if (checklistItem) {
+          colToChecklistId[index] = checklistItem.id;
+        }
+      });
+
+      const itemColumnIndex = headerRow.indexOf('Item');
+      const ballInCourtIndex = headerRow.indexOf('Ball in Court');
+      const notesIndex = headerRow.indexOf('Notes');
+
+      // Iterate data rows
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        const itemName = row[itemColumnIndex];
+        if (!itemName) continue;
+
+        // Find matching highlight by name
+        let matchedHighlightKey = null;
+
+        Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
+          const annModuleId = ann.moduleId || ann.spaceId;
+          if (annModuleId === matchedModuleId &&
+            ann.categoryId === matchedCategory.id &&
+            ann.name === itemName) {
+            matchedHighlightKey = key;
+          }
+        });
+
+        if (matchedHighlightKey) {
+          // Update existing highlight
+          const key = matchedHighlightKey;
+          const ann = newHighlightAnnotations[key];
+          let changed = false;
+
+          // Update checklist responses
+          if (!ann.checklistResponses) ann.checklistResponses = {};
+
+          Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
+            const value = row[colIndex];
+            const currentVal = ann.checklistResponses[checklistId]?.selection;
+
+            if (value !== undefined && value !== currentVal) {
+              ann.checklistResponses[checklistId] = {
+                ...ann.checklistResponses[checklistId],
+                selection: value
+              };
+              changed = true;
+            }
+          });
+
+          // Update Ball in Court
+          if (ballInCourtIndex !== -1) {
+            const bicName = row[ballInCourtIndex];
+            if (bicName && bicName !== ann.ballInCourtEntityName) {
+              const entities = templateToUse.ballInCourtEntities || [];
+              const entity = entities.find(e => e.name === bicName);
+              if (entity) {
+                ann.ballInCourtEntityId = entity.id;
+                ann.ballInCourtEntityName = entity.name;
+                ann.ballInCourtColor = entity.color;
+                changed = true;
+              } else if (bicName === '') {
+                ann.ballInCourtEntityId = null;
+                ann.ballInCourtEntityName = null;
+                ann.ballInCourtColor = null;
+                changed = true;
+              }
+            }
+          }
+
+          // Update Notes
+          if (notesIndex !== -1) {
+            const noteText = row[notesIndex];
+            if (noteText !== undefined) {
+              if (typeof ann.note === 'string') {
+                try {
+                  ann.note = JSON.parse(ann.note);
+                } catch {
+                  ann.note = {};
+                }
+              }
+              if (!ann.note || typeof ann.note !== 'object') ann.note = {};
+              if (ann.note.text !== noteText) {
+                ann.note.text = noteText;
+                changed = true;
+              }
+            }
+          }
+
+          if (changed) {
+            updatesCount++;
+            newHighlightAnnotations[key] = { ...ann };
+          }
+        } else {
+          // Create new highlight for new row
+          const newHighlightId = `highlight-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+
+          const checklistResponses = {};
+          Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
+            const value = row[colIndex];
+            if (value !== undefined && value !== '') {
+              checklistResponses[checklistId] = {
+                selection: value
+              };
+            }
+          });
+
+          let ballInCourtEntityId = null;
+          let ballInCourtEntityName = null;
+          let ballInCourtColor = null;
+
+          if (ballInCourtIndex !== -1) {
+            const bicName = row[ballInCourtIndex];
+            if (bicName) {
+              const entities = templateToUse.ballInCourtEntities || [];
+              const entity = entities.find(e => e.name === bicName);
+              if (entity) {
+                ballInCourtEntityId = entity.id;
+                ballInCourtEntityName = entity.name;
+                ballInCourtColor = entity.color;
+              }
+            }
+          }
+
+          let noteText = '';
+          if (notesIndex !== -1) {
+            noteText = row[notesIndex] || '';
+          }
+
+          const newHighlight = {
+            id: newHighlightId,
+            name: itemName,
+            categoryId: matchedCategory.id,
+            moduleId: matchedModuleId,
+            checklistResponses: checklistResponses,
+            ballInCourtEntityId,
+            ballInCourtEntityName,
+            ballInCourtColor,
+            note: noteText ? { text: noteText } : {},
+            changedBy: '',
+            changedDate: new Date().toISOString(),
+            pageNumber: null,
+            bounds: null
+          };
+
+          newHighlightAnnotations[newHighlightId] = newHighlight;
+          updatesCount++;
+        }
+      }
+    });
+
+    if (updatesCount > 0) {
+      setHighlightAnnotations(newHighlightAnnotations);
+      alert(`Sync complete! Updated ${updatesCount} items.`);
+    } else {
+      alert('Sync complete! No changes found.');
+    }
+  }, [highlightAnnotations]);
+
+  // Helper: Create new template with added checklist items from new columns
+  const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory) => {
+    const timestamp = new Date().toISOString();
+    const newTemplateId = `tpl-${Date.now()}`;
+
+    // Deep clone the template's modules
+    const clonedModules = JSON.parse(JSON.stringify(selectedTemplate.modules || selectedTemplate.spaces || []));
+
+    // Add new checklist items to each category
+    for (const mod of clonedModules) {
+      for (const cat of mod.categories || []) {
+        const catData = newColumnsByCategory[cat.id];
+        if (!catData) continue;
+
+        // Sort by columnIndex to preserve Excel order
+        const sortedColumns = [...catData.columns].sort((a, b) => a.columnIndex - b.columnIndex);
+
+        for (const newCol of sortedColumns) {
+          const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+          cat.checklist = cat.checklist || [];
+          cat.checklist.push({
+            id: newItemId,
+            text: newCol.text
+          });
+        }
+      }
+    }
+
+    const newTemplate = {
+      ...selectedTemplate,
+      id: newTemplateId,
+      name: `${selectedTemplate.name} (Updated)`,
+      modules: clonedModules,
+      spaces: clonedModules,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    // Save the new template
+    const nextTemplates = [newTemplate, ...templates];
+    updateTemplates(nextTemplates);
+    await persistTemplates(nextTemplates);
+
+    // Switch to the new template
+    setSelectedTemplate(newTemplate);
+
+    return newTemplate;
+  }, [selectedTemplate, templates, updateTemplates, persistTemplates]);
+
+  // Helper: Add checklist items for survey only (not persisted to template)
+  const handleAddColumnsForSurveyOnly = useCallback((newColumnsByCategory) => {
+    // Deep clone the current template's modules
+    const updatedModules = JSON.parse(JSON.stringify(selectedTemplate.modules || selectedTemplate.spaces || []));
+
+    // Add new checklist items to each category
+    for (const mod of updatedModules) {
+      for (const cat of mod.categories || []) {
+        const catData = newColumnsByCategory[cat.id];
+        if (!catData) continue;
+
+        // Sort by columnIndex to preserve Excel order
+        const sortedColumns = [...catData.columns].sort((a, b) => a.columnIndex - b.columnIndex);
+
+        for (const newCol of sortedColumns) {
+          const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+          cat.checklist = cat.checklist || [];
+          cat.checklist.push({
+            id: newItemId,
+            text: newCol.text
+          });
+        }
+      }
+    }
+
+    // Update selectedTemplate in state only (not persisted)
+    const updatedTemplate = {
+      ...selectedTemplate,
+      modules: updatedModules,
+      spaces: updatedModules,
+      _surveyOnlyModifications: true
+    };
+
+    setSelectedTemplate(updatedTemplate);
+    return updatedTemplate;
+  }, [selectedTemplate]);
+
+  // Handler for new columns modal decision
+  const handleNewColumnsDecision = useCallback(async (decision) => {
+    if (!pendingNewColumns) return;
+
+    const { newColumnsByCategory, worksheetDataList, isAutoSync } = pendingNewColumns;
+    let templateToUse = selectedTemplate;
+
+    if (decision === 'newTemplate') {
+      templateToUse = await handleCreateNewTemplateFromColumns(newColumnsByCategory);
+    } else if (decision === 'surveyOnly') {
+      templateToUse = handleAddColumnsForSurveyOnly(newColumnsByCategory);
+    }
+
+    // Continue with import using the appropriate function based on sync type
+    if (isAutoSync) {
+      executeAutoExcelImport(worksheetDataList, templateToUse);
+    } else {
+      executeExcelImport(worksheetDataList, templateToUse);
+    }
+
+    // Clean up
+    setPendingNewColumns(null);
+    setShowNewColumnsModal(false);
+  }, [pendingNewColumns, selectedTemplate, handleCreateNewTemplateFromColumns, handleAddColumnsForSurveyOnly, executeExcelImport, executeAutoExcelImport]);
+
   const handleSyncFromExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
       alert('No Excel file linked to this survey.');
@@ -10757,8 +11069,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
 
-        const newHighlightAnnotations = { ...highlightAnnotations };
-        let updatesCount = 0;
+        // Phase 1: Parse worksheets and detect new columns
+        const allNewColumns = {}; // { categoryId: { displayName, columns: [{ columnIndex, text }] } }
+        const worksheetDataList = [];
 
         workbook.worksheets.forEach(worksheet => {
           const sheetName = worksheet.name;
@@ -10780,6 +11093,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           // Iterate all modules and categories in selectedTemplate to find match
           let matchedCategory = null;
           let matchedModuleId = null;
+          let matchedModuleName = null;
 
           const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
           for (const mod of modules) {
@@ -10793,6 +11107,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               if (cleaned === sheetName) {
                 matchedCategory = cat;
                 matchedModuleId = mod.id;
+                matchedModuleName = mod.name;
                 break;
               }
             }
@@ -10800,195 +11115,305 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
           if (!matchedCategory) return;
 
-          // Map header columns to checklist item IDs
-          const colToChecklistId = {};
+          // Detect new columns (columns that don't match existing checklist items)
           const checklistItems = matchedCategory.checklist || [];
+          const newColumns = [];
 
           headerRow.forEach((colText, index) => {
-            // Skip non-checklist columns
-            if (colText === 'Changed By' || colText === 'Changed Date' || colText === 'Item') return;
-            if (colText === 'Ball in Court' || colText === 'Notes') return;
+            // Skip system columns
+            if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
+            if (!colText?.toString().trim()) return;
 
-            const checklistItem = checklistItems.find(c => c.text === colText);
-            if (checklistItem) {
-              colToChecklistId[index] = checklistItem.id;
+            const trimmedText = colText.toString().trim();
+            const existingItem = checklistItems.find(c => c.text === trimmedText);
+
+            if (!existingItem) {
+              // This is a new column
+              newColumns.push({
+                columnIndex: index,
+                text: trimmedText
+              });
             }
           });
 
-          const itemColumnIndex = headerRow.indexOf('Item');
-          const ballInCourtIndex = headerRow.indexOf('Ball in Court');
-          const notesIndex = headerRow.indexOf('Notes');
-
-          // Iterate data rows
-          for (let i = 1; i < jsonData.length; i++) {
-            const row = jsonData[i];
-            const itemName = row[itemColumnIndex];
-            if (!itemName) continue;
-
-
-            // Find matching highlight by name
-            let matchedHighlightKey = null;
-
-            Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
-              const annModuleId = ann.moduleId || ann.spaceId;
-              if (annModuleId === matchedModuleId &&
-                ann.categoryId === matchedCategory.id &&
-                ann.name === itemName) {
-                matchedHighlightKey = key;
-              }
-            });
-
-            if (matchedHighlightKey) {
-              // Update existing highlight
-              const key = matchedHighlightKey;
-              const ann = newHighlightAnnotations[key];
-              let changed = false;
-
-              // Update checklist responses
-              if (!ann.checklistResponses) ann.checklistResponses = {};
-
-              Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
-                const value = row[colIndex];
-                const currentVal = ann.checklistResponses[checklistId]?.selection;
-
-                if (value !== undefined && value !== currentVal) {
-                  ann.checklistResponses[checklistId] = {
-                    ...ann.checklistResponses[checklistId],
-                    selection: value
-                  };
-                  changed = true;
-                }
-              });
-
-              // Update Ball in Court
-              if (ballInCourtIndex !== -1) {
-                const bicName = row[ballInCourtIndex];
-                if (bicName && bicName !== ann.ballInCourtEntityName) {
-                  const entities = selectedTemplate.ballInCourtEntities || [];
-                  const entity = entities.find(e => e.name === bicName);
-                  if (entity) {
-                    ann.ballInCourtEntityId = entity.id;
-                    ann.ballInCourtEntityName = entity.name;
-                    ann.ballInCourtColor = entity.color;
-                    changed = true;
-                  } else if (bicName === '') {
-                    // Clear if empty string
-                    ann.ballInCourtEntityId = null;
-                    ann.ballInCourtEntityName = null;
-                    ann.ballInCourtColor = null;
-                    changed = true;
-                  }
-                }
-              }
-
-              // Update Notes
-              if (notesIndex !== -1) {
-                const noteText = row[notesIndex];
-                if (noteText !== undefined) {
-                  // Handle case where ann.note might be a string (serialized JSON)
-                  if (typeof ann.note === 'string') {
-                    try {
-                      ann.note = JSON.parse(ann.note);
-                    } catch {
-                      ann.note = {};
-                    }
-                  }
-                  if (!ann.note || typeof ann.note !== 'object') ann.note = {};
-                  if (ann.note.text !== noteText) {
-                    ann.note.text = noteText;
-                    changed = true;
-                  }
-                }
-              }
-
-              if (changed) {
-                updatesCount++;
-                newHighlightAnnotations[key] = { ...ann };
-              }
-            } else {
-              // Create new highlight for new row
-
-              const newHighlightId = `highlight-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-
-              // Build checklist responses from Excel row
-              const checklistResponses = {};
-              Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
-                const value = row[colIndex];
-                if (value !== undefined && value !== '') {
-                  checklistResponses[checklistId] = {
-                    selection: value
-                  };
-                }
-              });
-
-              // Get Ball in Court entity
-              let ballInCourtEntityId = null;
-              let ballInCourtEntityName = null;
-              let ballInCourtColor = null;
-
-              if (ballInCourtIndex !== -1) {
-                const bicName = row[ballInCourtIndex];
-                if (bicName) {
-                  const entities = selectedTemplate.ballInCourtEntities || [];
-                  const entity = entities.find(e => e.name === bicName);
-                  if (entity) {
-                    ballInCourtEntityId = entity.id;
-                    ballInCourtEntityName = entity.name;
-                    ballInCourtColor = entity.color;
-                  }
-                }
-              }
-
-              // Get notes
-              let noteText = '';
-              if (notesIndex !== -1) {
-                noteText = row[notesIndex] || '';
-              }
-
-              // Create new highlight annotation
-              const newHighlight = {
-                id: newHighlightId,
-                name: itemName,
-                categoryId: matchedCategory.id,
-                moduleId: matchedModuleId,
-                checklistResponses: checklistResponses,
-                ballInCourtEntityId,
-                ballInCourtEntityName,
-                ballInCourtColor,
-                note: noteText ? { text: noteText } : {},
-                changedBy: '',
-                changedDate: new Date().toISOString(),
-                // Note: These items won't have PDF coordinates since they're created from Excel
-                // They will appear in the sidebar but won't have a highlight on the PDF
-                pageNumber: null,
-                bounds: null
-              };
-
-              newHighlightAnnotations[newHighlightId] = newHighlight;
-              updatesCount++;
-            }
+          // Store new columns for this category if any
+          if (newColumns.length > 0) {
+            allNewColumns[matchedCategory.id] = {
+              displayName: `${matchedCategory.name} - ${matchedModuleName}`,
+              columns: newColumns
+            };
           }
+
+          // Store worksheet data for phase 2
+          worksheetDataList.push({
+            jsonData,
+            headerRow,
+            matchedCategory,
+            matchedModuleId
+          });
         });
 
-        if (updatesCount > 0) {
-          setHighlightAnnotations(newHighlightAnnotations);
-          alert(`Sync complete! Updated ${updatesCount} items.`);
-        } else {
-          alert('Sync complete! No changes found.');
+        // If new columns detected, show modal and pause
+        if (Object.keys(allNewColumns).length > 0) {
+          setPendingNewColumns({
+            newColumnsByCategory: allNewColumns,
+            worksheetDataList
+          });
+          setShowNewColumnsModal(true);
+          return; // Pause here, continue after user decision
         }
+
+        // No new columns, proceed with normal import
+        executeExcelImport(worksheetDataList, selectedTemplate);
 
       } catch (error) {
         console.error('Failed to sync from Excel:', error);
         alert('Failed to read or parse the linked Excel file.');
       }
     }
-  }, [selectedTemplate, highlightAnnotations, graphClient, ensureFreshToken]);
+  }, [selectedTemplate, graphClient, ensureFreshToken, executeExcelImport]);
+
+  // Helper: Execute auto-sync import with canvas color tracking
+  const executeAutoExcelImport = useCallback((worksheetDataList, templateToUse) => {
+    const newHighlightAnnotations = { ...highlightAnnotations };
+    let updatesCount = 0;
+    const highlightsWithColorChanges = [];
+
+    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
+      // Rebuild colToChecklistId using the updated category from templateToUse
+      const colToChecklistId = {};
+
+      // Get the updated category from templateToUse
+      const modules = templateToUse.modules || templateToUse.spaces || [];
+      let updatedCategory = matchedCategory;
+      for (const mod of modules) {
+        const cat = (mod.categories || []).find(c => c.id === matchedCategory.id);
+        if (cat) {
+          updatedCategory = cat;
+          break;
+        }
+      }
+
+      const checklistItems = updatedCategory.checklist || [];
+
+      headerRow.forEach((colText, index) => {
+        if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
+        if (!colText?.toString().trim()) return;
+
+        const trimmedText = colText.toString().trim();
+        const checklistItem = checklistItems.find(c => c.text === trimmedText);
+        if (checklistItem) {
+          colToChecklistId[index] = checklistItem.id;
+        }
+      });
+
+      const itemColumnIndex = headerRow.indexOf('Item');
+      const ballInCourtIndex = headerRow.indexOf('Ball in Court');
+      const notesIndex = headerRow.indexOf('Notes');
+
+      // Iterate data rows
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        const itemName = row[itemColumnIndex];
+        if (!itemName) continue;
+
+        // Find matching highlight by name
+        let matchedHighlightKey = null;
+
+        Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
+          const annModuleId = ann.moduleId || ann.spaceId;
+          if (annModuleId === matchedModuleId &&
+            ann.categoryId === matchedCategory.id &&
+            ann.name === itemName) {
+            matchedHighlightKey = key;
+          }
+        });
+
+        if (matchedHighlightKey) {
+          // Update existing highlight
+          const key = matchedHighlightKey;
+          const ann = newHighlightAnnotations[key];
+          let changed = false;
+
+          // Update checklist responses
+          if (!ann.checklistResponses) ann.checklistResponses = {};
+
+          Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
+            const value = row[colIndex];
+            const currentVal = ann.checklistResponses[checklistId]?.selection;
+
+            if (value !== undefined && value !== currentVal) {
+              ann.checklistResponses[checklistId] = {
+                ...ann.checklistResponses[checklistId],
+                selection: value
+              };
+              changed = true;
+            }
+          });
+
+          // Update Ball in Court
+          if (ballInCourtIndex !== -1) {
+            const bicName = row[ballInCourtIndex];
+            if (bicName && bicName !== ann.ballInCourtEntityName) {
+              const entities = templateToUse.ballInCourtEntities || [];
+              const entity = entities.find(e => e.name === bicName);
+              if (entity) {
+                ann.ballInCourtEntityId = entity.id;
+                ann.ballInCourtEntityName = entity.name;
+                ann.ballInCourtColor = entity.color;
+                changed = true;
+                const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
+                if (ann.pageNumber && hasValidBounds) {
+                  highlightsWithColorChanges.push({
+                    highlightId: key,
+                    pageNumber: ann.pageNumber,
+                    bounds: ann.bounds,
+                    color: entity.color,
+                    needsBIC: false
+                  });
+                }
+              } else if (bicName === '') {
+                ann.ballInCourtEntityId = null;
+                ann.ballInCourtEntityName = null;
+                ann.ballInCourtColor = null;
+                changed = true;
+                const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
+                if (ann.pageNumber && hasValidBounds) {
+                  highlightsWithColorChanges.push({
+                    highlightId: key,
+                    pageNumber: ann.pageNumber,
+                    bounds: ann.bounds,
+                    color: null,
+                    needsBIC: true
+                  });
+                }
+              }
+            }
+          }
+
+          // Update Notes
+          if (notesIndex !== -1) {
+            const noteText = row[notesIndex];
+            if (noteText !== undefined) {
+              if (typeof ann.note === 'string') {
+                try {
+                  ann.note = JSON.parse(ann.note);
+                } catch {
+                  ann.note = {};
+                }
+              }
+              if (!ann.note || typeof ann.note !== 'object') ann.note = {};
+              if (ann.note.text !== noteText) {
+                ann.note.text = noteText;
+                changed = true;
+              }
+            }
+          }
+
+          if (changed) {
+            updatesCount++;
+            newHighlightAnnotations[key] = { ...ann };
+          }
+        } else {
+          // Create new highlight for new row
+          const newHighlightId = `highlight-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+
+          const checklistResponses = {};
+          Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
+            const value = row[colIndex];
+            if (value !== undefined && value !== '') {
+              checklistResponses[checklistId] = {
+                selection: value
+              };
+            }
+          });
+
+          let ballInCourtEntityId = null;
+          let ballInCourtEntityName = null;
+          let ballInCourtColor = null;
+
+          if (ballInCourtIndex !== -1) {
+            const bicName = row[ballInCourtIndex];
+            if (bicName) {
+              const entities = templateToUse.ballInCourtEntities || [];
+              const entity = entities.find(e => e.name === bicName);
+              if (entity) {
+                ballInCourtEntityId = entity.id;
+                ballInCourtEntityName = entity.name;
+                ballInCourtColor = entity.color;
+              }
+            }
+          }
+
+          let noteText = '';
+          if (notesIndex !== -1) {
+            noteText = row[notesIndex] || '';
+          }
+
+          const newHighlight = {
+            id: newHighlightId,
+            name: itemName,
+            categoryId: matchedCategory.id,
+            moduleId: matchedModuleId,
+            checklistResponses: checklistResponses,
+            ballInCourtEntityId,
+            ballInCourtEntityName,
+            ballInCourtColor,
+            note: noteText ? { text: noteText } : {},
+            changedBy: '',
+            changedDate: new Date().toISOString(),
+            pageNumber: null,
+            bounds: null
+          };
+
+          newHighlightAnnotations[newHighlightId] = newHighlight;
+          updatesCount++;
+        }
+      }
+    });
+
+    if (updatesCount > 0) {
+      setHighlightAnnotations(newHighlightAnnotations);
+      setLastSyncMessage(`Auto-synced ${updatesCount} items from Excel`);
+      setTimeout(() => setLastSyncMessage(''), 5000);
+
+      // Update canvas highlights for any that had color changes
+      if (highlightsWithColorChanges.length > 0) {
+        setNewHighlightsByPage(prev => {
+          const updated = { ...prev };
+          highlightsWithColorChanges.forEach(({ highlightId, pageNumber, bounds, color, needsBIC }) => {
+            const pageHighlights = updated[pageNumber] || [];
+            const filtered = pageHighlights.filter(h => {
+              const hasMatchingId = h.highlightId === highlightId;
+              const hasMatchingBounds = h.x === bounds.x &&
+                h.y === bounds.y &&
+                h.width === bounds.width &&
+                h.height === bounds.height;
+              return !hasMatchingId && !hasMatchingBounds;
+            });
+            updated[pageNumber] = [
+              ...filtered,
+              {
+                ...bounds,
+                color: color,
+                highlightId: highlightId,
+                needsBIC: needsBIC
+              }
+            ];
+          });
+          return updated;
+        });
+      }
+    } else {
+      setLastSyncMessage('No changes found');
+      setTimeout(() => setLastSyncMessage(''), 5000);
+    }
+  }, [highlightAnnotations]);
 
   // Auto-sync from Excel when file changes (file watcher)
   const handleAutoSyncFromExcel = useCallback(async () => {
     // Checkpoint history before sync
     addHistoryCheckpoint();
-
 
     if (!selectedTemplate?.linkedExcelPath) {
       return;
@@ -11002,32 +11427,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (!graphClient) {
             return;
           }
-          // Prefer downloading by file ID (more reliable, tracks across moves/renames)
-          // Fall back to path for legacy data without file ID
           if (oneDriveFileId || selectedTemplate.oneDriveFileId) {
             const fileId = oneDriveFileId || selectedTemplate.oneDriveFileId;
             fileData = await downloadExcelFile(graphClient, fileId);
           } else {
-            // Use oneDriveApiPath for Graph API calls, fall back to linkedExcelPath for legacy data
             const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
             fileData = await downloadExcelFileByPath(graphClient, apiPath);
           }
         } else {
-          // Use local filesystem
           fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
         }
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
 
-        const newHighlightAnnotations = { ...highlightAnnotations };
-        let updatesCount = 0;
-        // Track highlights that need canvas color updates
-        const highlightsWithColorChanges = [];
+        // Phase 1: Parse worksheets and detect new columns
+        const allNewColumns = {};
+        const worksheetDataList = [];
 
         workbook.worksheets.forEach(worksheet => {
           const sheetName = worksheet.name;
 
-          // Convert worksheet to array of arrays
           const jsonData = [];
           worksheet.eachRow((row, rowNumber) => {
             const rowData = [];
@@ -11037,13 +11456,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             jsonData.push(rowData);
           });
 
-          if (jsonData.length < 2) return; // No data
+          if (jsonData.length < 2) return;
 
           const headerRow = jsonData[0];
 
-          // Iterate all modules and categories in selectedTemplate to find match
           let matchedCategory = null;
           let matchedModuleId = null;
+          let matchedModuleName = null;
 
           const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
           for (const mod of modules) {
@@ -11057,6 +11476,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               if (cleaned === sheetName) {
                 matchedCategory = cat;
                 matchedModuleId = mod.id;
+                matchedModuleName = mod.name;
                 break;
               }
             }
@@ -11064,235 +11484,53 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
           if (!matchedCategory) return;
 
-          // Map header columns to checklist item IDs
-          const colToChecklistId = {};
+          // Detect new columns
           const checklistItems = matchedCategory.checklist || [];
+          const newColumns = [];
 
           headerRow.forEach((colText, index) => {
-            // Skip non-checklist columns
-            if (colText === 'Changed By' || colText === 'Changed Date' || colText === 'Item') return;
-            if (colText === 'Ball in Court' || colText === 'Notes') return;
+            if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
+            if (!colText?.toString().trim()) return;
 
-            const checklistItem = checklistItems.find(c => c.text === colText);
-            if (checklistItem) {
-              colToChecklistId[index] = checklistItem.id;
+            const trimmedText = colText.toString().trim();
+            const existingItem = checklistItems.find(c => c.text === trimmedText);
+
+            if (!existingItem) {
+              newColumns.push({
+                columnIndex: index,
+                text: trimmedText
+              });
             }
           });
 
-          const itemColumnIndex = headerRow.indexOf('Item');
-          const ballInCourtIndex = headerRow.indexOf('Ball in Court');
-          const notesIndex = headerRow.indexOf('Notes');
-
-          // Iterate data rows
-          for (let i = 1; i < jsonData.length; i++) {
-            const row = jsonData[i];
-            const itemName = row[itemColumnIndex];
-            if (!itemName) continue;
-
-
-            // Find matching highlight by name
-            let matchedHighlightKey = null;
-
-            Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
-              const annModuleId = ann.moduleId || ann.spaceId;
-              if (annModuleId === matchedModuleId &&
-                ann.categoryId === matchedCategory.id &&
-                ann.name === itemName) {
-                matchedHighlightKey = key;
-              }
-            });
-
-            if (matchedHighlightKey) {
-              // Update existing highlight
-              const key = matchedHighlightKey;
-              const ann = newHighlightAnnotations[key];
-              let changed = false;
-
-              // Update checklist responses
-              if (!ann.checklistResponses) ann.checklistResponses = {};
-
-              Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
-                const value = row[colIndex];
-                const currentVal = ann.checklistResponses[checklistId]?.selection;
-
-                if (value !== undefined && value !== currentVal) {
-                  ann.checklistResponses[checklistId] = {
-                    ...ann.checklistResponses[checklistId],
-                    selection: value
-                  };
-                  changed = true;
-                }
-              });
-
-              // Update Ball in Court
-              if (ballInCourtIndex !== -1) {
-                const bicName = row[ballInCourtIndex];
-                if (bicName && bicName !== ann.ballInCourtEntityName) {
-                  const entities = selectedTemplate.ballInCourtEntities || [];
-                  const entity = entities.find(e => e.name === bicName);
-                  if (entity) {
-                    ann.ballInCourtEntityId = entity.id;
-                    ann.ballInCourtEntityName = entity.name;
-                    ann.ballInCourtColor = entity.color;
-                    changed = true;
-                    // Track this highlight for canvas color update
-                    // Check for actual bounds data (not just empty object)
-                    const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
-                    if (ann.pageNumber && hasValidBounds) {
-                      highlightsWithColorChanges.push({
-                        highlightId: key,
-                        pageNumber: ann.pageNumber,
-                        bounds: ann.bounds,
-                        color: entity.color,
-                        needsBIC: false
-                      });
-                    }
-                  } else if (bicName === '') {
-                    // Clear if empty string
-                    ann.ballInCourtEntityId = null;
-                    ann.ballInCourtEntityName = null;
-                    ann.ballInCourtColor = null;
-                    changed = true;
-                    // Track this highlight for canvas update - revert to needsBIC style
-                    const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
-                    if (ann.pageNumber && hasValidBounds) {
-                      highlightsWithColorChanges.push({
-                        highlightId: key,
-                        pageNumber: ann.pageNumber,
-                        bounds: ann.bounds,
-                        color: null,
-                        needsBIC: true
-                      });
-                    }
-                  }
-                }
-              }
-
-              // Update Notes
-              if (notesIndex !== -1) {
-                const noteText = row[notesIndex];
-                if (noteText !== undefined) {
-                  // Handle case where ann.note might be a string (serialized JSON)
-                  if (typeof ann.note === 'string') {
-                    try {
-                      ann.note = JSON.parse(ann.note);
-                    } catch {
-                      ann.note = {};
-                    }
-                  }
-                  if (!ann.note || typeof ann.note !== 'object') ann.note = {};
-                  if (ann.note.text !== noteText) {
-                    ann.note.text = noteText;
-                    changed = true;
-                  }
-                }
-              }
-
-              if (changed) {
-                updatesCount++;
-                newHighlightAnnotations[key] = { ...ann };
-              }
-            } else {
-              // Create new highlight for new row
-
-              const newHighlightId = `highlight-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-
-              // Build checklist responses from Excel row
-              const checklistResponses = {};
-              Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
-                const value = row[colIndex];
-                if (value !== undefined && value !== '') {
-                  checklistResponses[checklistId] = {
-                    selection: value
-                  };
-                }
-              });
-
-              // Get Ball in Court entity
-              let ballInCourtEntityId = null;
-              let ballInCourtEntityName = null;
-              let ballInCourtColor = null;
-
-              if (ballInCourtIndex !== -1) {
-                const bicName = row[ballInCourtIndex];
-                if (bicName) {
-                  const entities = selectedTemplate.ballInCourtEntities || [];
-                  const entity = entities.find(e => e.name === bicName);
-                  if (entity) {
-                    ballInCourtEntityId = entity.id;
-                    ballInCourtEntityName = entity.name;
-                    ballInCourtColor = entity.color;
-                  }
-                }
-              }
-
-              // Get notes
-              let noteText = '';
-              if (notesIndex !== -1) {
-                noteText = row[notesIndex] || '';
-              }
-
-              // Create new highlight annotation
-              const newHighlight = {
-                id: newHighlightId,
-                name: itemName,
-                categoryId: matchedCategory.id,
-                moduleId: matchedModuleId,
-                checklistResponses: checklistResponses,
-                ballInCourtEntityId,
-                ballInCourtEntityName,
-                ballInCourtColor,
-                note: noteText ? { text: noteText } : {},
-                changedBy: '',
-                changedDate: new Date().toISOString(),
-                // Note: These items won't have PDF coordinates since they're created from Excel
-                // They will appear in the sidebar but won't have a highlight on the PDF
-                pageNumber: null,
-                bounds: null
-              };
-
-              newHighlightAnnotations[newHighlightId] = newHighlight;
-              updatesCount++;
-            }
+          if (newColumns.length > 0) {
+            allNewColumns[matchedCategory.id] = {
+              displayName: `${matchedCategory.name} - ${matchedModuleName}`,
+              columns: newColumns
+            };
           }
+
+          worksheetDataList.push({
+            jsonData,
+            headerRow,
+            matchedCategory,
+            matchedModuleId
+          });
         });
 
-        if (updatesCount > 0) {
-          setHighlightAnnotations(newHighlightAnnotations);
-          setLastSyncMessage(`Auto-synced ${updatesCount} items from Excel`);
-          // Clear message after 5 seconds
-          setTimeout(() => setLastSyncMessage(''), 5000);
-
-          // Update canvas highlights for any that had color changes
-          if (highlightsWithColorChanges.length > 0) {
-            setNewHighlightsByPage(prev => {
-              const updated = { ...prev };
-              highlightsWithColorChanges.forEach(({ highlightId, pageNumber, bounds, color, needsBIC }) => {
-                const pageHighlights = updated[pageNumber] || [];
-                // Remove any existing highlight with this highlightId or same bounds
-                const filtered = pageHighlights.filter(h => {
-                  const hasMatchingId = h.highlightId === highlightId;
-                  const hasMatchingBounds = h.x === bounds.x &&
-                    h.y === bounds.y &&
-                    h.width === bounds.width &&
-                    h.height === bounds.height;
-                  return !hasMatchingId && !hasMatchingBounds;
-                });
-                // Add the updated highlight with new color
-                updated[pageNumber] = [
-                  ...filtered,
-                  {
-                    ...bounds,
-                    color: color,
-                    highlightId: highlightId,
-                    needsBIC: needsBIC
-                  }
-                ];
-              });
-              return updated;
-            });
-          }
+        // If new columns detected, show modal and pause
+        if (Object.keys(allNewColumns).length > 0) {
+          setPendingNewColumns({
+            newColumnsByCategory: allNewColumns,
+            worksheetDataList,
+            isAutoSync: true
+          });
+          setShowNewColumnsModal(true);
+          return;
         }
+
+        // No new columns, proceed with auto-sync import
+        executeAutoExcelImport(worksheetDataList, selectedTemplate);
 
       } catch (error) {
         console.error('Failed to auto-sync from Excel:', error);
@@ -11300,7 +11538,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setTimeout(() => setLastSyncMessage(''), 5000);
       }
     }
-  }, [selectedTemplate, highlightAnnotations, graphClient]);
+  }, [selectedTemplate, graphClient, executeAutoExcelImport]);
 
   // Set up file watcher when Excel file is linked
   useEffect(() => {
