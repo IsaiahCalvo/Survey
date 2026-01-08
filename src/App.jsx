@@ -11189,32 +11189,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       updatedAt: timestamp
     };
 
-    // Persist the new template to Supabase
-    try {
-      const configPayload = sanitizeTemplateConfig(newTemplate);
-      await createSupabaseTemplate({
-        name: newName,
-        config: configPayload
-      });
-
-      // Refetch templates to sync state with database
-      if (onRefetchTemplates) {
-        await onRefetchTemplates();
-      }
-    } catch (err) {
-      console.error('Error creating template from new columns:', err);
-      // Fall back to local-only update if Supabase fails
-      const nextTemplates = [newTemplate, ...templates];
-      if (onTemplatesChange) {
-        onTemplatesChange(nextTemplates);
-      }
+    // 1. Update local state FIRST for instant UI
+    const nextTemplates = [newTemplate, ...templates];
+    if (onTemplatesChange) {
+      onTemplatesChange(nextTemplates);
     }
 
-    // Switch to the new template
+    // 2. Switch to the new template immediately
     setSelectedTemplate(newTemplate);
 
+    // 3. Persist to Supabase in background (fire-and-forget)
+    try {
+      const configPayload = sanitizeTemplateConfig(newTemplate);
+      createSupabaseTemplate({
+        name: newName,
+        config: configPayload
+      }).catch(err => console.error('Background template save failed:', err));
+    } catch (err) {
+      console.error('Error creating template config:', err);
+    }
+
     return newTemplate;
-  }, [selectedTemplate, templates, onTemplatesChange, onRefetchTemplates, createSupabaseTemplate, sanitizeTemplateConfig]);
+  }, [selectedTemplate, templates, onTemplatesChange, createSupabaseTemplate, sanitizeTemplateConfig]);
 
   // Helper: Add checklist items for survey only (not persisted to template)
   const handleAddColumnsForSurveyOnly = useCallback((newColumnsByCategory) => {
