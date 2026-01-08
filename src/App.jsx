@@ -6,7 +6,7 @@ import { PDFDocument, degrees } from 'pdf-lib';
 import * as XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { useMSGraph } from './contexts/MSGraphContext';
-import { uploadExcelFile, getFileMetadata, getFileById, downloadExcelFileByPath } from './services/excelGraphService';
+import { uploadExcelFile, getFileMetadata, getFileById, downloadExcelFile, downloadExcelFileByPath, getFileETag, uploadFileContentById } from './services/excelGraphService';
 import {
   getFileIdFromPath,
   createWorkbookSession,
@@ -8565,9 +8565,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [oneDriveFileId, setOneDriveFileId] = useState(null);
   const [excelSessionId, setExcelSessionId] = useState(null);
   const [linkedExcelExists, setLinkedExcelExists] = useState(null); // null = not checked, true/false = result
+  const [useFallbackSync, setUseFallbackSync] = useState(false); // true = use ETag-based polling (for personal accounts)
   const excelSessionRef = useRef({ sessionId: null, expiresAt: null });
   const liveSyncPollRef = useRef(null);
   const lastPollDataRef = useRef(null);
+  const lastKnownETagRef = useRef(null); // Store ETag for change detection in fallback mode
 
   // Export/Sync modal states
   const [showExportLocationModal, setShowExportLocationModal] = useState(false);
@@ -10209,8 +10211,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   }
                 }
               } else {
-                // Fall back to full file upload (requires Excel to be closed)
-                await uploadExcelFile(graphClient, targetPath, workbookBuffer);
+                // Fall back to full file upload via Graph API
+                // This works even when Excel has the file open because we're updating
+                // the cloud version directly, not the local synced copy
+                if (oneDriveFileId) {
+                  // Prefer upload by file ID (more reliable, tracks file across moves/renames)
+                  await uploadFileContentById(graphClient, oneDriveFileId, workbookBuffer);
+                } else {
+                  // Fall back to upload by path
+                  await uploadExcelFile(graphClient, targetPath, workbookBuffer);
+                }
               }
             } else {
               // Use local filesystem
@@ -10983,9 +10993,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (!graphClient) {
             return;
           }
-          // Use oneDriveApiPath for Graph API calls, fall back to linkedExcelPath for legacy data
-          const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
-          fileData = await downloadExcelFileByPath(graphClient, apiPath);
+          // Prefer downloading by file ID (more reliable, tracks across moves/renames)
+          // Fall back to path for legacy data without file ID
+          if (oneDriveFileId || selectedTemplate.oneDriveFileId) {
+            const fileId = oneDriveFileId || selectedTemplate.oneDriveFileId;
+            fileData = await downloadExcelFile(graphClient, fileId);
+          } else {
+            // Use oneDriveApiPath for Graph API calls, fall back to linkedExcelPath for legacy data
+            const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
+            fileData = await downloadExcelFileByPath(graphClient, apiPath);
+          }
         } else {
           // Use local filesystem
           fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
@@ -11332,7 +11349,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [selectedTemplate?.id, selectedTemplate?.linkedExcelPath, handleAutoSyncFromExcel]);
 
-  // Live sync session lifecycle management (OneDrive only)
+  // Live sync lifecycle management (OneDrive only)
+  // Supports both session-based (business accounts) and ETag-based (personal accounts) sync
   useEffect(() => {
     // Only for OneDrive files with live sync enabled
     if (!liveSyncEnabled || !selectedTemplate?.isOneDrive || !selectedTemplate?.linkedExcelPath || !graphClient) {
@@ -11343,13 +11361,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setExcelSessionId(null);
       }
       setLiveSyncStatus('');
+      setUseFallbackSync(false);
+      lastKnownETagRef.current = null;
       return;
     }
 
     let isMounted = true;
     let sessionRefreshInterval = null;
 
-    const initSession = async () => {
+    const initLiveSync = async () => {
       try {
         setLiveSyncStatus('connecting');
 
@@ -11359,50 +11379,75 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         if (!isMounted) return;
         setOneDriveFileId(fileId);
 
-        // Check if session API is supported (Business accounts only)
-        if (liveSyncSupported === null) {
-          const support = await checkSessionSupport(graphClient, fileId);
-          if (!isMounted) return;
-          setLiveSyncSupported(support.supported);
-          if (!support.supported) {
-            setLiveSyncStatus('error');
-            setLastSyncMessage(support.error || 'Live sync not supported for this account');
-            setTimeout(() => setLastSyncMessage(''), 5000);
-            return;
+        // Try session-based sync first (for business accounts)
+        // If it fails with 403, fall back to ETag-based sync (works for all account types)
+        let useSession = false;
+
+        if (liveSyncSupported === null || liveSyncSupported === true) {
+          try {
+            const support = await checkSessionSupport(graphClient, fileId);
+            if (!isMounted) return;
+            setLiveSyncSupported(support.supported);
+
+            if (support.supported) {
+              // Create session for business accounts
+              const { sessionId, expiresAt } = await createWorkbookSession(graphClient, fileId, true);
+              if (!isMounted) return;
+
+              excelSessionRef.current = { sessionId, expiresAt };
+              setExcelSessionId(sessionId);
+              setUseFallbackSync(false);
+              useSession = true;
+              console.log('[LiveSync] Session-based sync established (business account)');
+
+              // Set up session refresh (every 3 minutes to prevent 5-min timeout)
+              sessionRefreshInterval = setInterval(async () => {
+                if (!isMounted || !excelSessionRef.current.sessionId) return;
+                try {
+                  const refreshed = await refreshWorkbookSession(graphClient, fileId, excelSessionRef.current.sessionId);
+                  excelSessionRef.current = refreshed;
+                } catch (err) {
+                  console.error('Session refresh failed, recreating...', err);
+                  try {
+                    const newSession = await createWorkbookSession(graphClient, fileId, true);
+                    excelSessionRef.current = newSession;
+                    setExcelSessionId(newSession.sessionId);
+                  } catch (recreateErr) {
+                    console.error('Failed to recreate session:', recreateErr);
+                    // Fall back to ETag-based sync
+                    setUseFallbackSync(true);
+                    setExcelSessionId(null);
+                  }
+                }
+              }, 3 * 60 * 1000); // 3 minutes
+            }
+          } catch (sessionErr) {
+            console.log('[LiveSync] Session API not available, using fallback sync:', sessionErr.message);
+            setLiveSyncSupported(false);
           }
         }
 
-        // Create session
-        const { sessionId, expiresAt } = await createWorkbookSession(graphClient, fileId, true);
-        if (!isMounted) return;
+        // Fall back to ETag-based sync for personal accounts or if session failed
+        if (!useSession) {
+          console.log('[LiveSync] Using ETag-based sync (works with all account types)');
+          setUseFallbackSync(true);
+          setExcelSessionId(null);
 
-        excelSessionRef.current = { sessionId, expiresAt };
-        setExcelSessionId(sessionId);
-        setLiveSyncStatus('connected');
-        // console.log('Live sync session established');
-
-        // Set up session refresh (every 3 minutes to prevent 5-min timeout)
-        sessionRefreshInterval = setInterval(async () => {
-          if (!isMounted || !excelSessionRef.current.sessionId) return;
+          // Get initial ETag for change detection
           try {
-            const refreshed = await refreshWorkbookSession(graphClient, fileId, excelSessionRef.current.sessionId);
-            excelSessionRef.current = refreshed;
-          } catch (err) {
-            console.error('Session refresh failed, recreating...', err);
-            // Try to recreate session
-            try {
-              const newSession = await createWorkbookSession(graphClient, fileId, true);
-              excelSessionRef.current = newSession;
-              setExcelSessionId(newSession.sessionId);
-            } catch (recreateErr) {
-              console.error('Failed to recreate session:', recreateErr);
-              setLiveSyncStatus('error');
-            }
+            const metadata = await getFileETag(graphClient, fileId);
+            if (!isMounted) return;
+            lastKnownETagRef.current = metadata?.eTag || null;
+          } catch (etagErr) {
+            console.warn('[LiveSync] Failed to get initial ETag:', etagErr);
           }
-        }, 3 * 60 * 1000); // 3 minutes
+        }
+
+        if (!isMounted) return;
+        setLiveSyncStatus('connected');
 
       } catch (error) {
-        console.error('Failed to initialize live sync session:', error);
+        console.error('Failed to initialize live sync:', error);
         if (!isMounted) return;
         setLiveSyncStatus('error');
         setLastSyncMessage(error.message);
@@ -11410,7 +11455,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     };
 
-    initSession();
+    initLiveSync();
 
     return () => {
       isMounted = false;
@@ -11422,12 +11467,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         closeWorkbookSession(graphClient, oneDriveFileId, excelSessionRef.current.sessionId);
         excelSessionRef.current = { sessionId: null, expiresAt: null };
       }
+      lastKnownETagRef.current = null;
     };
   }, [liveSyncEnabled, selectedTemplate?.isOneDrive, selectedTemplate?.linkedExcelPath, selectedTemplate?.id, graphClient, liveSyncSupported, oneDriveFileId]);
 
   // Poll for Excel changes when live sync is active
+  // Supports both session-based (business) and ETag-based (personal) polling
   useEffect(() => {
-    if (!liveSyncEnabled || !excelSessionId || !oneDriveFileId || !graphClient || liveSyncStatus !== 'connected') {
+    // Need either session-based or fallback mode to be active
+    const canPoll = liveSyncEnabled && oneDriveFileId && graphClient && liveSyncStatus === 'connected' &&
+                    (excelSessionId || useFallbackSync);
+
+    if (!canPoll) {
       if (liveSyncPollRef.current) {
         clearInterval(liveSyncPollRef.current);
         liveSyncPollRef.current = null;
@@ -11437,30 +11488,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     const pollExcelChanges = async () => {
       try {
-        // Get all worksheets
-        const worksheets = await getWorksheets(graphClient, oneDriveFileId, excelSessionId);
+        if (useFallbackSync) {
+          // ETag-based polling for personal accounts
+          // Only check metadata - efficient because we don't download the file unless it changed
+          const metadata = await getFileETag(graphClient, oneDriveFileId);
+          if (!metadata) {
+            console.warn('[LiveSync] File not found');
+            return;
+          }
 
-        // Read data from each worksheet and compare with last poll
-        for (const sheet of worksheets) {
-          try {
-            const usedRange = await getUsedRange(graphClient, oneDriveFileId, excelSessionId, sheet.name);
+          const currentETag = metadata.eTag;
+          const lastETag = lastKnownETagRef.current;
 
-            const key = sheet.name;
-            const lastData = lastPollDataRef.current?.[key];
-            const currentData = JSON.stringify(usedRange.values);
+          if (lastETag && currentETag !== lastETag) {
+            console.log('[LiveSync] File changed detected via ETag, syncing...');
+            // File changed - trigger sync
+            handleAutoSyncFromExcel();
+          }
 
-            if (lastData && lastData !== currentData) {
-              // console.log(`Excel changes detected in sheet: ${sheet.name}`);
-              // Trigger sync from Excel
-              handleAutoSyncFromExcel();
-              break; // Only sync once per poll cycle
+          // Update stored ETag
+          lastKnownETagRef.current = currentETag;
+
+        } else if (excelSessionId) {
+          // Session-based polling for business accounts
+          const worksheets = await getWorksheets(graphClient, oneDriveFileId, excelSessionId);
+
+          // Read data from each worksheet and compare with last poll
+          for (const sheet of worksheets) {
+            try {
+              const usedRange = await getUsedRange(graphClient, oneDriveFileId, excelSessionId, sheet.name);
+
+              const key = sheet.name;
+              const lastData = lastPollDataRef.current?.[key];
+              const currentData = JSON.stringify(usedRange.values);
+
+              if (lastData && lastData !== currentData) {
+                // console.log(`Excel changes detected in sheet: ${sheet.name}`);
+                handleAutoSyncFromExcel();
+                break; // Only sync once per poll cycle
+              }
+
+              // Update last poll data
+              if (!lastPollDataRef.current) lastPollDataRef.current = {};
+              lastPollDataRef.current[key] = currentData;
+            } catch (sheetErr) {
+              console.warn(`Failed to read sheet ${sheet.name}:`, sheetErr);
             }
-
-            // Update last poll data
-            if (!lastPollDataRef.current) lastPollDataRef.current = {};
-            lastPollDataRef.current[key] = currentData;
-          } catch (sheetErr) {
-            console.warn(`Failed to read sheet ${sheet.name}:`, sheetErr);
           }
         }
       } catch (error) {
@@ -11480,20 +11553,40 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         liveSyncPollRef.current = null;
       }
     };
-  }, [liveSyncEnabled, excelSessionId, oneDriveFileId, graphClient, liveSyncStatus, handleAutoSyncFromExcel]);
+  }, [liveSyncEnabled, excelSessionId, useFallbackSync, oneDriveFileId, graphClient, liveSyncStatus, handleAutoSyncFromExcel]);
 
-  // Live sync push to Excel (cell-level updates instead of full file upload)
+  // Live sync push to Excel
+  // Supports both session-based (cell-level updates) and fallback (full file upload via Graph API)
   useEffect(() => {
-    if (!liveSyncEnabled || !excelSessionId || !oneDriveFileId || !graphClient || liveSyncStatus !== 'connected') {
+    // Need either session-based or fallback mode to be active
+    const canPush = liveSyncEnabled && oneDriveFileId && graphClient && liveSyncStatus === 'connected' &&
+                    (excelSessionId || useFallbackSync);
+
+    if (!canPush) {
       return;
     }
 
-    // Debounce cell updates (5 seconds to avoid too frequent syncs)
+    // Debounce updates (5 seconds to avoid too frequent syncs)
     const pushTimeout = setTimeout(async () => {
       try {
-        // console.log('Live sync: Pushing changes to Excel...');
+        // console.log('[LiveSync] Pushing changes to Excel...');
         // Use silent mode to prevent alert popups during live sync
+        // handleExportSurveyToExcel handles both session-based (cell updates) and
+        // Graph API upload (full file) modes automatically
         await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
+
+        // Update ETag after push to avoid detecting our own changes
+        if (useFallbackSync) {
+          try {
+            const metadata = await getFileETag(graphClient, oneDriveFileId);
+            if (metadata?.eTag) {
+              lastKnownETagRef.current = metadata.eTag;
+            }
+          } catch (e) {
+            // Ignore ETag update errors
+          }
+        }
+
         setLastSyncMessage('Live synced');
         setTimeout(() => setLastSyncMessage(''), 2000);
       } catch (error) {
@@ -11504,7 +11597,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }, 5000);
 
     return () => clearTimeout(pushTimeout);
-  }, [liveSyncEnabled, excelSessionId, oneDriveFileId, graphClient, liveSyncStatus, highlightAnnotations, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
+  }, [liveSyncEnabled, excelSessionId, useFallbackSync, oneDriveFileId, graphClient, liveSyncStatus, highlightAnnotations, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
 
 
   // ============================================

@@ -227,3 +227,95 @@ export async function downloadExcelFileByPath(graphClient, filePath) {
     throw new Error(`Failed to download Excel file: ${errorMessage}`);
   }
 }
+
+/**
+ * Get file metadata including ETag for change detection
+ * This is efficient because it only fetches metadata, not file content
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string} fileId - The OneDrive item ID
+ * @returns {Promise<Object>} - Object containing eTag, lastModifiedDateTime, and other metadata
+ */
+export async function getFileETag(graphClient, fileId) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  if (!fileId) {
+    throw new Error('File ID is required');
+  }
+
+  try {
+    const response = await graphClient
+      .api(`/me/drive/items/${fileId}`)
+      .select('id,name,eTag,lastModifiedDateTime,size')
+      .get();
+
+    return {
+      id: response.id,
+      name: response.name,
+      eTag: response.eTag,
+      lastModifiedDateTime: response.lastModifiedDateTime,
+      size: response.size
+    };
+  } catch (error) {
+    // 404 means file was deleted
+    if (error.statusCode === 404 || error.code === 'itemNotFound') {
+      return null;
+    }
+    console.error('Failed to get file ETag:', error);
+    throw new Error(`Failed to get file ETag: ${error.message}`);
+  }
+}
+
+/**
+ * Upload/update an Excel file to OneDrive by file ID
+ * This is useful for updating existing files and works even when Excel has the file open
+ * (because it updates the cloud version, not the local synced copy)
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string} fileId - The OneDrive item ID
+ * @param {ArrayBuffer|Uint8Array} fileContent - Excel file content
+ * @returns {Promise<Object>} - Upload result with file metadata including new eTag
+ */
+export async function uploadFileContentById(graphClient, fileId, fileContent) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  if (!fileId) {
+    throw new Error('File ID is required');
+  }
+
+  try {
+    // Ensure fileContent is in proper binary format
+    let binaryContent;
+    if (fileContent instanceof ArrayBuffer) {
+      binaryContent = new Uint8Array(fileContent);
+    } else if (fileContent instanceof Uint8Array) {
+      binaryContent = fileContent;
+    } else if (fileContent && fileContent.buffer instanceof ArrayBuffer) {
+      binaryContent = new Uint8Array(fileContent.buffer, fileContent.byteOffset, fileContent.byteLength);
+    } else if (fileContent && typeof fileContent === 'object' && fileContent.type === 'Buffer' && Array.isArray(fileContent.data)) {
+      binaryContent = new Uint8Array(fileContent.data);
+    } else if (Array.isArray(fileContent)) {
+      binaryContent = new Uint8Array(fileContent);
+    } else {
+      binaryContent = fileContent;
+    }
+
+    // Create a Blob with proper MIME type
+    const blob = new Blob([binaryContent], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+
+    // Upload file content by ID - this replaces the file content
+    const response = await graphClient
+      .api(`/me/drive/items/${fileId}/content`)
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .put(blob);
+
+    return response;
+  } catch (error) {
+    console.error('Failed to upload file content by ID:', error);
+    throw new Error(`Failed to upload file content: ${error.message}`);
+  }
+}
