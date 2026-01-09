@@ -10691,12 +10691,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   };
 
   // Push survey data to linked Excel with retry logic for locked files
-  const pushToExcelWithRetry = useCallback(async () => {
+  const pushToExcelWithRetry = useCallback(async (isRetry = false) => {
     if (!selectedTemplate?.linkedExcelPath) return;
 
     try {
       await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
       console.log('Successfully pushed survey data to Excel');
+      // Show success message (especially important after retry)
+      if (isRetry) {
+        alert('Excel file updated successfully!');
+      }
     } catch (error) {
       console.error('Failed to push to Excel:', error);
 
@@ -10704,7 +10708,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // Show the locked file modal
         setExcelLockedFilePath(selectedTemplate.linkedExcelPath);
         setExcelLockedIsOneDrive(selectedTemplate.isOneDrive || false);
-        setPendingExcelSyncCallback(() => pushToExcelWithRetry);
+        setPendingExcelSyncCallback(() => () => pushToExcelWithRetry(true));
         setShowExcelLockedModal(true);
       } else {
         // For other errors, just log - don't interrupt the save flow
