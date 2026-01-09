@@ -1,6 +1,16 @@
 chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-graph.microsoft.com/v1.0/me/drive/root:/Documents/Security_export.xlsx:/content?@microsoft.graph.conflictBehavior=replace:1     Failed to load resource: the server responded with a status of 423 ()
-excelGraphService.js:57 Failed to upload Excel file: Error: The resource you are attempting to access is locked
+graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s899ff79c40da4ed7a7a2d0be1d81da08?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1  Failed to load resource: the server responded with a status of 404 ()
+App.jsx:10600 Timestamp comparison: Object
+graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s899ff79c40da4ed7a7a2d0be1d81da08?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1  Failed to load resource: the server responded with a status of 404 ()
+App.jsx:10377 Clearing Excel link: OneDrive file was deleted (not found by ID)
+App.jsx:10771 Uploaded to OneDrive, file ID: DC046716012CC0F4!sa010e1933d1e482b8f07020cc8622323
+App.jsx:10792 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
+App.jsx:10600 Timestamp comparison: Object
+App.jsx:10600 Timestamp comparison: Object
+App.jsx:12944 Document saved successfully
+App.jsx:12944 Document saved successfully
+graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!sa010e1933d1e482b8f07020cc8622323/content:1     Failed to load resource: the server responded with a status of 423 ()
+excelGraphService.js:338 Failed to upload file content by ID: Error: The resource you are attempting to access is locked
     at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
     at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
     at Generator.next (<anonymous>)
@@ -11,14 +21,23 @@ excelGraphService.js:57 Failed to upload Excel file: Error: The resource you are
     at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
     at Generator.throw (<anonymous>)
     at rejected (tslib.es6.mjs:119:62)
-uploadExcelFile @ excelGraphService.js:57
-App.jsx:10706 Failed to export to OneDrive: Error: Failed to upload Excel file: The resource you are attempting to access is locked
-    at uploadExcelFile (excelGraphService.js:58:11)
-    at async App.jsx:10632:28
-    at async onClick (App.jsx:22362:19)
-(anonymous) @ App.jsx:10706
-graph.microsoft.com/v1.0/me/drive/root:/Documents/Security_export.xlsx:/content?@microsoft.graph.conflictBehavior=replace:1     Failed to load resource: the server responded with a status of 423 ()
-excelGraphService.js:57 Failed to upload Excel file: Error: The resource you are attempting to access is locked
+uploadFileContentById @ excelGraphService.js:338
+App.jsx:10280 Failed to write file: Error: Failed to upload file content: The resource you are attempting to access is locked
+    at uploadFileContentById (excelGraphService.js:339:11)
+    at async App.jsx:10231:19
+    at async App.jsx:10694:7
+    at async App.jsx:10745:5
+(anonymous) @ App.jsx:10280
+App.jsx:10322 Failed to create Excel export Error: Failed to upload file content: The resource you are attempting to access is locked
+    at uploadFileContentById (excelGraphService.js:339:11)
+    at async App.jsx:10231:19
+    at async App.jsx:10694:7
+    at async App.jsx:10745:5
+(anonymous) @ App.jsx:10322
+App.jsx:10695 Successfully pushed survey data to Excel
+App.jsx:12944 Document saved successfully
+graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!sa010e1933d1e482b8f07020cc8622323/content:1     Failed to load resource: the server responded with a status of 423 ()
+excelGraphService.js:338 Failed to upload file content by ID: Error: The resource you are attempting to access is locked
     at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
     at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
     at Generator.next (<anonymous>)
@@ -29,9 +48,17 @@ excelGraphService.js:57 Failed to upload Excel file: Error: The resource you are
     at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
     at Generator.throw (<anonymous>)
     at rejected (tslib.es6.mjs:119:62)
-uploadExcelFile @ excelGraphService.js:57
-App.jsx:10706 Failed to export to OneDrive: Error: Failed to upload Excel file: The resource you are attempting to access is locked
-    at uploadExcelFile (excelGraphService.js:58:11)
-    at async App.jsx:10632:28
-    at async onClick (App.jsx:22362:19)
-(anonymous) @ App.jsx:10706
+uploadFileContentById @ excelGraphService.js:338
+App.jsx:10280 Failed to write file: Error: Failed to upload file content: The resource you are attempting to access is locked
+    at uploadFileContentById (excelGraphService.js:339:11)
+    at async App.jsx:10231:19
+    at async App.jsx:10694:7
+    at async App.jsx:10745:5
+(anonymous) @ App.jsx:10280
+App.jsx:10322 Failed to create Excel export Error: Failed to upload file content: The resource you are attempting to access is locked
+    at uploadFileContentById (excelGraphService.js:339:11)
+    at async App.jsx:10231:19
+    at async App.jsx:10694:7
+    at async App.jsx:10745:5
+(anonymous) @ App.jsx:10322
+App.jsx:10695 Successfully pushed survey data to Excel

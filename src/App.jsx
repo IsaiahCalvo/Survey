@@ -10286,6 +10286,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               } else {
                 alert('Failed to sync to Excel file. It might be open in another program.');
               }
+            } else {
+              // Re-throw error in silent mode so caller can handle it (e.g., show locked modal)
+              throw err;
             }
             return;
           }
@@ -10318,6 +10321,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     } catch (error) {
       console.error('Failed to create Excel export', error);
       setIsExporting(false);
+      if (silent) {
+        // Re-throw in silent mode so caller can handle (e.g., show locked modal)
+        throw error;
+      }
       alert('Unable to create the Excel file. Please try again.');
     }
   }, [selectedTemplate, items, highlightAnnotations, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus]);
@@ -10562,6 +10569,66 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       handleTemplatesChange(updatedTemplates);
     }
   }, [selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, sanitizeTemplateConfig]);
+
+  // Load latest survey data by comparing timestamps between Supabase and Excel
+  const loadLatestSurveyData = useCallback(async () => {
+    if (!selectedTemplate?.linkedExcelPath) return;
+
+    try {
+      // Get Supabase timestamp from template config
+      const supabaseTimestamp = new Date(selectedTemplate.updatedAt || selectedTemplate.lastSyncTime || 0);
+      let excelTimestamp = new Date(0);
+
+      if (selectedTemplate.isOneDrive && selectedTemplate.oneDriveFileId && graphClient) {
+        // Get OneDrive file metadata
+        try {
+          const metadata = await getFileById(graphClient, selectedTemplate.oneDriveFileId);
+          if (metadata?.lastModifiedDateTime) {
+            excelTimestamp = new Date(metadata.lastModifiedDateTime);
+          }
+        } catch (err) {
+          console.warn('Failed to get OneDrive file metadata:', err);
+        }
+      } else if (window.electronAPI?.getFileStats) {
+        // Get local file metadata
+        try {
+          const stats = await window.electronAPI.getFileStats(selectedTemplate.linkedExcelPath);
+          if (stats?.mtime) {
+            excelTimestamp = new Date(stats.mtime);
+          }
+        } catch (err) {
+          console.warn('Failed to get local file stats:', err);
+        }
+      }
+
+      console.log('Timestamp comparison:', {
+        supabase: supabaseTimestamp.toISOString(),
+        excel: excelTimestamp.toISOString(),
+        excelIsNewer: excelTimestamp > supabaseTimestamp
+      });
+
+      if (excelTimestamp > supabaseTimestamp) {
+        // Excel is newer - auto-import from Excel
+        console.log('Excel file is newer than Supabase data, auto-importing...');
+        // Note: handleSyncFromExcel should already be defined by this point
+        // We'll trigger it via a small delay to ensure component is ready
+        setTimeout(() => {
+          if (typeof handleSyncFromExcel === 'function') {
+            handleSyncFromExcel();
+          }
+        }, 500);
+      }
+    } catch (error) {
+      console.error('Error loading latest survey data:', error);
+    }
+  }, [selectedTemplate, graphClient]);
+
+  // Effect to check and load latest data when template changes
+  useEffect(() => {
+    if (selectedTemplate?.linkedExcelPath) {
+      loadLatestSurveyData();
+    }
+  }, [selectedTemplate?.id, selectedTemplate?.linkedExcelPath, loadLatestSurveyData]);
 
   const handleSyncToExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
