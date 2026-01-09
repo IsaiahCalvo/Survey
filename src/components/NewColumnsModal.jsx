@@ -1,37 +1,106 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 
 const NewColumnsModal = ({
   isOpen,
   onClose,
   onConfirm,
-  newColumnsByCategory = {}, // { categoryId: { displayName, columns: [{ columnIndex, text }] } }
-  templateName = ''
+  newColumnsByCategory = {}, // { categoryId: { displayName, columns, excelColumnOrder, removedColumns, hasReordering } }
+  templateName = '',
+  existingTemplateNames = [] // Array of existing template names for duplicate validation
 }) => {
   const [selectedOption, setSelectedOption] = useState(null); // 'newTemplate' | 'surveyOnly'
   const [newTemplateName, setNewTemplateName] = useState('');
+  const [nameError, setNameError] = useState('');
+
+  // Calculate totals for different change types
+  const changeSummary = useMemo(() => {
+    let totalNew = 0;
+    let totalRemoved = 0;
+    let hasReordering = false;
+
+    Object.values(newColumnsByCategory).forEach(cat => {
+      totalNew += cat.columns?.length || 0;
+      totalRemoved += cat.removedColumns?.length || 0;
+      if (cat.hasReordering) hasReordering = true;
+    });
+
+    return { totalNew, totalRemoved, hasReordering };
+  }, [newColumnsByCategory]);
 
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setSelectedOption(null);
       setNewTemplateName(`${templateName} (Updated)`);
+      setNameError('');
     }
   }, [isOpen, templateName]);
 
+  // Check for duplicate name whenever template name changes
+  const isDuplicateName = (name) => {
+    const trimmedName = name.trim().toLowerCase();
+    return existingTemplateNames.some(
+      existingName => existingName.toLowerCase() === trimmedName
+    );
+  };
+
+  // Handle template name change with validation
+  const handleTemplateNameChange = (e) => {
+    const value = e.target.value;
+    setNewTemplateName(value);
+
+    if (value.trim() && isDuplicateName(value)) {
+      setNameError('A template with this name already exists. Please choose a different name.');
+    } else {
+      setNameError('');
+    }
+  };
+
   if (!isOpen) return null;
 
-  const totalNewColumns = Object.values(newColumnsByCategory)
-    .reduce((sum, cat) => sum + (cat.columns?.length || 0), 0);
+  const { totalNew, totalRemoved, hasReordering } = changeSummary;
+
+  // Build dynamic title based on change types
+  const getModalTitle = () => {
+    const parts = [];
+    if (totalNew > 0) parts.push('New Columns');
+    if (totalRemoved > 0) parts.push('Removed Columns');
+    if (hasReordering) parts.push('Reordering');
+    return parts.length > 0 ? `${parts.join(', ')} Detected` : 'Column Changes Detected';
+  };
+
+  // Build dynamic description
+  const getModalDescription = () => {
+    const parts = [];
+    if (totalNew > 0) {
+      parts.push(`${totalNew} new column${totalNew !== 1 ? 's' : ''} added`);
+    }
+    if (totalRemoved > 0) {
+      parts.push(`${totalRemoved} column${totalRemoved !== 1 ? 's' : ''} removed`);
+    }
+    if (hasReordering) {
+      parts.push('column order changed');
+    }
+    return parts.length > 0
+      ? `Found ${parts.join(', ')} in the Excel file compared to the template.`
+      : 'Changes detected in Excel file.';
+  };
 
   const handleConfirm = () => {
     if (!selectedOption) {
       alert('Please select an option.');
       return;
     }
-    if (selectedOption === 'newTemplate' && !newTemplateName.trim()) {
-      alert('Please enter a name for the new template.');
-      return;
+    if (selectedOption === 'newTemplate') {
+      if (!newTemplateName.trim()) {
+        alert('Please enter a name for the new template.');
+        return;
+      }
+      if (isDuplicateName(newTemplateName)) {
+        setNameError('A template with this name already exists. Please choose a different name.');
+        return;
+      }
     }
     // Pass both the decision and the template name
     onConfirm(selectedOption, newTemplateName.trim());
@@ -82,7 +151,7 @@ const NewColumnsModal = ({
             fontFamily: TYPOGRAPHY.fontFamily.default,
             marginBottom: '8px',
           }}>
-            New Columns Detected
+            {getModalTitle()}
           </h3>
           <p style={{
             margin: 0,
@@ -91,43 +160,112 @@ const NewColumnsModal = ({
             fontFamily: TYPOGRAPHY.fontFamily.default,
             lineHeight: TYPOGRAPHY.lineHeight.normal,
           }}>
-            Found {totalNewColumns} new column{totalNewColumns !== 1 ? 's' : ''} in the Excel file that {totalNewColumns !== 1 ? "don't" : "doesn't"} match existing checklist items.
+            {getModalDescription()}
           </p>
         </div>
 
-        {/* List of new columns by category */}
+        {/* List of column changes by category */}
         <div style={{
           background: COLORS.background.tertiary,
           borderRadius: BORDERS.radius.md,
           padding: '12px',
           marginBottom: '16px',
-          maxHeight: '200px',
+          maxHeight: '250px',
           overflowY: 'auto'
         }}>
-          {Object.entries(newColumnsByCategory).map(([categoryId, { displayName, columns }]) => (
-            <div key={categoryId} style={{ marginBottom: '12px' }}>
+          {Object.entries(newColumnsByCategory).map(([categoryId, { displayName, columns, removedColumns, hasReordering }]) => (
+            <div key={categoryId} style={{ marginBottom: '16px' }}>
               <div style={{
                 fontSize: TYPOGRAPHY.fontSize.sm,
                 fontWeight: TYPOGRAPHY.fontWeight.semibold,
                 color: COLORS.text.muted,
-                marginBottom: '6px',
+                marginBottom: '8px',
                 fontFamily: TYPOGRAPHY.fontFamily.default,
               }}>
                 {displayName}
               </div>
-              {columns.map((col, idx) => (
-                <div key={idx} style={{
-                  fontSize: TYPOGRAPHY.fontSize.md,
-                  color: COLORS.text.secondary,
-                  padding: '4px 8px',
-                  background: COLORS.background.elevated,
-                  borderRadius: BORDERS.radius.sm,
-                  marginBottom: '4px',
-                  fontFamily: TYPOGRAPHY.fontFamily.default,
-                }}>
-                  {col.text}
+
+              {/* New columns */}
+              {columns && columns.length > 0 && (
+                <div style={{ marginBottom: '8px' }}>
+                  <div style={{
+                    fontSize: TYPOGRAPHY.fontSize.xs,
+                    fontWeight: TYPOGRAPHY.fontWeight.medium,
+                    color: '#22c55e',
+                    marginBottom: '4px',
+                    fontFamily: TYPOGRAPHY.fontFamily.default,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}>
+                    + Added
+                  </div>
+                  {columns.map((col, idx) => (
+                    <div key={`new-${idx}`} style={{
+                      fontSize: TYPOGRAPHY.fontSize.md,
+                      color: COLORS.text.secondary,
+                      padding: '4px 8px',
+                      background: 'rgba(34, 197, 94, 0.1)',
+                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                      borderRadius: BORDERS.radius.sm,
+                      marginBottom: '4px',
+                      fontFamily: TYPOGRAPHY.fontFamily.default,
+                    }}>
+                      {col.text}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {/* Removed columns */}
+              {removedColumns && removedColumns.length > 0 && (
+                <div style={{ marginBottom: '8px' }}>
+                  <div style={{
+                    fontSize: TYPOGRAPHY.fontSize.xs,
+                    fontWeight: TYPOGRAPHY.fontWeight.medium,
+                    color: '#ef4444',
+                    marginBottom: '4px',
+                    fontFamily: TYPOGRAPHY.fontFamily.default,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}>
+                    - Removed
+                  </div>
+                  {removedColumns.map((col, idx) => (
+                    <div key={`removed-${idx}`} style={{
+                      fontSize: TYPOGRAPHY.fontSize.md,
+                      color: COLORS.text.muted,
+                      padding: '4px 8px',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: BORDERS.radius.sm,
+                      marginBottom: '4px',
+                      fontFamily: TYPOGRAPHY.fontFamily.default,
+                      textDecoration: 'line-through',
+                    }}>
+                      {col.text}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Reordering indicator */}
+              {hasReordering && (
+                <div style={{
+                  fontSize: TYPOGRAPHY.fontSize.sm,
+                  color: '#f59e0b',
+                  padding: '6px 8px',
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: BORDERS.radius.sm,
+                  fontFamily: TYPOGRAPHY.fontFamily.default,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}>
+                  <span style={{ fontSize: '14px' }}>↕</span>
+                  Column order will be updated to match Excel
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -190,13 +328,13 @@ const NewColumnsModal = ({
                 <input
                   type="text"
                   value={newTemplateName}
-                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  onChange={handleTemplateNameChange}
                   placeholder="Enter template name..."
                   style={{
                     width: '100%',
                     padding: '8px 12px',
                     borderRadius: BORDERS.radius.md,
-                    border: `1px solid ${COLORS.border.default}`,
+                    border: `1px solid ${nameError ? '#ef4444' : COLORS.border.default}`,
                     background: COLORS.background.dark,
                     color: COLORS.text.secondary,
                     fontSize: TYPOGRAPHY.fontSize.md,
@@ -206,6 +344,16 @@ const NewColumnsModal = ({
                   }}
                   autoFocus
                 />
+                {nameError && (
+                  <div style={{
+                    marginTop: '6px',
+                    fontSize: TYPOGRAPHY.fontSize.sm,
+                    color: '#ef4444',
+                    fontFamily: TYPOGRAPHY.fontFamily.default,
+                  }}>
+                    {nameError}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -262,16 +410,16 @@ const NewColumnsModal = ({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!selectedOption || (selectedOption === 'newTemplate' && !newTemplateName.trim())}
+            disabled={!selectedOption || (selectedOption === 'newTemplate' && (!newTemplateName.trim() || nameError))}
             style={{
               padding: '8px 16px',
-              background: (selectedOption && (selectedOption !== 'newTemplate' || newTemplateName.trim())) ? COLORS.accent.primary : COLORS.border.default,
+              background: (selectedOption && (selectedOption !== 'newTemplate' || (newTemplateName.trim() && !nameError))) ? COLORS.accent.primary : COLORS.border.default,
               color: COLORS.text.primary,
               border: 'none',
               borderRadius: BORDERS.radius.md,
               fontSize: TYPOGRAPHY.fontSize.md,
               fontWeight: TYPOGRAPHY.fontWeight.medium,
-              cursor: (selectedOption && (selectedOption !== 'newTemplate' || newTemplateName.trim())) ? 'pointer' : 'not-allowed',
+              cursor: (selectedOption && (selectedOption !== 'newTemplate' || (newTemplateName.trim() && !nameError))) ? 'pointer' : 'not-allowed',
               fontFamily: TYPOGRAPHY.fontFamily.default,
               transition: 'all 0.15s ease',
             }}

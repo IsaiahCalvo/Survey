@@ -11301,22 +11301,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Deep clone the template's modules
     const clonedModules = JSON.parse(JSON.stringify(selectedTemplate.modules || selectedTemplate.spaces || []));
 
-    // Add new checklist items to each category
+    // Rebuild checklist for each category based on Excel column order
     for (const mod of clonedModules) {
       for (const cat of mod.categories || []) {
         const catData = newColumnsByCategory[cat.id];
         if (!catData) continue;
 
-        // Sort by columnIndex to preserve Excel order
-        const sortedColumns = [...catData.columns].sort((a, b) => a.columnIndex - b.columnIndex);
+        const existingChecklist = cat.checklist || [];
+        const existingItemsById = {};
+        existingChecklist.forEach(item => {
+          existingItemsById[item.id] = item;
+        });
 
-        for (const newCol of sortedColumns) {
-          const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-          cat.checklist = cat.checklist || [];
-          cat.checklist.push({
-            id: newItemId,
-            text: newCol.text
-          });
+        // Rebuild checklist in Excel column order
+        const newChecklist = [];
+
+        // If we have excelColumnOrder, use it to rebuild in correct order
+        if (catData.excelColumnOrder && catData.excelColumnOrder.length > 0) {
+          // Sort by columnIndex to ensure correct order
+          const sortedOrder = [...catData.excelColumnOrder].sort((a, b) => a.columnIndex - b.columnIndex);
+
+          for (const col of sortedOrder) {
+            if (col.existingItemId && existingItemsById[col.existingItemId]) {
+              // Existing item - preserve it
+              newChecklist.push(existingItemsById[col.existingItemId]);
+            } else {
+              // New item - create it
+              const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+              newChecklist.push({
+                id: newItemId,
+                text: col.text
+              });
+            }
+          }
+
+          cat.checklist = newChecklist;
+        } else {
+          // Fallback: append new columns at end (legacy behavior)
+          const sortedColumns = [...catData.columns].sort((a, b) => a.columnIndex - b.columnIndex);
+          for (const newCol of sortedColumns) {
+            const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+            cat.checklist = cat.checklist || [];
+            cat.checklist.push({
+              id: newItemId,
+              text: newCol.text
+            });
+          }
         }
       }
     }
@@ -11366,22 +11396,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Deep clone the current template's modules
     const updatedModules = JSON.parse(JSON.stringify(selectedTemplate.modules || selectedTemplate.spaces || []));
 
-    // Add new checklist items to each category
+    // Rebuild checklist for each category based on Excel column order
     for (const mod of updatedModules) {
       for (const cat of mod.categories || []) {
         const catData = newColumnsByCategory[cat.id];
         if (!catData) continue;
 
-        // Sort by columnIndex to preserve Excel order
-        const sortedColumns = [...catData.columns].sort((a, b) => a.columnIndex - b.columnIndex);
+        const existingChecklist = cat.checklist || [];
+        const existingItemsById = {};
+        existingChecklist.forEach(item => {
+          existingItemsById[item.id] = item;
+        });
 
-        for (const newCol of sortedColumns) {
-          const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-          cat.checklist = cat.checklist || [];
-          cat.checklist.push({
-            id: newItemId,
-            text: newCol.text
-          });
+        // Rebuild checklist in Excel column order
+        const newChecklist = [];
+
+        // If we have excelColumnOrder, use it to rebuild in correct order
+        if (catData.excelColumnOrder && catData.excelColumnOrder.length > 0) {
+          // Sort by columnIndex to ensure correct order
+          const sortedOrder = [...catData.excelColumnOrder].sort((a, b) => a.columnIndex - b.columnIndex);
+
+          for (const col of sortedOrder) {
+            if (col.existingItemId && existingItemsById[col.existingItemId]) {
+              // Existing item - preserve it
+              newChecklist.push(existingItemsById[col.existingItemId]);
+            } else {
+              // New item - create it
+              const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+              newChecklist.push({
+                id: newItemId,
+                text: col.text
+              });
+            }
+          }
+
+          cat.checklist = newChecklist;
+        } else {
+          // Fallback: append new columns at end (legacy behavior)
+          const sortedColumns = [...catData.columns].sort((a, b) => a.columnIndex - b.columnIndex);
+          for (const newCol of sortedColumns) {
+            const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+            cat.checklist = cat.checklist || [];
+            cat.checklist.push({
+              id: newItemId,
+              text: newCol.text
+            });
+          }
         }
       }
     }
@@ -11504,9 +11564,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
           if (!matchedCategory) return;
 
-          // Detect new columns (columns that don't match existing checklist items)
+          // Detect column changes: new columns, removed columns, and reordering
           const checklistItems = matchedCategory.checklist || [];
           const newColumns = [];
+          const excelColumnOrder = []; // Track all non-system columns in Excel order
+          const foundItemIds = new Set(); // Track which template items are in Excel
 
           headerRow.forEach((colText, index) => {
             // Skip system columns
@@ -11516,20 +11578,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             const trimmedText = colText.toString().trim();
             const existingItem = checklistItems.find(c => c.text === trimmedText);
 
-            if (!existingItem) {
+            if (existingItem) {
+              // Existing column - track its position
+              excelColumnOrder.push({
+                columnIndex: index,
+                text: trimmedText,
+                existingItemId: existingItem.id
+              });
+              foundItemIds.add(existingItem.id);
+            } else {
               // This is a new column
               newColumns.push({
                 columnIndex: index,
                 text: trimmedText
               });
+              excelColumnOrder.push({
+                columnIndex: index,
+                text: trimmedText,
+                existingItemId: null // New item
+              });
             }
           });
 
-          // Store new columns for this category if any
-          if (newColumns.length > 0) {
+          // Detect removed columns (items in template but not in Excel)
+          const removedColumns = checklistItems
+            .filter(item => !foundItemIds.has(item.id))
+            .map(item => ({ text: item.text, itemId: item.id }));
+
+          // Detect reordering: compare existing item order in template vs Excel
+          const existingInExcelOrder = excelColumnOrder
+            .filter(col => col.existingItemId)
+            .map(col => col.existingItemId);
+          const existingInTemplateOrder = checklistItems
+            .filter(item => foundItemIds.has(item.id))
+            .map(item => item.id);
+          const hasReordering = existingInExcelOrder.length > 0 &&
+            JSON.stringify(existingInExcelOrder) !== JSON.stringify(existingInTemplateOrder);
+
+          // Store column info for this category if there are any changes
+          const hasChanges = newColumns.length > 0 || removedColumns.length > 0 || hasReordering;
+          if (hasChanges) {
             allNewColumns[matchedCategory.id] = {
               displayName: `${matchedCategory.name} - ${matchedModuleName}`,
-              columns: newColumns
+              columns: newColumns,
+              excelColumnOrder,
+              removedColumns,
+              hasReordering
             };
           }
 
@@ -11636,9 +11730,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
           if (!matchedCategory) return;
 
-          // Detect new columns
+          // Detect column changes: new columns, removed columns, and reordering
           const checklistItems = matchedCategory.checklist || [];
           const newColumns = [];
+          const excelColumnOrder = []; // Track all non-system columns in Excel order
+          const foundItemIds = new Set(); // Track which template items are in Excel
 
           headerRow.forEach((colText, index) => {
             if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
@@ -11647,18 +11743,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             const trimmedText = colText.toString().trim();
             const existingItem = checklistItems.find(c => c.text === trimmedText);
 
-            if (!existingItem) {
+            if (existingItem) {
+              // Existing column - track its position
+              excelColumnOrder.push({
+                columnIndex: index,
+                text: trimmedText,
+                existingItemId: existingItem.id
+              });
+              foundItemIds.add(existingItem.id);
+            } else {
+              // This is a new column
               newColumns.push({
                 columnIndex: index,
                 text: trimmedText
               });
+              excelColumnOrder.push({
+                columnIndex: index,
+                text: trimmedText,
+                existingItemId: null // New item
+              });
             }
           });
 
-          if (newColumns.length > 0) {
+          // Detect removed columns (items in template but not in Excel)
+          const removedColumns = checklistItems
+            .filter(item => !foundItemIds.has(item.id))
+            .map(item => ({ text: item.text, itemId: item.id }));
+
+          // Detect reordering: compare existing item order in template vs Excel
+          const existingInExcelOrder = excelColumnOrder
+            .filter(col => col.existingItemId)
+            .map(col => col.existingItemId);
+          const existingInTemplateOrder = checklistItems
+            .filter(item => foundItemIds.has(item.id))
+            .map(item => item.id);
+          const hasReordering = existingInExcelOrder.length > 0 &&
+            JSON.stringify(existingInExcelOrder) !== JSON.stringify(existingInTemplateOrder);
+
+          // Store column info for this category if there are any changes
+          const hasChanges = newColumns.length > 0 || removedColumns.length > 0 || hasReordering;
+          if (hasChanges) {
             allNewColumns[matchedCategory.id] = {
               displayName: `${matchedCategory.name} - ${matchedModuleName}`,
-              columns: newColumns
+              columns: newColumns,
+              excelColumnOrder,
+              removedColumns,
+              hasReordering
             };
           }
 
@@ -22810,6 +22940,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         onConfirm={handleNewColumnsDecision}
         newColumnsByCategory={pendingNewColumns?.newColumnsByCategory || {}}
         templateName={selectedTemplate?.name || ''}
+        existingTemplateNames={templates.map(t => t.name)}
       />
 
       <ExcelLockedModal
