@@ -11343,19 +11343,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // 2. Switch to the new template immediately
     setSelectedTemplate(newTemplate);
 
-    // 3. Persist to Supabase in background (fire-and-forget)
+    // 3. Persist to Supabase and refetch to update Dashboard templates tab
     try {
       const configPayload = sanitizeTemplateConfig(newTemplate);
-      createSupabaseTemplate({
+      await createSupabaseTemplate({
         name: newName,
         config: configPayload
-      }).catch(err => console.error('Background template save failed:', err));
+      });
+      // Refetch templates so Dashboard's Templates tab is updated
+      if (onRefetchTemplates) {
+        await onRefetchTemplates();
+      }
     } catch (err) {
-      console.error('Error creating template config:', err);
+      console.error('Error creating template:', err);
     }
 
     return newTemplate;
-  }, [selectedTemplate, templates, onTemplatesChange, createSupabaseTemplate, sanitizeTemplateConfig]);
+  }, [selectedTemplate, templates, onTemplatesChange, onRefetchTemplates, createSupabaseTemplate, sanitizeTemplateConfig]);
 
   // Helper: Add checklist items for survey only (not persisted to template)
   const handleAddColumnsForSurveyOnly = useCallback((newColumnsByCategory) => {
