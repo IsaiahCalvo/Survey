@@ -57,6 +57,8 @@ import BallInCourtIndicator from './components/BallInCourtIndicator';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
 import NewColumnsModal from './components/NewColumnsModal';
+import ExcelLockedModal from './components/ExcelLockedModal';
+import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { supabase } from './supabaseClient';
@@ -8157,6 +8159,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showNewColumnsModal, setShowNewColumnsModal] = useState(false); // Modal for new Excel columns
   const [pendingNewColumns, setPendingNewColumns] = useState(null); // { newColumnsByCategory, worksheetDataList, isAutoSync }
 
+  // Excel sync modals and state
+  const [showExcelLockedModal, setShowExcelLockedModal] = useState(false);
+  const [showExcelSyncConfirmModal, setShowExcelSyncConfirmModal] = useState(false);
+  const [excelLockedFilePath, setExcelLockedFilePath] = useState('');
+  const [excelLockedIsOneDrive, setExcelLockedIsOneDrive] = useState(false);
+  const [pendingExcelSyncCallback, setPendingExcelSyncCallback] = useState(null);
+
   const [lastDrawTool, setLastDrawTool] = useState(() => {
     try {
       return localStorage.getItem('lastDrawTool') || 'pen';
@@ -10608,6 +10617,71 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return 'Unable to save to OneDrive. Please try again or save to your computer instead.';
   };
 
+  // Check if error is a file locked error (423)
+  const isFileLocked = (error) => {
+    const msg = error?.message?.toLowerCase() || '';
+    return msg.includes('locked') || msg.includes('423') || msg.includes('in use');
+  };
+
+  // Push survey data to linked Excel with retry logic for locked files
+  const pushToExcelWithRetry = useCallback(async () => {
+    if (!selectedTemplate?.linkedExcelPath) return;
+
+    try {
+      await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
+      console.log('Successfully pushed survey data to Excel');
+    } catch (error) {
+      console.error('Failed to push to Excel:', error);
+
+      if (isFileLocked(error)) {
+        // Show the locked file modal
+        setExcelLockedFilePath(selectedTemplate.linkedExcelPath);
+        setExcelLockedIsOneDrive(selectedTemplate.isOneDrive || false);
+        setPendingExcelSyncCallback(() => pushToExcelWithRetry);
+        setShowExcelLockedModal(true);
+      } else {
+        // For other errors, just log - don't interrupt the save flow
+        console.error('Excel sync error (non-locked):', error.message);
+      }
+    }
+  }, [selectedTemplate, handleExportSurveyToExcel]);
+
+  // Handle user's choice from Excel sync confirmation modal
+  const handleExcelSyncConfirmChoice = useCallback(async (choice) => {
+    if (choice === 'no') {
+      // User doesn't want to sync - just save locally
+      setPendingExcelSyncCallback(null);
+      return;
+    }
+
+    if (choice === 'always') {
+      // Store preference in template config
+      if (selectedTemplate) {
+        const updatedTemplate = {
+          ...selectedTemplate,
+          excelSyncPreference: 'always'
+        };
+        setSelectedTemplate(updatedTemplate);
+
+        // Persist to Supabase
+        if (selectedTemplate.supabaseId && updateSupabaseTemplate) {
+          try {
+            const configPayload = sanitizeTemplateConfig(updatedTemplate);
+            await updateSupabaseTemplate(selectedTemplate.supabaseId, {
+              name: updatedTemplate.name,
+              config: configPayload
+            });
+          } catch (err) {
+            console.error('Failed to save Excel sync preference:', err);
+          }
+        }
+      }
+    }
+
+    // Both 'once' and 'always' should push to Excel
+    await pushToExcelWithRetry();
+  }, [selectedTemplate, pushToExcelWithRetry, updateSupabaseTemplate, sanitizeTemplateConfig]);
+
   // Function to perform OneDrive export (reusable for auto-resume after login)
   const performOneDriveExport = useCallback(async () => {
     // Prevent multiple simultaneous exports
@@ -12815,13 +12889,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       } else {
         // console.log('Skipping Supabase sync (Free Plan)');
       }
+
+      // Check if we should sync to linked Excel file
+      if (selectedTemplate?.linkedExcelPath && !silent) {
+        if (selectedTemplate.excelSyncPreference === 'always') {
+          // Auto-sync to Excel without prompting
+          pushToExcelWithRetry();
+        } else {
+          // Show confirmation modal
+          setShowExcelSyncConfirmModal(true);
+        }
+      }
     } catch (error) {
       console.error('Error saving document:', error);
       if (!silent) {
         alert('Error saving PDF: ' + error.message);
       }
     }
-  }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath, onUnsavedAnnotationsChange]);
+  }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath, onUnsavedAnnotationsChange, selectedTemplate, pushToExcelWithRetry, features?.cloudSync, highlightAnnotations, spaces]);
 
   // Auto-save every 30 seconds when there are unsaved changes and a file path is available
   useEffect(() => {
@@ -22650,6 +22735,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         onConfirm={handleNewColumnsDecision}
         newColumnsByCategory={pendingNewColumns?.newColumnsByCategory || {}}
         templateName={selectedTemplate?.name || ''}
+      />
+
+      <ExcelLockedModal
+        isOpen={showExcelLockedModal}
+        onRetry={() => {
+          setShowExcelLockedModal(false);
+          if (pendingExcelSyncCallback) {
+            pendingExcelSyncCallback();
+          }
+        }}
+        onCancel={() => {
+          setShowExcelLockedModal(false);
+          setPendingExcelSyncCallback(null);
+        }}
+        filePath={excelLockedFilePath}
+        isOneDrive={excelLockedIsOneDrive}
+      />
+
+      <ExcelSyncConfirmModal
+        isOpen={showExcelSyncConfirmModal}
+        onClose={() => {
+          setShowExcelSyncConfirmModal(false);
+          setPendingExcelSyncCallback(null);
+        }}
+        onConfirm={(choice) => {
+          setShowExcelSyncConfirmModal(false);
+          handleExcelSyncConfirmChoice(choice);
+        }}
+        fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
       />
     </>
   );

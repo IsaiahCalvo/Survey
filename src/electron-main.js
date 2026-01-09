@@ -267,6 +267,20 @@ ipcMain.handle('fs:fileExists', async (event, filePath) => {
   }
 });
 
+ipcMain.handle('fs:getFileStats', async (event, filePath) => {
+  try {
+    const stats = fs.statSync(filePath);
+    return {
+      mtime: stats.mtime.toISOString(),
+      size: stats.size,
+      isFile: stats.isFile(),
+      isDirectory: stats.isDirectory()
+    };
+  } catch (error) {
+    return null;
+  }
+});
+
 ipcMain.handle('os:getHomeDir', async () => {
   const os = require('os');
   return os.homedir();
