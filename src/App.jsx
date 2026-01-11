@@ -10934,6 +10934,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const executeExcelImport = useCallback((worksheetDataList, templateToUse) => {
     const newHighlightAnnotations = { ...highlightAnnotations };
     let updatesCount = 0;
+    let deletionsCount = 0;
+    const excelItemsByScope = {}; // Track items per category/module for deletion detection
 
     worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
       // Rebuild colToChecklistId using the updated category from templateToUse
@@ -10966,6 +10968,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const itemColumnIndex = headerRow.indexOf('Item');
       const ballInCourtIndex = headerRow.indexOf('Ball in Court');
       const notesIndex = headerRow.indexOf('Notes');
+
+      // Collect all item names from Excel for deletion detection
+      const scopeKey = `${matchedModuleId}-${matchedCategory.id}`;
+      if (!excelItemsByScope[scopeKey]) {
+        excelItemsByScope[scopeKey] = new Set();
+      }
+      for (let j = 1; j < jsonData.length; j++) {
+        const rowItemName = jsonData[j][itemColumnIndex];
+        if (rowItemName && rowItemName.toString().trim()) {
+          excelItemsByScope[scopeKey].add(rowItemName.toString().trim());
+        }
+      }
 
       // Iterate data rows
       for (let i = 1; i < jsonData.length; i++) {
@@ -11108,9 +11122,38 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     });
 
-    if (updatesCount > 0) {
+    // Detect and delete highlights that exist in app but not in Excel
+    const highlightsToDelete = [];
+    Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
+      const annModuleId = ann.moduleId || ann.spaceId;
+      const scopeKey = `${annModuleId}-${ann.categoryId}`;
+
+      // Only check highlights in scopes that were covered by the Excel import
+      if (excelItemsByScope[scopeKey]) {
+        const itemName = ann.name?.toString().trim();
+        if (itemName && !excelItemsByScope[scopeKey].has(itemName)) {
+          highlightsToDelete.push({ key, ann });
+        }
+      }
+    });
+
+    // Process deletions
+    highlightsToDelete.forEach(({ key, ann }) => {
+      delete newHighlightAnnotations[key];
+      deletionsCount++;
+
+      // Queue canvas removal if highlight has visual bounds
+      if (ann.pageNumber && ann.bounds) {
+        setHighlightsToRemoveByPage(prev => ({
+          ...prev,
+          [ann.pageNumber]: [...(prev[ann.pageNumber] || []), ann.bounds]
+        }));
+      }
+    });
+
+    if (updatesCount > 0 || deletionsCount > 0) {
       setHighlightAnnotations(newHighlightAnnotations);
-      alert(`Sync complete! Updated ${updatesCount} items.`);
+      alert(`Sync complete! Updated ${updatesCount} items, deleted ${deletionsCount} items.`);
     } else {
       alert('Sync complete! No changes found.');
     }
@@ -11120,6 +11163,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const executeAutoExcelImport = useCallback((worksheetDataList, templateToUse) => {
     const newHighlightAnnotations = { ...highlightAnnotations };
     let updatesCount = 0;
+    let deletionsCount = 0;
+    const excelItemsByScope = {}; // Track items per category/module for deletion detection
     const highlightsWithColorChanges = [];
 
     worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
@@ -11153,6 +11198,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const itemColumnIndex = headerRow.indexOf('Item');
       const ballInCourtIndex = headerRow.indexOf('Ball in Court');
       const notesIndex = headerRow.indexOf('Notes');
+
+      // Collect all item names from Excel for deletion detection
+      const scopeKey = `${matchedModuleId}-${matchedCategory.id}`;
+      if (!excelItemsByScope[scopeKey]) {
+        excelItemsByScope[scopeKey] = new Set();
+      }
+      for (let j = 1; j < jsonData.length; j++) {
+        const rowItemName = jsonData[j][itemColumnIndex];
+        if (rowItemName && rowItemName.toString().trim()) {
+          excelItemsByScope[scopeKey].add(rowItemName.toString().trim());
+        }
+      }
 
       // Iterate data rows
       for (let i = 1; i < jsonData.length; i++) {
@@ -11315,9 +11372,41 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     });
 
-    if (updatesCount > 0) {
+    // Detect and delete highlights that exist in app but not in Excel
+    const highlightsToDelete = [];
+    Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
+      const annModuleId = ann.moduleId || ann.spaceId;
+      const scopeKey = `${annModuleId}-${ann.categoryId}`;
+
+      // Only check highlights in scopes that were covered by the Excel import
+      if (excelItemsByScope[scopeKey]) {
+        const itemName = ann.name?.toString().trim();
+        if (itemName && !excelItemsByScope[scopeKey].has(itemName)) {
+          highlightsToDelete.push({ key, ann });
+        }
+      }
+    });
+
+    // Process deletions
+    highlightsToDelete.forEach(({ key, ann }) => {
+      delete newHighlightAnnotations[key];
+      deletionsCount++;
+
+      // Queue canvas removal if highlight has visual bounds
+      if (ann.pageNumber && ann.bounds) {
+        setHighlightsToRemoveByPage(prev => ({
+          ...prev,
+          [ann.pageNumber]: [...(prev[ann.pageNumber] || []), ann.bounds]
+        }));
+      }
+    });
+
+    if (updatesCount > 0 || deletionsCount > 0) {
       setHighlightAnnotations(newHighlightAnnotations);
-      setLastSyncMessage(`Auto-synced ${updatesCount} items from Excel`);
+      const message = deletionsCount > 0
+        ? `Auto-synced ${updatesCount} items, deleted ${deletionsCount} items from Excel`
+        : `Auto-synced ${updatesCount} items from Excel`;
+      setLastSyncMessage(message);
       setTimeout(() => setLastSyncMessage(''), 5000);
 
       // Update canvas highlights for any that had color changes
@@ -11414,8 +11503,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Use provided template name or fallback to default
     const newName = templateName || `${selectedTemplate.name} (Updated)`;
 
+    // Remove supabaseId from the spread to ensure this is treated as a new local template
+    const { supabaseId: _omitSupabaseId, ...templateWithoutSupabaseId } = selectedTemplate;
     const newTemplate = {
-      ...selectedTemplate,
+      ...templateWithoutSupabaseId,
       id: newTemplateId,
       name: newName,
       modules: clonedModules,
