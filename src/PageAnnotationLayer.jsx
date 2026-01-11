@@ -5893,11 +5893,15 @@ const PageAnnotationLayer = memo(({
           canvas.defaultCursor = 'default';
           canvas.hoverCursor = currentTool === 'pan' ? 'move' : 'default';
         }
-        canvas.renderAll();
+        if (canvas.width > 0 && canvas.height > 0) {
+          canvas.renderAll();
+        }
       } else {
         canvas.defaultCursor = 'default';
         canvas.hoverCursor = currentTool === 'pan' ? 'move' : 'default';
-        canvas.renderAll();
+        if (canvas.width > 0 && canvas.height > 0) {
+          canvas.renderAll();
+        }
       }
     };
 
@@ -6494,9 +6498,9 @@ const PageAnnotationLayer = memo(({
       // Only apply to background annotations (not scoped region annotations)
       if (!isScopedRegionAnnotation && objRegionId === null) {
         // This is a background annotation (made outside any space/region)
-        if (selectedSpaceId !== null && getRegionLightbulbState) {
+        if (selectedSpaceId !== null && getRegionLightbulbStateRef.current) {
           // A space is active: check the per-region lightbulb state for this page
-          const lightbulbResult = getRegionLightbulbState(selectedSpaceId, pageNumber);
+          const lightbulbResult = getRegionLightbulbStateRef.current(selectedSpaceId, pageNumber);
           backgroundAnnotationVisible = lightbulbResult;
 
         } else {
@@ -6552,7 +6556,7 @@ const PageAnnotationLayer = memo(({
     });
 
     canvas.renderAll();
-  }, [selectedSpaceId, activeSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, activeRegionId, isRegionSelectionActive, layerVisibility, tool, pageNumber, spaces, getSpaceIdForRegion, getRegionLightbulbState]);
+  }, [selectedSpaceId, activeSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, activeRegionId, isRegionSelectionActive, layerVisibility, tool, pageNumber, spaces, getSpaceIdForRegion]);
 
   // Keyboard handler for deleting selected annotations
   useEffect(() => {
