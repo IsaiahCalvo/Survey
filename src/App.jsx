@@ -1647,10 +1647,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [activeSection, setActiveSection] = useState('documents'); // 'documents' | 'projects' | 'templates'
   // Use Supabase projects instead of local state
   const projects = supabaseProjects || [];
-  // Normalize Supabase templates so we retain the config plus the Supabase record id
+  // Normalize Supabase templates and merge with local-only templates for optimistic UI
   const templates = useMemo(() => {
-    if (!Array.isArray(supabaseTemplates)) return [];
-    return supabaseTemplates.map((templateRow) => {
+    // First, normalize Supabase templates
+    const supabaseNormalized = (supabaseTemplates || []).map((templateRow) => {
       const config = templateRow?.config && typeof templateRow.config === 'object'
         ? templateRow.config
         : {};
@@ -1664,10 +1664,22 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         updatedAt: config.updatedAt || templateRow.updated_at || config.createdAt || templateRow.created_at || new Date().toISOString()
       };
     });
-  }, [supabaseTemplates]);
 
-  // Use ref to track if update is from external source (to prevent circular updates)
-  const isExternalUpdateRef = useRef(false);
+    // Get IDs of templates that exist in Supabase
+    const supabaseIds = new Set(supabaseNormalized.map(t => t.id));
+
+    // Find local-only templates (exist in externalTemplates but not yet in Supabase)
+    // These are templates that were just created and haven't been synced yet
+    const localOnlyTemplates = (externalTemplates || []).filter(t =>
+      t && t.id && !supabaseIds.has(t.id) && !t.supabaseId
+    );
+
+    // Merge: local-only templates first (for immediate visibility), then Supabase templates
+    return [...localOnlyTemplates, ...supabaseNormalized];
+  }, [supabaseTemplates, externalTemplates]);
+
+  // Track previous supabaseTemplates to detect actual Supabase changes
+  const prevSupabaseTemplatesRef = useRef(supabaseTemplates);
 
   const resolveSupabaseTemplateId = useCallback((templateOrId) => {
     if (!templateOrId) return null;
@@ -1694,12 +1706,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     const currentTemplates = templates;
     const nextValue = typeof updater === 'function' ? updater(currentTemplates) : updater;
     const next = Array.isArray(nextValue) ? nextValue : [];
-
-    // Only notify parent if this wasn't triggered by external templates changing
-    if (!isExternalUpdateRef.current) {
-      // Use setTimeout to avoid setState during render
-      setTimeout(() => onTemplatesChange?.(next), 0);
-    }
+    // Use setTimeout to avoid setState during render
+    setTimeout(() => onTemplatesChange?.(next), 0);
   }, [onTemplatesChange, templates]);
 
   const [selectedProjectId, setSelectedProjectId] = useState(null);
@@ -1754,17 +1762,18 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     } catch { }
   }, []);
 
-  // Sync Supabase templates with parent component
+  // Sync Supabase templates with parent component (only when Supabase data changes)
   useEffect(() => {
     if (!Array.isArray(templates)) return;
-    if (!isExternalUpdateRef.current) {
-      isExternalUpdateRef.current = true;
+    // Only sync to parent when supabaseTemplates actually changed
+    // This prevents circular updates when externalTemplates change
+    if (prevSupabaseTemplatesRef.current !== supabaseTemplates) {
+      prevSupabaseTemplatesRef.current = supabaseTemplates;
       setTimeout(() => {
         onTemplatesChange?.(templates);
-        isExternalUpdateRef.current = false;
       }, 0);
     }
-  }, [templates, onTemplatesChange]);
+  }, [templates, supabaseTemplates, onTemplatesChange]);
 
   // Sync Supabase documents with parent component state
   useEffect(() => {
