@@ -9855,6 +9855,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 });
               }
             });
+
+            // Sort by excelRowIndex to maintain Excel row order
+            categoryHighlights.sort((a, b) => {
+              const aIndex = a.excelRowIndex ?? Infinity;
+              const bIndex = b.excelRowIndex ?? Infinity;
+              return aIndex - bIndex;
+            });
             // console.log(`Found ${categoryHighlights.length} highlights for this category.`);
 
             // Build header row: Changed By, Changed Date, Item, [checklist items], Ball in Court, Notes
@@ -11005,6 +11012,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           const ann = newHighlightAnnotations[key];
           let changed = false;
 
+          // Update Excel row index to maintain order (i is the 1-based row index in Excel)
+          if (ann.excelRowIndex !== i) {
+            ann.excelRowIndex = i;
+            changed = true;
+          }
+
           // Update checklist responses
           if (!ann.checklistResponses) ann.checklistResponses = {};
 
@@ -11113,7 +11126,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             changedBy: '',
             changedDate: new Date().toISOString(),
             pageNumber: null,
-            bounds: null
+            bounds: null,
+            excelRowIndex: i  // Store Excel row index for ordering
           };
 
           newHighlightAnnotations[newHighlightId] = newHighlight;
@@ -11234,6 +11248,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           const key = matchedHighlightKey;
           const ann = newHighlightAnnotations[key];
           let changed = false;
+
+          // Update Excel row index to maintain order (i is the 1-based row index in Excel)
+          if (ann.excelRowIndex !== i) {
+            ann.excelRowIndex = i;
+            changed = true;
+          }
 
           // Update checklist responses
           if (!ann.checklistResponses) ann.checklistResponses = {};
@@ -11363,7 +11383,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             changedBy: '',
             changedDate: new Date().toISOString(),
             pageNumber: null,
-            bounds: null
+            bounds: null,
+            excelRowIndex: i  // Store Excel row index for ordering
           };
 
           newHighlightAnnotations[newHighlightId] = newHighlight;
@@ -18202,6 +18223,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             id: highlightId  // Use the key, not highlight.id
                           });
                         }
+                      });
+
+                      // Sort highlights within each category by excelRowIndex to maintain Excel row order
+                      Object.keys(highlightsByCategory).forEach(categoryId => {
+                        highlightsByCategory[categoryId].sort((a, b) => {
+                          // Items with excelRowIndex come before those without
+                          const aIndex = a.excelRowIndex ?? Infinity;
+                          const bIndex = b.excelRowIndex ?? Infinity;
+                          return aIndex - bIndex;
+                        });
                       });
 
                       // Show categories list first (before highlights)
