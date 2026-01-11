@@ -238,6 +238,19 @@ const getOpacityFromAnnotationColor = (color) => {
   return 100;
 };
 
+// Helper to detect if a storage error indicates the file no longer exists
+// Used to silently clean up stale document records when files are deleted from Supabase
+const isStorageFileNotFoundError = (error) => {
+  const errorStr = error?.message?.toLowerCase() || error?.toString()?.toLowerCase() || '';
+  return (
+    error?.status === 404 ||
+    error?.status === 400 ||
+    errorStr.includes('not found') ||
+    errorStr.includes('object not found') ||
+    errorStr.includes('storageunknownerror')
+  );
+};
+
 const escapeCSVValue = (value) => {
   if (value === null || value === undefined) return '';
   const str = String(value);
@@ -1324,7 +1337,7 @@ const thumbnailQueue = {
 };
 
 // PDF Thumbnail Generator Component
-function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocument }) {
+function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocument, onFileNotFound }) {
   const [thumbnail, setThumbnail] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const isMountedRef = useRef(true);
@@ -1362,6 +1375,10 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
         } catch (error) {
           console.error('Error downloading document for thumbnail:', error);
           if (isMountedRef.current) setIsLoading(false);
+          // If file no longer exists in storage, notify parent to clean up
+          if (isStorageFileNotFoundError(error) && docId && onFileNotFound) {
+            onFileNotFound(docId);
+          }
           return;
         }
       }
@@ -3082,6 +3099,29 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       ? projects.length > 0
       : templates.length > 0;
 
+  // Handler for when a file is not found in storage (deleted from Supabase)
+  // Silently removes the stale document entry from UI and database
+  const handleFileNotFound = useCallback(async (docId) => {
+    // Prevent duplicate cleanup attempts
+    if (cleaningUpDocumentsRef.current.has(docId)) return;
+    cleaningUpDocumentsRef.current.add(docId);
+
+    const doc = documents.find(d => d.id === docId);
+    console.log(`Removing stale document: ${doc?.name || docId} (file missing from storage)`);
+
+    // Remove from UI immediately
+    setDocuments(prev => prev.filter(d => d.id !== docId));
+
+    // Delete from database
+    try {
+      await deleteSupabaseDocument(docId);
+    } catch (deleteError) {
+      console.error('Error removing stale document record:', deleteError);
+    }
+
+    cleaningUpDocumentsRef.current.delete(docId);
+  }, [documents, deleteSupabaseDocument]);
+
   const handleDocumentClick = async (doc) => {
     try {
       // 1. Check if we have a local file object (e.g. from optimistic upload)
@@ -3135,7 +3175,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       }
     } catch (error) {
       console.error('Error opening document:', error);
-      alert('Error opening document: ' + error.message + '. Please try again.');
+
+      // Check if file no longer exists in storage
+      if (isStorageFileNotFoundError(error)) {
+        // Silently clean up the stale document - no error shown to user
+        await handleFileNotFound(doc.id);
+      } else {
+        // Network or other temporary error - show message
+        alert('Unable to open document. Please check your connection and try again.');
+      }
     }
   };
 
@@ -7522,7 +7570,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                         style={{ position: 'absolute', right: '6px', top: '6px', zIndex: 10 }}
                       />
                     )}
-                    <PDFThumbnail dataUrl={item.dataUrl} filePath={item.filePath} docId={item.id} getDocumentUrl={getDocumentUrl} downloadDocument={downloadFromStorage} />
+                    <PDFThumbnail dataUrl={item.dataUrl} filePath={item.filePath} docId={item.id} getDocumentUrl={getDocumentUrl} downloadDocument={downloadFromStorage} onFileNotFound={handleFileNotFound} />
                     <div style={{ textAlign: 'center', width: '100%' }}>
                       <div style={{
                         fontSize: '11px',
@@ -7626,7 +7674,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                         style={{ position: 'absolute', right: '6px', top: '6px', zIndex: 10 }}
                       />
                     )}
-                    <PDFThumbnail dataUrl={item.dataUrl} filePath={item.filePath} docId={item.id} getDocumentUrl={getDocumentUrl} downloadDocument={downloadFromStorage} />
+                    <PDFThumbnail dataUrl={item.dataUrl} filePath={item.filePath} docId={item.id} getDocumentUrl={getDocumentUrl} downloadDocument={downloadFromStorage} onFileNotFound={handleFileNotFound} />
                     <div style={{ textAlign: 'center', width: '100%' }}>
                       <div style={{ fontSize: '11px', fontWeight: '500', color: '#eaeaea', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
                       <div style={{ fontSize: '9px', color: '#888' }}>{formatFileSize(item.size || item.file_size || 0)}</div>
@@ -7722,7 +7770,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                         style={{ position: 'absolute', right: '6px', top: '6px', zIndex: 10 }}
                       />
                     )}
-                    <PDFThumbnail dataUrl={item.dataUrl} filePath={item.filePath} docId={item.id} getDocumentUrl={getDocumentUrl} downloadDocument={downloadFromStorage} />
+                    <PDFThumbnail dataUrl={item.dataUrl} filePath={item.filePath} docId={item.id} getDocumentUrl={getDocumentUrl} downloadDocument={downloadFromStorage} onFileNotFound={handleFileNotFound} />
                     <div style={{ textAlign: 'center', width: '100%' }}>
                       <div style={{ fontSize: '11px', fontWeight: '500', color: '#eaeaea', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
                       <div style={{ fontSize: '9px', color: '#888' }}>{formatFileSize(item.size)}</div>
@@ -23167,6 +23215,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState([]);
   const dashboardRef = useRef(null);
+  // Track documents being cleaned up to prevent duplicate cleanup attempts
+  const cleaningUpDocumentsRef = useRef(new Set());
 
   // Tab management state
   const HOME_TAB_ID = 'home-tab';

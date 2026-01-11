@@ -1,437 +1,317 @@
-chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-excelGraphService.js:133     GET https://graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s7fe8db9332ac4f4d83fc3bcdbed45933?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl 404
-(anonymous) @ HTTPMessageHandler.ts:29
+chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+1767420149600.pdf:1  Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1363
+cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
+App.jsx:3137 Error opening document: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+handleDocumentClick @ App.jsx:3137
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
 (anonymous) @ tslib.es6.mjs:121
 __awaiter @ tslib.es6.mjs:117
-execute @ HTTPMessageHandler.ts:28
-(anonymous) @ TelemetryHandler.ts:91
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
 (anonymous) @ tslib.es6.mjs:121
 __awaiter @ tslib.es6.mjs:117
-execute @ TelemetryHandler.ts:66
-(anonymous) @ RedirectHandler.ts:193
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
 (anonymous) @ tslib.es6.mjs:121
 __awaiter @ tslib.es6.mjs:117
-executeWithRedirect @ RedirectHandler.ts:192
-(anonymous) @ RedirectHandler.ts:225
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ RedirectHandler.ts:220
-(anonymous) @ RetryHandler.ts:173
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-executeWithRetry @ RetryHandler.ts:172
-(anonymous) @ RetryHandler.ts:196
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ RetryHandler.ts:192
-(anonymous) @ AuthenticationHandler.ts:88
-fulfilled @ tslib.es6.mjs:118
-Promise.then (async)
-step @ tslib.es6.mjs:120
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ AuthenticationHandler.ts:63
-(anonymous) @ HTTPClient.ts:88
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-sendRequest @ HTTPClient.ts:81
-(anonymous) @ GraphRequest.ts:372
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-send @ GraphRequest.ts:366
-(anonymous) @ GraphRequest.ts:635
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-get @ GraphRequest.ts:630
-getFileById @ excelGraphService.js:133
-(anonymous) @ App.jsx:10645
-(anonymous) @ App.jsx:10689
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 54 more frames
-App.jsx:10664 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
-excelGraphService.js:133     GET https://graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s7fe8db9332ac4f4d83fc3bcdbed45933?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl 404
-(anonymous) @ HTTPMessageHandler.ts:29
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ HTTPMessageHandler.ts:28
-(anonymous) @ TelemetryHandler.ts:91
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ TelemetryHandler.ts:66
-(anonymous) @ RedirectHandler.ts:193
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-executeWithRedirect @ RedirectHandler.ts:192
-(anonymous) @ RedirectHandler.ts:225
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ RedirectHandler.ts:220
-(anonymous) @ RetryHandler.ts:173
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-executeWithRetry @ RetryHandler.ts:172
-(anonymous) @ RetryHandler.ts:196
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ RetryHandler.ts:192
-(anonymous) @ AuthenticationHandler.ts:88
-fulfilled @ tslib.es6.mjs:118
-Promise.then (async)
-step @ tslib.es6.mjs:120
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-execute @ AuthenticationHandler.ts:63
-(anonymous) @ HTTPClient.ts:88
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-sendRequest @ HTTPClient.ts:81
-(anonymous) @ GraphRequest.ts:372
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-send @ GraphRequest.ts:366
-(anonymous) @ GraphRequest.ts:635
-(anonymous) @ tslib.es6.mjs:121
-__awaiter @ tslib.es6.mjs:117
-get @ GraphRequest.ts:630
-getFileById @ excelGraphService.js:133
-checkLinkedExcelExists @ App.jsx:10490
-await in checkLinkedExcelExists (async)
-(anonymous) @ App.jsx:10591
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 54 more frames
-App.jsx:10441 Clearing Excel link: OneDrive file was deleted (not found by ID)
-App.jsx:8950 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
-    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
-    at div
-    at div
-    at div
-    at App (http://localhost:5173/src/App.jsx:24260:151)
-    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
-    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
-    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
-printWarning @ chunk-DSUIPI7G.js:7410
-error @ chunk-DSUIPI7G.js:7394
-checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
-scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
-dispatchSetState @ chunk-DSUIPI7G.js:19292
-(anonymous) @ App.jsx:8950
-(anonymous) @ App.jsx:14700
-(anonymous) @ PageAnnotationLayer.jsx:6290
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 16 more frames
-App.jsx:8950 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
-    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
-    at div
-    at div
-    at div
-    at App (http://localhost:5173/src/App.jsx:24260:151)
-    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
-    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
-    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
-printWarning @ chunk-DSUIPI7G.js:7410
-error @ chunk-DSUIPI7G.js:7394
-checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
-scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
-dispatchSetState @ chunk-DSUIPI7G.js:19292
-(anonymous) @ App.jsx:8950
-(anonymous) @ App.jsx:14700
-(anonymous) @ PageAnnotationLayer.jsx:6290
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 16 more frames
-App.jsx:10839 Uploaded to OneDrive, file ID: DC046716012CC0F4!s042b09caba324c068df57fd47716e436
-App.jsx:10860 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
-App.jsx:10664 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
-App.jsx:8950 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
-    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
-    at div
-    at div
-    at div
-    at App (http://localhost:5173/src/App.jsx:24260:151)
-    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
-    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
-    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
-printWarning @ chunk-DSUIPI7G.js:7410
-error @ chunk-DSUIPI7G.js:7394
-checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
-scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
-dispatchSetState @ chunk-DSUIPI7G.js:19292
-(anonymous) @ App.jsx:8950
-(anonymous) @ App.jsx:14700
-(anonymous) @ PageAnnotationLayer.jsx:6290
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 16 more frames
-App.jsx:8950 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
-printWarning @ chunk-DSUIPI7G.js:7410
-error @ chunk-DSUIPI7G.js:7394
-checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
-scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
-dispatchSetState @ chunk-DSUIPI7G.js:19292
-(anonymous) @ App.jsx:8950
-(anonymous) @ App.jsx:11811
-(anonymous) @ App.jsx:12003
-subscription @ VM135:22
-emit @ VM134 sandbox_bundle:2
-onMessage @ VM134 sandbox_bundle:2
-Show 5 more frames
-App.jsx:1435 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
-printWarning @ chunk-DSUIPI7G.js:7410
-error @ chunk-DSUIPI7G.js:7394
-checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
-scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
-dispatchSetState @ chunk-DSUIPI7G.js:19292
-generateThumbnail @ App.jsx:1435
-await in generateThumbnail (async)
-(anonymous) @ App.jsx:1445
-wrappedTask @ App.jsx:1300
-processNext @ App.jsx:1322
-wrappedTask @ App.jsx:1306
-await in wrappedTask (async)
-processNext @ App.jsx:1322
-wrappedTask @ App.jsx:1306
-await in wrappedTask (async)
-processNext @ App.jsx:1322
-wrappedTask @ App.jsx:1306
-await in wrappedTask (async)
-processNext @ App.jsx:1322
-wrappedTask @ App.jsx:1306
-await in wrappedTask (async)
-processNext @ App.jsx:1322
-wrappedTask @ App.jsx:1306
-await in wrappedTask (async)
-processNext @ App.jsx:1322
-wrappedTask @ App.jsx:1306
-await in wrappedTask (async)
-processNext @ App.jsx:1322
-wrappedTask @ App.jsx:1306
-await in wrappedTask (async)
-processNext @ App.jsx:1322
-wrappedTask @ App.jsx:1306
-await in wrappedTask (async)
-processNext @ App.jsx:1322
-wrappedTask @ App.jsx:1306
-Show 5 more frames
-App.jsx:8950 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
-    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
-    at div
-    at div
-    at div
-    at App (http://localhost:5173/src/App.jsx:24260:151)
-    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
-    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
-    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
-printWarning @ chunk-DSUIPI7G.js:7410
-error @ chunk-DSUIPI7G.js:7394
-checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
-scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
-dispatchSetState @ chunk-DSUIPI7G.js:19292
-(anonymous) @ App.jsx:8950
-(anonymous) @ App.jsx:14700
-(anonymous) @ PageAnnotationLayer.jsx:6290
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 16 more frames
-App.jsx:8950 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
-    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
-    at div
-    at div
-    at div
-    at App (http://localhost:5173/src/App.jsx:24260:151)
-    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
-    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
-    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
-printWarning @ chunk-DSUIPI7G.js:7410
-error @ chunk-DSUIPI7G.js:7394
-checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
-scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
-dispatchSetState @ chunk-DSUIPI7G.js:19292
-(anonymous) @ App.jsx:8950
-(anonymous) @ App.jsx:14700
-(anonymous) @ PageAnnotationLayer.jsx:6290
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 16 more frames
-App.jsx:8950 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
-    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
-    at div
-    at div
-    at div
-    at App (http://localhost:5173/src/App.jsx:24260:151)
-    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
-    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
-    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
-printWarning @ chunk-DSUIPI7G.js:7410
-error @ chunk-DSUIPI7G.js:7394
-checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
-scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
-dispatchSetState @ chunk-DSUIPI7G.js:19292
-(anonymous) @ App.jsx:8950
-(anonymous) @ App.jsx:14700
-(anonymous) @ PageAnnotationLayer.jsx:6290
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 16 more frames
-App.jsx:10664 Timestamp comparison: {supabase: '2026-01-11T18:36:40.501Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
-App.jsx:8950 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
-    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at div
-    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
-    at div
-    at div
-    at div
-    at App (http://localhost:5173/src/App.jsx:24260:151)
-    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
-    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
-    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
-printWarning @ chunk-DSUIPI7G.js:7410
-error @ chunk-DSUIPI7G.js:7394
-checkForNestedUpdates @ chunk-DSUIPI7G.js:26554
-scheduleUpdateOnFiber @ chunk-DSUIPI7G.js:25422
-dispatchSetState @ chunk-DSUIPI7G.js:19292
-(anonymous) @ App.jsx:8950
-(anonymous) @ App.jsx:14700
-(anonymous) @ PageAnnotationLayer.jsx:6290
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 16 more frames
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:3137 Error opening document: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+handleDocumentClick @ App.jsx:3137
+await in handleDocumentClick (async)
+onClick @ App.jsx:7485
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
