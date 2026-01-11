@@ -1,274 +1,217 @@
 chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
 1767420149600.pdf:1  Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
+1767420149600.pdf:1  Failed to load resource: the server responded with a status of 400 ()
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:3191 Error opening document: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+handleDocumentClick @ App.jsx:3191
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at handleDocumentClick (App.jsx:3196:15)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
+App.jsx:1387 Error downloading document for thumbnail: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:1363 Error downloading document for thumbnail: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-generateThumbnail @ App.jsx:1363
-cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf:1     Failed to load resource: the server responded with a status of 400 ()
-App.jsx:3137 Error opening document: StorageUnknownError: {}
-    at fetch.ts:43:12
-    at Generator.next (<anonymous>)
-    at fulfilled (tslib.es6.mjs:118:56)
-handleDocumentClick @ App.jsx:3137
+generateThumbnail @ App.jsx:1387
+App.jsx:1391 Thumbnail error check: Object
+App.jsx:1393 Triggering file cleanup for: 1f967084-3b8f-43ba-b4a7-c0584b47cd44
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at generateThumbnail (App.jsx:1394:13)
+    at async wrappedTask (App.jsx:1324:26)
 fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf 400
 (anonymous) @ fetch.ts:7
 (anonymous) @ fetch.ts:34
@@ -292,13 +235,105 @@ execute @ BlobDownloadBuilder.ts:42
 getPromise @ BlobDownloadBuilder.ts:37
 then @ BlobDownloadBuilder.ts:22
 Show 20 more frames
-App.jsx:3137 Error opening document: StorageUnknownError: {}
+App.jsx:3191 Error opening document: StorageUnknownError: {}
     at fetch.ts:43:12
     at Generator.next (<anonymous>)
     at fulfilled (tslib.es6.mjs:118:56)
-handleDocumentClick @ App.jsx:3137
+handleDocumentClick @ App.jsx:3191
 await in handleDocumentClick (async)
-onClick @ App.jsx:7485
+onClick @ App.jsx:7547
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at handleDocumentClick (App.jsx:3196:15)
+(anonymous) @ App.jsx:3120
+handleDocumentClick @ App.jsx:3196
+await in handleDocumentClick (async)
+onClick @ App.jsx:7547
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+fetch.ts:7     GET https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/documents/170d915c-5741-4e0b-b03f-deaeedae27bd/general/1767420149600.pdf 400
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+(anonymous) @ helpers.ts:5
+(anonymous) @ helpers.ts:5
+(anonymous) @ fetch.ts:82
+(anonymous) @ fetch.ts:81
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+_handleRequest @ fetch.ts:79
+(anonymous) @ fetch.ts:99
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ fetch.ts:97
+downloadFn @ StorageFileApi.ts:549
+(anonymous) @ BlobDownloadBuilder.ts:44
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ BlobDownloadBuilder.ts:42
+getPromise @ BlobDownloadBuilder.ts:37
+then @ BlobDownloadBuilder.ts:22
+Show 20 more frames
+App.jsx:3191 Error opening document: StorageUnknownError: {}
+    at fetch.ts:43:12
+    at Generator.next (<anonymous>)
+    at fulfilled (tslib.es6.mjs:118:56)
+handleDocumentClick @ App.jsx:3191
+await in handleDocumentClick (async)
+onClick @ App.jsx:7547
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 15 more frames
+App.jsx:3120 Uncaught (in promise) ReferenceError: cleaningUpDocumentsRef is not defined
+    at App.jsx:3120:5
+    at handleDocumentClick (App.jsx:3196:15)
+(anonymous) @ App.jsx:3120
+handleDocumentClick @ App.jsx:3196
+await in handleDocumentClick (async)
+onClick @ App.jsx:7547
 callCallback2 @ chunk-DSUIPI7G.js:10563
 invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
 invokeGuardedCallback @ chunk-DSUIPI7G.js:10622

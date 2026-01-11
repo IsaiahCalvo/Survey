@@ -241,14 +241,25 @@ const getOpacityFromAnnotationColor = (color) => {
 // Helper to detect if a storage error indicates the file no longer exists
 // Used to silently clean up stale document records when files are deleted from Supabase
 const isStorageFileNotFoundError = (error) => {
-  const errorStr = error?.message?.toLowerCase() || error?.toString()?.toLowerCase() || '';
-  return (
-    error?.status === 404 ||
-    error?.status === 400 ||
-    errorStr.includes('not found') ||
-    errorStr.includes('object not found') ||
-    errorStr.includes('storageunknownerror')
-  );
+  // Check error status codes
+  if (error?.status === 404 || error?.status === 400) return true;
+  if (error?.statusCode === 404 || error?.statusCode === 400) return true;
+
+  // Check error name (Supabase uses StorageUnknownError for missing files)
+  const errorName = error?.name?.toLowerCase() || error?.constructor?.name?.toLowerCase() || '';
+  if (errorName.includes('storageunknownerror') || errorName.includes('storageapierror')) return true;
+
+  // Check error message
+  const errorMsg = error?.message?.toLowerCase() || '';
+  if (errorMsg.includes('not found') || errorMsg.includes('object not found')) return true;
+
+  // Check stringified error (fallback)
+  try {
+    const errorStr = String(error).toLowerCase();
+    if (errorStr.includes('storageunknownerror') || errorStr.includes('400') || errorStr.includes('not found')) return true;
+  } catch {}
+
+  return false;
 };
 
 const escapeCSVValue = (value) => {
@@ -1376,7 +1387,10 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
           console.error('Error downloading document for thumbnail:', error);
           if (isMountedRef.current) setIsLoading(false);
           // If file no longer exists in storage, notify parent to clean up
-          if (isStorageFileNotFoundError(error) && docId && onFileNotFound) {
+          const isFileNotFound = isStorageFileNotFoundError(error);
+          console.log('Thumbnail error check:', { isFileNotFound, docId, hasCallback: !!onFileNotFound, errorName: error?.name, errorConstructor: error?.constructor?.name });
+          if (isFileNotFound && docId && onFileNotFound) {
+            console.log('Triggering file cleanup for:', docId);
             onFileNotFound(docId);
           }
           return;
@@ -1523,6 +1537,8 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
 const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, ballInCourtEntities, setBallInCourtEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
+  // Track documents being cleaned up to prevent duplicate cleanup attempts
+  const cleaningUpDocumentsRef = useRef(new Set());
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
@@ -11200,6 +11216,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
 
     // Process deletions
+    const itemsToDelete = [];
     highlightsToDelete.forEach(({ key, ann }) => {
       delete newHighlightAnnotations[key];
       deletionsCount++;
@@ -11211,7 +11228,73 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           [ann.pageNumber]: [...(prev[ann.pageNumber] || []), ann.bounds]
         }));
       }
+
+      // Track items to delete (same logic as handleHighlightDeleted)
+      const moduleId = ann.moduleId || ann.spaceId;
+      const categoryName = getCategoryName(templateToUse, moduleId, ann.categoryId);
+      const matchingItem = Object.values(items).find(item =>
+        item.name === ann.name &&
+        item.itemType === categoryName
+      );
+
+      if (matchingItem) {
+        itemsToDelete.push({
+          highlight: ann,
+          item: matchingItem,
+          moduleId: moduleId
+        });
+      }
     });
+
+    // Delete associated items and annotations
+    if (itemsToDelete.length > 0) {
+      // Delete annotations for deleted items
+      setAnnotations(prev => {
+        const updated = { ...prev };
+        itemsToDelete.forEach(({ highlight, item }) => {
+          Object.values(updated).forEach(ann => {
+            const annModuleId = ann.spaceId || ann.moduleId;
+            const highlightModuleId = highlight.spaceId || highlight.moduleId;
+            if (ann.itemId === item.itemId && annModuleId === highlightModuleId) {
+              if (highlight.bounds && ann.pdfCoordinates && boundsMatch(ann.pdfCoordinates, highlight.bounds)) {
+                delete updated[ann.annotationId];
+              }
+            }
+          });
+        });
+        return updated;
+      });
+
+      // Delete items or remove module-specific data
+      setItems(prev => {
+        const updated = { ...prev };
+        itemsToDelete.forEach(({ highlight, item, moduleId }) => {
+          const currentItem = updated[item.itemId];
+          if (!currentItem) return;
+
+          const moduleName = getModuleName(templateToUse, moduleId);
+          const dataKey = getModuleDataKey(moduleName);
+          const updatedItem = { ...currentItem };
+          delete updatedItem[dataKey];
+
+          // Check if item has any module data left
+          const allModules = templateToUse?.modules || templateToUse?.spaces || [];
+          const hasOtherModuleData = allModules.some(module => {
+            if (module.id === moduleId) return false;
+            const otherModuleName = getModuleName(templateToUse, module.id);
+            const otherDataKey = getModuleDataKey(otherModuleName);
+            return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
+          });
+
+          if (hasOtherModuleData) {
+            updated[item.itemId] = updatedItem;
+          } else {
+            delete updated[item.itemId];
+          }
+        });
+        return updated;
+      });
+    }
 
     if (updatesCount > 0 || deletionsCount > 0) {
       setHighlightAnnotations(newHighlightAnnotations);
@@ -11219,7 +11302,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     } else {
       alert('Sync complete! No changes found.');
     }
-  }, [highlightAnnotations]);
+  }, [highlightAnnotations, items, setItems, setAnnotations]);
 
   // Helper: Execute auto-sync import with canvas color tracking
   const executeAutoExcelImport = useCallback((worksheetDataList, templateToUse) => {
@@ -11457,6 +11540,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
 
     // Process deletions
+    const itemsToDelete = [];
     highlightsToDelete.forEach(({ key, ann }) => {
       delete newHighlightAnnotations[key];
       deletionsCount++;
@@ -11468,7 +11552,73 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           [ann.pageNumber]: [...(prev[ann.pageNumber] || []), ann.bounds]
         }));
       }
+
+      // Track items to delete (same logic as handleHighlightDeleted)
+      const moduleId = ann.moduleId || ann.spaceId;
+      const categoryName = getCategoryName(templateToUse, moduleId, ann.categoryId);
+      const matchingItem = Object.values(items).find(item =>
+        item.name === ann.name &&
+        item.itemType === categoryName
+      );
+
+      if (matchingItem) {
+        itemsToDelete.push({
+          highlight: ann,
+          item: matchingItem,
+          moduleId: moduleId
+        });
+      }
     });
+
+    // Delete associated items and annotations
+    if (itemsToDelete.length > 0) {
+      // Delete annotations for deleted items
+      setAnnotations(prev => {
+        const updated = { ...prev };
+        itemsToDelete.forEach(({ highlight, item }) => {
+          Object.values(updated).forEach(ann => {
+            const annModuleId = ann.spaceId || ann.moduleId;
+            const highlightModuleId = highlight.spaceId || highlight.moduleId;
+            if (ann.itemId === item.itemId && annModuleId === highlightModuleId) {
+              if (highlight.bounds && ann.pdfCoordinates && boundsMatch(ann.pdfCoordinates, highlight.bounds)) {
+                delete updated[ann.annotationId];
+              }
+            }
+          });
+        });
+        return updated;
+      });
+
+      // Delete items or remove module-specific data
+      setItems(prev => {
+        const updated = { ...prev };
+        itemsToDelete.forEach(({ highlight, item, moduleId }) => {
+          const currentItem = updated[item.itemId];
+          if (!currentItem) return;
+
+          const moduleName = getModuleName(templateToUse, moduleId);
+          const dataKey = getModuleDataKey(moduleName);
+          const updatedItem = { ...currentItem };
+          delete updatedItem[dataKey];
+
+          // Check if item has any module data left
+          const allModules = templateToUse?.modules || templateToUse?.spaces || [];
+          const hasOtherModuleData = allModules.some(module => {
+            if (module.id === moduleId) return false;
+            const otherModuleName = getModuleName(templateToUse, module.id);
+            const otherDataKey = getModuleDataKey(otherModuleName);
+            return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
+          });
+
+          if (hasOtherModuleData) {
+            updated[item.itemId] = updatedItem;
+          } else {
+            delete updated[item.itemId];
+          }
+        });
+        return updated;
+      });
+    }
 
     if (updatesCount > 0 || deletionsCount > 0) {
       setHighlightAnnotations(newHighlightAnnotations);
@@ -11509,7 +11659,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setLastSyncMessage('No changes found');
       setTimeout(() => setLastSyncMessage(''), 5000);
     }
-  }, [highlightAnnotations]);
+  }, [highlightAnnotations, items, setItems, setAnnotations]);
 
   // Helper: Create new template with added checklist items from new columns
   const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory, templateName) => {
@@ -23215,8 +23365,6 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState([]);
   const dashboardRef = useRef(null);
-  // Track documents being cleaned up to prevent duplicate cleanup attempts
-  const cleaningUpDocumentsRef = useRef(new Set());
 
   // Tab management state
   const HOME_TAB_ID = 'home-tab';
