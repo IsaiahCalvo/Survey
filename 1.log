@@ -1,9 +1,304 @@
 chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s9089611611c84678924ed3bb199cacef?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1     Failed to load resource: the server responded with a status of 404 ()
-App.jsx:10655 Timestamp comparison: Object
-graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s9089611611c84678924ed3bb199cacef?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1     Failed to load resource: the server responded with a status of 404 ()
-App.jsx:10432 Clearing Excel link: OneDrive file was deleted (not found by ID)
-App.jsx:10830 Uploaded to OneDrive, file ID: DC046716012CC0F4!sb37b10ef817f4d3eab6cf438c6b50ed7
-App.jsx:10851 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
-App.jsx:10655 Timestamp comparison: Object
-App.jsx:10655 Timestamp comparison: Object
+graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s15f740e8a2c94b5e8593cf2f86a8b267?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1     Failed to load resource: the server responded with a status of 404 ()
+App.jsx:10664 Timestamp comparison: Object
+graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s15f740e8a2c94b5e8593cf2f86a8b267?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl:1     Failed to load resource: the server responded with a status of 404 ()
+App.jsx:10441 Clearing Excel link: OneDrive file was deleted (not found by ID)
+chunk-DSUIPI7G.js:7410 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx:24326:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+printWarning @ chunk-DSUIPI7G.js:7410
+fabric.js:15682 Uncaught DOMException: Failed to execute 'drawImage' on 'CanvasRenderingContext2D': The image argument is a canvas element with a width or height of 0.
+    at klass.drawCacheOnCanvas (http://localhost:5173/node_modules/.vite/deps/fabric.js?v=ca18a94e:11867:17)
+    at klass.render (http://localhost:5173/node_modules/.vite/deps/fabric.js?v=ca18a94e:11712:20)
+    at klass._renderObjects (http://localhost:5173/node_modules/.vite/deps/fabric.js?v=ca18a94e:7063:40)
+    at klass.renderCanvas (http://localhost:5173/node_modules/.vite/deps/fabric.js?v=ca18a94e:7023:18)
+    at klass.renderAll (http://localhost:5173/node_modules/.vite/deps/fabric.js?v=ca18a94e:8903:18)
+    at klass.handleMouseUpForSelection (http://localhost:5173/src/PageAnnotationLayer.jsx:4219:16)
+    at klass.fire (http://localhost:5173/node_modules/.vite/deps/fabric.js?v=ca18a94e:230:56)
+    at klass._handleEvent (http://localhost:5173/node_modules/.vite/deps/fabric.js?v=ca18a94e:10096:18)
+    at klass.__onMouseUp (http://localhost:5173/node_modules/.vite/deps/fabric.js?v=ca18a94e:10039:18)
+    at klass._onMouseUp (http://localhost:5173/node_modules/.vite/deps/fabric.js?v=ca18a94e:9935:18)
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1     Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1  Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1  Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1  Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1  Failed to load resource: net::ERR_CONNECTION_REFUSED
+127.0.0.1:7242/ingest/ca82909f-645c-4959-9621-26884e513e65:1  Failed to load resource: net::ERR_CONNECTION_REFUSED
+chunk-DSUIPI7G.js:7410 Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx:24326:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+printWarning @ chunk-DSUIPI7G.js:7410
+ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx:24326:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+printWarning @ chunk-DSUIPI7G.js?v=ca18a94e:7399
+error @ chunk-DSUIPI7G.js?v=ca18a94e:7383
+checkForNestedUpdates @ chunk-DSUIPI7G.js?v=ca18a94e:26543
+scheduleUpdateOnFiber @ chunk-DSUIPI7G.js?v=ca18a94e:25411
+dispatchSetState @ chunk-DSUIPI7G.js?v=ca18a94e:19281
+(anonymous) @ App.jsx:10332
+(anonymous) @ App.jsx:14620
+(anonymous) @ PageAnnotationLayer.jsx:4535
+commitHookEffectListMount @ chunk-DSUIPI7G.js?v=ca18a94e:23793
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js?v=ca18a94e:25034
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js?v=ca18a94e:25007
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js?v=ca18a94e:24997
+commitPassiveMountEffects @ chunk-DSUIPI7G.js?v=ca18a94e:24987
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js?v=ca18a94e:26368
+flushPassiveEffects @ chunk-DSUIPI7G.js?v=ca18a94e:26325
+(anonymous) @ chunk-DSUIPI7G.js?v=ca18a94e:26206
+workLoop @ chunk-DSUIPI7G.js?v=ca18a94e:462
+flushWork @ chunk-DSUIPI7G.js?v=ca18a94e:441
+performWorkUntilDeadline @ chunk-DSUIPI7G.js?v=ca18a94e:649
+ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx:24326:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+printWarning @ chunk-DSUIPI7G.js?v=ca18a94e:7399
+error @ chunk-DSUIPI7G.js?v=ca18a94e:7383
+checkForNestedUpdates @ chunk-DSUIPI7G.js?v=ca18a94e:26543
+scheduleUpdateOnFiber @ chunk-DSUIPI7G.js?v=ca18a94e:25411
+dispatchSetState @ chunk-DSUIPI7G.js?v=ca18a94e:19281
+(anonymous) @ App.jsx:10332
+(anonymous) @ App.jsx:14620
+(anonymous) @ PageAnnotationLayer.jsx:4535
+commitHookEffectListMount @ chunk-DSUIPI7G.js?v=ca18a94e:23793
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js?v=ca18a94e:25034
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js?v=ca18a94e:25007
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js?v=ca18a94e:24997
+commitPassiveMountEffects @ chunk-DSUIPI7G.js?v=ca18a94e:24987
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js?v=ca18a94e:26368
+flushPassiveEffects @ chunk-DSUIPI7G.js?v=ca18a94e:26325
+(anonymous) @ chunk-DSUIPI7G.js?v=ca18a94e:26206
+workLoop @ chunk-DSUIPI7G.js?v=ca18a94e:462
+flushWork @ chunk-DSUIPI7G.js?v=ca18a94e:441
+performWorkUntilDeadline @ chunk-DSUIPI7G.js?v=ca18a94e:649
+ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+    at http://localhost:5173/src/PageAnnotationLayer.jsx:1558:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx:9612:22)
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx:24326:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+printWarning @ chunk-DSUIPI7G.js?v=ca18a94e:7399
+error @ chunk-DSUIPI7G.js?v=ca18a94e:7383
+checkForNestedUpdates @ chunk-DSUIPI7G.js?v=ca18a94e:26543
+scheduleUpdateOnFiber @ chunk-DSUIPI7G.js?v=ca18a94e:25411
+dispatchSetState @ chunk-DSUIPI7G.js?v=ca18a94e:19281
+(anonymous) @ App.jsx:10332
+(anonymous) @ App.jsx:14620
+(anonymous) @ PageAnnotationLayer.jsx:4535
+commitHookEffectListMount @ chunk-DSUIPI7G.js?v=ca18a94e:23793
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js?v=ca18a94e:25034
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js?v=ca18a94e:25007
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js?v=ca18a94e:24997
+commitPassiveMountEffects @ chunk-DSUIPI7G.js?v=ca18a94e:24987
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js?v=ca18a94e:26368
+flushPassiveEffects @ chunk-DSUIPI7G.js?v=ca18a94e:26325
+(anonymous) @ chunk-DSUIPI7G.js?v=ca18a94e:26206
+workLoop @ chunk-DSUIPI7G.js?v=ca18a94e:462
+flushWork @ chunk-DSUIPI7G.js?v=ca18a94e:441
+performWorkUntilDeadline @ chunk-DSUIPI7G.js?v=ca18a94e:649
