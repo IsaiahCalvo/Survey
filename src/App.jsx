@@ -1287,13 +1287,55 @@ const migrateLegacyHighlights = (legacyHighlights, items, annotations, template)
   return { items: newItems, annotations: newAnnotations };
 };
 
+// Thumbnail generation queue to prevent resource exhaustion
+const thumbnailQueue = {
+  maxConcurrent: 3,
+  running: 0,
+  queue: [],
+
+  async add(task) {
+    return new Promise((resolve, reject) => {
+      const wrappedTask = async () => {
+        try {
+          const result = await task();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        } finally {
+          this.running--;
+          this.processNext();
+        }
+      };
+
+      this.queue.push(wrappedTask);
+      this.processNext();
+    });
+  },
+
+  processNext() {
+    if (this.running >= this.maxConcurrent || this.queue.length === 0) {
+      return;
+    }
+
+    this.running++;
+    const task = this.queue.shift();
+    task();
+  }
+};
+
 // PDF Thumbnail Generator Component
 function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocument }) {
   const [thumbnail, setThumbnail] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     const generateThumbnail = async () => {
+      // Check if component is still mounted
+      if (!isMountedRef.current) return;
+
       let arrayBuffer = null;
 
       // If we have a dataUrl, use it directly
@@ -1303,7 +1345,7 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
           arrayBuffer = await response.arrayBuffer();
         } catch (error) {
           console.error('Error fetching dataUrl:', error);
-          setIsLoading(false);
+          if (isMountedRef.current) setIsLoading(false);
           return;
         }
       }
@@ -1311,7 +1353,7 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
       else if (filePath && downloadDocument) {
         // Check if filePath looks like a local filesystem path
         if (filePath.includes('/Users/') || filePath.includes('\\') || filePath.startsWith('/') || filePath.includes(':')) {
-          setIsLoading(false);
+          if (isMountedRef.current) setIsLoading(false);
           return;
         }
         try {
@@ -1319,7 +1361,7 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
           arrayBuffer = await blob.arrayBuffer();
         } catch (error) {
           console.error('Error downloading document for thumbnail:', error);
-          setIsLoading(false);
+          if (isMountedRef.current) setIsLoading(false);
           return;
         }
       }
@@ -1336,13 +1378,13 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
           }
         } catch (error) {
           console.error('Error fetching PDF URL:', error);
-          setIsLoading(false);
+          if (isMountedRef.current) setIsLoading(false);
           return;
         }
       }
 
-      if (!arrayBuffer) {
-        setIsLoading(false);
+      if (!arrayBuffer || !isMountedRef.current) {
+        if (isMountedRef.current) setIsLoading(false);
         return;
       }
 
@@ -1368,6 +1410,8 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
           pdf = await recoveryTask.promise;
         }
 
+        if (!isMountedRef.current) return;
+
         // Get first page
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 0.3 }); // Scale down for thumbnail
@@ -1384,18 +1428,25 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
           viewport: viewport
         }).promise;
 
+        if (!isMountedRef.current) return;
+
         // Convert to data URL
         const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.85);
         setThumbnail(thumbnailUrl);
       } catch (error) {
         console.error('Error generating thumbnail from PDF:', error);
-        setThumbnail(null);
+        if (isMountedRef.current) setThumbnail(null);
       } finally {
-        setIsLoading(false);
+        if (isMountedRef.current) setIsLoading(false);
       }
     };
 
-    generateThumbnail();
+    // Use the queue to limit concurrent thumbnail generation
+    thumbnailQueue.add(() => generateThumbnail());
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [dataUrl, filePath, docId, getDocumentUrl, downloadDocument]);
 
   if (isLoading) {
