@@ -375,6 +375,51 @@ export const useTemplates = () => {
 };
 
 // ============================================
+// TEMPLATE UTILITY FUNCTIONS
+// ============================================
+
+/**
+ * Get all documents (surveys) using a specific template, excluding the current survey
+ * Used to check if a template can be modified or if it's shared with other surveys
+ * @param {string} templateId - The template ID to check
+ * @param {string} currentSurveyId - The current survey/document ID to exclude
+ * @returns {Promise<Array<{id: string, name: string}>>} - Array of other surveys using this template
+ */
+export async function getOtherSurveysUsingTemplate(templateId, currentSurveyId) {
+  if (!isSupabaseAvailable()) {
+    return [];
+  }
+
+  if (!templateId) {
+    return [];
+  }
+
+  try {
+    let query = supabase
+      .from('documents')
+      .select('id, name')
+      .eq('template_id', templateId);
+
+    // Exclude current survey if provided
+    if (currentSurveyId) {
+      query = query.neq('id', currentSurveyId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error checking template usage:', error);
+      throw error;
+    }
+
+    return data || [];
+  } catch (err) {
+    console.error('Error in getOtherSurveysUsingTemplate:', err);
+    return [];
+  }
+}
+
+// ============================================
 // SPACES HOOKS
 // ============================================
 

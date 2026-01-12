@@ -339,3 +339,265 @@ export async function uploadFileContentById(graphClient, fileId, fileContent) {
     throw new Error(`Failed to upload file content: ${error.message}`);
   }
 }
+
+/**
+ * List only folders in a OneDrive path
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string} folderPath - Path to folder (e.g., '/Documents')
+ * @returns {Promise<Array>} - Array of folder items
+ */
+export async function listFolders(graphClient, folderPath = '/') {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  try {
+    let apiPath;
+    if (folderPath === '/' || folderPath === '') {
+      apiPath = '/me/drive/root/children';
+    } else {
+      apiPath = `/me/drive/root:${folderPath}:/children`;
+    }
+
+    const response = await graphClient
+      .api(apiPath)
+      .filter("folder ne null")
+      .select('id,name,folder,parentReference,webUrl')
+      .get();
+
+    return response.value || [];
+  } catch (error) {
+    console.error('Failed to list folders:', error);
+    throw new Error(`Failed to list folders: ${error.message}`);
+  }
+}
+
+/**
+ * List items in a specific drive (for SharePoint document libraries)
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string} driveId - The drive ID
+ * @param {string} folderId - Folder ID or 'root' for root folder
+ * @param {boolean} foldersOnly - If true, only return folders
+ * @returns {Promise<Array>} - Array of items
+ */
+export async function listDriveItems(graphClient, driveId, folderId = 'root', foldersOnly = false) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  try {
+    let request = graphClient
+      .api(`/drives/${driveId}/items/${folderId}/children`)
+      .select('id,name,folder,file,parentReference,webUrl');
+
+    if (foldersOnly) {
+      request = request.filter("folder ne null");
+    }
+
+    const response = await request.get();
+    return response.value || [];
+  } catch (error) {
+    console.error('Failed to list drive items:', error);
+    throw new Error(`Failed to list drive items: ${error.message}`);
+  }
+}
+
+/**
+ * List user's SharePoint sites they have access to
+ * @param {Object} graphClient - Microsoft Graph client
+ * @returns {Promise<Array>} - Array of SharePoint sites
+ */
+export async function listSharePointSites(graphClient) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  try {
+    // Search for all sites the user has access to
+    const response = await graphClient
+      .api('/sites?search=*')
+      .select('id,name,displayName,webUrl')
+      .top(100)
+      .get();
+
+    return response.value || [];
+  } catch (error) {
+    console.error('Failed to list SharePoint sites:', error);
+    throw new Error(`Failed to list SharePoint sites: ${error.message}`);
+  }
+}
+
+/**
+ * List document libraries (drives) in a SharePoint site
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string} siteId - The SharePoint site ID
+ * @returns {Promise<Array>} - Array of document libraries
+ */
+export async function listSiteDocumentLibraries(graphClient, siteId) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  try {
+    const response = await graphClient
+      .api(`/sites/${siteId}/drives`)
+      .select('id,name,driveType,webUrl')
+      .get();
+
+    return response.value || [];
+  } catch (error) {
+    console.error('Failed to list site document libraries:', error);
+    throw new Error(`Failed to list site document libraries: ${error.message}`);
+  }
+}
+
+/**
+ * Check if a file exists at a given path in OneDrive
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string} folderPath - Folder path (e.g., '/Documents')
+ * @param {string} fileName - Name of the file to check
+ * @returns {Promise<{exists: boolean, fileId?: string}>} - Whether file exists and its ID
+ */
+export async function checkFileExists(graphClient, folderPath, fileName) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  try {
+    const fullPath = folderPath === '/' ? `/${fileName}` : `${folderPath}/${fileName}`;
+    const metadata = await graphClient
+      .api(`/me/drive/root:${fullPath}`)
+      .select('id,name')
+      .get();
+
+    return { exists: true, fileId: metadata.id };
+  } catch (error) {
+    if (error.statusCode === 404 || error.code === 'itemNotFound') {
+      return { exists: false };
+    }
+    console.error('Failed to check file existence:', error);
+    throw new Error(`Failed to check file existence: ${error.message}`);
+  }
+}
+
+/**
+ * Check if a file exists in a specific drive (for SharePoint)
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string} driveId - The drive ID
+ * @param {string} folderId - Folder ID
+ * @param {string} fileName - Name of the file to check
+ * @returns {Promise<{exists: boolean, fileId?: string}>} - Whether file exists and its ID
+ */
+export async function checkFileExistsInDrive(graphClient, driveId, folderId, fileName) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  try {
+    // List children and find the file by name
+    const response = await graphClient
+      .api(`/drives/${driveId}/items/${folderId}/children`)
+      .filter(`name eq '${fileName}'`)
+      .select('id,name')
+      .get();
+
+    if (response.value && response.value.length > 0) {
+      return { exists: true, fileId: response.value[0].id };
+    }
+    return { exists: false };
+  } catch (error) {
+    console.error('Failed to check file existence in drive:', error);
+    throw new Error(`Failed to check file existence: ${error.message}`);
+  }
+}
+
+/**
+ * Read template metadata from an Excel file's hidden _SurveyMetadata sheet
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string} fileId - The OneDrive file ID
+ * @returns {Promise<{templateId: string, templateName: string}|null>} - Template metadata or null if not found
+ */
+export async function getTemplateIdFromExcel(graphClient, fileId) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  try {
+    // Import ExcelJS dynamically to avoid issues if not available
+    const ExcelJS = (await import('exceljs')).default;
+
+    // Download the file
+    const fileBuffer = await downloadExcelFile(graphClient, fileId);
+
+    // Load with ExcelJS
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(fileBuffer);
+
+    // Find hidden metadata sheet
+    const metaSheet = workbook.getWorksheet('_SurveyMetadata');
+    if (!metaSheet) {
+      return null;
+    }
+
+    const templateId = metaSheet.getCell('B1').value;
+    const templateName = metaSheet.getCell('B2').value;
+
+    return {
+      templateId: templateId ? String(templateId) : null,
+      templateName: templateName ? String(templateName) : null
+    };
+  } catch (error) {
+    console.error('Failed to read template ID from Excel:', error);
+    // Return null instead of throwing - file might not have metadata
+    return null;
+  }
+}
+
+/**
+ * Upload file to a specific drive and folder (for SharePoint)
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string} driveId - The drive ID
+ * @param {string} folderId - The folder ID (use 'root' for root)
+ * @param {string} fileName - Name for the uploaded file
+ * @param {ArrayBuffer|Uint8Array} fileContent - File content
+ * @returns {Promise<Object>} - Upload result with file metadata
+ */
+export async function uploadFileToDrive(graphClient, driveId, folderId, fileName, fileContent) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  try {
+    // Ensure fileContent is in proper binary format
+    let binaryContent;
+    if (fileContent instanceof ArrayBuffer) {
+      binaryContent = new Uint8Array(fileContent);
+    } else if (fileContent instanceof Uint8Array) {
+      binaryContent = fileContent;
+    } else if (fileContent && fileContent.buffer instanceof ArrayBuffer) {
+      binaryContent = new Uint8Array(fileContent.buffer, fileContent.byteOffset, fileContent.byteLength);
+    } else if (fileContent && typeof fileContent === 'object' && fileContent.type === 'Buffer' && Array.isArray(fileContent.data)) {
+      binaryContent = new Uint8Array(fileContent.data);
+    } else if (Array.isArray(fileContent)) {
+      binaryContent = new Uint8Array(fileContent);
+    } else {
+      binaryContent = fileContent;
+    }
+
+    // Create a Blob with proper MIME type
+    const blob = new Blob([binaryContent], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+
+    // Upload to the specific drive and folder
+    const response = await graphClient
+      .api(`/drives/${driveId}/items/${folderId}:/${fileName}:/content?@microsoft.graph.conflictBehavior=replace`)
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .put(blob);
+
+    return response;
+  } catch (error) {
+    console.error('Failed to upload file to drive:', error);
+    throw new Error(`Failed to upload file: ${error.message}`);
+  }
+}

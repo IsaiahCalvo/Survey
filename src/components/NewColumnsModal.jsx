@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
+import { getOtherSurveysUsingTemplate } from '../hooks/useDatabase';
 
 const NewColumnsModal = ({
   isOpen,
@@ -7,11 +8,15 @@ const NewColumnsModal = ({
   onConfirm,
   newColumnsByCategory = {}, // { categoryId: { displayName, columns, excelColumnOrder, removedColumns, hasReordering } }
   templateName = '',
-  existingTemplateNames = [] // Array of existing template names for duplicate validation
+  existingTemplateNames = [], // Array of existing template names for duplicate validation
+  templateId = null, // Current template's Supabase ID for checking usage
+  currentSurveyId = null // Current survey/document ID to exclude from usage check
 }) => {
-  const [selectedOption, setSelectedOption] = useState(null); // 'newTemplate' | 'surveyOnly'
+  const [selectedOption, setSelectedOption] = useState(null); // 'newTemplate' | 'modifyTemplate'
   const [newTemplateName, setNewTemplateName] = useState('');
   const [nameError, setNameError] = useState('');
+  const [otherSurveys, setOtherSurveys] = useState([]);
+  const [isCheckingUsage, setIsCheckingUsage] = useState(false);
 
   // Calculate totals for different change types
   const changeSummary = useMemo(() => {
@@ -34,8 +39,33 @@ const NewColumnsModal = ({
       setSelectedOption(null);
       setNewTemplateName(`${templateName} (Updated)`);
       setNameError('');
+      setOtherSurveys([]);
+
+      // Check if other surveys are using this template
+      if (templateId) {
+        checkTemplateUsage();
+      }
     }
-  }, [isOpen, templateName]);
+  }, [isOpen, templateName, templateId]);
+
+  // Check template usage
+  const checkTemplateUsage = async () => {
+    if (!templateId) return;
+
+    setIsCheckingUsage(true);
+    try {
+      const surveys = await getOtherSurveysUsingTemplate(templateId, currentSurveyId);
+      setOtherSurveys(surveys);
+    } catch (err) {
+      console.error('Error checking template usage:', err);
+      setOtherSurveys([]);
+    } finally {
+      setIsCheckingUsage(false);
+    }
+  };
+
+  // Whether the template can be modified (no other surveys using it)
+  const canModifyTemplate = otherSurveys.length === 0;
 
   // Check for duplicate name whenever template name changes
   const isDuplicateName = (name) => {
@@ -358,34 +388,89 @@ const NewColumnsModal = ({
             )}
           </div>
 
-          {/* Option B: Add for survey only */}
+          {/* Option B: Modify this template */}
           <div
-            onClick={() => setSelectedOption('surveyOnly')}
+            onClick={() => canModifyTemplate && setSelectedOption('modifyTemplate')}
             style={{
               padding: '12px',
-              background: selectedOption === 'surveyOnly' ? COLORS.accent.primary + '20' : COLORS.background.tertiary,
-              border: `2px solid ${selectedOption === 'surveyOnly' ? COLORS.accent.primary : COLORS.border.default}`,
+              background: selectedOption === 'modifyTemplate' ? COLORS.accent.primary + '20' : COLORS.background.tertiary,
+              border: `2px solid ${selectedOption === 'modifyTemplate' ? COLORS.accent.primary : COLORS.border.default}`,
               borderRadius: BORDERS.radius.md,
-              cursor: 'pointer',
+              cursor: canModifyTemplate ? 'pointer' : 'not-allowed',
               transition: 'all 0.15s ease',
+              opacity: canModifyTemplate ? 1 : 0.6,
             }}
           >
             <div style={{
               fontSize: TYPOGRAPHY.fontSize.md,
               fontWeight: TYPOGRAPHY.fontWeight.semibold,
-              color: COLORS.text.secondary,
+              color: canModifyTemplate ? COLORS.text.secondary : COLORS.text.muted,
               marginBottom: '4px',
               fontFamily: TYPOGRAPHY.fontFamily.default,
             }}>
-              Add for This Survey Only
+              Modify this template
             </div>
             <div style={{
               fontSize: TYPOGRAPHY.fontSize.sm,
               color: COLORS.text.muted,
               fontFamily: TYPOGRAPHY.fontFamily.default,
             }}>
-              Adds checklist items only to the current survey. Template remains unchanged.
+              {canModifyTemplate
+                ? 'Updates the current template with the new column structure.'
+                : 'Cannot modify - this template is used by other surveys.'}
             </div>
+
+            {/* Show warning when other surveys use this template */}
+            {!canModifyTemplate && otherSurveys.length > 0 && (
+              <div style={{
+                marginTop: '10px',
+                padding: '10px',
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: BORDERS.radius.sm,
+              }}>
+                <div style={{
+                  fontSize: TYPOGRAPHY.fontSize.sm,
+                  fontWeight: TYPOGRAPHY.fontWeight.medium,
+                  color: '#f59e0b',
+                  marginBottom: '6px',
+                  fontFamily: TYPOGRAPHY.fontFamily.default,
+                }}>
+                  Used by {otherSurveys.length} other survey{otherSurveys.length !== 1 ? 's' : ''}:
+                </div>
+                <div style={{
+                  fontSize: TYPOGRAPHY.fontSize.sm,
+                  color: COLORS.text.muted,
+                  fontFamily: TYPOGRAPHY.fontFamily.default,
+                  maxHeight: '60px',
+                  overflowY: 'auto',
+                }}>
+                  {otherSurveys.slice(0, 5).map((survey, idx) => (
+                    <div key={survey.id}>
+                      {survey.name || `Survey ${idx + 1}`}
+                    </div>
+                  ))}
+                  {otherSurveys.length > 5 && (
+                    <div style={{ fontStyle: 'italic' }}>
+                      ...and {otherSurveys.length - 5} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Show loading state */}
+            {isCheckingUsage && (
+              <div style={{
+                marginTop: '8px',
+                fontSize: TYPOGRAPHY.fontSize.sm,
+                color: COLORS.text.muted,
+                fontFamily: TYPOGRAPHY.fontFamily.default,
+                fontStyle: 'italic',
+              }}>
+                Checking template usage...
+              </div>
+            )}
           </div>
         </div>
 

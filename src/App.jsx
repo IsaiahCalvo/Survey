@@ -6,7 +6,7 @@ import { PDFDocument, degrees } from 'pdf-lib';
 import * as XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { useMSGraph } from './contexts/MSGraphContext';
-import { uploadExcelFile, getFileMetadata, getFileById, downloadExcelFile, downloadExcelFileByPath, getFileETag, uploadFileContentById } from './services/excelGraphService';
+import { uploadExcelFile, getFileMetadata, getFileById, downloadExcelFile, downloadExcelFileByPath, getFileETag, uploadFileContentById, checkFileExists, checkFileExistsInDrive, getTemplateIdFromExcel, uploadFileToDrive } from './services/excelGraphService';
 import {
   getFileIdFromPath,
   createWorkbookSession,
@@ -58,6 +58,8 @@ import SearchHighlightLayer from './components/SearchHighlightLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
 import NewColumnsModal from './components/NewColumnsModal';
 import ExcelLockedModal from './components/ExcelLockedModal';
+import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
+import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
@@ -8717,6 +8719,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [isExportingToOneDrive, setIsExportingToOneDrive] = useState(false); // Loading state for export
   const [isExporting, setIsExporting] = useState(false); // Loading state for main export button
 
+  // OneDrive save modal states
+  const [showOneDriveSaveModal, setShowOneDriveSaveModal] = useState(false);
+  const [oneDriveSaveSelection, setOneDriveSaveSelection] = useState(null); // { fileName, folder }
+
+  // Template overwrite warning modal states
+  const [showTemplateOverwriteWarning, setShowTemplateOverwriteWarning] = useState(false);
+  const [templateOverwriteData, setTemplateOverwriteData] = useState(null); // { fileName, existingTemplateName, currentTemplateName, folder }
+
   const zoomControllerRef = useRef(null);
   const zoomMenuRef = useRef(null);
   const zoomPreferencesRef = useRef(initialZoomPreferences);
@@ -9857,8 +9867,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     try {
       const workbook = new ExcelJS.Workbook();
+
+      // Add hidden metadata sheet for template tracking
+      const metaSheet = workbook.addWorksheet('_SurveyMetadata', {
+        state: 'veryHidden' // Cannot be unhidden via Excel UI
+      });
+      metaSheet.getCell('A1').value = 'template_id';
+      metaSheet.getCell('B1').value = selectedTemplate.supabaseId || selectedTemplate.id || '';
+      metaSheet.getCell('A2').value = 'template_name';
+      metaSheet.getCell('B2').value = selectedTemplate.name || '';
+      metaSheet.getCell('A3').value = 'export_timestamp';
+      metaSheet.getCell('B3').value = new Date().toISOString();
+      metaSheet.getCell('A4').value = 'app_version';
+      metaSheet.getCell('B4').value = '1.0';
+
       const modulesList = selectedTemplate.modules || selectedTemplate.spaces || [];
       const sheetNames = new Set();
+      sheetNames.add('_SurveyMetadata'); // Reserve metadata sheet name
       const schemaMappings = []; // Track schema mappings for Excel add-in sync
 
       const createSheetName = (categoryName, moduleName) => {
@@ -10886,8 +10911,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     await pushToExcelWithRetry();
   }, [selectedTemplate, pushToExcelWithRetry, updateSupabaseTemplate, sanitizeTemplateConfig]);
 
-  // Function to perform OneDrive export (reusable for auto-resume after login)
-  const performOneDriveExport = useCallback(async () => {
+  // Function to perform OneDrive export with optional folder/filename selection
+  // selection: { fileName, folder: { type, driveId, folderId, folderPath, ... } }
+  const performOneDriveExport = useCallback(async (selection = null) => {
     // Prevent multiple simultaneous exports
     if (isExportInProgressRef.current || !exportPendingData || !graphClient) return false;
 
@@ -10903,17 +10929,48 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       }
 
-      const fileName = `${exportPendingData.fileName}_export.xlsx`;
-      const oneDriveApiPath = `/Documents/${fileName}`;
+      let uploadResult;
+      let oneDriveApiPath;
+      let fileName;
 
-      // Upload to OneDrive via Graph API and get the file ID
-      const uploadResult = await uploadExcelFile(graphClient, oneDriveApiPath, exportPendingData.buffer);
-      const oneDriveFileId = uploadResult?.id; // Store the unique file ID for tracking
-      console.log('Uploaded to OneDrive, file ID:', oneDriveFileId);
+      if (selection && selection.folder) {
+        // Use user-selected folder and filename
+        fileName = selection.fileName;
+        const folder = selection.folder;
+
+        if (folder.type === 'sharepoint' && folder.driveId) {
+          // Upload to SharePoint document library
+          uploadResult = await uploadFileToDrive(
+            graphClient,
+            folder.driveId,
+            folder.folderId || 'root',
+            fileName,
+            exportPendingData.buffer
+          );
+          oneDriveApiPath = `/drives/${folder.driveId}/items/${uploadResult?.id}`;
+          console.log('Uploaded to SharePoint, file ID:', uploadResult?.id);
+        } else {
+          // Upload to OneDrive personal
+          oneDriveApiPath = folder.folderPath === '/'
+            ? `/${fileName}`
+            : `${folder.folderPath}/${fileName}`;
+          uploadResult = await uploadExcelFile(graphClient, oneDriveApiPath, exportPendingData.buffer);
+          console.log('Uploaded to OneDrive, file ID:', uploadResult?.id);
+        }
+      } else {
+        // Legacy behavior: auto-save to /Documents
+        fileName = `${exportPendingData.fileName}_export.xlsx`;
+        oneDriveApiPath = `/Documents/${fileName}`;
+        uploadResult = await uploadExcelFile(graphClient, oneDriveApiPath, exportPendingData.buffer);
+        console.log('Uploaded to OneDrive (legacy), file ID:', uploadResult?.id);
+      }
+
+      const oneDriveFileId = uploadResult?.id;
 
       // Also save a local copy to the OneDrive sync folder so it's available immediately
+      // (only for personal OneDrive, not SharePoint)
       let localOneDrivePath = null;
-      if (window.electronAPI) {
+      if (window.electronAPI && (!selection?.folder?.type || selection.folder.type === 'myDrive')) {
         try {
           const homeDir = await window.electronAPI.getHomeDir();
           const cloudStoragePath = `${homeDir}/Library/CloudStorage`;
@@ -10925,9 +10982,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (oneDriveFolders.length > 0) {
             // Use the first OneDrive folder found
             localOneDrivePath = `${cloudStoragePath}/${oneDriveFolders[0]}${oneDriveApiPath}`;
-
-            // Ensure the Documents folder exists
-            const documentsPath = `${cloudStoragePath}/${oneDriveFolders[0]}/Documents`;
             // Write the file locally
             await window.electronAPI.writeFile(localOneDrivePath, exportPendingData.buffer);
             console.log('Saved local copy to OneDrive sync folder:', localOneDrivePath);
@@ -10945,6 +10999,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         oneDriveApiPath: oneDriveApiPath, // Keep the API path for reference
         oneDriveFileId: oneDriveFileId, // Unique file ID for tracking (persists across moves)
         isOneDrive: true,
+        isSharePoint: selection?.folder?.type === 'sharepoint',
+        sharePointDriveId: selection?.folder?.driveId || null,
         lastSyncTime: new Date().toISOString()
       };
       setSelectedTemplate(updatedTemplate);
@@ -10990,18 +11046,93 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setIsExporting(false);
       setExportPendingData(null);
       setPendingOneDriveExport(false);
+      setOneDriveSaveSelection(null);
     }
   }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken]);
 
-  // Auto-resume OneDrive export after Microsoft login
+  // Handler for OneDrive save modal - checks for duplicates before saving
+  const handleOneDriveSave = useCallback(async (selection) => {
+    if (!selection || !selection.folder || !graphClient) return;
+
+    setShowOneDriveSaveModal(false);
+    setIsExportingToOneDrive(true);
+
+    try {
+      // Check if file already exists
+      let existingFileInfo = null;
+      const folder = selection.folder;
+      const fileName = selection.fileName;
+
+      if (folder.type === 'sharepoint' && folder.driveId) {
+        // Check in SharePoint drive
+        existingFileInfo = await checkFileExistsInDrive(
+          graphClient,
+          folder.driveId,
+          folder.folderId || 'root',
+          fileName
+        );
+      } else {
+        // Check in OneDrive personal
+        existingFileInfo = await checkFileExists(graphClient, folder.folderPath, fileName);
+      }
+
+      if (existingFileInfo?.exists && existingFileInfo?.fileId) {
+        // File exists - check template ID
+        const existingMeta = await getTemplateIdFromExcel(graphClient, existingFileInfo.fileId);
+        const currentTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || '';
+
+        if (existingMeta?.templateId && existingMeta.templateId !== currentTemplateId) {
+          // Different template detected - show warning modal
+          setTemplateOverwriteData({
+            fileName: fileName,
+            existingTemplateName: existingMeta.templateName || 'Unknown Template',
+            currentTemplateName: selectedTemplate?.name || 'Current Template',
+            folder: folder,
+            selection: selection
+          });
+          setShowTemplateOverwriteWarning(true);
+          setIsExportingToOneDrive(false);
+          return;
+        }
+      }
+
+      // No conflict or same template - proceed with export
+      await performOneDriveExport(selection);
+    } catch (error) {
+      console.error('Error checking for duplicate file:', error);
+      // Proceed with export anyway if check fails
+      await performOneDriveExport(selection);
+    }
+  }, [graphClient, selectedTemplate, performOneDriveExport]);
+
+  // Handler for template overwrite confirmation
+  const handleTemplateOverwriteConfirm = useCallback(async () => {
+    setShowTemplateOverwriteWarning(false);
+    if (templateOverwriteData?.selection) {
+      await performOneDriveExport(templateOverwriteData.selection);
+    }
+    setTemplateOverwriteData(null);
+  }, [templateOverwriteData, performOneDriveExport]);
+
+  // Handler for template overwrite cancel
+  const handleTemplateOverwriteCancel = useCallback(() => {
+    setShowTemplateOverwriteWarning(false);
+    setTemplateOverwriteData(null);
+    setIsExportingToOneDrive(false);
+    // Re-show the save modal so user can choose different location
+    setShowOneDriveSaveModal(true);
+  }, []);
+
+  // Auto-resume OneDrive export after Microsoft login - show save modal
   useEffect(() => {
     // Only trigger if all conditions are met AND export is not already in progress
     if (isMSAuthenticated && pendingOneDriveExport && exportPendingData && graphClient && !isExportInProgressRef.current) {
-      // Close the login modal and perform the export
+      // Close the login modal and show the OneDrive save modal
       setShowMSLoginModal(false);
-      performOneDriveExport();
+      setPendingOneDriveExport(false);
+      setShowOneDriveSaveModal(true);
     }
-  }, [isMSAuthenticated, pendingOneDriveExport, exportPendingData, graphClient, performOneDriveExport]);
+  }, [isMSAuthenticated, pendingOneDriveExport, exportPendingData, graphClient]);
 
   // Helper: Execute the actual Excel import after new columns are handled
   const executeExcelImport = useCallback((worksheetDataList, templateToUse) => {
@@ -23374,9 +23505,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     return;
                   }
 
-                  // Already authenticated - perform export directly
+                  // Already authenticated - show OneDrive save modal
                   setShowExportLocationModal(false);
-                  await performOneDriveExport();
+                  setShowOneDriveSaveModal(true);
                 }}
                 disabled={isExportingToOneDrive}
                 style={{
