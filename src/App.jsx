@@ -11055,17 +11055,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Iterate data rows
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i];
-        const itemName = row[itemColumnIndex];
-        if (!itemName) continue;
+        const rawItemName = row[itemColumnIndex];
+        if (!rawItemName) continue;
+        // Convert to string in case Excel returns an object (e.g., rich text)
+        const itemName = typeof rawItemName === 'string' ? rawItemName : String(rawItemName);
 
         // Find matching highlight by name
         let matchedHighlightKey = null;
 
         Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
           const annModuleId = ann.moduleId || ann.spaceId;
+          const annName = typeof ann.name === 'string' ? ann.name : String(ann.name || '');
           if (annModuleId === matchedModuleId &&
             ann.categoryId === matchedCategory.id &&
-            ann.name === itemName) {
+            annName === itemName) {
             matchedHighlightKey = key;
           }
         });
@@ -11215,6 +11218,50 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     });
 
+    // Check for bulk deletions (deleting ALL items in a scope) and require confirmation
+    const bulkDeletionScopes = {};
+
+    // Group deletions by scope
+    highlightsToDelete.forEach(({ key, ann }) => {
+      const moduleId = ann.moduleId || ann.spaceId;
+      const scopeKey = `${moduleId}-${ann.categoryId}`;
+      if (!bulkDeletionScopes[scopeKey]) {
+        bulkDeletionScopes[scopeKey] = { toDelete: 0, total: 0, categoryId: ann.categoryId, moduleId };
+      }
+      bulkDeletionScopes[scopeKey].toDelete++;
+    });
+
+    // Count total items per scope (from original highlightAnnotations, not the modified copy)
+    Object.entries(highlightAnnotations).forEach(([key, ann]) => {
+      const moduleId = ann.moduleId || ann.spaceId;
+      const scopeKey = `${moduleId}-${ann.categoryId}`;
+      if (bulkDeletionScopes[scopeKey]) {
+        bulkDeletionScopes[scopeKey].total++;
+      }
+    });
+
+    // Find scopes where ALL items would be deleted
+    const scopesWithBulkDeletion = Object.entries(bulkDeletionScopes)
+      .filter(([_, counts]) => counts.toDelete === counts.total && counts.total > 0);
+
+    // If bulk deletion detected, require user confirmation
+    if (scopesWithBulkDeletion.length > 0) {
+      const scopeNames = scopesWithBulkDeletion.map(([scopeKey, counts]) => {
+        const categoryName = getCategoryName(templateToUse, counts.moduleId, counts.categoryId);
+        const moduleName = getModuleName(templateToUse, counts.moduleId);
+        return `${categoryName} - ${moduleName} (${counts.total} items)`;
+      }).join('\n');
+
+      const confirmed = window.confirm(
+        `This will delete ALL items from the following categories:\n\n${scopeNames}\n\nAre you sure you want to proceed?`
+      );
+
+      if (!confirmed) {
+        alert('Sync cancelled. No changes were made.');
+        return;
+      }
+    }
+
     // Process deletions
     const itemsToDelete = [];
     highlightsToDelete.forEach(({ key, ann }) => {
@@ -11359,17 +11406,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Iterate data rows
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i];
-        const itemName = row[itemColumnIndex];
-        if (!itemName) continue;
+        const rawItemName = row[itemColumnIndex];
+        if (!rawItemName) continue;
+        // Convert to string in case Excel returns an object (e.g., rich text)
+        const itemName = typeof rawItemName === 'string' ? rawItemName : String(rawItemName);
 
         // Find matching highlight by name
         let matchedHighlightKey = null;
 
         Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
           const annModuleId = ann.moduleId || ann.spaceId;
+          const annName = typeof ann.name === 'string' ? ann.name : String(ann.name || '');
           if (annModuleId === matchedModuleId &&
             ann.categoryId === matchedCategory.id &&
-            ann.name === itemName) {
+            annName === itemName) {
             matchedHighlightKey = key;
           }
         });
@@ -11525,7 +11575,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
 
     // Detect and delete highlights that exist in app but not in Excel
-    const highlightsToDelete = [];
+    let highlightsToDelete = [];
     Object.entries(newHighlightAnnotations).forEach(([key, ann]) => {
       const annModuleId = ann.moduleId || ann.spaceId;
       const scopeKey = `${annModuleId}-${ann.categoryId}`;
@@ -11538,6 +11588,54 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       }
     });
+
+    // Check for bulk deletions (deleting ALL items in a scope) - skip for safety in auto-sync
+    const bulkDeletionScopes = {};
+
+    // Group deletions by scope
+    highlightsToDelete.forEach(({ key, ann }) => {
+      const moduleId = ann.moduleId || ann.spaceId;
+      const scopeKey = `${moduleId}-${ann.categoryId}`;
+      if (!bulkDeletionScopes[scopeKey]) {
+        bulkDeletionScopes[scopeKey] = { toDelete: 0, total: 0, categoryId: ann.categoryId, moduleId };
+      }
+      bulkDeletionScopes[scopeKey].toDelete++;
+    });
+
+    // Count total items per scope (from original highlightAnnotations, not the modified copy)
+    Object.entries(highlightAnnotations).forEach(([key, ann]) => {
+      const moduleId = ann.moduleId || ann.spaceId;
+      const scopeKey = `${moduleId}-${ann.categoryId}`;
+      if (bulkDeletionScopes[scopeKey]) {
+        bulkDeletionScopes[scopeKey].total++;
+      }
+    });
+
+    // Find scopes where ALL items would be deleted
+    const scopesWithBulkDeletion = Object.entries(bulkDeletionScopes)
+      .filter(([_, counts]) => counts.toDelete === counts.total && counts.total > 0);
+
+    // If bulk deletion detected in auto-sync, skip those deletions and show warning
+    if (scopesWithBulkDeletion.length > 0) {
+      const bulkScopeKeys = new Set(scopesWithBulkDeletion.map(([scopeKey]) => scopeKey));
+
+      // Filter out highlights from bulk deletion scopes
+      highlightsToDelete = highlightsToDelete.filter(({ key, ann }) => {
+        const moduleId = ann.moduleId || ann.spaceId;
+        const scopeKey = `${moduleId}-${ann.categoryId}`;
+        return !bulkScopeKeys.has(scopeKey);
+      });
+
+      // Show warning about skipped bulk deletions
+      const scopeNames = scopesWithBulkDeletion.map(([scopeKey, counts]) => {
+        const categoryName = getCategoryName(templateToUse, counts.moduleId, counts.categoryId);
+        const moduleName = getModuleName(templateToUse, counts.moduleId);
+        return `${categoryName} - ${moduleName}`;
+      }).join(', ');
+
+      setLastSyncMessage(`Skipped bulk deletion of: ${scopeNames}. Use manual sync to confirm.`);
+      setTimeout(() => setLastSyncMessage(''), 8000);
+    }
 
     // Process deletions
     const itemsToDelete = [];
@@ -11625,8 +11723,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const message = deletionsCount > 0
         ? `Auto-synced ${updatesCount} items, deleted ${deletionsCount} items from Excel`
         : `Auto-synced ${updatesCount} items from Excel`;
-      setLastSyncMessage(message);
-      setTimeout(() => setLastSyncMessage(''), 5000);
+      // Only show this message if we didn't already show a bulk deletion warning
+      if (scopesWithBulkDeletion.length === 0) {
+        setLastSyncMessage(message);
+        setTimeout(() => setLastSyncMessage(''), 5000);
+      }
 
       // Update canvas highlights for any that had color changes
       if (highlightsWithColorChanges.length > 0) {
@@ -11905,7 +12006,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             jsonData.push(rowData);
           });
 
-          if (jsonData.length < 2) return; // No data
+          if (jsonData.length < 1) return; // No header row at all
 
           const headerRow = jsonData[0];
 
@@ -12072,7 +12173,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             jsonData.push(rowData);
           });
 
-          if (jsonData.length < 2) return;
+          if (jsonData.length < 1) return; // No header row at all
 
           const headerRow = jsonData[0];
 
