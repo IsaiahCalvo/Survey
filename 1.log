@@ -1,11 +1,106 @@
-chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type:1     Failed to load resource: the server responded with a status of 403 ()
-cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type:1     Failed to load resource: the server responded with a status of 403 ()
-documentAnnotationService.js:331 [AnnotationSync] Error updating presence: Object
+chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+documentAnnotationService.js:331 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
 updateDocumentPresence @ documentAnnotationService.js:331
-documentAnnotationService.js:331 [AnnotationSync] Error updating presence: Object
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:12945
+Promise.then (async)
+(anonymous) @ App.jsx:12916
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+documentAnnotationService.js:331 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
 updateDocumentPresence @ documentAnnotationService.js:331
-excelGraphService.js:133     GET https://graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s3e735e43720948fb943d5f1381f1f23e?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl 404
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:13101
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:13064     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+setTimeout (async)
+(anonymous) @ App.jsx:13064
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 14 more frames
+documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
+upsertAnnotations @ documentAnnotationService.js:71
+await in upsertAnnotations (async)
+syncAnnotationsToSupabase @ documentAnnotationService.js:158
+(anonymous) @ App.jsx:13065
+setTimeout (async)
+(anonymous) @ App.jsx:13064
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+main.jsx:24 [DocumentSync] RLS policy error detected. Cloud sync disabled. Please check your Supabase RLS policies.
+console.warn @ main.jsx:24
+(anonymous) @ App.jsx:13079
+setTimeout (async)
+(anonymous) @ App.jsx:13064
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+excelGraphService.js:133     GET https://graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s01cb7b0953a8451e8a66041daf280303?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl 404
 (anonymous) @ HTTPMessageHandler.ts:29
 (anonymous) @ tslib.es6.mjs:121
 __awaiter @ tslib.es6.mjs:117
@@ -50,8 +145,8 @@ send @ GraphRequest.ts:366
 __awaiter @ tslib.es6.mjs:117
 get @ GraphRequest.ts:630
 getFileById @ excelGraphService.js:133
-(anonymous) @ App.jsx:10718
-(anonymous) @ App.jsx:10762
+(anonymous) @ App.jsx:10743
+(anonymous) @ App.jsx:10787
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -65,8 +160,8 @@ performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
 flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
 (anonymous) @ chunk-DSUIPI7G.js:25516
 Show 54 more frames
-App.jsx:10737 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
-excelGraphService.js:133     GET https://graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s3e735e43720948fb943d5f1381f1f23e?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl 404
+App.jsx:10762 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
+excelGraphService.js:133     GET https://graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s01cb7b0953a8451e8a66041daf280303?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl 404
 (anonymous) @ HTTPMessageHandler.ts:29
 (anonymous) @ tslib.es6.mjs:121
 __awaiter @ tslib.es6.mjs:117
@@ -111,9 +206,9 @@ send @ GraphRequest.ts:366
 __awaiter @ tslib.es6.mjs:117
 get @ GraphRequest.ts:630
 getFileById @ excelGraphService.js:133
-checkLinkedExcelExists @ App.jsx:10563
+checkLinkedExcelExists @ App.jsx:10588
 await in checkLinkedExcelExists (async)
-(anonymous) @ App.jsx:10664
+(anonymous) @ App.jsx:10689
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -127,15 +222,54 @@ performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
 flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
 (anonymous) @ chunk-DSUIPI7G.js:25516
 Show 54 more frames
-App.jsx:10514 Clearing Excel link: OneDrive file was deleted (not found by ID)
-App.jsx:13643 Document saved successfully
-App.jsx:12858     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-then @ PostgrestBuilder.ts:109
-setTimeout (async)
-(anonymous) @ App.jsx:12858
+App.jsx:10539 Clearing Excel link: OneDrive file was deleted (not found by ID)
+excelGraphService.js:421     GET https://graph.microsoft.com/v1.0/sites?$select=id,name,displayName,webUrl&$top=100&search=* 400
+(anonymous) @ HTTPMessageHandler.ts:29
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ HTTPMessageHandler.ts:28
+(anonymous) @ TelemetryHandler.ts:91
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ TelemetryHandler.ts:66
+(anonymous) @ RedirectHandler.ts:193
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRedirect @ RedirectHandler.ts:192
+(anonymous) @ RedirectHandler.ts:225
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RedirectHandler.ts:220
+(anonymous) @ RetryHandler.ts:173
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRetry @ RetryHandler.ts:172
+(anonymous) @ RetryHandler.ts:196
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RetryHandler.ts:192
+(anonymous) @ AuthenticationHandler.ts:88
+fulfilled @ tslib.es6.mjs:118
+Promise.then (async)
+step @ tslib.es6.mjs:120
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ AuthenticationHandler.ts:63
+(anonymous) @ HTTPClient.ts:88
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+sendRequest @ HTTPClient.ts:81
+(anonymous) @ GraphRequest.ts:372
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+send @ GraphRequest.ts:366
+(anonymous) @ GraphRequest.ts:635
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ GraphRequest.ts:630
+listSharePointSites @ excelGraphService.js:421
+(anonymous) @ OneDriveFolderBrowser.jsx:70
+(anonymous) @ OneDriveFolderBrowser.jsx:130
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -148,71 +282,22 @@ commitRoot @ chunk-DSUIPI7G.js:26166
 performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
 flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
 (anonymous) @ chunk-DSUIPI7G.js:25516
-Show 15 more frames
-documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-upsertAnnotations @ documentAnnotationService.js:71
-await in upsertAnnotations (async)
-syncAnnotationsToSupabase @ documentAnnotationService.js:158
-(anonymous) @ App.jsx:12859
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 12 more frames
-App.jsx:12864 [DocumentSync] Sync failed: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-(anonymous) @ App.jsx:12864
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 12 more frames
-App.jsx:12858     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-then @ PostgrestBuilder.ts:109
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 15 more frames
-documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-upsertAnnotations @ documentAnnotationService.js:71
-await in upsertAnnotations (async)
-syncAnnotationsToSupabase @ documentAnnotationService.js:158
-(anonymous) @ App.jsx:12859
-setTimeout (async)
-(anonymous) @ App.jsx:12858
+Show 54 more frames
+excelGraphService.js:425 Failed to list SharePoint sites: Error: This API is not supported for MSA accounts (no addressUrl for Microsoft.FileServices,False).
+    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+listSharePointSites @ excelGraphService.js:425
+await in listSharePointSites (async)
+(anonymous) @ OneDriveFolderBrowser.jsx:70
+(anonymous) @ OneDriveFolderBrowser.jsx:130
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -226,10 +311,12 @@ performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
 flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
 (anonymous) @ chunk-DSUIPI7G.js:25516
 Show 12 more frames
-App.jsx:12864 [DocumentSync] Sync failed: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-(anonymous) @ App.jsx:12864
-setTimeout (async)
-(anonymous) @ App.jsx:12858
+OneDriveFolderBrowser.jsx:73 Error loading SharePoint sites: Error: Failed to list SharePoint sites: This API is not supported for MSA accounts (no addressUrl for Microsoft.FileServices,False).
+    at listSharePointSites (excelGraphService.js:426:11)
+    at async OneDriveFolderBrowser.jsx:70:21
+(anonymous) @ OneDriveFolderBrowser.jsx:73
+await in (anonymous) (async)
+(anonymous) @ OneDriveFolderBrowser.jsx:130
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -243,92 +330,98 @@ performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
 flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
 (anonymous) @ chunk-DSUIPI7G.js:25516
 Show 12 more frames
-App.jsx:12858     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
+excelGraphService.js:421     GET https://graph.microsoft.com/v1.0/sites?$select=id,name,displayName,webUrl&$top=100&search=* 400
+(anonymous) @ HTTPMessageHandler.ts:29
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ HTTPMessageHandler.ts:28
+(anonymous) @ TelemetryHandler.ts:91
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ TelemetryHandler.ts:66
+(anonymous) @ RedirectHandler.ts:193
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRedirect @ RedirectHandler.ts:192
+(anonymous) @ RedirectHandler.ts:225
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RedirectHandler.ts:220
+(anonymous) @ RetryHandler.ts:173
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRetry @ RetryHandler.ts:172
+(anonymous) @ RetryHandler.ts:196
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RetryHandler.ts:192
+(anonymous) @ AuthenticationHandler.ts:88
+fulfilled @ tslib.es6.mjs:118
+Promise.then (async)
+step @ tslib.es6.mjs:120
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ AuthenticationHandler.ts:63
+(anonymous) @ HTTPClient.ts:88
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+sendRequest @ HTTPClient.ts:81
+(anonymous) @ GraphRequest.ts:372
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+send @ GraphRequest.ts:366
+(anonymous) @ GraphRequest.ts:635
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ GraphRequest.ts:630
+listSharePointSites @ excelGraphService.js:421
+(anonymous) @ OneDriveFolderBrowser.jsx:70
+(anonymous) @ OneDriveFolderBrowser.jsx:130
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 53 more frames
+excelGraphService.js:425 Failed to list SharePoint sites: Error: This API is not supported for MSA accounts (no addressUrl for Microsoft.FileServices,False).
+    at _GraphErrorHandler.constructErrorFromResponse (GraphErrorHandler.ts:77:18)
+    at _GraphErrorHandler.<anonymous> (GraphErrorHandler.ts:104:31)
+    at Generator.next (<anonymous>)
+    at tslib.es6.mjs:121:69
+    at new Promise (<anonymous>)
+    at __awaiter (tslib.es6.mjs:117:10)
+    at _GraphErrorHandler.getError (GraphErrorHandler.ts:101:122)
+    at GraphRequest.<anonymous> (GraphRequest.ts:391:55)
+    at Generator.throw (<anonymous>)
+    at rejected (tslib.es6.mjs:119:62)
+listSharePointSites @ excelGraphService.js:425
+await in listSharePointSites (async)
+(anonymous) @ OneDriveFolderBrowser.jsx:70
+(anonymous) @ OneDriveFolderBrowser.jsx:130
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+OneDriveFolderBrowser.jsx:73 Error loading SharePoint sites: Error: Failed to list SharePoint sites: This API is not supported for MSA accounts (no addressUrl for Microsoft.FileServices,False).
+    at listSharePointSites (excelGraphService.js:426:11)
+    at async OneDriveFolderBrowser.jsx:70:21
+(anonymous) @ OneDriveFolderBrowser.jsx:73
 await in (anonymous) (async)
-then @ PostgrestBuilder.ts:109
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 15 more frames
-documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-upsertAnnotations @ documentAnnotationService.js:71
-await in upsertAnnotations (async)
-syncAnnotationsToSupabase @ documentAnnotationService.js:158
-(anonymous) @ App.jsx:12859
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 12 more frames
-App.jsx:12864 [DocumentSync] Sync failed: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-(anonymous) @ App.jsx:12864
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-commitRootImpl @ chunk-DSUIPI7G.js:26305
-commitRoot @ chunk-DSUIPI7G.js:26166
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 12 more frames
-App.jsx:10912 Uploaded to OneDrive, file ID: DC046716012CC0F4!sa678ef8be8e3430d9c999854ef3945b9
-App.jsx:10933 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
-App.jsx:10737 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
-App.jsx:12858     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-then @ PostgrestBuilder.ts:109
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 14 more frames
-documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-upsertAnnotations @ documentAnnotationService.js:71
-await in upsertAnnotations (async)
-syncAnnotationsToSupabase @ documentAnnotationService.js:158
-(anonymous) @ App.jsx:12859
-setTimeout (async)
-(anonymous) @ App.jsx:12858
+(anonymous) @ OneDriveFolderBrowser.jsx:130
 commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
 commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
 commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
@@ -341,131 +434,3 @@ workLoop @ chunk-DSUIPI7G.js:467
 flushWork @ chunk-DSUIPI7G.js:446
 performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 11 more frames
-App.jsx:12864 [DocumentSync] Sync failed: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-(anonymous) @ App.jsx:12864
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:10737 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
-App.jsx:12858     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-then @ PostgrestBuilder.ts:109
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 14 more frames
-documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-upsertAnnotations @ documentAnnotationService.js:71
-await in upsertAnnotations (async)
-syncAnnotationsToSupabase @ documentAnnotationService.js:158
-(anonymous) @ App.jsx:12859
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:12864 [DocumentSync] Sync failed: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-(anonymous) @ App.jsx:12864
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:10737 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
-App.jsx:12858     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
-(anonymous) @ fetch.ts:7
-(anonymous) @ fetch.ts:34
-await in (anonymous) (async)
-then @ PostgrestBuilder.ts:109
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 14 more frames
-documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-upsertAnnotations @ documentAnnotationService.js:71
-await in upsertAnnotations (async)
-syncAnnotationsToSupabase @ documentAnnotationService.js:158
-(anonymous) @ App.jsx:12859
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:12864 [DocumentSync] Sync failed: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
-(anonymous) @ App.jsx:12864
-setTimeout (async)
-(anonymous) @ App.jsx:12858
-commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
-commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
-commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
-commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
-commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
-flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
-flushPassiveEffects @ chunk-DSUIPI7G.js:26336
-(anonymous) @ chunk-DSUIPI7G.js:26217
-workLoop @ chunk-DSUIPI7G.js:467
-flushWork @ chunk-DSUIPI7G.js:446
-performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
-Show 11 more frames
-App.jsx:10737 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
-App.jsx:10737 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}

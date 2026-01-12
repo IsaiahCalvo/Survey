@@ -12120,8 +12120,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return newTemplate;
   }, [selectedTemplate, templates, onTemplatesChange, onRefetchTemplates, createSupabaseTemplate, sanitizeTemplateConfig]);
 
-  // Helper: Add checklist items for survey only (not persisted to template)
-  const handleAddColumnsForSurveyOnly = useCallback((newColumnsByCategory) => {
+  // Helper: Modify the current template and persist to Supabase
+  const handleModifyCurrentTemplate = useCallback(async (newColumnsByCategory) => {
     // Deep clone the current template's modules
     const updatedModules = JSON.parse(JSON.stringify(selectedTemplate.modules || selectedTemplate.spaces || []));
 
@@ -12175,17 +12175,44 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     }
 
-    // Update selectedTemplate in state only (not persisted)
+    // Update selectedTemplate
     const updatedTemplate = {
       ...selectedTemplate,
       modules: updatedModules,
       spaces: updatedModules,
-      _surveyOnlyModifications: true
+      updatedAt: new Date().toISOString()
     };
 
     setSelectedTemplate(updatedTemplate);
+
+    // Persist to Supabase
+    const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+    if (updateSupabaseTemplate && supabaseTemplateId) {
+      try {
+        const configPayload = sanitizeTemplateConfig(updatedTemplate);
+        await updateSupabaseTemplate(supabaseTemplateId, {
+          config: configPayload,
+          updated_at: new Date().toISOString()
+        });
+        console.log('Template modified and persisted to Supabase');
+      } catch (err) {
+        console.error('Failed to persist template modification to Supabase:', err);
+        alert('Warning: Template was modified locally but failed to save to cloud. Your changes may not persist.');
+      }
+    }
+
+    // Update local templates array
+    if (handleTemplatesChange && appTemplates) {
+      const updatedTemplates = appTemplates.map(t =>
+        (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
+          ? updatedTemplate
+          : t
+      );
+      handleTemplatesChange(updatedTemplates);
+    }
+
     return updatedTemplate;
-  }, [selectedTemplate]);
+  }, [selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
 
   // Handler for new columns modal decision
   const handleNewColumnsDecision = useCallback(async (decision, templateName) => {
@@ -12196,8 +12223,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     if (decision === 'newTemplate') {
       templateToUse = await handleCreateNewTemplateFromColumns(newColumnsByCategory, templateName);
-    } else if (decision === 'surveyOnly') {
-      templateToUse = handleAddColumnsForSurveyOnly(newColumnsByCategory);
+    } else if (decision === 'modifyTemplate') {
+      // Modify the current template and persist to Supabase
+      templateToUse = await handleModifyCurrentTemplate(newColumnsByCategory);
     }
 
     // Continue with import using the appropriate function based on sync type
@@ -12210,7 +12238,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Clean up
     setPendingNewColumns(null);
     setShowNewColumnsModal(false);
-  }, [pendingNewColumns, selectedTemplate, handleCreateNewTemplateFromColumns, handleAddColumnsForSurveyOnly, executeExcelImport, executeAutoExcelImport]);
+  }, [pendingNewColumns, selectedTemplate, handleCreateNewTemplateFromColumns, handleModifyCurrentTemplate, executeExcelImport, executeAutoExcelImport]);
 
   const handleSyncFromExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -23607,6 +23635,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         </div>
       )}
 
+      {/* OneDrive File Save Modal */}
+      <OneDriveFileSaveModal
+        isOpen={showOneDriveSaveModal}
+        onSave={handleOneDriveSave}
+        onClose={() => {
+          setShowOneDriveSaveModal(false);
+          setExportPendingData(null);
+          setIsExporting(false);
+        }}
+        graphClient={graphClient}
+        defaultFileName={`${exportPendingData?.fileName || 'export'}_export.xlsx`}
+        title="Save to OneDrive"
+      />
+
+      {/* Template Overwrite Warning Modal */}
+      <TemplateOverwriteWarningModal
+        isOpen={showTemplateOverwriteWarning}
+        onConfirm={handleTemplateOverwriteConfirm}
+        onCancel={handleTemplateOverwriteCancel}
+        fileName={templateOverwriteData?.fileName || ''}
+        existingTemplateName={templateOverwriteData?.existingTemplateName || 'Unknown Template'}
+        currentTemplateName={templateOverwriteData?.currentTemplateName || 'Current Template'}
+      />
+
       {/* Microsoft Login Modal */}
       {showMSLoginModal && (
         <div style={{
@@ -23799,6 +23851,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         newColumnsByCategory={pendingNewColumns?.newColumnsByCategory || {}}
         templateName={selectedTemplate?.name || ''}
         existingTemplateNames={templates.map(t => t.name)}
+        templateId={selectedTemplate?.supabaseId || selectedTemplate?.id}
+        currentSurveyId={pdfFile?.id}
       />
 
       <ExcelLockedModal

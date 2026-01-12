@@ -71,7 +71,15 @@ const OneDriveFolderBrowser = ({
       setSharePointSites(sites);
     } catch (err) {
       console.error('Error loading SharePoint sites:', err);
-      setError('Failed to load SharePoint sites. Please try again.');
+      // Check if it's a personal Microsoft account (MSA) error
+      if (err.message?.includes('MSA') || err.message?.includes('not supported')) {
+        setError('SharePoint is not available for personal Microsoft accounts. Please use "My OneDrive" instead, or sign in with a Microsoft 365 Business account.');
+      } else if (err.message?.includes('Access') || err.message?.includes('403') || err.message?.includes('denied')) {
+        setError('SharePoint access not available. This feature requires a Microsoft 365 Business account.');
+      } else {
+        setError('Failed to load SharePoint sites. You may not have access to any sites.');
+      }
+      setSharePointSites([]);
     } finally {
       setLoading(false);
     }
@@ -508,7 +516,7 @@ const OneDriveFolderBrowser = ({
             {/* Sites list */}
             {!selectedSite && (
               <>
-                {sharePointSites.length === 0 ? (
+                {sharePointSites.length === 0 && !error ? (
                   <div style={{
                     padding: '40px',
                     textAlign: 'center',
@@ -516,9 +524,14 @@ const OneDriveFolderBrowser = ({
                     fontSize: TYPOGRAPHY.fontSize.sm,
                     fontFamily: TYPOGRAPHY.fontFamily.default,
                   }}>
-                    No SharePoint sites found
+                    <div style={{ marginBottom: '8px' }}>No SharePoint sites available</div>
+                    <div style={{ fontSize: TYPOGRAPHY.fontSize.xs, opacity: 0.7 }}>
+                      SharePoint requires a Microsoft 365 Business account.
+                      <br />
+                      Use "My OneDrive" for personal accounts.
+                    </div>
                   </div>
-                ) : (
+                ) : sharePointSites.length === 0 ? null : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     {sharePointSites.map((site) => (
                       <button
