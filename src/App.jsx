@@ -11318,6 +11318,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }
           };
         });
+
+        // Also remove from newHighlightsByPage to prevent re-adding to canvas
+        setNewHighlightsByPage(prev => {
+          const updated = { ...prev };
+          const pageHighlights = updated[ann.pageNumber] || [];
+          const filtered = pageHighlights.filter(h => {
+            if (h.highlightId === key) return false;
+            if (ann.bounds && h.x !== undefined && h.y !== undefined) {
+              return !boundsMatch(
+                { x: h.x, y: h.y, width: h.width, height: h.height },
+                ann.bounds
+              );
+            }
+            return true;
+          });
+          if (filtered.length === 0) {
+            delete updated[ann.pageNumber];
+          } else {
+            updated[ann.pageNumber] = filtered;
+          }
+          return updated;
+        });
       }
 
       // Track items to delete (same logic as handleHighlightDeleted)
@@ -11731,6 +11753,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               objects: filteredObjects
             }
           };
+        });
+
+        // Also remove from newHighlightsByPage to prevent re-adding to canvas
+        setNewHighlightsByPage(prev => {
+          const updated = { ...prev };
+          const pageHighlights = updated[ann.pageNumber] || [];
+          const filtered = pageHighlights.filter(h => {
+            if (h.highlightId === key) return false;
+            if (ann.bounds && h.x !== undefined && h.y !== undefined) {
+              return !boundsMatch(
+                { x: h.x, y: h.y, width: h.width, height: h.height },
+                ann.bounds
+              );
+            }
+            return true;
+          });
+          if (filtered.length === 0) {
+            delete updated[ann.pageNumber];
+          } else {
+            updated[ann.pageNumber] = filtered;
+          }
+          return updated;
         });
       }
 
