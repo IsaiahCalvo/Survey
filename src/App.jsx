@@ -11659,26 +11659,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const scopesWithBulkDeletion = Object.entries(bulkDeletionScopes)
       .filter(([_, counts]) => counts.toDelete === counts.total && counts.total > 0);
 
-    // If bulk deletion detected in auto-sync, skip those deletions and show warning
+    // If bulk deletion detected, require user confirmation (same as manual sync)
     if (scopesWithBulkDeletion.length > 0) {
-      const bulkScopeKeys = new Set(scopesWithBulkDeletion.map(([scopeKey]) => scopeKey));
-
-      // Filter out highlights from bulk deletion scopes
-      highlightsToDelete = highlightsToDelete.filter(({ key, ann }) => {
-        const moduleId = ann.moduleId || ann.spaceId;
-        const scopeKey = `${moduleId}-${ann.categoryId}`;
-        return !bulkScopeKeys.has(scopeKey);
-      });
-
-      // Show warning about skipped bulk deletions
       const scopeNames = scopesWithBulkDeletion.map(([scopeKey, counts]) => {
         const categoryName = getCategoryName(templateToUse, counts.moduleId, counts.categoryId);
         const moduleName = getModuleName(templateToUse, counts.moduleId);
-        return `${categoryName} - ${moduleName}`;
-      }).join(', ');
+        return `${categoryName} - ${moduleName} (${counts.total} items)`;
+      }).join('\n');
 
-      setLastSyncMessage(`Skipped bulk deletion of: ${scopeNames}. Use manual sync to confirm.`);
-      setTimeout(() => setLastSyncMessage(''), 8000);
+      const confirmed = window.confirm(
+        `This will delete ALL items from the following categories:\n\n${scopeNames}\n\nAre you sure you want to proceed?`
+      );
+
+      if (!confirmed) {
+        setLastSyncMessage('Sync cancelled. No changes were made.');
+        setTimeout(() => setLastSyncMessage(''), 5000);
+        return;
+      }
     }
 
     // Process deletions
@@ -12695,6 +12692,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [isLoadingRemoteAnnotations, setIsLoadingRemoteAnnotations] = useState(false);
   const documentSyncUnsubscribeRef = useRef(null);
   const lastSyncedAnnotationsRef = useRef({});
+  const syncErrorCountRef = useRef(0); // Track consecutive sync errors
+  const syncRLSErrorShownRef = useRef(false); // Track if RLS error warning was shown
 
   // Load annotations from Supabase when document is opened
   useEffect(() => {
@@ -12703,6 +12702,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setDocumentSyncEnabled(false);
       return;
     }
+
+    // Reset error tracking for new document
+    syncErrorCountRef.current = 0;
+    syncRLSErrorShownRef.current = false;
 
     setIsLoadingRemoteAnnotations(true);
 
@@ -12860,8 +12863,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       if (success) {
         lastSyncedAnnotationsRef.current = annotationsString;
+        syncErrorCountRef.current = 0; // Reset error count on success
       } else {
-        console.error('[DocumentSync] Sync failed:', error);
+        syncErrorCountRef.current++;
+
+        // Check for RLS policy errors (code 42501 = insufficient_privilege)
+        const isRLSError = error?.code === '42501' || error?.message?.includes('row-level security');
+
+        if (isRLSError && !syncRLSErrorShownRef.current) {
+          // Show warning once and disable sync
+          syncRLSErrorShownRef.current = true;
+          console.warn('[DocumentSync] RLS policy error detected. Cloud sync disabled. Please check your Supabase RLS policies.');
+          setDocumentSyncEnabled(false);
+        } else if (!isRLSError) {
+          console.error('[DocumentSync] Sync failed:', error);
+        }
+
+        // After 3 consecutive errors, disable sync to prevent spam
+        if (syncErrorCountRef.current >= 3) {
+          console.warn('[DocumentSync] Multiple sync failures. Disabling auto-sync.');
+          setDocumentSyncEnabled(false);
+        }
       }
     }, 2000);
 
@@ -15870,6 +15892,100 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
   }, [selectedModuleId, highlightAnnotations]);
 
+  // Cleanup orphaned canvas highlights - ensures highlights can only exist if they have a corresponding survey panel item
+  useEffect(() => {
+    // Build a set of valid highlight bounds from highlightAnnotations
+    const validHighlightBounds = new Map();
+
+    Object.entries(highlightAnnotations || {}).forEach(([highlightId, ann]) => {
+      if (ann.pageNumber && ann.bounds) {
+        const pageNum = ann.pageNumber;
+        if (!validHighlightBounds.has(pageNum)) {
+          validHighlightBounds.set(pageNum, []);
+        }
+        validHighlightBounds.get(pageNum).push({
+          x: ann.bounds.x,
+          y: ann.bounds.y,
+          width: ann.bounds.width,
+          height: ann.bounds.height,
+          highlightId
+        });
+      }
+    });
+
+    // Also include pending highlights from newHighlightsByPage (not yet saved)
+    Object.entries(newHighlightsByPage || {}).forEach(([pageNum, highlights]) => {
+      const pageNumber = parseInt(pageNum);
+      if (!validHighlightBounds.has(pageNumber)) {
+        validHighlightBounds.set(pageNumber, []);
+      }
+      highlights.forEach(h => {
+        if (h.x !== undefined && h.y !== undefined && h.width && h.height) {
+          validHighlightBounds.get(pageNumber).push({
+            x: h.x,
+            y: h.y,
+            width: h.width,
+            height: h.height,
+            highlightId: h.highlightId
+          });
+        }
+      });
+    });
+
+    // Clean up orphaned highlights from annotationsByPage
+    setAnnotationsByPage(prev => {
+      let hasChanges = false;
+      const newState = {};
+
+      Object.entries(prev).forEach(([pageNumStr, pageData]) => {
+        const pageNum = parseInt(pageNumStr);
+        const pageAnnotations = pageData;
+
+        if (!pageAnnotations || !pageAnnotations.objects) {
+          newState[pageNumStr] = pageAnnotations;
+          return;
+        }
+
+        const validBoundsForPage = validHighlightBounds.get(pageNum) || [];
+        const currentScale = scale;
+
+        const filteredObjects = pageAnnotations.objects.filter(obj => {
+          // Only check rect objects with highlight-like fill colors
+          if (obj.type !== 'rect') return true;
+          if (!obj.fill || typeof obj.fill !== 'string') return true;
+          if (!obj.fill.includes('rgba')) return true;
+
+          // Normalize object bounds to unscaled coordinates
+          const objX = (obj.left || 0) / currentScale;
+          const objY = (obj.top || 0) / currentScale;
+          const objWidth = (obj.width || 0) / currentScale;
+          const objHeight = (obj.height || 0) / currentScale;
+
+          // Check if this rect matches any valid highlight bounds
+          const tolerance = 5 / currentScale;
+          const matchesValidHighlight = validBoundsForPage.some(bounds => {
+            return Math.abs(objX - bounds.x) < tolerance &&
+                   Math.abs(objY - bounds.y) < tolerance &&
+                   Math.abs(objWidth - bounds.width) < tolerance &&
+                   Math.abs(objHeight - bounds.height) < tolerance;
+          });
+
+          if (!matchesValidHighlight) {
+            hasChanges = true;
+            return false; // Remove orphaned highlight
+          }
+          return true;
+        });
+
+        newState[pageNumStr] = {
+          ...pageAnnotations,
+          objects: filteredObjects
+        };
+      });
+
+      return hasChanges ? newState : prev;
+    });
+  }, [highlightAnnotations, newHighlightsByPage, scale]);
 
 
   // Space filtering logic - determine which pages should be visible
