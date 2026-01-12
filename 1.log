@@ -1,122 +1,282 @@
-chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
-cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type:1     Failed to load resource: the server responded with a status of 403 ()
-cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type:1     Failed to load resource: the server responded with a status of 403 ()
-documentAnnotationService.js:331 [AnnotationSync] Error updating presence: Object
+chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+documentAnnotationService.js:331 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
 updateDocumentPresence @ documentAnnotationService.js:331
-documentAnnotationService.js:331 [AnnotationSync] Error updating presence: Object
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:12655
+Promise.then (async)
+(anonymous) @ App.jsx:12626
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+documentAnnotationService.js:331 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
 updateDocumentPresence @ documentAnnotationService.js:331
-cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=*:1     Failed to load resource: the server responded with a status of 403 ()
-documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: Object
-upsertAnnotations @ documentAnnotationService.js:71
-App.jsx:12778 [DocumentSync] Sync failed: Object
-(anonymous) @ App.jsx:12778
-App.jsx:1061 Uncaught TypeError: ((intermediate value) || "").trim is not a function
-    at App.jsx:1061:50
-    at Array.forEach (<anonymous>)
-    at generateDefaultHighlightName (App.jsx:1060:14)
-    at App.jsx:21292:33
-    at PDFViewer (App.jsx:21896:11)
-    at renderWithHooks (chunk-DSUIPI7G.js:18437:26)
-    at updateFunctionComponent (chunk-DSUIPI7G.js:21471:28)
-    at beginWork (chunk-DSUIPI7G.js:22813:22)
-    at HTMLUnknownElement.callCallback2 (chunk-DSUIPI7G.js:10563:22)
-    at Object.invokeGuardedCallbackDev (chunk-DSUIPI7G.js:10588:24)
-(anonymous) @ App.jsx:1061
-generateDefaultHighlightName @ App.jsx:1060
-(anonymous) @ App.jsx:21292
-PDFViewer @ App.jsx:21896
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateFunctionComponent @ chunk-DSUIPI7G.js:21471
-beginWork @ chunk-DSUIPI7G.js:22813
-callCallback2 @ chunk-DSUIPI7G.js:10563
-invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
-invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
-beginWork$1 @ chunk-DSUIPI7G.js:26654
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25763
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
-Show 13 more frames
-App.jsx:1061 Uncaught TypeError: ((intermediate value) || "").trim is not a function
-    at App.jsx:1061:50
-    at Array.forEach (<anonymous>)
-    at generateDefaultHighlightName (App.jsx:1060:14)
-    at App.jsx:21292:33
-    at PDFViewer (App.jsx:21896:11)
-    at renderWithHooks (chunk-DSUIPI7G.js:18437:26)
-    at updateFunctionComponent (chunk-DSUIPI7G.js:21471:28)
-    at beginWork (chunk-DSUIPI7G.js:22813:22)
-    at HTMLUnknownElement.callCallback2 (chunk-DSUIPI7G.js:10563:22)
-    at Object.invokeGuardedCallbackDev (chunk-DSUIPI7G.js:10588:24)
-(anonymous) @ App.jsx:1061
-generateDefaultHighlightName @ App.jsx:1060
-(anonymous) @ App.jsx:21292
-PDFViewer @ App.jsx:21896
-renderWithHooks @ chunk-DSUIPI7G.js:18437
-updateFunctionComponent @ chunk-DSUIPI7G.js:21471
-beginWork @ chunk-DSUIPI7G.js:22813
-callCallback2 @ chunk-DSUIPI7G.js:10563
-invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
-invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
-beginWork$1 @ chunk-DSUIPI7G.js:26654
-performUnitOfWork @ chunk-DSUIPI7G.js:26087
-workLoopSync @ chunk-DSUIPI7G.js:26026
-renderRootSync @ chunk-DSUIPI7G.js:26005
-recoverFromConcurrentError @ chunk-DSUIPI7G.js:25625
-performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25768
-flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
-(anonymous) @ chunk-DSUIPI7G.js:25516
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:12792
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:12774     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+setTimeout (async)
+(anonymous) @ App.jsx:12774
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
 Show 14 more frames
-chunk-DSUIPI7G.js:20921 The above error occurred in the <PDFViewer> component:
-
-    at PDFViewer (http://localhost:5173/src/App.jsx?t=1768196826216:9650:22)
-    at div
-    at div
-    at div
-    at App (http://localhost:5173/src/App.jsx?t=1768196826216:24504:151)
-    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:42:35)
-    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
-    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
-
-React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
-logCapturedError @ chunk-DSUIPI7G.js:20921
-callback @ chunk-DSUIPI7G.js:20967
-callCallback @ chunk-DSUIPI7G.js:18137
-commitUpdateQueue @ chunk-DSUIPI7G.js:18154
-commitLayoutEffectOnFiber @ chunk-DSUIPI7G.js:23964
-commitLayoutMountEffects_complete @ chunk-DSUIPI7G.js:24869
-commitLayoutEffects_begin @ chunk-DSUIPI7G.js:24858
-commitLayoutEffects @ chunk-DSUIPI7G.js:24809
-commitRootImpl @ chunk-DSUIPI7G.js:26242
+documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
+upsertAnnotations @ documentAnnotationService.js:71
+await in upsertAnnotations (async)
+syncAnnotationsToSupabase @ documentAnnotationService.js:158
+(anonymous) @ App.jsx:12775
+setTimeout (async)
+(anonymous) @ App.jsx:12774
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:12780 [DocumentSync] Sync failed: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
+(anonymous) @ App.jsx:12780
+setTimeout (async)
+(anonymous) @ App.jsx:12774
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:12774     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+setTimeout (async)
+(anonymous) @ App.jsx:12774
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
 commitRoot @ chunk-DSUIPI7G.js:26166
 performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
 flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
 (anonymous) @ chunk-DSUIPI7G.js:25516
-Show 13 more frames
-ErrorBoundary.jsx:23 ErrorBoundary caught an error: TypeError: ((intermediate value) || "").trim is not a function
-    at App.jsx:1061:50
-    at Array.forEach (<anonymous>)
-    at generateDefaultHighlightName (App.jsx:1060:14)
-    at App.jsx:21292:33
-    at PDFViewer (App.jsx:21896:11)
-    at renderWithHooks (chunk-DSUIPI7G.js:18437:26)
-    at updateFunctionComponent (chunk-DSUIPI7G.js:21471:28)
-    at beginWork (chunk-DSUIPI7G.js:22813:22)
-    at beginWork$1 (chunk-DSUIPI7G.js:26642:22)
-    at performUnitOfWork (chunk-DSUIPI7G.js:26087:20) {componentStack: '\n    at PDFViewer (http://localhost:5173/src/App.j…lhost:5173/src/components/ErrorBoundary.jsx:16:5)'}
-componentDidCatch @ ErrorBoundary.jsx:23
-callback @ chunk-DSUIPI7G.js:20973
-callCallback @ chunk-DSUIPI7G.js:18137
-commitUpdateQueue @ chunk-DSUIPI7G.js:18154
-commitLayoutEffectOnFiber @ chunk-DSUIPI7G.js:23964
-commitLayoutMountEffects_complete @ chunk-DSUIPI7G.js:24869
-commitLayoutEffects_begin @ chunk-DSUIPI7G.js:24858
-commitLayoutEffects @ chunk-DSUIPI7G.js:24809
-commitRootImpl @ chunk-DSUIPI7G.js:26242
+Show 15 more frames
+documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
+upsertAnnotations @ documentAnnotationService.js:71
+await in upsertAnnotations (async)
+syncAnnotationsToSupabase @ documentAnnotationService.js:158
+(anonymous) @ App.jsx:12775
+setTimeout (async)
+(anonymous) @ App.jsx:12774
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
 commitRoot @ chunk-DSUIPI7G.js:26166
 performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
 flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
 (anonymous) @ chunk-DSUIPI7G.js:25516
 Show 12 more frames
+App.jsx:12780 [DocumentSync] Sync failed: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
+(anonymous) @ App.jsx:12780
+setTimeout (async)
+(anonymous) @ App.jsx:12774
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 12 more frames
+App.jsx:10912 Uploaded to OneDrive, file ID: DC046716012CC0F4!s3e735e43720948fb943d5f1381f1f23e
+App.jsx:10933 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Documents/Security_export.xlsx
+App.jsx:10737 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
+App.jsx:12774     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_annotations?on_conflict=document_id%2Chighlight_id&columns=%22document_id%22%2C%22user_id%22%2C%22highlight_id%22%2C%22annotation_type%22%2C%22page_number%22%2C%22bounds%22%2C%22category_id%22%2C%22module_id%22%2C%22space_id%22%2C%22name%22%2C%22notes%22%2C%22ball_in_court_entity_id%22%2C%22ball_in_court_name%22%2C%22checklist_responses%22%2C%22changed_by%22%2C%22changed_date%22%2C%22color%22%2C%22opacity%22%2C%22last_modified_by%22%2C%22version%22&select=* 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+setTimeout (async)
+(anonymous) @ App.jsx:12774
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 14 more frames
+documentAnnotationService.js:71 [AnnotationSync] Error upserting annotations: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
+upsertAnnotations @ documentAnnotationService.js:71
+await in upsertAnnotations (async)
+syncAnnotationsToSupabase @ documentAnnotationService.js:158
+(anonymous) @ App.jsx:12775
+setTimeout (async)
+(anonymous) @ App.jsx:12774
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:12780 [DocumentSync] Sync failed: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_annotations"'}
+(anonymous) @ App.jsx:12780
+setTimeout (async)
+(anonymous) @ App.jsx:12774
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+documentAnnotationService.js:331 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
+updateDocumentPresence @ documentAnnotationService.js:331
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:12792
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+documentAnnotationService.js:331 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
+updateDocumentPresence @ documentAnnotationService.js:331
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:12792
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+documentAnnotationService.js:331 [AnnotationSync] Error updating presence: {code: '42501', details: null, hint: null, message: 'new row violates row-level security policy for table "document_presence"'}
+updateDocumentPresence @ documentAnnotationService.js:331
+await in updateDocumentPresence (async)
+(anonymous) @ App.jsx:12792
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+performConcurrentWorkOnRoot @ chunk-DSUIPI7G.js:25556
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:10737 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}

@@ -1053,12 +1053,14 @@ const getCategoryName = (template, moduleId, categoryId) => {
 const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const generateDefaultHighlightName = (categoryName, highlights = []) => {
-  const baseName = (categoryName && categoryName.trim()) ? categoryName.trim() : 'Untitled Category';
+  const baseName = (categoryName && typeof categoryName === 'string' && categoryName.trim()) ? categoryName.trim() : 'Untitled Category';
   const pattern = new RegExp(`^${escapeRegExp(baseName)}\\s+(\\d+)$`, 'i');
   let maxNumber = 0;
 
   highlights.forEach(highlight => {
-    const existingName = (highlight?.name || '').trim();
+    // Handle case where name might be an object (corrupted data from Excel rich text)
+    const rawName = highlight?.name;
+    const existingName = (typeof rawName === 'string' ? rawName : String(rawName || '')).trim();
     const match = pattern.exec(existingName);
     if (match) {
       const sequence = parseInt(match[1], 10);
@@ -11274,6 +11276,48 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           ...prev,
           [ann.pageNumber]: [...(prev[ann.pageNumber] || []), ann.bounds]
         }));
+
+        // Also directly remove from annotationsByPage (persisted canvas data)
+        setAnnotationsByPage(prev => {
+          const pageNum = ann.pageNumber;
+          const pageAnnotations = prev[pageNum];
+          if (!pageAnnotations || !pageAnnotations.objects) return prev;
+
+          const currentScale = scale;
+          const filteredObjects = pageAnnotations.objects.filter(obj => {
+            if (obj.type !== 'rect') return true;
+            if (!obj.fill || typeof obj.fill !== 'string') return true;
+            if (!obj.fill.includes('rgba')) return true;
+
+            const objX = (obj.left || 0) / currentScale;
+            const objY = (obj.top || 0) / currentScale;
+            const objWidth = (obj.width || 0) / currentScale;
+            const objHeight = (obj.height || 0) / currentScale;
+
+            const bounds = ann.bounds || {};
+            const highlightX = bounds.x || bounds.left || 0;
+            const highlightY = bounds.y || bounds.top || 0;
+            const highlightWidth = bounds.width || (bounds.right ? bounds.right - bounds.left : 0) || 0;
+            const highlightHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0) || 0;
+
+            const tolerance = 5 / currentScale;
+            if (Math.abs(objX - highlightX) < tolerance &&
+              Math.abs(objY - highlightY) < tolerance &&
+              Math.abs(objWidth - highlightWidth) < tolerance &&
+              Math.abs(objHeight - highlightHeight) < tolerance) {
+              return false;
+            }
+            return true;
+          });
+
+          return {
+            ...prev,
+            [pageNum]: {
+              ...pageAnnotations,
+              objects: filteredObjects
+            }
+          };
+        });
       }
 
       // Track items to delete (same logic as handleHighlightDeleted)
@@ -11349,7 +11393,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     } else {
       alert('Sync complete! No changes found.');
     }
-  }, [highlightAnnotations, items, setItems, setAnnotations]);
+  }, [highlightAnnotations, items, setItems, setAnnotations, scale, setAnnotationsByPage]);
 
   // Helper: Execute auto-sync import with canvas color tracking
   const executeAutoExcelImport = useCallback((worksheetDataList, templateToUse) => {
@@ -11649,6 +11693,48 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           ...prev,
           [ann.pageNumber]: [...(prev[ann.pageNumber] || []), ann.bounds]
         }));
+
+        // Also directly remove from annotationsByPage (persisted canvas data)
+        setAnnotationsByPage(prev => {
+          const pageNum = ann.pageNumber;
+          const pageAnnotations = prev[pageNum];
+          if (!pageAnnotations || !pageAnnotations.objects) return prev;
+
+          const currentScale = scale;
+          const filteredObjects = pageAnnotations.objects.filter(obj => {
+            if (obj.type !== 'rect') return true;
+            if (!obj.fill || typeof obj.fill !== 'string') return true;
+            if (!obj.fill.includes('rgba')) return true;
+
+            const objX = (obj.left || 0) / currentScale;
+            const objY = (obj.top || 0) / currentScale;
+            const objWidth = (obj.width || 0) / currentScale;
+            const objHeight = (obj.height || 0) / currentScale;
+
+            const bounds = ann.bounds || {};
+            const highlightX = bounds.x || bounds.left || 0;
+            const highlightY = bounds.y || bounds.top || 0;
+            const highlightWidth = bounds.width || (bounds.right ? bounds.right - bounds.left : 0) || 0;
+            const highlightHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0) || 0;
+
+            const tolerance = 5 / currentScale;
+            if (Math.abs(objX - highlightX) < tolerance &&
+              Math.abs(objY - highlightY) < tolerance &&
+              Math.abs(objWidth - highlightWidth) < tolerance &&
+              Math.abs(objHeight - highlightHeight) < tolerance) {
+              return false;
+            }
+            return true;
+          });
+
+          return {
+            ...prev,
+            [pageNum]: {
+              ...pageAnnotations,
+              objects: filteredObjects
+            }
+          };
+        });
       }
 
       // Track items to delete (same logic as handleHighlightDeleted)
@@ -11760,7 +11846,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setLastSyncMessage('No changes found');
       setTimeout(() => setLastSyncMessage(''), 5000);
     }
-  }, [highlightAnnotations, items, setItems, setAnnotations]);
+  }, [highlightAnnotations, items, setItems, setAnnotations, scale, setAnnotationsByPage]);
 
   // Helper: Create new template with added checklist items from new columns
   const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory, templateName) => {
