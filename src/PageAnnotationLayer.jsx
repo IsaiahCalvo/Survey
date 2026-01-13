@@ -734,16 +734,95 @@ const renderControl = (ctx, left, top, styleOverride, fabricObject) => {
 };
 
 // Check if midpoint is within snap threshold of the linear path between start and end
+// Uses perpendicular distance to the line (not clamped to segment endpoints)
 const checkSnapZone = (midpoint, start, end, threshold = 8) => {
-  const distance = distanceToLineSegment(midpoint, start, end);
-  const isSnapping = distance < threshold;
+  // Use shouldSnapToLinear from lineGeometry.js for consistent behavior
+  // This uses perpendicular distance to the infinite line, which is better for snap detection
+  const isSnapping = shouldSnapToLinear(midpoint, start, end, threshold);
   // #region agent log
-  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:659',message:'checkSnapZone result',data:{distance,threshold,isSnapping,midpointX:midpoint.x,midpointY:midpoint.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:659',message:'checkSnapZone result',data:{threshold,isSnapping,midpointX:midpoint.x,midpointY:midpoint.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
   // #endregion
   return isSnapping;
 };
 
-// Convert Line object to Polyline with 3 points (start, midpoint, end)
+// Convert Line object to Path with quadratic bezier curve
+// Uses getCurvedPath() from lineGeometry.js for smooth curves
+const convertLineToPath = (line, midpoint, canvas) => {
+  const { x1, y1, x2, y2 } = line;
+  const stroke = line.stroke;
+  const strokeWidth = line.strokeWidth;
+  const strokeUniform = line.strokeUniform;
+  const opacity = line.opacity;
+  const moduleId = line.moduleId;
+  const regionId = line.regionId;
+  const spaceId = line.spaceId;
+
+  // Get SVG path string for quadratic bezier curve
+  const start = { x: x1, y: y1 };
+  const end = { x: x2, y: y2 };
+  const pathString = getCurvedPath(start, end, midpoint);
+
+  const path = new Path(pathString, {
+    stroke,
+    strokeWidth,
+    strokeUniform,
+    fill: 'transparent',
+    opacity,
+    selectable: line.selectable,
+    evented: line.evented,
+    originX: 'center',
+    originY: 'center'
+  });
+
+  // Store the original coordinates and midpoint in data for later use
+  path.data = {
+    ...(line.data || {}),
+    isCurved: true,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    midpoint: { x: midpoint.x, y: midpoint.y }
+  };
+
+  // Copy custom properties
+  if (moduleId) path.moduleId = moduleId;
+  if (regionId) path.regionId = regionId;
+  if (spaceId) path.spaceId = spaceId;
+
+  return path;
+};
+
+// Convert Path object back to Line when snapped straight
+// Extracts endpoints from the path data
+const convertPathToLine = (path) => {
+  if (path.data?.start && path.data?.end) {
+    return {
+      x1: path.data.start.x,
+      y1: path.data.start.y,
+      x2: path.data.end.x,
+      y2: path.data.end.y
+    };
+  }
+  // Fallback: try to extract from path string
+  // Path string format: "M x1,y1 Q cx,cy x2,y2"
+  return { x1: 0, y1: 0, x2: 0, y2: 0 };
+};
+
+// Update an existing Path object with new geometry
+const updatePathGeometry = (path, start, end, midpoint) => {
+  const pathString = getCurvedPath(start, end, midpoint);
+  path.set({ path: fabricLib.util.parsePath(pathString) });
+  path.data = {
+    ...(path.data || {}),
+    isCurved: true,
+    start: { x: start.x, y: start.y },
+    end: { x: end.x, y: end.y },
+    midpoint: { x: midpoint.x, y: midpoint.y }
+  };
+  path.setCoords();
+};
+
+// Legacy: Convert Line object to Polyline with 3 points (start, midpoint, end)
+// Kept for backwards compatibility with existing saved data
 const convertLineToPolyline = (line, midpoint, canvas) => {
   const { x1, y1, x2, y2 } = line;
   const stroke = line.stroke;
@@ -784,7 +863,8 @@ const convertLineToPolyline = (line, midpoint, canvas) => {
   return polyline;
 };
 
-// Convert Polyline object back to Line when snapped straight
+// Legacy: Convert Polyline object back to Line when snapped straight
+// Kept for backwards compatibility with existing saved data
 const convertPolylineToLine = (polyline) => {
   if (polyline.points.length !== 3) {
     // If not a 3-point polyline, calculate endpoints
