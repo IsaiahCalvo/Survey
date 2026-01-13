@@ -1135,11 +1135,10 @@ const setupLineControls = (line, canvas) => {
   // #endregion
   // Disable default controls
   line.controls = {};
-  // Note: Callout uses hasBorders: false but controls still work. However, for Line objects,
-  // we might need borders enabled for controls to render. Let's try with borders enabled.
-  line.set({ 
-    hasControls: true, 
-    hasBorders: true,
+  // Hide bounding box, only show custom handles
+  line.set({
+    hasControls: true,
+    hasBorders: false,
     selectable: true,
     evented: true
   });
