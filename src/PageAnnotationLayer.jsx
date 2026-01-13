@@ -28,6 +28,23 @@ import {
 import { splitPathDataByEraser, booleanErasePath } from './utils/geometryEraser';
 import { configureFabricOverrides } from './utils/fabricCustomization';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
+import {
+  getMidpoint,
+  shouldSnapToLinear,
+  getCurvedPath,
+  getCurveEndAngle,
+  getCurveStartAngle,
+  getPointOnCurve,
+  getControlPoint,
+  distanceToLineSegment as perpendicularDistanceToLine
+} from './utils/lineGeometry';
+import {
+  calculateCalloutConnection,
+  MIN_KNEE_TO_ARROW_DISTANCE,
+  MIN_KNEE_TO_BOX_EDGE_DISTANCE,
+  MIN_SEGMENT_LENGTH,
+  MIN_TEXTBOX_TO_ARROW_DISTANCE
+} from './utils/calloutGeometry';
 
 // Apply custom Drawboard-style controls and selection visuals
 configureFabricOverrides();
