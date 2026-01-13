@@ -394,6 +394,14 @@ export async function getOtherSurveysUsingTemplate(templateId, currentSurveyId) 
     return [];
   }
 
+  // Validate that templateId is a valid UUID format (Supabase requires UUID)
+  // Skip local template IDs like "tpl-xxx" which aren't synced to Supabase
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(templateId)) {
+    // Not a UUID - this is a local-only template, no other surveys can be using it
+    return [];
+  }
+
   try {
     let query = supabase
       .from('documents')

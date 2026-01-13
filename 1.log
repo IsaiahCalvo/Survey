@@ -1,1 +1,220 @@
-main.jsx:11     GET http://localhost:5173/src/App.jsx?t=1768270545513 net::ERR_ABORTED 500 (Internal Server Error)
+chunk-F2KOVKPX.js?v=ca18a94e:28 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+fetch.ts:7     POST https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/document_presence?on_conflict=document_id%2Cuser_id%2Cclient_type 403
+(anonymous) @ fetch.ts:7
+(anonymous) @ fetch.ts:34
+await in (anonymous) (async)
+then @ PostgrestBuilder.ts:109
+Show 3 more frames
+main.jsx:24 [DocumentSync] RLS policy error detected on presence update. Cloud sync disabled.
+console.warn @ main.jsx:24
+(anonymous) @ App.jsx:12961
+Promise.then (async)
+(anonymous) @ App.jsx:12916
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+excelGraphService.js:133     GET https://graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s369430229da3471493c850f429a38e73?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl 404
+(anonymous) @ HTTPMessageHandler.ts:29
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ HTTPMessageHandler.ts:28
+(anonymous) @ TelemetryHandler.ts:91
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ TelemetryHandler.ts:66
+(anonymous) @ RedirectHandler.ts:193
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRedirect @ RedirectHandler.ts:192
+(anonymous) @ RedirectHandler.ts:225
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RedirectHandler.ts:220
+(anonymous) @ RetryHandler.ts:173
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRetry @ RetryHandler.ts:172
+(anonymous) @ RetryHandler.ts:196
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RetryHandler.ts:192
+(anonymous) @ AuthenticationHandler.ts:88
+fulfilled @ tslib.es6.mjs:118
+Promise.then (async)
+step @ tslib.es6.mjs:120
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ AuthenticationHandler.ts:63
+(anonymous) @ HTTPClient.ts:88
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+sendRequest @ HTTPClient.ts:81
+(anonymous) @ GraphRequest.ts:372
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+send @ GraphRequest.ts:366
+(anonymous) @ GraphRequest.ts:635
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ GraphRequest.ts:630
+getFileById @ excelGraphService.js:133
+(anonymous) @ App.jsx:10743
+(anonymous) @ App.jsx:10787
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 54 more frames
+App.jsx:10762 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
+excelGraphService.js:133     GET https://graph.microsoft.com/v1.0/me/drive/items/DC046716012CC0F4!s369430229da3471493c850f429a38e73?$select=id,name,parentReference,webUrl,@microsoft.graph.downloadUrl 404
+(anonymous) @ HTTPMessageHandler.ts:29
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ HTTPMessageHandler.ts:28
+(anonymous) @ TelemetryHandler.ts:91
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ TelemetryHandler.ts:66
+(anonymous) @ RedirectHandler.ts:193
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRedirect @ RedirectHandler.ts:192
+(anonymous) @ RedirectHandler.ts:225
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RedirectHandler.ts:220
+(anonymous) @ RetryHandler.ts:173
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRetry @ RetryHandler.ts:172
+(anonymous) @ RetryHandler.ts:196
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RetryHandler.ts:192
+(anonymous) @ AuthenticationHandler.ts:88
+fulfilled @ tslib.es6.mjs:118
+Promise.then (async)
+step @ tslib.es6.mjs:120
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ AuthenticationHandler.ts:63
+(anonymous) @ HTTPClient.ts:88
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+sendRequest @ HTTPClient.ts:81
+(anonymous) @ GraphRequest.ts:372
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+send @ GraphRequest.ts:366
+(anonymous) @ GraphRequest.ts:635
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ GraphRequest.ts:630
+getFileById @ excelGraphService.js:133
+checkLinkedExcelExists @ App.jsx:10588
+await in checkLinkedExcelExists (async)
+(anonymous) @ App.jsx:10689
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+commitRootImpl @ chunk-DSUIPI7G.js:26305
+commitRoot @ chunk-DSUIPI7G.js:26166
+performSyncWorkOnRoot @ chunk-DSUIPI7G.js:25784
+flushSyncCallbacks @ chunk-DSUIPI7G.js:16008
+(anonymous) @ chunk-DSUIPI7G.js:25516
+Show 54 more frames
+App.jsx:10539 Clearing Excel link: OneDrive file was deleted (not found by ID)
+excelGraphService.js:474     GET https://graph.microsoft.com/v1.0/me/drive/root:/Security_export.xlsx?$select=id,name 404
+(anonymous) @ HTTPMessageHandler.ts:29
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ HTTPMessageHandler.ts:28
+(anonymous) @ TelemetryHandler.ts:91
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ TelemetryHandler.ts:66
+(anonymous) @ RedirectHandler.ts:193
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRedirect @ RedirectHandler.ts:192
+(anonymous) @ RedirectHandler.ts:225
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RedirectHandler.ts:220
+(anonymous) @ RetryHandler.ts:173
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+executeWithRetry @ RetryHandler.ts:172
+(anonymous) @ RetryHandler.ts:196
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ RetryHandler.ts:192
+(anonymous) @ AuthenticationHandler.ts:88
+fulfilled @ tslib.es6.mjs:118
+Promise.then (async)
+step @ tslib.es6.mjs:120
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+execute @ AuthenticationHandler.ts:63
+(anonymous) @ HTTPClient.ts:88
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+sendRequest @ HTTPClient.ts:81
+(anonymous) @ GraphRequest.ts:372
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+send @ GraphRequest.ts:366
+(anonymous) @ GraphRequest.ts:635
+(anonymous) @ tslib.es6.mjs:121
+__awaiter @ tslib.es6.mjs:117
+get @ GraphRequest.ts:630
+checkFileExists @ excelGraphService.js:474
+(anonymous) @ App.jsx:11076
+handleSave @ OneDriveFileSaveModal.jsx:76
+callCallback2 @ chunk-DSUIPI7G.js:10563
+invokeGuardedCallbackDev @ chunk-DSUIPI7G.js:10588
+invokeGuardedCallback @ chunk-DSUIPI7G.js:10622
+invokeGuardedCallbackAndCatchFirstError @ chunk-DSUIPI7G.js:10625
+executeDispatch @ chunk-DSUIPI7G.js:13903
+processDispatchQueueItemsInOrder @ chunk-DSUIPI7G.js:13923
+processDispatchQueue @ chunk-DSUIPI7G.js:13932
+dispatchEventsForPlugins @ chunk-DSUIPI7G.js:13940
+(anonymous) @ chunk-DSUIPI7G.js:14063
+batchedUpdates$1 @ chunk-DSUIPI7G.js:25802
+batchedUpdates @ chunk-DSUIPI7G.js:10468
+dispatchEventForPluginEventSystem @ chunk-DSUIPI7G.js:14062
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-DSUIPI7G.js:12367
+dispatchEvent @ chunk-DSUIPI7G.js:12361
+dispatchDiscreteEvent @ chunk-DSUIPI7G.js:12338
+Show 57 more frames
+App.jsx:10958 Uploaded to OneDrive, file ID: DC046716012CC0F4!s8f8d4e71b9914c38903bb9cbb67761f5
+App.jsx:10987 Saved local copy to OneDrive sync folder: /Users/isaiahcalvo/Library/CloudStorage/OneDrive-Personal/Security_export.xlsx
+App.jsx:10762 Timestamp comparison: {supabase: '2026-01-10T12:58:12.221Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}
+App.jsx:10762 Timestamp comparison: {supabase: '2026-01-13T02:35:46.777Z', excel: '1970-01-01T00:00:00.000Z', excelIsNewer: false}

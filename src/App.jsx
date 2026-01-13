@@ -12897,6 +12897,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const lastSyncedAnnotationsRef = useRef({});
   const syncErrorCountRef = useRef(0); // Track consecutive sync errors
   const syncRLSErrorShownRef = useRef(false); // Track if RLS error warning was shown
+  const presenceCheckStartedRef = useRef(false); // Prevent duplicate presence checks (React Strict Mode)
 
   // Load annotations from Supabase when document is opened
   useEffect(() => {
@@ -12906,9 +12907,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
-    // Reset error tracking for new document
+    // Reset error count for new document (but NOT RLS error flag - RLS issues persist)
     syncErrorCountRef.current = 0;
-    syncRLSErrorShownRef.current = false;
+    // Note: Don't reset syncRLSErrorShownRef - if RLS failed before, it'll fail again
 
     setIsLoadingRemoteAnnotations(true);
 
@@ -12942,6 +12943,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setDocumentSyncEnabled(true);
 
         // Update presence (and detect RLS errors early)
+        // Skip if RLS error already detected or presence check already started (React Strict Mode)
+        if (syncRLSErrorShownRef.current || presenceCheckStartedRef.current) {
+          return;
+        }
+        // Set flag synchronously BEFORE async call to prevent race condition
+        presenceCheckStartedRef.current = true;
+
         const presenceResult = await updateDocumentPresence(documentId, user.id, {
           clientType: 'app',
           displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
@@ -12971,7 +12979,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Subscribe to real-time annotation changes
   useEffect(() => {
     const documentId = pdfFile?.id;
-    if (!documentId || !user?.id || !documentSyncEnabled) {
+    // Check both state and ref (ref is synchronous, state may lag)
+    if (!documentId || !user?.id || !documentSyncEnabled || syncRLSErrorShownRef.current) {
       return;
     }
 
@@ -13062,7 +13071,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Sync local annotation changes to Supabase (debounced)
   useEffect(() => {
     const documentId = pdfFile?.id;
-    if (!documentId || !user?.id || !documentSyncEnabled) return;
+    // Check both state and ref (ref is synchronous, state may lag)
+    if (!documentId || !user?.id || !documentSyncEnabled || syncRLSErrorShownRef.current) return;
     if (Object.keys(highlightAnnotations).length === 0) return;
 
     // Check if annotations actually changed (avoid syncing our own remote updates)
@@ -13106,7 +13116,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Update presence when page changes
   useEffect(() => {
     const documentId = pdfFile?.id;
-    if (!documentId || !user?.id || !documentSyncEnabled) return;
+    // Check both state and ref (ref is synchronous, state may lag)
+    if (!documentId || !user?.id || !documentSyncEnabled || syncRLSErrorShownRef.current) return;
 
     updateDocumentPresence(documentId, user.id, {
       clientType: 'app',
