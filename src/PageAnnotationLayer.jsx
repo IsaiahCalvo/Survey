@@ -280,7 +280,8 @@ const isArrowObject = (obj) => {
   if (obj.data?.type === 'callout') return false;
 
   const objects = obj.getObjects();
-  const hasLine = objects.some(o => o.type === 'line');
+  // Check for line, polyline (legacy), or path (bezier curve)
+  const hasLine = objects.some(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
   const hasArrowHead = objects.some(o => o.name === 'arrowHead' || o.type === 'triangle');
 
   return hasLine && (hasArrowHead || objects.length === 1);
@@ -913,14 +914,37 @@ const calculateCurveTangent = (polyline, atEnd = true) => {
   return Math.atan2(p2.y - p1.y, p2.x - p1.x);
 };
 
-// Position handler for line controls (for direct Line/Polyline objects)
+// Position handler for line controls (for direct Line/Polyline/Path objects)
 const linePositionHandler = (type) => {
   return function (dim, finalMatrix, fabricObject) {
     // #region agent log
     fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:761',message:'linePositionHandler called',data:{type,fabricObjectType:fabricObject.type,hasFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
     // #endregion
+
+    // Handle Path (bezier curve) - new implementation
+    if (fabricObject.type === 'path' && fabricObject.data?.start && fabricObject.data?.end) {
+      let point;
+      if (type === 'start') {
+        point = { x: fabricObject.data.start.x, y: fabricObject.data.start.y };
+      } else if (type === 'midpoint') {
+        if (fabricObject.data?.midpoint) {
+          point = { x: fabricObject.data.midpoint.x, y: fabricObject.data.midpoint.y };
+        } else {
+          // Calculate geometric midpoint if no stored midpoint
+          point = getMidpoint(fabricObject.data.start, fabricObject.data.end);
+        }
+      } else if (type === 'end') {
+        point = { x: fabricObject.data.end.x, y: fabricObject.data.end.y };
+      }
+
+      // Path objects use center origin, so we need to transform the point
+      const matrix = finalMatrix || fabricObject.calcTransformMatrix();
+      const result = util.transformPoint(point, matrix);
+      return result;
+    }
+
     if (fabricObject.type === 'polyline') {
-      // Handle Polyline (curved)
+      // Handle Polyline (curved) - legacy support
       const points = fabricObject.points || [];
       if (points.length < 2) return { x: 0, y: 0 };
 
@@ -946,7 +970,7 @@ const linePositionHandler = (type) => {
       // Transform point to canvas space
       // Use finalMatrix if provided (Fabric.js passes it), otherwise calculate
       const matrix = finalMatrix || fabricObject.calcTransformMatrix();
-      const result = finalMatrix 
+      const result = finalMatrix
         ? util.transformPoint(point, finalMatrix)
         : util.transformPoint(point, matrix);
       // #region agent log
@@ -982,20 +1006,35 @@ const linePositionHandler = (type) => {
   };
 };
 
-// Position handler for arrow controls (for Group objects containing Line/Polyline + arrowhead)
+// Position handler for arrow controls (for Group objects containing Line/Polyline/Path + arrowhead)
 const arrowPositionHandler = (type) => {
   return function (dim, finalMatrix, fabricObject) {
     // #region agent log
     fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:818',message:'arrowPositionHandler called',data:{type,hasFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
     // #endregion
     const group = fabricObject;
-    const line = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
+    const line = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
     if (!line) return { x: 0, y: 0 };
 
     let localPoint;
 
-    if (line.type === 'polyline') {
-      // Handle curved arrow (Polyline)
+    if (line.type === 'path' && line.data?.start && line.data?.end) {
+      // Handle curved arrow (Path with bezier)
+      if (type === 'start') {
+        localPoint = { x: line.data.start.x, y: line.data.start.y };
+      } else if (type === 'midpoint') {
+        if (group.data?.midpoint) {
+          localPoint = { x: group.data.midpoint.x, y: group.data.midpoint.y };
+        } else if (line.data?.midpoint) {
+          localPoint = { x: line.data.midpoint.x, y: line.data.midpoint.y };
+        } else {
+          localPoint = getMidpoint(line.data.start, line.data.end);
+        }
+      } else if (type === 'end') {
+        localPoint = { x: line.data.end.x, y: line.data.end.y };
+      }
+    } else if (line.type === 'polyline') {
+      // Handle curved arrow (Polyline) - legacy
       const points = line.points || [];
       if (points.length < 2) return { x: 0, y: 0 };
 
@@ -1080,6 +1119,12 @@ const setupLineControls = (line, canvas) => {
     if (handleType === 'start') {
       if (target.type === 'line') {
         target.set({ x1: localPoint.x, y1: localPoint.y });
+      } else if (target.type === 'path' && target.data?.start && target.data?.end) {
+        // Update Path start point
+        const newStart = { x: localPoint.x, y: localPoint.y };
+        const end = target.data.end;
+        const midpoint = target.data.midpoint || getMidpoint(newStart, end);
+        updatePathGeometry(target, newStart, end, midpoint);
       } else if (target.type === 'polyline' && target.points.length >= 3) {
         target.points[0] = { x: localPoint.x, y: localPoint.y };
         target.set({ points: target.points });
@@ -1087,6 +1132,12 @@ const setupLineControls = (line, canvas) => {
     } else if (handleType === 'end') {
       if (target.type === 'line') {
         target.set({ x2: localPoint.x, y2: localPoint.y });
+      } else if (target.type === 'path' && target.data?.start && target.data?.end) {
+        // Update Path end point
+        const start = target.data.start;
+        const newEnd = { x: localPoint.x, y: localPoint.y };
+        const midpoint = target.data.midpoint || getMidpoint(start, newEnd);
+        updatePathGeometry(target, start, newEnd, midpoint);
       } else if (target.type === 'polyline' && target.points.length >= 3) {
         target.points[target.points.length - 1] = { x: localPoint.x, y: localPoint.y };
         target.set({ points: target.points });
@@ -1097,6 +1148,9 @@ const setupLineControls = (line, canvas) => {
       if (target.type === 'line') {
         startPoint = { x: target.x1, y: target.y1 };
         endPoint = { x: target.x2, y: target.y2 };
+      } else if (target.type === 'path' && target.data?.start && target.data?.end) {
+        startPoint = target.data.start;
+        endPoint = target.data.end;
       } else if (target.type === 'polyline' && target.points.length >= 2) {
         startPoint = { x: target.points[0].x, y: target.points[0].y };
         endPoint = { x: target.points[target.points.length - 1].x, y: target.points[target.points.length - 1].y };
@@ -1114,10 +1168,47 @@ const setupLineControls = (line, canvas) => {
       // #region agent log
       fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:907',message:'snap zone check',data:{isSnapping,midpointX:localPoint.x,midpointY:localPoint.y,startX:startPoint.x,startY:startPoint.y,endX:endPoint.x,endY:endPoint.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
-      
+
       if (isSnapping) {
-        // Snap to straight line - convert Polyline back to Line if needed
-        if (target.type === 'polyline') {
+        // Snap to straight line - convert Path/Polyline back to Line if needed
+        if (target.type === 'path') {
+          // Convert Path back to Line
+          const lineData = convertPathToLine(target);
+          const stroke = target.stroke;
+          const strokeWidth = target.strokeWidth;
+          const strokeUniform = target.strokeUniform;
+          const opacity = target.opacity;
+          const moduleId = target.moduleId;
+          const regionId = target.regionId;
+          const spaceId = target.spaceId;
+
+          // Create new Line object
+          const newLine = new Line([lineData.x1, lineData.y1, lineData.x2, lineData.y2], {
+            stroke,
+            strokeWidth,
+            strokeUniform,
+            opacity,
+            selectable: target.selectable,
+            evented: target.evented
+          });
+
+          if (moduleId) newLine.moduleId = moduleId;
+          if (regionId) newLine.regionId = regionId;
+          if (spaceId) newLine.spaceId = spaceId;
+          if (target.data) newLine.data = { ...target.data, isCurved: false, start: undefined, end: undefined, midpoint: undefined };
+
+          // Replace path with line in canvas
+          const objects = canvas.getObjects();
+          const index = objects.indexOf(target);
+          if (index !== -1) {
+            canvas.remove(target);
+            canvas.insertAt(newLine, index);
+            canvas.setActiveObject(newLine);
+
+            // Re-setup controls on new line
+            setupLineControls(newLine, canvas);
+          }
+        } else if (target.type === 'polyline') {
           const lineData = convertPolylineToLine(target);
           const stroke = target.stroke;
           const strokeWidth = target.strokeWidth;
@@ -1156,7 +1247,7 @@ const setupLineControls = (line, canvas) => {
             canvas.remove(target);
             canvas.insertAt(newLine, index);
             canvas.setActiveObject(newLine);
-            
+
             // Re-setup controls on new line
             setupLineControls(newLine, canvas);
           }
@@ -1167,29 +1258,28 @@ const setupLineControls = (line, canvas) => {
       } else {
         // Not snapping - update midpoint (curved state)
         if (target.type === 'line') {
-          // Convert Line to Polyline
-          const polyline = convertLineToPolyline(target, localPoint, canvas);
-          
-          // Replace line with polyline in canvas
+          // Convert Line to Path (bezier curve) - new implementation
+          const path = convertLineToPath(target, localPoint, canvas);
+
+          // Replace line with path in canvas
           const objects = canvas.getObjects();
           const index = objects.indexOf(target);
           if (index !== -1) {
             canvas.remove(target);
-            canvas.insertAt(polyline, index);
-            canvas.setActiveObject(polyline);
-            
-            // Store midpoint in data
-            if (!polyline.data) polyline.data = {};
-            polyline.data.midpoint = { x: localPoint.x, y: localPoint.y };
-            
-            // Re-setup controls on new polyline
-            setupLineControls(polyline, canvas);
+            canvas.insertAt(path, index);
+            canvas.setActiveObject(path);
+
+            // Re-setup controls on new path
+            setupLineControls(path, canvas);
           }
+        } else if (target.type === 'path' && target.data?.start && target.data?.end) {
+          // Update midpoint in Path
+          updatePathGeometry(target, target.data.start, target.data.end, localPoint);
         } else if (target.type === 'polyline' && target.points.length >= 3) {
-          // Update midpoint in polyline
+          // Legacy: Update midpoint in polyline
           target.points[1] = { x: localPoint.x, y: localPoint.y };
           target.set({ points: target.points });
-          
+
           // Store midpoint in data
           if (!target.data) target.data = {};
           target.data.midpoint = { x: localPoint.x, y: localPoint.y };
@@ -1259,7 +1349,7 @@ const setupLineControls = (line, canvas) => {
 // Setup custom 3-handle controls for Arrow Group objects
 const setupArrowControls = (group, canvas) => {
   // #region agent log
-  const lineObj = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
+  const lineObj = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
   fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1018',message:'setupArrowControls called',data:{lineType:lineObj?.type,hasData:!!group.data,midpoint:group.data?.midpoint,arrowheadStyle:group.data?.arrowheadStyle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
   // #endregion
   // Disable default controls
@@ -1271,7 +1361,7 @@ const setupArrowControls = (group, canvas) => {
   // Initialize midpoint if not present
   if (!group.data) group.data = {};
   if (!group.data.midpoint) {
-    const line = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
+    const line = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
     if (line && line.type === 'line') {
       group.data.midpoint = null; // Will be calculated on-demand when straight
       group.data.isCurved = false;
@@ -1289,13 +1379,19 @@ const setupArrowControls = (group, canvas) => {
     fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1038',message:'arrow localPoint calculated',data:{localX:localPoint.x,localY:localPoint.y,handleType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
     // #endregion
 
-    const line = target.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
+    const line = target.getObjects().find(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
     const head = target.getObjects().find(o => o.name === 'arrowHead' || (o.type === 'triangle' && !o.name));
     if (!line) return false;
 
     if (handleType === 'start') {
       if (line.type === 'line') {
         line.set({ x1: localPoint.x, y1: localPoint.y });
+      } else if (line.type === 'path' && line.data?.start && line.data?.end) {
+        // Update Path start point
+        const newStart = { x: localPoint.x, y: localPoint.y };
+        const end = line.data.end;
+        const midpoint = line.data.midpoint || getMidpoint(newStart, end);
+        updatePathGeometry(line, newStart, end, midpoint);
       } else if (line.type === 'polyline' && line.points.length >= 3) {
         line.points[0] = { x: localPoint.x, y: localPoint.y };
         line.set({ points: line.points });
@@ -1303,24 +1399,36 @@ const setupArrowControls = (group, canvas) => {
     } else if (handleType === 'end') {
       if (line.type === 'line') {
         line.set({ x2: localPoint.x, y2: localPoint.y });
+      } else if (line.type === 'path' && line.data?.start && line.data?.end) {
+        // Update Path end point
+        const start = line.data.start;
+        const newEnd = { x: localPoint.x, y: localPoint.y };
+        const midpoint = line.data.midpoint || getMidpoint(start, newEnd);
+        updatePathGeometry(line, start, newEnd, midpoint);
       } else if (line.type === 'polyline' && line.points.length >= 3) {
         const lastIndex = line.points.length - 1;
         line.points[lastIndex] = { x: localPoint.x, y: localPoint.y };
         line.set({ points: line.points });
       }
-      
+
       // Update arrowhead position and angle
       if (head) {
         head.set({ left: localPoint.x, top: localPoint.y });
         let angle;
-        if (line.type === 'polyline') {
+        if (line.type === 'path' && line.data?.start && line.data?.end) {
+          // Use getCurveEndAngle for bezier curves
+          const angleDeg = getCurveEndAngle(line.data.start, line.data.end, line.data.midpoint || getMidpoint(line.data.start, line.data.end));
+          head.set({ angle: angleDeg + 90 });
+        } else if (line.type === 'polyline') {
           angle = calculateCurveTangent(line, true); // Calculate tangent at end
+          const angleDeg = (angle * 180) / Math.PI;
+          head.set({ angle: angleDeg + 90 });
         } else {
           const { x1, y1, x2, y2 } = line;
           angle = Math.atan2(y2 - y1, x2 - x1);
+          const angleDeg = (angle * 180) / Math.PI;
+          head.set({ angle: angleDeg + 90 });
         }
-        const angleDeg = (angle * 180) / Math.PI;
-        head.set({ angle: angleDeg + 90 });
       }
     } else if (handleType === 'midpoint') {
       // Get current start and end points
@@ -1328,6 +1436,9 @@ const setupArrowControls = (group, canvas) => {
       if (line.type === 'line') {
         startPoint = { x: line.x1, y: line.y1 };
         endPoint = { x: line.x2, y: line.y2 };
+      } else if (line.type === 'path' && line.data?.start && line.data?.end) {
+        startPoint = line.data.start;
+        endPoint = line.data.end;
       } else if (line.type === 'polyline' && line.points.length >= 2) {
         startPoint = { x: line.points[0].x, y: line.points[0].y };
         endPoint = { x: line.points[line.points.length - 1].x, y: line.points[line.points.length - 1].y };
@@ -1347,8 +1458,44 @@ const setupArrowControls = (group, canvas) => {
       // #endregion
 
       if (isSnapping) {
-        // Snap to straight line - convert Polyline back to Line if needed
-        if (line.type === 'polyline') {
+        // Snap to straight line - convert Path/Polyline back to Line if needed
+        if (line.type === 'path') {
+          // Convert Path back to Line
+          const lineData = convertPathToLine(line);
+          const stroke = line.stroke;
+          const strokeWidth = line.strokeWidth;
+          const strokeUniform = line.strokeUniform;
+          const opacity = line.opacity;
+
+          // Create new Line object
+          const newLine = new Line([lineData.x1, lineData.y1, lineData.x2, lineData.y2], {
+            stroke,
+            strokeWidth,
+            strokeUniform,
+            fill: 'transparent',
+            opacity,
+            selectable: false,
+            evented: true,
+            originX: 'center',
+            originY: 'center'
+          });
+
+          // Remove old path and add new line
+          target.remove(line);
+          target.add(newLine);
+
+          // Update arrowhead angle for straight line
+          if (head) {
+            const angle = Math.atan2(lineData.y2 - lineData.y1, lineData.x2 - lineData.x1);
+            const angleDeg = (angle * 180) / Math.PI;
+            head.set({ angle: angleDeg + 90 });
+          }
+
+          // Update data
+          target.data.midpoint = null;
+          target.data.isCurved = false;
+        } else if (line.type === 'polyline') {
+          // Legacy: Convert Polyline back to Line
           const lineData = convertPolylineToLine(line);
           const stroke = line.stroke;
           const strokeWidth = line.strokeWidth;
@@ -1368,7 +1515,7 @@ const setupArrowControls = (group, canvas) => {
             originY: 'center'
           });
 
-          // Remove old line and add new one
+          // Remove old polyline and add new line
           target.remove(line);
           target.add(newLine);
 
@@ -1389,17 +1536,17 @@ const setupArrowControls = (group, canvas) => {
       } else {
         // Not snapping - update midpoint (curved state)
         if (line.type === 'line') {
-          // Convert Line to Polyline
+          // Convert Line to Path (bezier curve) - new implementation
           const stroke = line.stroke;
           const strokeWidth = line.strokeWidth;
           const strokeUniform = line.strokeUniform;
           const opacity = line.opacity;
 
-          const newPolyline = new Polyline([
-            { x: line.x1, y: line.y1 },
-            { x: localPoint.x, y: localPoint.y },
-            { x: line.x2, y: line.y2 }
-          ], {
+          const start = { x: line.x1, y: line.y1 };
+          const end = { x: line.x2, y: line.y2 };
+          const pathString = getCurvedPath(start, end, localPoint);
+
+          const newPath = new Path(pathString, {
             stroke,
             strokeWidth,
             strokeUniform,
@@ -1411,14 +1558,33 @@ const setupArrowControls = (group, canvas) => {
             originY: 'center'
           });
 
-          // Remove old line and add new polyline
-          target.remove(line);
-          target.add(newPolyline);
+          newPath.data = {
+            isCurved: true,
+            start: { x: start.x, y: start.y },
+            end: { x: end.x, y: end.y },
+            midpoint: { x: localPoint.x, y: localPoint.y }
+          };
 
-          // Update arrowhead angle for curved line
+          // Remove old line and add new path
+          target.remove(line);
+          target.add(newPath);
+
+          // Update arrowhead angle for curved line using bezier tangent
           if (head) {
-            const angle = calculateCurveTangent(newPolyline, true);
-            const angleDeg = (angle * 180) / Math.PI;
+            const angleDeg = getCurveEndAngle(start, end, localPoint);
+            head.set({ angle: angleDeg + 90 });
+          }
+
+          // Update data
+          target.data.midpoint = { x: localPoint.x, y: localPoint.y };
+          target.data.isCurved = true;
+        } else if (line.type === 'path' && line.data?.start && line.data?.end) {
+          // Update midpoint in Path
+          updatePathGeometry(line, line.data.start, line.data.end, localPoint);
+
+          // Update arrowhead angle using bezier tangent
+          if (head) {
+            const angleDeg = getCurveEndAngle(line.data.start, line.data.end, localPoint);
             head.set({ angle: angleDeg + 90 });
           }
 
@@ -1426,7 +1592,7 @@ const setupArrowControls = (group, canvas) => {
           target.data.midpoint = { x: localPoint.x, y: localPoint.y };
           target.data.isCurved = true;
         } else if (line.type === 'polyline' && line.points.length >= 3) {
-          // Update midpoint in polyline
+          // Legacy: Update midpoint in polyline
           line.points[1] = { x: localPoint.x, y: localPoint.y };
           line.set({ points: line.points });
 
