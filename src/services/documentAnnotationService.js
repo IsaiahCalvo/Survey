@@ -68,7 +68,10 @@ export async function upsertAnnotations(annotations) {
     .select();
 
   if (error) {
-    console.error('[AnnotationSync] Error upserting annotations:', error);
+    // Don't log RLS errors - let caller handle them
+    if (error.code !== '42501' && !error.message?.includes('row-level security')) {
+      console.error('[AnnotationSync] Error upserting annotations:', error);
+    }
     return { data: [], error };
   }
 
@@ -328,7 +331,10 @@ export async function updateDocumentPresence(documentId, userId, presenceData = 
     });
 
   if (error) {
-    console.error('[AnnotationSync] Error updating presence:', error);
+    // Don't log RLS errors - let caller handle them
+    if (error.code !== '42501' && !error.message?.includes('row-level security')) {
+      console.error('[AnnotationSync] Error updating presence:', error);
+    }
     return { success: false, error };
   }
 

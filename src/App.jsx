@@ -12913,7 +12913,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setIsLoadingRemoteAnnotations(true);
 
     loadAnnotationsFromSupabase(documentId)
-      .then(({ highlightAnnotations: remoteAnnotations, error }) => {
+      .then(async ({ highlightAnnotations: remoteAnnotations, error }) => {
         if (error) {
           console.error('[DocumentSync] Error loading annotations:', error);
           return;
@@ -12941,12 +12941,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
         setDocumentSyncEnabled(true);
 
-        // Update presence
-        updateDocumentPresence(documentId, user.id, {
+        // Update presence (and detect RLS errors early)
+        const presenceResult = await updateDocumentPresence(documentId, user.id, {
           clientType: 'app',
           displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
           currentPage: pageNum
         });
+
+        // If presence fails with RLS error, disable sync silently
+        if (!presenceResult.success && presenceResult.error) {
+          const isRLSError = presenceResult.error.code === '42501' || presenceResult.error.message?.includes('row-level security');
+          if (isRLSError) {
+            syncRLSErrorShownRef.current = true;
+            console.warn('[DocumentSync] RLS policy error detected on presence update. Cloud sync disabled.');
+            setDocumentSyncEnabled(false);
+          }
+        }
       })
       .finally(() => {
         setIsLoadingRemoteAnnotations(false);

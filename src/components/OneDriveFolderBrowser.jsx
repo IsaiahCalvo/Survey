@@ -70,8 +70,7 @@ const OneDriveFolderBrowser = ({
       const sites = await listSharePointSites(graphClient);
       setSharePointSites(sites);
     } catch (err) {
-      console.error('Error loading SharePoint sites:', err);
-      // Check if it's a personal Microsoft account (MSA) error
+      // Check if it's a personal Microsoft account (MSA) error - expected, no need to log
       if (err.message?.includes('MSA') || err.message?.includes('not supported')) {
         setError('SharePoint is not available for personal Microsoft accounts. Please use "My OneDrive" instead, or sign in with a Microsoft 365 Business account.');
       } else if (err.message?.includes('Access') || err.message?.includes('403') || err.message?.includes('denied')) {

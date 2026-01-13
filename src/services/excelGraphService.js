@@ -422,7 +422,10 @@ export async function listSharePointSites(graphClient) {
 
     return response.value || [];
   } catch (error) {
-    console.error('Failed to list SharePoint sites:', error);
+    // Don't log MSA (personal account) errors - expected behavior
+    if (!error.message?.includes('MSA') && !error.message?.includes('not supported')) {
+      console.error('Failed to list SharePoint sites:', error);
+    }
     throw new Error(`Failed to list SharePoint sites: ${error.message}`);
   }
 }
