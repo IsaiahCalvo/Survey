@@ -1,11 +1,256 @@
-PageAnnotationLayer.jsx:5917 [ToolDebug] Setting up arrow controls
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'start', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'midpoint', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'end', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:4318 [ToolDebug] Arrow Selection Detected {hasControls: true, controls: Array(3)}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'start', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'midpoint', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'end', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'start', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'midpoint', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'end', abs: Point, rel: Point}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 2] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 3] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 4] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 5] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:7176 [Page 2] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 3] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 4] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 5] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:7176 [Page 2] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 3] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 4] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 5] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+App.jsx:13376 [isRegionOverlayEnabled] Page 1: FALSE - space not active {activeSpaceId: null, spaceId: '1768371097553-mpm97a8od'}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:7176 [Page 2] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 3] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 4] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7176 [Page 5] Visibility useEffect START: {regionsExist: false, regionsLength: undefined, selectedSpaceId: null, activeSpaceId: null, isOverlayEnabledForThisPage: false, …}
+App.jsx:13381 [isRegionOverlayEnabled] Page 1: FALSE - no valid regions
+App.jsx:13381 [isRegionOverlayEnabled] Page 1: FALSE - no valid regions
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 0, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7299 [Page 1] Background survey annotation lightbulb check: {objModuleId: 'module-1763727070665-0.5714253201980415', selectedSpaceId: '1768371097553-mpm97a8od', lightbulbResult: true, backgroundAnnotationVisible: true}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13381 [isRegionOverlayEnabled] Page 1: FALSE - no valid regions
+App.jsx:13381 [isRegionOverlayEnabled] Page 1: FALSE - no valid regions
+main.jsx:24 Navigation guards have been active for >2s, resetting for safety
+console.warn @ main.jsx:24
+(anonymous) @ App.jsx:14334
+setInterval (async)
+(anonymous) @ App.jsx:14332
+commitHookEffectListMount @ chunk-DSUIPI7G.js:23804
+commitPassiveMountOnFiber @ chunk-DSUIPI7G.js:25045
+commitPassiveMountEffects_complete @ chunk-DSUIPI7G.js:25018
+commitPassiveMountEffects_begin @ chunk-DSUIPI7G.js:25008
+commitPassiveMountEffects @ chunk-DSUIPI7G.js:24998
+flushPassiveEffectsImpl @ chunk-DSUIPI7G.js:26379
+flushPassiveEffects @ chunk-DSUIPI7G.js:26336
+(anonymous) @ chunk-DSUIPI7G.js:26217
+workLoop @ chunk-DSUIPI7G.js:467
+flushWork @ chunk-DSUIPI7G.js:446
+performWorkUntilDeadline @ chunk-DSUIPI7G.js:654
+Show 11 more frames
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7299 [Page 1] Background survey annotation lightbulb check: {objModuleId: 'module-1763727070665-0.5714253201980415', selectedSpaceId: '1768371097553-mpm97a8od', lightbulbResult: true, backgroundAnnotationVisible: true}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7299 [Page 1] Background survey annotation lightbulb check: {objModuleId: 'module-1763727070665-0.5714253201980415', selectedSpaceId: '1768371097553-mpm97a8od', lightbulbResult: true, backgroundAnnotationVisible: true}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7299 [Page 1] Background survey annotation lightbulb check: {objModuleId: 'module-1763727070665-0.5714253201980415', selectedSpaceId: '1768371097553-mpm97a8od', lightbulbResult: false, backgroundAnnotationVisible: false}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7299 [Page 1] Background survey annotation lightbulb check: {objModuleId: 'module-1763727070665-0.5714253201980415', selectedSpaceId: '1768371097553-mpm97a8od', lightbulbResult: true, backgroundAnnotationVisible: true}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7299 [Page 1] Background survey annotation lightbulb check: {objModuleId: 'module-1763727070665-0.5714253201980415', selectedSpaceId: '1768371097553-mpm97a8od', lightbulbResult: true, backgroundAnnotationVisible: true}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7299 [Page 1] Background survey annotation lightbulb check: {objModuleId: 'module-1763727070665-0.5714253201980415', selectedSpaceId: '1768371097553-mpm97a8od', lightbulbResult: true, backgroundAnnotationVisible: true}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7274 [Page 1] Scoped annotation VISIBLE: hasActiveRegions {objRegionId: '1768371103764-p1eqipi7y', hasActiveRegions: true, activeRegionId: '1768371103764-p1eqipi7y'}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7274 [Page 1] Scoped annotation VISIBLE: hasActiveRegions {objRegionId: '1768371103764-p1eqipi7y', hasActiveRegions: true, activeRegionId: '1768371103764-p1eqipi7y'}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7274 [Page 1] Scoped annotation VISIBLE: hasActiveRegions {objRegionId: '1768371103764-p1eqipi7y', hasActiveRegions: true, activeRegionId: '1768371103764-p1eqipi7y'}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7274 [Page 1] Scoped annotation VISIBLE: hasActiveRegions {objRegionId: '1768371103764-p1eqipi7y', hasActiveRegions: true, activeRegionId: '1768371103764-p1eqipi7y'}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7282 [Page 1] Scoped annotation HIDDEN: toggle OFF {objRegionId: '1768371103764-p1eqipi7y', hasActiveRegions: false, activeRegionId: null}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7282 [Page 1] Scoped annotation HIDDEN: toggle OFF {objRegionId: '1768371103764-p1eqipi7y', hasActiveRegions: false, activeRegionId: null}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7274 [Page 1] Scoped annotation VISIBLE: hasActiveRegions {objRegionId: '1768371103764-p1eqipi7y', hasActiveRegions: true, activeRegionId: '1768371103764-p1eqipi7y'}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7274 [Page 1] Scoped annotation VISIBLE: hasActiveRegions {objRegionId: '1768371103764-p1eqipi7y', hasActiveRegions: true, activeRegionId: '1768371103764-p1eqipi7y'}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: false, result: true, regionOverlayDisabledMap: Array(0)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7282 [Page 1] Scoped annotation HIDDEN: toggle OFF {objRegionId: '1768371103764-p1eqipi7y', hasActiveRegions: false, activeRegionId: null}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7282 [Page 1] Scoped annotation HIDDEN: toggle OFF {objRegionId: '1768371103764-p1eqipi7y', hasActiveRegions: false, activeRegionId: null}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: '1768371103764-p1eqipi7y', matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+PageAnnotationLayer.jsx:7176 [Page 1] Visibility useEffect START: {regionsExist: true, regionsLength: 1, selectedSpaceId: '1768371097553-mpm97a8od', activeSpaceId: '1768371097553-mpm97a8od', isOverlayEnabledForThisPage: false, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7299 [Page 1] Background survey annotation lightbulb check: {objModuleId: 'module-1763727070665-0.5714253201980415', selectedSpaceId: '1768371097553-mpm97a8od', lightbulbResult: true, backgroundAnnotationVisible: true}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+PageAnnotationLayer.jsx:7246 [Page 1] Survey annotation visibility: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, showSurveyPanel: true, selectedModuleId: 'module-1763727070665-0.5714253201980415', moduleMatches: true, …}
+PageAnnotationLayer.jsx:7299 [Page 1] Background survey annotation lightbulb check: {objModuleId: 'module-1763727070665-0.5714253201980415', selectedSpaceId: '1768371097553-mpm97a8od', lightbulbResult: true, backgroundAnnotationVisible: true}
+PageAnnotationLayer.jsx:7347 [Page 1] FINAL visibility for survey annotation: {objModuleId: 'module-1763727070665-0.5714253201980415', objRegionId: null, matchesSpace: true, matchesModule: true, surveyAnnotationVisible: true, …}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
+App.jsx:13389 [isRegionOverlayEnabled] Page 1: {key: '1768371097553-mpm97a8od-1', isDisabled: true, result: false, regionOverlayDisabledMap: Array(1)}
