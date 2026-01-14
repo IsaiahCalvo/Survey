@@ -1215,115 +1215,105 @@ const linePositionHandler = (type) => {
 };
 
 // Position handler for arrow controls (for Group objects containing Line/Polyline/Path + arrowhead)
+// Position handler for arrow controls (for Group objects containing Line/Polyline/Path + arrowhead)
 const arrowPositionHandler = (type) => {
   return function (dim, finalMatrix, fabricObject) {
     // #region agent log
     // #endregion
-    console.log('[ToolDebug] Arrow Position Handler:', type);
     const group = fabricObject;
     const line = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
     if (!line) return { x: 0, y: 0 };
 
-    let localPoint;
+    // Determine Absolute Point from LIVE geometry
+    let absolutePoint;
+    const lineMatrix = line.calcTransformMatrix(); // Absolute Matrix
 
-    if (line.type === 'path' && line.data?.start && line.data?.end) {
-      // Handle curved arrow (Path with bezier)
-      // Path objects store ABSOLUTE canvas coordinates
-      // Since we need to return GROUP-RELATIVE coordinates for the handle,
-      // we must transform the absolute points back into group space.
+    if (line.type === 'path') {
+      const path = line.path; // [['M',x,y], ['Q',cx,cy,ex,ey]]
+      if (!path || path.length < 2) return { x: 0, y: 0 };
+      const pathOffset = line.pathOffset || { x: 0, y: 0 };
 
-      let absPoint;
+      // Extract raw coordinates from path commands
+      let rawX, rawY;
+
       if (type === 'start') {
-        absPoint = { x: line.data.start.x, y: line.data.start.y };
-      } else if (type === 'midpoint') {
-        if (group.data?.midpoint) {
-          // midpoint usually stored in absolute if drag updated?
-          // Actually, verify where midpoint comes from. 
-          // If from group.data, it might be relative or absolute.
-          // Let's assume absolute for Path/Curve logic elsewhere.
-          absPoint = { x: group.data.midpoint.x, y: group.data.midpoint.y };
-        } else if (line.data?.midpoint) {
-          absPoint = { x: line.data.midpoint.x, y: line.data.midpoint.y };
-        } else {
-          absPoint = getMidpoint(line.data.start, line.data.end);
-        }
+        // M command: ['M', x, y]
+        rawX = path[0][1];
+        rawY = path[0][2];
       } else if (type === 'end') {
-        absPoint = { x: line.data.end.x, y: line.data.end.y };
+        // Last command: usually ['Q', ..., x, y]
+        const lastCmd = path[path.length - 1];
+        rawX = lastCmd[lastCmd.length - 2];
+        rawY = lastCmd[lastCmd.length - 1];
+      } else {
+        // Midpoint (Control Point)
+        // For Q curve: ['Q', cx, cy, ex, ey] -> cx, cy
+        if (path.length > 1 && path[1][0] === 'Q') {
+          rawX = path[1][1];
+          rawY = path[1][2];
+        } else {
+          // Fallback to geometric avg
+          const startX = path[0][1];
+          const startY = path[0][2];
+          const lastCmd = path[path.length - 1];
+          const endX = lastCmd[lastCmd.length - 2];
+          const endY = lastCmd[lastCmd.length - 1];
+          rawX = (startX + endX) / 2;
+          rawY = (startY + endY) / 2;
+        }
       }
 
-      // Transform absolute point to group relative
-      const groupMatrix = finalMatrix || group.calcTransformMatrix();
-      const invertedGroupMatrix = util.invertTransform(groupMatrix);
-      return util.transformPoint(absPoint, invertedGroupMatrix);
+      // Apply pathOffset to center the point
+      const localPoint = { x: rawX - pathOffset.x, y: rawY - pathOffset.y };
+      absolutePoint = util.transformPoint(localPoint, lineMatrix);
 
     } else if (line.type === 'polyline') {
-      // Handle curved arrow (Polyline) - legacy
       const points = line.points || [];
       if (points.length < 2) return { x: 0, y: 0 };
+      const pathOffset = line.pathOffset || { x: 0, y: 0 };
 
-      // Polyline points are usually relative to polyline logic?
-      // Just use the new standard logic below if possible, but keeping legacy structure for safety.
-      // But actually, let's just make it return relative points.
-
-      // Let's defer to the relative matrix logic for Polyline too if possible?
-      // Polyline points are simpler.
-      const relativeMatrix = line.calcTransformMatrix(true); // Skip Group
-
-      let point;
-      if (type === 'start') {
-        point = { x: points[0].x, y: points[0].y };
-      } else if (type === 'midpoint') {
-        if (group.data?.midpoint) {
-          return { x: group.data.midpoint.x, y: group.data.midpoint.y };
-        } else if (points.length >= 3) {
-          point = { x: points[1].x, y: points[1].y };
-        } else {
-          point = {
-            x: (points[0].x + points[points.length - 1].x) / 2,
-            y: (points[0].y + points[points.length - 1].y) / 2
-          };
-        }
-      } else if (type === 'end') {
-        point = { x: points[points.length - 1].x, y: points[points.length - 1].y };
+      let p;
+      if (type === 'start') p = points[0];
+      else if (type === 'end') p = points[points.length - 1];
+      else {
+        if (points.length >= 3) p = points[1];
+        else p = {
+          x: (points[0].x + points[points.length - 1].x) / 2,
+          y: (points[0].y + points[points.length - 1].y) / 2
+        };
       }
 
-      return util.transformPoint(point, relativeMatrix);
+      // Points in polyline are already relative to center or top-left depending on origin?
+      // Usually width pathOffset they are centered.
+      const localPoint = { x: p.x - pathOffset.x, y: p.y - pathOffset.y };
+      absolutePoint = util.transformPoint(localPoint, lineMatrix);
 
     } else {
-      // Handle straight arrow (Line)
-      // Fix: Use calcLinePoints() (relative to line center)
-      // AND calcTransformMatrix(true) (Skip Group) to get matrix relative to Group center
+      // Line
       const points = line.calcLinePoints();
-      // Pass true to skip the group matrix -> gives us Line's matrix relative to Group
-      const relativeMatrix = line.calcTransformMatrix(true);
+      // calcLinePoints is already centered (relative to center)
+      let p;
+      if (type === 'start') p = { x: points.x1, y: points.y1 };
+      else if (type === 'end') p = { x: points.x2, y: points.y2 };
+      else p = { x: (points.x1 + points.x2) / 2, y: (points.y1 + points.y2) / 2 };
 
-      let localPoint; // This will be the point in Group space
-      if (type === 'start') {
-        const point = { x: points.x1, y: points.y1 };
-        localPoint = util.transformPoint(point, relativeMatrix);
-      } else if (type === 'midpoint') {
-        if (group.data?.midpoint) {
-          // If manual midpoint exists on group data, it is already relative to group (usually)
-          localPoint = { x: group.data.midpoint.x, y: group.data.midpoint.y };
-        } else {
-          const point = {
-            x: (points.x1 + points.x2) / 2,
-            y: (points.y1 + points.y2) / 2
-          };
-          localPoint = util.transformPoint(point, relativeMatrix);
-        }
-      } else if (type === 'end') {
-        const point = { x: points.x2, y: points.y2 };
-        localPoint = util.transformPoint(point, relativeMatrix);
-      }
-
-      console.log('[ToolDebug] Arrow Pos Debug (Relative):', {
-        type,
-        x: localPoint.x,
-        y: localPoint.y
-      });
-      return localPoint;
+      absolutePoint = util.transformPoint(p, lineMatrix);
     }
+
+    if (!absolutePoint) return { x: 0, y: 0 };
+
+    // Convert Absolute to Relative-to-Group
+    const groupMatrix = finalMatrix || group.calcTransformMatrix();
+    const invertedGroupMatrix = util.invertTransform(groupMatrix);
+    const relativePoint = util.transformPoint(absolutePoint, invertedGroupMatrix);
+
+    console.log('[ToolDebug] Arrow Pos (Live Geometry Fix):', {
+      type,
+      abs: absolutePoint,
+      rel: relativePoint
+    });
+
+    return relativePoint;
   };
 };
 
