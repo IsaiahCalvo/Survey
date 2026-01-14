@@ -1228,90 +1228,102 @@ const arrowPositionHandler = (type) => {
 
     if (line.type === 'path' && line.data?.start && line.data?.end) {
       // Handle curved arrow (Path with bezier)
-      // Path objects store ABSOLUTE canvas coordinates, so return them directly
-      // without additional transformation
+      // Path objects store ABSOLUTE canvas coordinates
+      // Since we need to return GROUP-RELATIVE coordinates for the handle,
+      // we must transform the absolute points back into group space.
+
+      let absPoint;
       if (type === 'start') {
-        return { x: line.data.start.x, y: line.data.start.y };
+        absPoint = { x: line.data.start.x, y: line.data.start.y };
       } else if (type === 'midpoint') {
         if (group.data?.midpoint) {
-          return { x: group.data.midpoint.x, y: group.data.midpoint.y };
+          // midpoint usually stored in absolute if drag updated?
+          // Actually, verify where midpoint comes from. 
+          // If from group.data, it might be relative or absolute.
+          // Let's assume absolute for Path/Curve logic elsewhere.
+          absPoint = { x: group.data.midpoint.x, y: group.data.midpoint.y };
         } else if (line.data?.midpoint) {
-          return { x: line.data.midpoint.x, y: line.data.midpoint.y };
+          absPoint = { x: line.data.midpoint.x, y: line.data.midpoint.y };
         } else {
-          return getMidpoint(line.data.start, line.data.end);
+          absPoint = getMidpoint(line.data.start, line.data.end);
         }
       } else if (type === 'end') {
-        return { x: line.data.end.x, y: line.data.end.y };
+        absPoint = { x: line.data.end.x, y: line.data.end.y };
       }
+
+      // Transform absolute point to group relative
+      const groupMatrix = finalMatrix || group.calcTransformMatrix();
+      const invertedGroupMatrix = util.invertTransform(groupMatrix);
+      return util.transformPoint(absPoint, invertedGroupMatrix);
+
     } else if (line.type === 'polyline') {
       // Handle curved arrow (Polyline) - legacy
       const points = line.points || [];
       if (points.length < 2) return { x: 0, y: 0 };
 
+      // Polyline points are usually relative to polyline logic?
+      // Just use the new standard logic below if possible, but keeping legacy structure for safety.
+      // But actually, let's just make it return relative points.
+
+      // Let's defer to the relative matrix logic for Polyline too if possible?
+      // Polyline points are simpler.
+      const relativeMatrix = line.calcTransformMatrix(true); // Skip Group
+
+      let point;
       if (type === 'start') {
-        localPoint = { x: points[0].x, y: points[0].y };
+        point = { x: points[0].x, y: points[0].y };
       } else if (type === 'midpoint') {
         if (group.data?.midpoint) {
-          localPoint = { x: group.data.midpoint.x, y: group.data.midpoint.y };
+          return { x: group.data.midpoint.x, y: group.data.midpoint.y };
         } else if (points.length >= 3) {
-          localPoint = { x: points[1].x, y: points[1].y };
+          point = { x: points[1].x, y: points[1].y };
         } else {
-          localPoint = {
+          point = {
             x: (points[0].x + points[points.length - 1].x) / 2,
             y: (points[0].y + points[points.length - 1].y) / 2
           };
         }
       } else if (type === 'end') {
-        localPoint = { x: points[points.length - 1].x, y: points[points.length - 1].y };
+        point = { x: points[points.length - 1].x, y: points[points.length - 1].y };
       }
+
+      return util.transformPoint(point, relativeMatrix);
+
     } else {
       // Handle straight arrow (Line)
-      // 1. Get Absolute Canvas Point
-      // We use calcLinePoints (relative to line center) + calcTransformMatrix (absolute)
+      // Fix: Use calcLinePoints() (relative to line center)
+      // AND calcTransformMatrix(true) (Skip Group) to get matrix relative to Group center
       const points = line.calcLinePoints();
-      const lineMatrix = line.calcTransformMatrix();
+      // Pass true to skip the group matrix -> gives us Line's matrix relative to Group
+      const relativeMatrix = line.calcTransformMatrix(true);
 
-      let absolutePoint;
+      let localPoint; // This will be the point in Group space
       if (type === 'start') {
         const point = { x: points.x1, y: points.y1 };
-        absolutePoint = util.transformPoint(point, lineMatrix);
+        localPoint = util.transformPoint(point, relativeMatrix);
       } else if (type === 'midpoint') {
         if (group.data?.midpoint) {
-          const mp = { x: group.data.midpoint.x, y: group.data.midpoint.y };
-          // Use standard group transform for this case
-          const groupMatrix = finalMatrix || group.calcTransformMatrix();
-          absolutePoint = util.transformPoint(mp, groupMatrix);
+          // If manual midpoint exists on group data, it is already relative to group (usually)
+          localPoint = { x: group.data.midpoint.x, y: group.data.midpoint.y };
         } else {
           const point = {
             x: (points.x1 + points.x2) / 2,
             y: (points.y1 + points.y2) / 2
           };
-          absolutePoint = util.transformPoint(point, lineMatrix);
+          localPoint = util.transformPoint(point, relativeMatrix);
         }
       } else if (type === 'end') {
         const point = { x: points.x2, y: points.y2 };
-        absolutePoint = util.transformPoint(point, lineMatrix);
+        localPoint = util.transformPoint(point, relativeMatrix);
       }
 
-      // 2. Convert Absolute Point to Group-Relative Point
-      const groupMatrix = finalMatrix || group.calcTransformMatrix();
-      const invertedGroupMatrix = util.invertTransform(groupMatrix);
-      const relativePoint = util.transformPoint(absolutePoint, invertedGroupMatrix);
-
-      console.log('[ToolDebug] Arrow Pos Debug (Final):', {
+      console.log('[ToolDebug] Arrow Pos Debug (Relative):', {
         type,
-        ABSOLUTES: absolutePoint,
-        RELATIVE: relativePoint,
-        isNaN: !relativePoint || isNaN(relativePoint.x) || isNaN(relativePoint.y)
+        x: localPoint.x,
+        y: localPoint.y
       });
-
-      return relativePoint;
+      return localPoint;
     }
-
-    // Default catch-all
-    const result = { x: 0, y: 0 };
-    console.log('[ToolDebug] Arrow Pos Debug (Fallback):', { type, result });
-    return result;
   };
 };
 
