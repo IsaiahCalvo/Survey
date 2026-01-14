@@ -467,6 +467,177 @@ const updateCalloutGroupConnections = (group) => {
 };
 
 
+// Helper to generate IDs
+const generateId = () => typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9);
+
+// Convert callout data to Fabric objects (Independent Objects approach)
+const createCalloutObjects = (callout, isSelected) => {
+  console.log('[ToolDebug] Creating callout objects:', callout.id);
+  const { arrowTip, knee, textBoxPosition, textBoxWidth, textBoxHeight, text, style, id } = callout;
+
+  // Calculate connection point
+  const { line1Start, shouldHideLine1: shouldHide, line2Start, effectiveKnee } = calculateCalloutConnection(
+    textBoxPosition.x,
+    textBoxPosition.y,
+    textBoxWidth,
+    textBoxHeight,
+    knee,
+    arrowTip,
+    style.lineThickness
+  );
+
+  // Line from text box to knee
+  const line1 = new Line([line1Start.x, line1Start.y, effectiveKnee.x, effectiveKnee.y], {
+    stroke: style.borderColor,
+    strokeWidth: style.lineThickness,
+    selectable: true,
+    evented: true, // Make clickable to select callout
+    opacity: shouldHide ? 0 : style.opacity,
+    perPixelTargetFind: true, // Use per-pixel hit detection for precise clicking
+    hoverCursor: 'move',
+    targetFindTolerance: 15, // Increase tolerance to make clicking easier
+    hasControls: false, // No resize handles for lines
+    hasBorders: false, // No selection border for lines
+  });
+  line1.calloutId = id;
+  line1.partType = 'line1';
+
+  // Line from knee to arrow tip (with arrowhead direction)
+  const line2 = new Line([line2Start.x, line2Start.y, arrowTip.x, arrowTip.y], {
+    stroke: style.borderColor,
+    strokeWidth: style.lineThickness,
+    selectable: true,
+    evented: true, // Make clickable to select callout
+    opacity: style.opacity,
+    perPixelTargetFind: true, // Use per-pixel hit detection for precise clicking
+    hoverCursor: 'move',
+    targetFindTolerance: 15, // Increase tolerance to make clicking easier
+    hasControls: false, // No resize handles for lines
+    hasBorders: false, // No selection border for lines
+  });
+  line2.calloutId = id;
+  line2.partType = 'line2';
+
+  // Arrow head (triangle)
+  const angleDeg = (Math.atan2(arrowTip.y - effectiveKnee.y, arrowTip.x - effectiveKnee.x) * 180) / Math.PI;
+  const arrowHead = new Triangle({
+    left: arrowTip.x,
+    top: arrowTip.y,
+    originX: 'center',
+    originY: 'center',
+    width: 14,
+    height: 18,
+    angle: angleDeg + 90,
+    fill: style.borderColor,
+    selectable: false,
+    evented: true, // Make clickable to select callout
+    opacity: style.opacity,
+    targetFindTolerance: 5,
+  });
+  arrowHead.calloutId = id;
+  arrowHead.partType = 'arrowHead';
+
+  // Text box background - MUST be selectable and evented
+  const textBoxBg = new Rect({
+    left: textBoxPosition.x,
+    top: textBoxPosition.y,
+    width: textBoxWidth,
+    height: textBoxHeight,
+    fill: style.fillColor === 'transparent' ? 'rgba(255,255,255,0.01)' : style.fillColor,
+    stroke: style.borderColor,
+    strokeWidth: style.lineThickness,
+    strokeUniform: true,
+    selectable: true,
+    evented: true,
+    opacity: style.opacity,
+    rx: 2,
+    ry: 2,
+    hasControls: true,
+    hasBorders: true,
+    lockRotation: true,
+    objectCaching: false, // Ensure strokeUniform works correctly
+  });
+  textBoxBg.calloutId = id;
+  textBoxBg.partType = 'textBoxBg';
+
+  // Hide edge handles and rotate handle, keep only corner handles
+  textBoxBg.setControlsVisibility({
+    ml: false, mr: false, mt: false, mb: false, mtr: false,
+    tl: true, tr: true, bl: true, br: true
+  });
+
+  // Customize corner handles
+  textBoxBg.cornerColor = '#ffffff';
+  textBoxBg.cornerStrokeColor = '#3b82f6';
+  textBoxBg.cornerSize = 12;
+  textBoxBg.transparentCorners = false;
+
+  // Text
+  const textObj = new Textbox(text || '', {
+    left: textBoxPosition.x + 8,
+    top: textBoxPosition.y + 4,
+    width: Math.max(textBoxWidth - 16, 20),
+    fontSize: style.fontSize,
+    fontFamily: style.fontFamily,
+    fill: style.fontColor,
+    fontWeight: style.bold ? 'bold' : 'normal',
+    fontStyle: style.italic ? 'italic' : 'normal',
+    selectable: true,
+    evented: true,
+    editable: true,
+    opacity: style.opacity,
+    splitByGrapheme: true,
+    hasControls: false,
+    hasBorders: false,
+  });
+  textObj.calloutId = id;
+  textObj.partType = 'text';
+
+  // Handle squares for arrow tip and knee - visible when selected
+  const arrowTipHandle = new Rect({
+    left: arrowTip.x - 6,
+    top: arrowTip.y - 6,
+    width: 12,
+    height: 12,
+    fill: '#ffffff',
+    stroke: '#3b82f6',
+    strokeWidth: 1,
+    rx: 2,
+    ry: 2,
+    selectable: true,
+    evented: true,
+    hasControls: false,
+    hasBorders: false,
+    visible: true,
+    opacity: isSelected ? 1 : 0,
+  });
+  arrowTipHandle.calloutId = id;
+  arrowTipHandle.partType = 'arrowTip';
+
+  const kneeHandle = new Rect({
+    left: effectiveKnee.x - 6,
+    top: effectiveKnee.y - 6,
+    width: 12,
+    height: 12,
+    fill: '#ffffff',
+    stroke: '#3b82f6',
+    strokeWidth: 1,
+    rx: 2,
+    ry: 2,
+    selectable: true,
+    evented: true,
+    hasControls: false,
+    hasBorders: false,
+    visible: true,
+    opacity: isSelected ? 1 : 0,
+  });
+  kneeHandle.calloutId = id;
+  kneeHandle.partType = 'knee';
+
+  return [line1, line2, arrowHead, textBoxBg, textObj, arrowTipHandle, kneeHandle];
+};
+
+
 const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
   // --- 1. L-Shape Logic ---
   // Default Knee: Horizontal from text, Vertical from Tip? or Horizontal from Tip?
@@ -741,7 +912,6 @@ const checkSnapZone = (midpoint, start, end, threshold = 8) => {
   // This uses perpendicular distance to the infinite line, which is better for snap detection
   const isSnapping = shouldSnapToLinear(midpoint, start, end, threshold);
   // #region agent log
-  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:659',message:'checkSnapZone result',data:{threshold,isSnapping,midpointX:midpoint.x,midpointY:midpoint.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
   // #endregion
   return isSnapping;
 };
@@ -963,7 +1133,6 @@ const calculateCurveTangent = (polyline, atEnd = true) => {
 const linePositionHandler = (type) => {
   return function (dim, finalMatrix, fabricObject) {
     // #region agent log
-    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:761',message:'linePositionHandler called',data:{type,fabricObjectType:fabricObject.type,hasFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
     // #endregion
 
     // Handle Path (bezier curve) - new implementation
@@ -1015,7 +1184,6 @@ const linePositionHandler = (type) => {
         ? util.transformPoint(point, finalMatrix)
         : util.transformPoint(point, matrix);
       // #region agent log
-      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:790',message:'linePositionHandler polyline result',data:{type,localX:point.x,localY:point.y,canvasX:result.x,canvasY:result.y,usingFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
       // #endregion
       return result;
     } else if (fabricObject.type === 'line') {
@@ -1038,7 +1206,6 @@ const linePositionHandler = (type) => {
       // For Line objects, return object-relative coordinates
       // Fabric.js will apply finalMatrix transformation
       // #region agent log
-      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:812',message:'linePositionHandler line returning object-relative',data:{type,localX:point.x,localY:point.y,hasFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
       // #endregion
       return point;
     }
@@ -1051,8 +1218,8 @@ const linePositionHandler = (type) => {
 const arrowPositionHandler = (type) => {
   return function (dim, finalMatrix, fabricObject) {
     // #region agent log
-    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:818',message:'arrowPositionHandler called',data:{type,hasFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
     // #endregion
+    // console.log('[ToolDebug] Arrow Position Handler:', type);
     const group = fabricObject;
     const line = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
     if (!line) return { x: 0, y: 0 };
@@ -1122,7 +1289,6 @@ const arrowPositionHandler = (type) => {
       ? util.transformPoint(localPoint, finalMatrix)
       : util.transformPoint(localPoint, matrix);
     // #region agent log
-    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:870',message:'arrowPositionHandler result',data:{type,localX:localPoint.x,localY:localPoint.y,canvasX:result.x,canvasY:result.y,usingFinalMatrix:!!finalMatrix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
     // #endregion
     return result;
   };
@@ -1131,7 +1297,6 @@ const arrowPositionHandler = (type) => {
 // Setup custom 3-handle controls for Line objects
 const setupLineControls = (line, canvas) => {
   // #region agent log
-  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:864',message:'setupLineControls called',data:{type:line.type,hasData:!!line.data,midpoint:line.data?.midpoint},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
   // #endregion
   // Disable default controls
   line.controls = {};
@@ -1142,20 +1307,15 @@ const setupLineControls = (line, canvas) => {
     selectable: true,
     evented: true
   });
-  
+
   // #region agent log
-  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:905',message:'Line object properties after setup',data:{hasControls:line.hasControls,hasBorders:line.hasBorders,selectable:line.selectable,evented:line.evented,type:line.type,controlKeys:Object.keys(line.controls||{})},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
   // #endregion
 
   // Update line geometry handler
   const updateLineGeometry = (transform, x, y, handleType) => {
-    // #region agent log
-    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:870',message:'updateLineGeometry called',data:{handleType,canvasX:x,canvasY:y,targetType:transform.target.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     const target = transform.target;
     const localPoint = getLocalPoint(transform, x, y);
     // #region agent log
-    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:873',message:'localPoint calculated',data:{localX:localPoint.x,localY:localPoint.y,handleType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
     // #endregion
 
     if (handleType === 'start') {
@@ -1217,7 +1377,6 @@ const setupLineControls = (line, canvas) => {
 
       const isSnapping = checkSnapZone(midpointCoord, startPoint, endPoint, 8);
       // #region agent log
-      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:907',message:'snap zone check',data:{isSnapping,midpointX:localPoint.x,midpointY:localPoint.y,startX:startPoint.x,startY:startPoint.y,endX:endPoint.x,endY:endPoint.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
 
       if (isSnapping) {
@@ -1353,7 +1512,6 @@ const setupLineControls = (line, canvas) => {
   // IMPORTANT: left/top are already in the correct coordinate space - use translate like callout
   const renderControlHandle = (ctx, left, top, styleOverride, fabricObject) => {
     // #region agent log
-    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1030',message:'renderControlHandle LINE called',data:{left,top,hasCtx:!!ctx,canvasWidth:ctx?.canvas?.width,canvasHeight:ctx?.canvas?.height},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
     // #endregion
     const size = 12;
     ctx.save();
@@ -1400,7 +1558,6 @@ const setupLineControls = (line, canvas) => {
     visible: true
   });
   // #region agent log
-  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1015',message:'setupLineControls completed',data:{controlCount:Object.keys(line.controls).length,hasStart:!!line.controls.start,hasMidpoint:!!line.controls.midpoint,hasEnd:!!line.controls.end,startVisible:line.controls.start?.visible,midpointVisible:line.controls.midpoint?.visible,endVisible:line.controls.end?.visible},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
   // #endregion
 };
 
@@ -1408,7 +1565,6 @@ const setupLineControls = (line, canvas) => {
 const setupArrowControls = (group, canvas) => {
   // #region agent log
   const lineObj = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
-  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1018',message:'setupArrowControls called',data:{lineType:lineObj?.type,hasData:!!group.data,midpoint:group.data?.midpoint,arrowheadStyle:group.data?.arrowheadStyle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
   // #endregion
   // Disable default controls
   group.controls = {};
@@ -1428,14 +1584,8 @@ const setupArrowControls = (group, canvas) => {
 
   // Update arrow geometry handler
   const updateArrowGeometry = (transform, x, y, handleType) => {
-    // #region agent log
-    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1035',message:'updateArrowGeometry called',data:{handleType,canvasX:x,canvasY:y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     const target = transform.target; // The Group
     const localPoint = getLocalPoint(transform, x, y); // Mouse pos in Group coords
-    // #region agent log
-    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1038',message:'arrow localPoint calculated',data:{localX:localPoint.x,localY:localPoint.y,handleType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
 
     const line = target.getObjects().find(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
     const head = target.getObjects().find(o => o.name === 'arrowHead' || (o.type === 'triangle' && !o.name));
@@ -1522,8 +1672,6 @@ const setupArrowControls = (group, canvas) => {
       };
 
       const isSnapping = checkSnapZone(midpointCoord, startPoint, endPoint, 8);
-      // #region agent log
-      fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1096',message:'arrow snap zone check',data:{isSnapping,midpointX:localPoint.x,midpointY:localPoint.y,startX:startPoint.x,startY:startPoint.y,endX:endPoint.x,endY:endPoint.y},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
 
       if (isSnapping) {
@@ -1703,9 +1851,7 @@ const setupArrowControls = (group, canvas) => {
   // Define render function for controls (must be local, not global reference)
   // IMPORTANT: left/top are already in the correct coordinate space - use translate like callout
   const renderControlHandle = (ctx, left, top, styleOverride, fabricObject) => {
-    // #region agent log
-    fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1271',message:'renderControlHandle ARROW called',data:{left,top,hasCtx:!!ctx,canvasWidth:ctx?.canvas?.width,canvasHeight:ctx?.canvas?.height},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
+    // console.log('[ToolDebug] Rendering arrow handle');
     const size = 12;
     ctx.save();
     ctx.translate(left, top);
@@ -1722,6 +1868,15 @@ const setupArrowControls = (group, canvas) => {
   };
 
   // Start handle
+  group.controls = {}; // Clear default controls
+  // Mirror setupLineControls: Force hasControls true
+  group.set({
+    hasControls: true,
+    hasBorders: true, // Temporary: Enable borders to check selection
+    selectable: true,
+    evented: true
+  });
+
   group.controls.start = new Control({
     x: -0.5, y: -0.5,
     cursorStyle: 'crosshair',
@@ -1750,8 +1905,6 @@ const setupArrowControls = (group, canvas) => {
     render: renderControlHandle,
     visible: true
   });
-  // #region agent log
-  fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:1214',message:'setupArrowControls completed',data:{controlCount:Object.keys(group.controls).length,hasStart:!!group.controls.start,hasMidpoint:!!group.controls.midpoint,hasEnd:!!group.controls.end},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
   // #endregion
 };
 
@@ -3782,7 +3935,7 @@ const PageAnnotationLayer = memo(({
             obj.data.isCurved = false;
             setupLineControls(obj, canvas);
           }
-          
+
           // Check if this is an Arrow Group that needs custom controls
           if (obj.type === 'group' && obj.data?.type === 'arrow') {
             const lineObj = obj.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
@@ -4086,45 +4239,123 @@ const PageAnnotationLayer = memo(({
     };
 
     canvas.on('selection:created', (e) => {
-      // If a child object of a callout group is selected, select the parent group instead
-      if (e.selected && e.selected.group && e.selected.group.data?.type === 'callout') {
-        // Deselect the child and select the parent group
-        const parentGroup = e.selected.group;
-        canvas.setActiveObject(parentGroup);
-        // Ensure controls are enabled for callout groups
-        // In Fabric.js, controls may require hasBorders to be true to render properly
-        if (parentGroup._originalHasBorders === undefined) {
-          parentGroup._originalHasBorders = parentGroup.hasBorders;
+      // Logic for Multi-Object Callout Selection
+      if (e.selected) {
+        const selected = e.selected;
+        const calloutIds = new Set();
+
+        selected.forEach(o => {
+          if (o.calloutId) calloutIds.add(o.calloutId);
+        });
+
+        if (calloutIds.size > 0) {
+          const allObjects = canvas.getObjects();
+          const missingParts = allObjects.filter(o => calloutIds.has(o.calloutId) && !selected.includes(o));
+
+          if (missingParts.length > 0) {
+            // Re-select with all parts included
+            // Use setTimeout to avoid conflict during event dispatch
+            setTimeout(() => {
+              const newSelection = [...selected, ...missingParts];
+              const activeSel = new fabricLib.ActiveSelection(newSelection, { canvas });
+              canvas.setActiveObject(activeSel);
+              // Update handle visibility
+              newSelection.forEach(o => {
+                if (o.partType === 'knee' || o.partType === 'arrowTip') {
+                  o.set('opacity', 1);
+                }
+              });
+              canvas.requestRenderAll();
+            }, 0);
+          } else {
+            // All parts already selected - just update visibility
+            selected.forEach(o => {
+              if (o.partType === 'knee' || o.partType === 'arrowTip') {
+                o.set('opacity', 1);
+              }
+            });
+          }
         }
+      }
+
+      // Legacy Group Support (preserved)
+      if (e.selected && e.selected.length === 1 && e.selected[0].group && e.selected[0].group.data?.type === 'callout') {
+        const parentGroup = e.selected[0].group;
+        canvas.setActiveObject(parentGroup);
+        if (parentGroup._originalHasBorders === undefined) parentGroup._originalHasBorders = parentGroup.hasBorders;
         parentGroup.set({ hasControls: true, hasBorders: true });
         parentGroup.setCoords();
         canvas.requestRenderAll();
         return;
       }
 
-      // Ensure callout groups have controls enabled when selected
-      if (e.selected && e.selected.data?.type === 'callout') {
-        // Enable controls and borders (borders may be needed for controls to render in Fabric.js)
-        if (e.selected._originalHasBorders === undefined) {
-          e.selected._originalHasBorders = e.selected.hasBorders;
-        }
-        e.selected.set({ hasControls: true, hasBorders: true });
-        e.selected.setCoords();
-        // Force a render to ensure controls are visible
-        setTimeout(() => {
-          canvas.requestRenderAll();
-        }, 0);
+
+      // Debug Arrow Selection
+      if (e.selected?.length === 1 && e.selected[0].data?.type === 'arrow') {
+        console.log('[ToolDebug] Arrow Selection Detected', {
+          hasControls: e.selected[0].hasControls,
+          controls: Object.keys(e.selected[0].controls || {})
+        });
       }
 
       setPerPixelTargetFind(e.selected, false);
     });
 
     canvas.on('selection:updated', (e) => {
+      // Handle visibility for deselected items
+      if (e.deselected) {
+        e.deselected.forEach(o => {
+          if (o.calloutId && (o.partType === 'knee' || o.partType === 'arrowTip')) {
+            o.set('opacity', 0);
+          }
+        });
+      }
+
+      // Handle visibility/grouping for selected items (similar to created)
+      if (e.selected) {
+        const selected = e.selected;
+        const calloutIds = new Set(selected.map(o => o.calloutId).filter(Boolean));
+
+        if (calloutIds.size > 0) {
+          const allObjects = canvas.getObjects();
+          const missingParts = allObjects.filter(o => calloutIds.has(o.calloutId) && !selected.includes(o));
+
+          if (missingParts.length > 0) {
+            setTimeout(() => {
+              // Only re-select if we are not already processing a re-selection
+              // Basic check: Are we still needing these parts?
+              const currentSel = canvas.getActiveObjects();
+              const stillMissing = missingParts.filter(mp => !currentSel.includes(mp));
+              if (stillMissing.length > 0) {
+                const newSelection = [...currentSel, ...stillMissing];
+                const activeSel = new fabricLib.ActiveSelection(newSelection, { canvas });
+                canvas.setActiveObject(activeSel);
+                newSelection.forEach(o => {
+                  if (o.partType === 'knee' || o.partType === 'arrowTip') o.set('opacity', 1);
+                });
+                canvas.requestRenderAll();
+              }
+            }, 0);
+          } else {
+            selected.forEach(o => {
+              if (o.partType === 'knee' || o.partType === 'arrowTip') o.set('opacity', 1);
+            });
+          }
+        }
+      }
+
       setPerPixelTargetFind(e.deselected, true);
       setPerPixelTargetFind(e.selected, false);
     });
 
     canvas.on('selection:cleared', (e) => {
+      if (e.deselected) {
+        e.deselected.forEach(o => {
+          if (o.calloutId && (o.partType === 'knee' || o.partType === 'arrowTip')) {
+            o.set('opacity', 0);
+          }
+        });
+      }
       setPerPixelTargetFind(e.deselected, true);
     });
 
@@ -4234,12 +4465,141 @@ const PageAnnotationLayer = memo(({
       hideControls();
     };
 
+    // Helper to update independent callout objects when one part is modified
+    const updateCalloutObjects = (calloutId, canvas) => {
+      // console.log('[ToolDebug] Updating callout geometry for:', calloutId); // Verbose
+      // Filter objects by calloutId
+      const allObjects = canvas.getObjects();
+      const members = allObjects.filter(o => o.calloutId === calloutId);
+
+      if (members.length === 0) return;
+
+      const textBoxBg = members.find(o => o.partType === 'textBoxBg');
+      const kneeHandle = members.find(o => o.partType === 'knee');
+      const arrowTipHandle = members.find(o => o.partType === 'arrowTip');
+      const line1 = members.find(o => o.partType === 'line1');
+      const line2 = members.find(o => o.partType === 'line2');
+      const arrowHead = members.find(o => o.partType === 'arrowHead');
+      const textObj = members.find(o => o.partType === 'text');
+
+      if (!textBoxBg || !kneeHandle || !arrowTipHandle) return;
+
+      // Calculate new connection points
+      const thickness = line1 ? line1.strokeWidth : (textBoxBg.strokeWidth || 2);
+
+      const kneeCenter = { x: kneeHandle.left + 6, y: kneeHandle.top + 6 };
+      const tipCenter = { x: arrowTipHandle.left + 6, y: arrowTipHandle.top + 6 };
+
+      const { line1Start, shouldHideLine1, line2Start, effectiveKnee } = calculateCalloutConnection(
+        textBoxBg.left,
+        textBoxBg.top,
+        textBoxBg.getScaledWidth(),
+        textBoxBg.getScaledHeight(),
+        kneeCenter,
+        tipCenter,
+        thickness
+      );
+
+      // Update Line 1
+      if (line1) {
+        line1.set({
+          x1: line1Start.x,
+          y1: line1Start.y,
+          x2: effectiveKnee.x,
+          y2: effectiveKnee.y,
+          opacity: shouldHideLine1 ? 0 : line1.opacity
+        });
+        line1.setCoords();
+      }
+
+      // Update Line 2
+      if (line2) {
+        line2.set({
+          x1: line2Start.x,
+          y1: line2Start.y,
+          x2: tipCenter.x,
+          y2: tipCenter.y
+        });
+        line2.setCoords();
+      }
+
+      // Update Arrow Head
+      if (arrowHead) {
+        const angleDeg = (Math.atan2(tipCenter.y - effectiveKnee.y, tipCenter.x - effectiveKnee.x) * 180) / Math.PI;
+        arrowHead.set({
+          left: tipCenter.x,
+          top: tipCenter.y,
+          angle: angleDeg + 90
+        });
+        arrowHead.setCoords();
+      }
+
+      // Update Text Position to strictly follow Box
+      if (textObj) {
+        textObj.set({
+          left: textBoxBg.left + 8,
+          top: textBoxBg.top + 4
+        });
+        textObj.setCoords();
+      }
+    };
+
     // Handle object moving event
     const handleObjectMoving = (e) => {
       isFabricTransformingRef.current = true;
 
       // Hide controls immediately when moving starts
       hideControls();
+
+      const target = e.target;
+
+      // Handle Independent Callout Objects
+      if (target.calloutId) {
+        if (target.partType === 'textBoxBg') {
+          console.log('[ToolDebug] Moving Callout Master:', target.calloutId);
+          // Master moved -> Move followers
+          // Initialize last pos if undefined or if new drag started (check e.transform)
+          if (typeof target._lastLeft === 'undefined' || (e.transform && target._dragSessionId !== e.transform.action)) {
+            // Use transform.original if available
+            if (e.transform && e.transform.original) {
+              target._lastLeft = e.transform.original.left;
+              target._lastTop = e.transform.original.top;
+              target._dragSessionId = e.transform.action; // Unique-ish ID for this drag? 'drag' is constant.
+              // Just rely on resetting at the end
+            } else {
+              // Fallback
+              target._lastLeft = target.left;
+              target._lastTop = target.top;
+            }
+          }
+
+          // Check if we need to reset tracking (if e.transform.original changed? difficult)
+          // Just use simple delta tracking
+          const deltaX = target.left - target._lastLeft;
+          const deltaY = target.top - target._lastTop;
+
+          if (deltaX !== 0 || deltaY !== 0) {
+            const members = canvas.getObjects().filter(o => o.calloutId === target.calloutId && o !== target);
+            members.forEach(p => {
+              if (['knee', 'arrowTip', 'text'].includes(p.partType)) {
+                p.set({
+                  left: p.left + deltaX,
+                  top: p.top + deltaY
+                });
+                p.setCoords();
+              }
+            });
+
+            target._lastLeft = target.left;
+            target._lastTop = target.top;
+
+            updateCalloutObjects(target.calloutId, canvas);
+          }
+        } else if (target.partType === 'knee' || target.partType === 'arrowTip') {
+          // Handle moved -> Just update connections
+          updateCalloutObjects(target.calloutId, canvas);
+        }
+      }
     };
 
     // Track when Fabric.js stops transforming - reset flag when modification completes
@@ -5529,10 +5889,9 @@ const PageAnnotationLayer = memo(({
         // Add group to canvas
         canvas.add(group);
 
-        // #region agent log
-        fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4575',message:'Arrow tool: setting up controls',data:{x1,y1,x2,y2,arrowheadStyle:selectedArrowheadStyle},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
         // Set up custom 3-handle controls for arrow
+        console.log('[ToolDebug] Setting up arrow controls');
         setupArrowControls(group, canvas);
         // Ensure coordinates are set for controls to render properly
         group.setCoords();
@@ -5540,8 +5899,6 @@ const PageAnnotationLayer = memo(({
         if (group._setCornerCoords) {
           group._setCornerCoords();
         }
-        // #region agent log
-        fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4592',message:'After setupArrowControls check',data:{hasControls:group.hasControls,controlCount:Object.keys(group.controls||{}).length,selectable:group.selectable,hasSetCornerCoords:typeof group._setCornerCoords==='function'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
         // #endregion
 
         // Set flag to prevent deselection in handleMouseUpForSelection
@@ -5549,8 +5906,6 @@ const PageAnnotationLayer = memo(({
 
         // Automatically select the arrow group so handles appear
         canvas.setActiveObject(group);
-        // #region agent log
-        fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4595',message:'After setActiveObject arrow',data:{isActive:canvas.getActiveObject()===group,activeHasControls:canvas.getActiveObject()?.hasControls,activeControlCount:Object.keys(canvas.getActiveObject()?.controls||{}).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
         // #endregion
         canvas.requestRenderAll();
 
@@ -5564,32 +5919,66 @@ const PageAnnotationLayer = memo(({
         return;
       } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
         const { x1, y1, x2, y2 } = ds.tempObj;
-        const calloutGroup = createCalloutGroup(
-          { x: x1, y: y1 },
-          { x: x2, y: y2 },
-          currentStrokeColor,
-          currentStrokeWidth,
-          canvas
-        );
-        // Store current moduleId on the callout group
-        if (selectedModuleIdRef.current) {
-          calloutGroup.set({ moduleId: selectedModuleIdRef.current });
-        }
-        // Store current activeRegionId on the callout group if a region is active AND toggle is ON
-        if (shouldAssignRegionId()) {
-          calloutGroup.set({ regionId: activeRegionIdRef.current });
-        }
-        canvas.add(calloutGroup);
+
+        // Construct callout data
+        const start = { x: x1, y: y1 };
+        const end = { x: x2, y: y2 };
+        const textHeight = 24;
+        const knee = {
+          x: (start.x + end.x) / 2,
+          y: end.y + textHeight / 2
+        };
+
+        const calloutData = {
+          id: generateId(),
+          arrowTip: start,
+          knee: knee,
+          textBoxPosition: end,
+          textBoxWidth: 100, // Default width
+          textBoxHeight: textHeight, // Default height
+          text: 'Text',
+          style: {
+            borderColor: currentStrokeColor,
+            lineThickness: currentStrokeWidth,
+            fillColor: 'rgba(255,255,255,0.9)',
+            fontColor: currentStrokeColor,
+            fontSize: 16,
+            fontFamily: 'Arial',
+            opacity: 1
+          }
+        };
+
+        // Create independent objects
+        const objects = createCalloutObjects(calloutData, true);
+
+        // Store metadata
+        objects.forEach(obj => {
+          if (selectedModuleIdRef.current) obj.moduleId = selectedModuleIdRef.current;
+          if (shouldAssignRegionId()) {
+            obj.regionId = activeRegionIdRef.current;
+          }
+        });
+
+        // Add to canvas
+        objects.forEach(obj => canvas.add(obj));
         canvas.remove(ds.tempObj);
+
         // Set flag to prevent deselection in handleMouseUpForSelection
         justFinishedDrawingRef.current = true;
-        canvas.setActiveObject(calloutGroup);
+
+        // Select the Textbox Background to show handles
+        const textBoxBg = objects.find(o => o.partType === 'textBoxBg');
+        if (textBoxBg) {
+          canvas.setActiveObject(textBoxBg);
+        }
+
         // Enter text editing mode
-        const textObj = calloutGroup.getObjects().find(o => o.name === 'calloutText');
+        const textObj = objects.find(o => o.partType === 'text');
         if (textObj) {
           textObj.enterEditing();
           textObj.selectAll();
         }
+
         canvas.requestRenderAll();
         // Clear flag after a brief delay
         setTimeout(() => {
@@ -5599,11 +5988,9 @@ const PageAnnotationLayer = memo(({
         // For other shapes (rect, ellipse, line, squiggly), the temp object is the final object
         // Automatically select it so handles appear
         const tempObj = ds.tempObj; // Store reference before clearing
-        
+
         // Special handling for line tool - set up custom 3-handle controls
         if (currentTool === 'line' && tempObj.type === 'line') {
-          // #region agent log
-          fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4820',message:'Line tool: setting up controls',data:{x1:tempObj.x1,y1:tempObj.y1,x2:tempObj.x2,y2:tempObj.y2},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
           // #endregion
           tempObj.set({
             selectable: true,
@@ -5622,8 +6009,6 @@ const PageAnnotationLayer = memo(({
           if (tempObj._setCornerCoords) {
             tempObj._setCornerCoords();
           }
-          // #region agent log
-          fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4845',message:'After setupLineControls check',data:{hasControls:tempObj.hasControls,controlCount:Object.keys(tempObj.controls||{}).length,selectable:tempObj.selectable,isActive:canvas.getActiveObject()===tempObj,hasSetCornerCoords:typeof tempObj._setCornerCoords==='function'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
           // #endregion
         } else {
           // For other shapes, use default controls
@@ -5633,7 +6018,7 @@ const PageAnnotationLayer = memo(({
             hasBorders: true
           });
         }
-        
+
         tempObj.setCoords(); // Ensure coordinates are updated
 
         // Set flag to prevent deselection in handleMouseUpForSelection
@@ -5641,8 +6026,6 @@ const PageAnnotationLayer = memo(({
 
         // Select immediately so handles appear right away
         canvas.setActiveObject(tempObj);
-        // #region agent log
-        fetch('http://127.0.0.1:9006/ingest/ca82909f-645c-4959-9621-26884e513e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:4860',message:'After setActiveObject line',data:{isActive:canvas.getActiveObject()===tempObj,activeHasControls:canvas.getActiveObject()?.hasControls,activeControlCount:Object.keys(canvas.getActiveObject()?.controls||{}).length,activeType:canvas.getActiveObject()?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
         // #endregion
         canvas.requestRenderAll();
 
