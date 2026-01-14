@@ -1,1 +1,11 @@
-
+PageAnnotationLayer.jsx:5917 [ToolDebug] Setting up arrow controls
+PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'start', abs: Point, rel: Point}
+PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'midpoint', abs: Point, rel: Point}
+PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'end', abs: Point, rel: Point}
+PageAnnotationLayer.jsx:4318 [ToolDebug] Arrow Selection Detected {hasControls: true, controls: Array(3)}
+PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'start', abs: Point, rel: Point}
+PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'midpoint', abs: Point, rel: Point}
+PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'end', abs: Point, rel: Point}
+PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'start', abs: Point, rel: Point}
+PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'midpoint', abs: Point, rel: Point}
+PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'end', abs: Point, rel: Point}
