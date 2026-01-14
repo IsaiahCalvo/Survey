@@ -1219,7 +1219,7 @@ const arrowPositionHandler = (type) => {
   return function (dim, finalMatrix, fabricObject) {
     // #region agent log
     // #endregion
-    // console.log('[ToolDebug] Arrow Position Handler:', type);
+    console.log('[ToolDebug] Arrow Position Handler:', type);
     const group = fabricObject;
     const line = group.getObjects().find(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
     if (!line) return { x: 0, y: 0 };
@@ -1266,30 +1266,51 @@ const arrowPositionHandler = (type) => {
       }
     } else {
       // Handle straight arrow (Line)
+      // 1. Get Absolute Canvas Point
+      // We use calcLinePoints (relative to line center) + calcTransformMatrix (absolute)
+      const points = line.calcLinePoints();
+      const lineMatrix = line.calcTransformMatrix();
+
+      let absolutePoint;
       if (type === 'start') {
-        localPoint = { x: line.x1, y: line.y1 };
+        const point = { x: points.x1, y: points.y1 };
+        absolutePoint = util.transformPoint(point, lineMatrix);
       } else if (type === 'midpoint') {
         if (group.data?.midpoint) {
-          localPoint = { x: group.data.midpoint.x, y: group.data.midpoint.y };
+          const mp = { x: group.data.midpoint.x, y: group.data.midpoint.y };
+          // Use standard group transform for this case
+          const groupMatrix = finalMatrix || group.calcTransformMatrix();
+          absolutePoint = util.transformPoint(mp, groupMatrix);
         } else {
-          localPoint = {
-            x: (line.x1 + line.x2) / 2,
-            y: (line.y1 + line.y2) / 2
+          const point = {
+            x: (points.x1 + points.x2) / 2,
+            y: (points.y1 + points.y2) / 2
           };
+          absolutePoint = util.transformPoint(point, lineMatrix);
         }
       } else if (type === 'end') {
-        localPoint = { x: line.x2, y: line.y2 };
+        const point = { x: points.x2, y: points.y2 };
+        absolutePoint = util.transformPoint(point, lineMatrix);
       }
+
+      // 2. Convert Absolute Point to Group-Relative Point
+      const groupMatrix = finalMatrix || group.calcTransformMatrix();
+      const invertedGroupMatrix = util.invertTransform(groupMatrix);
+      const relativePoint = util.transformPoint(absolutePoint, invertedGroupMatrix);
+
+      console.log('[ToolDebug] Arrow Pos Debug (Final):', {
+        type,
+        ABSOLUTES: absolutePoint,
+        RELATIVE: relativePoint,
+        isNaN: !relativePoint || isNaN(relativePoint.x) || isNaN(relativePoint.y)
+      });
+
+      return relativePoint;
     }
 
-    // Transform group-relative point to canvas space
-    // Use finalMatrix if provided (Fabric.js passes it), otherwise calculate
-    const matrix = finalMatrix || group.calcTransformMatrix();
-    const result = finalMatrix
-      ? util.transformPoint(localPoint, finalMatrix)
-      : util.transformPoint(localPoint, matrix);
-    // #region agent log
-    // #endregion
+    // Default catch-all
+    const result = { x: 0, y: 0 };
+    console.log('[ToolDebug] Arrow Pos Debug (Fallback):', { type, result });
     return result;
   };
 };
@@ -1851,13 +1872,13 @@ const setupArrowControls = (group, canvas) => {
   // Define render function for controls (must be local, not global reference)
   // IMPORTANT: left/top are already in the correct coordinate space - use translate like callout
   const renderControlHandle = (ctx, left, top, styleOverride, fabricObject) => {
-    // console.log('[ToolDebug] Rendering arrow handle');
-    const size = 12;
+    // console.log('[ToolDebug] Rendering arrow handle', { left, top });
+    const size = 12; // Back to normal size
     ctx.save();
     ctx.translate(left, top);
     ctx.beginPath();
     ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#ffffff'; // Back to white
     ctx.strokeStyle = '#4a90e2';
     ctx.lineWidth = 1;
     ctx.shadowColor = 'rgba(0,0,0,0.3)';
@@ -1872,7 +1893,7 @@ const setupArrowControls = (group, canvas) => {
   // Mirror setupLineControls: Force hasControls true
   group.set({
     hasControls: true,
-    hasBorders: true, // Temporary: Enable borders to check selection
+    hasBorders: false, // Reset to false
     selectable: true,
     evented: true
   });
