@@ -179,9 +179,9 @@ export const perfScroll = {
 // Functions to control debug state from UI or console
 export const setDebugEnabled = (enabled) => {
   DEBUG_ENABLED = enabled;
-  if (typeof window !== 'undefined') {
-    console.log(`%c[PERF] Performance logging ${enabled ? 'ENABLED' : 'DISABLED'}`,
-      `color: ${enabled ? '#4CAF50' : '#f44336'}; font-weight: bold;`);
+  if (typeof window !== 'undefined' && enabled) {
+    console.log(`%c[PERF] Performance logging ENABLED`,
+      `color: #4CAF50; font-weight: bold;`);
   }
 };
 

@@ -14,7 +14,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 
 // Debounce before triggering expensive canvas re-render
 // Only render after user stops zooming for this duration
-const RENDER_DEBOUNCE_MS = 250;
+const RENDER_DEBOUNCE_MS = 140;
 
 export function useZoomState(targetScale) {
   // The scale we've actually rendered the canvas at
@@ -99,8 +99,10 @@ export function useZoomState(targetScale) {
       transform: `scale(${cssScale})`,
       transformOrigin: getTransformOrigin(),
       willChange: 'transform',
+      backfaceVisibility: 'hidden',
     } : {
       willChange: 'auto',
+      backfaceVisibility: 'hidden',
     },
   };
 }

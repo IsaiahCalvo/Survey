@@ -2,7 +2,6 @@
 
 -- First drop the existing table
 DROP TABLE IF EXISTS connected_services CASCADE;
-
 -- Recreate the table
 CREATE TABLE connected_services (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -19,31 +18,24 @@ CREATE TABLE connected_services (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(user_id, service_name)
 );
-
 -- Create indexes
 CREATE INDEX idx_connected_services_user_id ON connected_services(user_id);
 CREATE INDEX idx_connected_services_service_name ON connected_services(service_name);
-
 -- Enable RLS
 ALTER TABLE connected_services ENABLE ROW LEVEL SECURITY;
-
 -- RLS Policies
 CREATE POLICY "Users can view own connected services"
     ON connected_services FOR SELECT
     USING (auth.uid() = user_id);
-
 CREATE POLICY "Users can insert own connected services"
     ON connected_services FOR INSERT
     WITH CHECK (auth.uid() = user_id);
-
 CREATE POLICY "Users can update own connected services"
     ON connected_services FOR UPDATE
     USING (auth.uid() = user_id);
-
 CREATE POLICY "Users can delete own connected services"
     ON connected_services FOR DELETE
     USING (auth.uid() = user_id);
-
 -- Trigger for updated_at
 CREATE OR REPLACE FUNCTION update_connected_services_updated_at()
 RETURNS TRIGGER AS $$
@@ -52,11 +44,9 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trigger_update_connected_services_updated_at
     BEFORE UPDATE ON connected_services
     FOR EACH ROW
     EXECUTE FUNCTION update_connected_services_updated_at();
-
 -- Force schema reload
 NOTIFY pgrst, 'reload schema';

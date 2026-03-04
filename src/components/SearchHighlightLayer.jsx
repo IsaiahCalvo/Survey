@@ -1,5 +1,9 @@
 import React, { memo, useMemo } from 'react';
 
+const MAX_RENDERED_MATCHES_PER_PAGE = 140;
+const MAX_RENDERED_RECTANGLES_PER_PAGE = 900;
+const INACTIVE_PAGE_MATCH_LIMIT = 60;
+
 /**
  * SearchHighlightLayer renders highlight overlays for search matches on a PDF page.
  *
@@ -16,6 +20,7 @@ const SearchHighlightLayer = memo(({
   height,
   scale,
   highlights = [],
+  maxRenderedMatches = MAX_RENDERED_MATCHES_PER_PAGE,
   activeMatchId = null,
   isActiveMatchOnThisPage = false
 }) => {
@@ -25,25 +30,66 @@ const SearchHighlightLayer = memo(({
       return [];
     }
 
-    return highlights.map(match => {
-      if (!match.rectangles || match.rectangles.length === 0) {
-        return null;
-      }
+    const effectiveMatchBudget = Math.max(
+      1,
+      Math.min(
+        Number(maxRenderedMatches) || MAX_RENDERED_MATCHES_PER_PAGE,
+        isActiveMatchOnThisPage
+          ? MAX_RENDERED_MATCHES_PER_PAGE
+          : INACTIVE_PAGE_MATCH_LIMIT
+      )
+    );
 
-      const scaledRectangles = match.rectangles.map(rect => ({
+    const activeMatch = activeMatchId
+      ? highlights.find((match) => match?.id === activeMatchId) || null
+      : null;
+
+    const selectedMatches = [];
+    if (activeMatch) {
+      selectedMatches.push(activeMatch);
+    }
+
+    for (const match of highlights) {
+      if (!match) continue;
+      if (activeMatch && match.id === activeMatch.id) continue;
+      if (selectedMatches.length >= effectiveMatchBudget) break;
+      selectedMatches.push(match);
+    }
+
+    const scaled = [];
+    let remainingRectangles = MAX_RENDERED_RECTANGLES_PER_PAGE;
+
+    for (const match of selectedMatches) {
+      if (!match.rectangles || match.rectangles.length === 0) continue;
+      if (remainingRectangles <= 0) break;
+
+      const isActive = activeMatchId === match.id;
+      const allowedRectangles = isActive
+        ? match.rectangles
+        : match.rectangles.slice(0, Math.max(1, remainingRectangles));
+
+      const scaledRectangles = allowedRectangles.map((rect) => ({
         x: rect.x * scale,
         y: rect.y * scale,
         width: rect.width * scale,
         height: rect.height * scale
       }));
 
-      return {
+      if (scaledRectangles.length === 0) continue;
+
+      scaled.push({
         ...match,
         scaledRectangles,
-        isActive: activeMatchId === match.id
-      };
-    }).filter(Boolean);
-  }, [highlights, scale, activeMatchId]);
+        isActive
+      });
+
+      if (!isActive) {
+        remainingRectangles -= scaledRectangles.length;
+      }
+    }
+
+    return scaled;
+  }, [highlights, scale, activeMatchId, isActiveMatchOnThisPage, maxRenderedMatches]);
 
   if (!width || !height || scaledHighlights.length === 0) {
     return null;
@@ -60,7 +106,8 @@ const SearchHighlightLayer = memo(({
         height: `${height * scale}px`,
         pointerEvents: 'none',
         zIndex: 9,
-        overflow: 'hidden'
+        overflow: 'hidden',
+        contain: 'layout style paint'
       }}
     >
       {scaledHighlights.map((match) => (
@@ -85,10 +132,7 @@ const SearchHighlightLayer = memo(({
                     ? '2px solid rgba(255, 140, 0, 0.9)'
                     : '1px solid rgba(255, 255, 0, 0.5)',
                   borderRadius: '2px',
-                  boxShadow: isActive
-                    ? '0 0 8px 2px rgba(255, 180, 0, 0.6), inset 0 0 4px rgba(255, 200, 0, 0.3)'
-                    : 'none',
-                  transition: 'all 0.15s ease',
+                  boxShadow: isActive ? '0 0 6px 1px rgba(255, 180, 0, 0.55)' : 'none',
                   boxSizing: 'border-box'
                 }}
               />
@@ -96,23 +140,6 @@ const SearchHighlightLayer = memo(({
           })}
         </React.Fragment>
       ))}
-
-      {/* Pulse animation for active match */}
-      {isActiveMatchOnThisPage && (
-        <style>{`
-          @keyframes searchHighlightPulse {
-            0%, 100% {
-              box-shadow: 0 0 8px 2px rgba(255, 180, 0, 0.6), inset 0 0 4px rgba(255, 200, 0, 0.3);
-            }
-            50% {
-              box-shadow: 0 0 12px 4px rgba(255, 180, 0, 0.8), inset 0 0 6px rgba(255, 200, 0, 0.4);
-            }
-          }
-          .search-highlight-active {
-            animation: searchHighlightPulse 1.5s ease-in-out infinite;
-          }
-        `}</style>
-      )}
     </div>
   );
 });

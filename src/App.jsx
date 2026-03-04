@@ -1,5 +1,6 @@
 // App.jsx - PDF Management Dashboard
 import React, { useRef, useState, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
+import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
 import { PDFDocument, degrees } from 'pdf-lib';
@@ -61,6 +62,9 @@ import ExcelLockedModal from './components/ExcelLockedModal';
 import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
+import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
+import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
+import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { supabase } from './supabaseClient';
@@ -72,8 +76,22 @@ import {
   removeDocumentPresence,
   deleteAnnotations
 } from './services/documentAnnotationService';
-import { perfUpload, perfLoad, perfRender, perfZoom, setDebugEnabled, isDebugEnabled } from './utils/performanceLogger';
+import { perfUpload, perfLoad, perfRender, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './utils/performanceLogger';
+import {
+  setDebugEnabled as setPdfDebugEnabled,
+  emitDebugEvent as emitPdfDebugEvent,
+  debugLog,
+  getDebugSnapshot,
+  setDebugData,
+  setPresenceDebugStatus,
+  setLastDebugError,
+  clearDebugState
+} from './utils/pdfDebug';
 import { useZoomState } from './hooks/useZoomState';
+import {
+  computeExcelSyncFingerprint,
+  computeHasPendingExcelSyncChanges
+} from './utils/excelSyncDirtyState';
 
 // Set up the PDF.js worker
 // Set up the PDF.js worker
@@ -119,6 +137,352 @@ const ensureRgbaOpacity = (color, opacity = 0.2) => {
 };
 
 const DEFAULT_SURVEY_HIGHLIGHT_OPACITY = 0.4;
+const INTERACTION_PERF_MIN_HOLD_MS = 900;
+const INTERACTION_PERF_SCROLL_HOLD_MS = 1200;
+const INTERACTION_PERF_DRAW_HOLD_MS = 1600;
+const SYNCFUSION_OVERLAY_PREFETCH_PAGES = 2;
+const SYNCFUSION_OVERLAY_ROOT_MARGIN = '720px 0px';
+const SYNCFUSION_OVERLAY_WINDOW_LINGER_MS = 260;
+const SYNCFUSION_INTERACTION_SETTLE_MS = 300;
+const SYNCFUSION_INTERACTION_PROXY_OBJECT_THRESHOLD = 180;
+const SYNCFUSION_INTERACTION_PROXY_CALLOUT_THRESHOLD = 30;
+const SYNCFUSION_INTERACTION_PROXY_FORCE_OBJECT_THRESHOLD = 320;
+const SYNCFUSION_INTERACTION_MAX_RESIDENT_PAGES = 12;
+const SYNCFUSION_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME = 2;
+const SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS = 6;
+const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
+const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
+const SYNCFUSION_WHEEL_ZOOM_SENSITIVITY = 0.3;
+const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
+const SYNCFUSION_SCROLL_DELAY_MS = 180;
+const SYNCFUSION_INITIAL_RENDER_PAGES = 4;
+const SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
+const SYNCFUSION_DUAL_LAYER_ENABLED_KEY = 'syncfusion_interaction_dual_layer_enabled';
+const OVERLAY_LAG_RECORDER_AUTO_KEY = 'syncfusion_overlay_lag_auto';
+const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT = 3;
+const OVERLAY_LAG_RECORDER_AUTO_MAX_SAMPLES = 12000;
+const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS = 180;
+const OVERLAY_LAG_RECORDER_PERF_ENTRY_LIMIT = 6000;
+const OVERLAY_LAG_RECORDER_EVENT_TIMING_THRESHOLD_MS = 24;
+const DOCUMENT_SYNC_STRUCTURAL_DISABLED_KEY = 'document_sync_structural_disabled';
+const DOCUMENT_SYNC_STRUCTURAL_DISABLED_TTL_MS = 10 * 60 * 1000;
+const HISTORY_DEBUG_CONSOLE_KEY = 'pdf_history_debug_console';
+const HISTORY_DEBUG_TRACE_LIMIT = 250;
+const HISTORY_PAGE_PREVIEW_LIMIT = 12;
+const HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT = 10;
+
+const roundHistoryDebugNumber = (value, digits = 2) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Number(numeric.toFixed(digits));
+};
+
+const hashHistoryString = (value = '') => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+};
+
+const toHistoryObjectDebug = (object, index) => ({
+  index,
+  type: object?.type || null,
+  partType: object?.partType || object?.data?.type || null,
+  name: object?.name || null,
+  highlightId: object?.highlightId || null,
+  pdfAnnotationId: object?.pdfAnnotationId || null,
+  left: roundHistoryDebugNumber(object?.left),
+  top: roundHistoryDebugNumber(object?.top),
+  width: roundHistoryDebugNumber(object?.width),
+  height: roundHistoryDebugNumber(object?.height),
+  scaleX: roundHistoryDebugNumber(object?.scaleX, 4),
+  scaleY: roundHistoryDebugNumber(object?.scaleY, 4),
+  angle: roundHistoryDebugNumber(object?.angle)
+});
+
+const getHistoryObjectDiffType = (previousObject, nextObject) => {
+  if (!previousObject) return 'added';
+  if (!nextObject) return 'removed';
+
+  const moved = previousObject.left !== nextObject.left || previousObject.top !== nextObject.top;
+  const resized = (
+    previousObject.width !== nextObject.width ||
+    previousObject.height !== nextObject.height ||
+    previousObject.scaleX !== nextObject.scaleX ||
+    previousObject.scaleY !== nextObject.scaleY
+  );
+  const rotated = previousObject.angle !== nextObject.angle;
+
+  if (moved && !resized && !rotated) return 'move';
+  if (resized && !moved && !rotated) return 'resize';
+  if (rotated && !moved && !resized) return 'rotate';
+  if (moved || resized || rotated) return 'transform';
+  return 'update';
+};
+
+const getHistoryObjectSignature = (object) => [
+  object?.type || '',
+  object?.partType || '',
+  object?.name || '',
+  object?.highlightId || '',
+  object?.pdfAnnotationId || '',
+  object?.left ?? '',
+  object?.top ?? '',
+  object?.width ?? '',
+  object?.height ?? '',
+  object?.scaleX ?? '',
+  object?.scaleY ?? '',
+  object?.angle ?? ''
+].join('|');
+
+const readHistoryDebugConsoleEnabled = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.sessionStorage.getItem(HISTORY_DEBUG_CONSOLE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const writeHistoryDebugConsoleEnabled = (enabled) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (enabled) {
+      window.sessionStorage.setItem(HISTORY_DEBUG_CONSOLE_KEY, '1');
+    } else {
+      window.sessionStorage.removeItem(HISTORY_DEBUG_CONSOLE_KEY);
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+};
+
+const readDocumentSyncStructuralDisabled = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = window.sessionStorage.getItem(DOCUMENT_SYNC_STRUCTURAL_DISABLED_KEY);
+    if (!raw) return false;
+    const ts = Number(raw);
+    if (!Number.isFinite(ts) || ts <= 0) return false;
+    return (Date.now() - ts) < DOCUMENT_SYNC_STRUCTURAL_DISABLED_TTL_MS;
+  } catch {
+    return false;
+  }
+};
+
+const writeDocumentSyncStructuralDisabled = (disabled) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (disabled) {
+      window.sessionStorage.setItem(DOCUMENT_SYNC_STRUCTURAL_DISABLED_KEY, String(Date.now()));
+    } else {
+      window.sessionStorage.removeItem(DOCUMENT_SYNC_STRUCTURAL_DISABLED_KEY);
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+};
+
+const readSyncfusionLiveStableOverlayEnabled = () => {
+  if (typeof window === 'undefined') return true;
+  try {
+    const raw = window.localStorage.getItem('syncfusion_live_stable_overlay');
+    if (raw === null || raw === undefined) return true;
+    const normalized = String(raw).trim().toLowerCase();
+    return normalized !== '0' && normalized !== 'false' && normalized !== 'off';
+  } catch {
+    return true;
+  }
+};
+
+const readSyncfusionDualLayerEnabled = () => {
+  if (typeof window === 'undefined') return true;
+  try {
+    const raw = window.localStorage.getItem(SYNCFUSION_DUAL_LAYER_ENABLED_KEY);
+    if (raw === null || raw === undefined) return true;
+    const normalized = String(raw).trim().toLowerCase();
+    return normalized !== '0' && normalized !== 'false' && normalized !== 'off';
+  } catch {
+    return true;
+  }
+};
+
+const writeSyncfusionDualLayerEnabled = (enabled) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(SYNCFUSION_DUAL_LAYER_ENABLED_KEY, enabled ? '1' : '0');
+  } catch {
+    // Ignore storage errors.
+  }
+};
+
+const readOverlayLagRecorderAutoEnabled = () => {
+  if (typeof window === 'undefined') return true;
+  try {
+    const raw = window.localStorage.getItem(OVERLAY_LAG_RECORDER_AUTO_KEY);
+    if (raw === null || raw === undefined) return true;
+    const normalized = String(raw).trim().toLowerCase();
+    return normalized !== '0' && normalized !== 'false' && normalized !== 'off';
+  } catch {
+    return true;
+  }
+};
+
+const writeOverlayLagRecorderAutoEnabled = (enabled) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(OVERLAY_LAG_RECORDER_AUTO_KEY, enabled ? '1' : '0');
+  } catch {
+    // Ignore storage errors.
+  }
+};
+
+const cloneOverlayRecorderPayload = (value) => {
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(value);
+    } catch {
+      // fall through to JSON clone
+    }
+  }
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return null;
+  }
+};
+
+const roundOverlayRecorderValue = (value, digits = 3) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Number(numeric.toFixed(digits));
+};
+
+const percentileOverlayRecorder = (values = [], percentile = 0.95) => {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor(percentile * (sorted.length - 1))));
+  return sorted[index];
+};
+
+const getSyncfusionOverlayPrefetchPages = (viewerScale) => {
+  const numericScale = Number(viewerScale);
+  if (!Number.isFinite(numericScale) || numericScale <= 0) {
+    return SYNCFUSION_OVERLAY_PREFETCH_PAGES;
+  }
+  if (numericScale >= 3) return 0;
+  if (numericScale >= 2) return 1;
+  return SYNCFUSION_OVERLAY_PREFETCH_PAGES;
+};
+
+const measureSyncfusionPageScale = (pageNumber, pageSizes, pageContainers, fallbackScale = 1) => {
+  const safeFallback = Number.isFinite(fallbackScale) && fallbackScale > 0 ? fallbackScale : 1;
+  if (!Number.isFinite(pageNumber)) {
+    return safeFallback;
+  }
+
+  const pageSize = pageSizes?.[pageNumber];
+  const pageHost = pageContainers?.[pageNumber];
+  if (!pageSize || !pageHost || !Number.isFinite(pageSize.width) || pageSize.width <= 0) {
+    return safeFallback;
+  }
+
+  const contentBox =
+    pageHost.querySelector?.('.e-pv-page-canvas') ||
+    pageHost.querySelector?.('canvas') ||
+    pageHost;
+  const hostWidth = contentBox?.clientWidth || pageHost.clientWidth || 0;
+  const widthScale = hostWidth > 0 ? hostWidth / pageSize.width : NaN;
+  const measuredScale = Number.isFinite(widthScale) && widthScale > 0 ? widthScale : safeFallback;
+  return Math.max(0.1, Math.round(measuredScale * 100000) / 100000);
+};
+
+const measureSyncfusionPageHostScale = (pageNumber, pageSizes, pageContainers, fallbackScale = 1) => {
+  const safeFallback = Number.isFinite(fallbackScale) && fallbackScale > 0 ? fallbackScale : 1;
+  if (!Number.isFinite(pageNumber)) {
+    return safeFallback;
+  }
+
+  const pageSize = pageSizes?.[pageNumber];
+  const pageHost = pageContainers?.[pageNumber];
+  if (!pageSize || !pageHost || !Number.isFinite(pageSize.width) || pageSize.width <= 0) {
+    return safeFallback;
+  }
+
+  const hostWidth = Number(pageHost.clientWidth || pageHost.getBoundingClientRect?.().width || 0);
+  const widthScale = hostWidth > 0 ? hostWidth / pageSize.width : NaN;
+  const measuredScale = Number.isFinite(widthScale) && widthScale > 0 ? widthScale : safeFallback;
+  return Math.max(0.1, Math.round(measuredScale * 100000) / 100000);
+};
+
+const normalizeInteractionMeasuredScale = (measuredScale, viewerScale, fallbackScale = 1) => {
+  const safeFallback = Number.isFinite(fallbackScale) && fallbackScale > 0
+    ? fallbackScale
+    : (Number.isFinite(viewerScale) && viewerScale > 0 ? viewerScale : 1);
+  const safeViewerScale = Number.isFinite(viewerScale) && viewerScale > 0 ? viewerScale : safeFallback;
+  const measured = Number(measuredScale);
+  if (!Number.isFinite(measured) || measured <= 0) {
+    return safeFallback;
+  }
+
+  // Guard against transient container widths during Syncfusion relayout.
+  const minExpected = safeViewerScale * 0.55;
+  const maxExpected = safeViewerScale * 1.8;
+  if (measured < minExpected || measured > maxExpected) {
+    return safeFallback;
+  }
+
+  return measured;
+};
+
+const parseCssTransformScaleX = (transformValue) => {
+  if (!transformValue || transformValue === 'none') {
+    return 1;
+  }
+
+  const scaleMatch = transformValue.match(/^scale\(([^)]+)\)$/);
+  if (scaleMatch) {
+    const value = Number.parseFloat(scaleMatch[1].split(',')[0]?.trim());
+    return Number.isFinite(value) && value > 0 ? value : 1;
+  }
+
+  const scale3dMatch = transformValue.match(/^scale3d\(([^)]+)\)$/);
+  if (scale3dMatch) {
+    const values = scale3dMatch[1]
+      .split(',')
+      .map((value) => Number.parseFloat(value.trim()))
+      .filter((value) => Number.isFinite(value));
+    if (values.length > 0) {
+      return values[0] > 0 ? values[0] : 1;
+    }
+  }
+
+  const matrixMatch = transformValue.match(/^matrix\(([^)]+)\)$/);
+  if (matrixMatch) {
+    const values = matrixMatch[1]
+      .split(',')
+      .map((value) => Number.parseFloat(value.trim()))
+      .filter((value) => Number.isFinite(value));
+    if (values.length >= 2) {
+      return Math.hypot(values[0], values[1]) || 1;
+    }
+  }
+
+  const matrix3dMatch = transformValue.match(/^matrix3d\(([^)]+)\)$/);
+  if (matrix3dMatch) {
+    const values = matrix3dMatch[1]
+      .split(',')
+      .map((value) => Number.parseFloat(value.trim()))
+      .filter((value) => Number.isFinite(value));
+    if (values.length >= 3) {
+      return Math.hypot(values[0], values[1], values[2]) || 1;
+    }
+  }
+
+  return 1;
+};
 
 // Normalize highlight colors while preserving any opacity saved on the template
 const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIGHT_OPACITY) => {
@@ -209,6 +573,46 @@ const getOpacityFromBallColor = (color) => {
   return 100;
 };
 
+const handleModalOptionMouseEnter = (event) => {
+  event.currentTarget.style.background = COLORS.modal.panelHover;
+  event.currentTarget.style.borderColor = COLORS.modal.borderActive;
+  event.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+};
+
+const handleModalOptionMouseLeave = (
+  event,
+  background = COLORS.modal.panel,
+  borderColor = COLORS.modal.borderStrong
+) => {
+  event.currentTarget.style.background = background;
+  event.currentTarget.style.borderColor = borderColor;
+  event.currentTarget.style.boxShadow = 'none';
+};
+
+const handleModalSecondaryButtonMouseEnter = (event) => {
+  event.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
+  event.currentTarget.style.borderColor = COLORS.modal.borderActive;
+  event.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+};
+
+const handleModalSecondaryButtonMouseLeave = (event) => {
+  event.currentTarget.style.background = COLORS.modal.secondaryButton;
+  event.currentTarget.style.borderColor = COLORS.modal.borderStrong;
+  event.currentTarget.style.boxShadow = 'none';
+};
+
+const handleModalPrimaryButtonMouseEnter = (event) => {
+  event.currentTarget.style.background = COLORS.modal.primaryButtonHover;
+  event.currentTarget.style.borderColor = COLORS.modal.borderActive;
+  event.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+};
+
+const handleModalPrimaryButtonMouseLeave = (event) => {
+  event.currentTarget.style.background = COLORS.modal.primaryButton;
+  event.currentTarget.style.borderColor = COLORS.modal.borderStrong;
+  event.currentTarget.style.boxShadow = 'none';
+};
+
 // Helper to get hex from color (for stroke/fill)
 const getHexFromAnnotationColor = (color) => {
   if (!color) return '#ff0000';
@@ -240,26 +644,296 @@ const getOpacityFromAnnotationColor = (color) => {
   return 100;
 };
 
+const coercePageNumber = (value, maxPages = Number.POSITIVE_INFINITY) => {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+  if (!Number.isFinite(numeric)) return null;
+  const page = Math.trunc(numeric);
+  if (page < 1) return null;
+  if (Number.isFinite(maxPages) && maxPages > 0 && page > maxPages) return null;
+  return page;
+};
+
+const coerceScrollMode = (value) => (value === 'single' ? 'single' : 'continuous');
+
+const normalizeBookmarkPageIds = (bookmark, maxPages = Number.POSITIVE_INFINITY) => {
+  if (!bookmark || typeof bookmark !== 'object') {
+    return [];
+  }
+
+  const uniquePages = new Set();
+  const addPage = (value) => {
+    const page = coercePageNumber(value, maxPages);
+    if (page) {
+      uniquePages.add(page);
+    }
+  };
+  const addPageFromIndex = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return;
+    const index = Math.trunc(numeric);
+    if (index < 0) return;
+    addPage(index + 1);
+  };
+
+  if (Array.isArray(bookmark.pageIds)) {
+    bookmark.pageIds.forEach(addPage);
+  }
+
+  [
+    bookmark.pageIndex,
+    bookmark.PageIndex,
+    bookmark.pageIdx,
+    bookmark.dest?.pageIndex,
+    bookmark.dest?.PageIndex,
+    bookmark.destination?.pageIndex,
+    bookmark.destination?.PageIndex
+  ].forEach(addPageFromIndex);
+
+  [
+    bookmark.pageId,
+    bookmark.page,
+    bookmark.pageNumber,
+    bookmark.PageNumber,
+    bookmark.targetPage,
+    bookmark.dest?.page,
+    bookmark.dest?.pageId,
+    bookmark.dest?.pageNumber,
+    bookmark.dest?.PageNumber,
+    bookmark.destination?.page,
+    bookmark.destination?.pageId,
+    bookmark.destination?.pageNumber,
+    bookmark.destination?.PageNumber
+  ].forEach(addPage);
+
+  return Array.from(uniquePages);
+};
+
+const normalizeOutlinePathSegments = (segments) => {
+  if (!Array.isArray(segments)) return [];
+  return segments
+    .map((segment) => String(segment || '').trim().replace(/\s+/g, ' ').toLowerCase())
+    .filter(Boolean);
+};
+
+const normalizeOutlineLooseKey = (value) => {
+  const cleaned = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.pdf\b/g, '')
+    .replace(/[^a-z0-9]+/g, '');
+  return cleaned;
+};
+
+const extractSourceLeafFromBookmark = (bookmark) => {
+  const sourceId = typeof bookmark?.sourceId === 'string' ? bookmark.sourceId : '';
+  if (!sourceId) return '';
+  const match = sourceId.match(/^syncfusion:[^:]+:(.+)$/);
+  if (!match) return '';
+  const pathWithOrder = match[1] || '';
+  const path = pathWithOrder.replace(/#\d+$/, '');
+  const segments = path.split('>').map((part) => String(part || '').trim()).filter(Boolean);
+  return segments.length > 0 ? segments[segments.length - 1] : '';
+};
+
+const buildOutlinePageLookup = (outlineBookmarks = []) => {
+  const fullPathMap = new Map();
+  const suffixCandidates = new Map();
+  const titleCandidates = new Map();
+  const looseTitleCandidates = new Map();
+
+  outlineBookmarks.forEach((bookmark) => {
+    if (!bookmark || bookmark.type === 'folder') return;
+    const page = coercePageNumber(bookmark?.pageIds?.[0], Number.POSITIVE_INFINITY);
+    if (!page) return;
+
+    const normalizedPath = normalizeOutlinePathSegments(bookmark.outlinePath);
+    if (!normalizedPath.length) return;
+
+    const fullKey = normalizedPath.join('>');
+    fullPathMap.set(fullKey, page);
+
+    const suffixKey = normalizedPath.slice(-2).join('>');
+    if (suffixKey) {
+      const existing = suffixCandidates.get(suffixKey) || [];
+      existing.push(page);
+      suffixCandidates.set(suffixKey, existing);
+    }
+
+    const titleKey = normalizedPath[normalizedPath.length - 1];
+    if (titleKey) {
+      const existing = titleCandidates.get(titleKey) || [];
+      existing.push(page);
+      titleCandidates.set(titleKey, existing);
+
+      const looseTitleKey = normalizeOutlineLooseKey(titleKey);
+      if (looseTitleKey) {
+        const looseExisting = looseTitleCandidates.get(looseTitleKey) || [];
+        looseExisting.push(page);
+        looseTitleCandidates.set(looseTitleKey, looseExisting);
+      }
+    }
+  });
+
+  const uniqueSuffixMap = new Map();
+  suffixCandidates.forEach((pages, key) => {
+    const uniquePages = Array.from(new Set(pages));
+    if (uniquePages.length === 1) {
+      uniqueSuffixMap.set(key, uniquePages[0]);
+    }
+  });
+
+  const uniqueTitleMap = new Map();
+  const consensusTitleMap = new Map();
+  titleCandidates.forEach((pages, key) => {
+    const uniquePages = Array.from(new Set(pages));
+    if (uniquePages.length === 1) {
+      uniqueTitleMap.set(key, uniquePages[0]);
+      consensusTitleMap.set(key, uniquePages[0]);
+    } else if (uniquePages.length > 1) {
+      // Multiple distinct pages — no consensus, skip
+    }
+  });
+
+  const uniqueLooseTitleMap = new Map();
+  const consensusLooseTitleMap = new Map();
+  looseTitleCandidates.forEach((pages, key) => {
+    const uniquePages = Array.from(new Set(pages));
+    if (uniquePages.length === 1) {
+      uniqueLooseTitleMap.set(key, uniquePages[0]);
+      consensusLooseTitleMap.set(key, uniquePages[0]);
+    }
+  });
+
+  return {
+    fullPathMap,
+    uniqueSuffixMap,
+    uniqueTitleMap,
+    uniqueLooseTitleMap,
+    consensusTitleMap,
+    consensusLooseTitleMap
+  };
+};
+
+const resolveBookmarkPageFromOutlineLookup = (bookmark, lookup) => {
+  if (!bookmark || !lookup) return null;
+  const normalizedPath = normalizeOutlinePathSegments(bookmark.outlinePath);
+  const normalizedName = String(bookmark?.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+  if (normalizedPath.length > 0) {
+    const fullKey = normalizedPath.join('>');
+    if (lookup.fullPathMap.has(fullKey)) {
+      return lookup.fullPathMap.get(fullKey);
+    }
+
+    const suffixKey = normalizedPath.slice(-2).join('>');
+    if (suffixKey && lookup.uniqueSuffixMap.has(suffixKey)) {
+      return lookup.uniqueSuffixMap.get(suffixKey);
+    }
+
+    const titleKey = normalizedPath[normalizedPath.length - 1];
+    if (titleKey && lookup.uniqueTitleMap.has(titleKey)) {
+      return lookup.uniqueTitleMap.get(titleKey);
+    }
+
+    const looseTitleKey = normalizeOutlineLooseKey(titleKey);
+    if (looseTitleKey && lookup.uniqueLooseTitleMap?.has(looseTitleKey)) {
+      return lookup.uniqueLooseTitleMap.get(looseTitleKey);
+    }
+  }
+
+  if (normalizedName && lookup.uniqueTitleMap.has(normalizedName)) {
+    return lookup.uniqueTitleMap.get(normalizedName);
+  }
+
+  const normalizedNameLoose = normalizeOutlineLooseKey(normalizedName);
+  if (normalizedNameLoose && lookup.uniqueLooseTitleMap?.has(normalizedNameLoose)) {
+    return lookup.uniqueLooseTitleMap.get(normalizedNameLoose);
+  }
+
+  const sourceLeaf = extractSourceLeafFromBookmark(bookmark);
+  const normalizedSourceLeaf = String(sourceLeaf || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  if (normalizedSourceLeaf && lookup.uniqueTitleMap.has(normalizedSourceLeaf)) {
+    return lookup.uniqueTitleMap.get(normalizedSourceLeaf);
+  }
+
+  const normalizedSourceLoose = normalizeOutlineLooseKey(normalizedSourceLeaf);
+  if (normalizedSourceLoose && lookup.uniqueLooseTitleMap?.has(normalizedSourceLoose)) {
+    return lookup.uniqueLooseTitleMap.get(normalizedSourceLoose);
+  }
+
+  // Consensus fallback: title appears multiple times but all point to the same page
+  if (normalizedName && lookup.consensusTitleMap?.has(normalizedName)) {
+    return lookup.consensusTitleMap.get(normalizedName);
+  }
+  if (normalizedNameLoose && lookup.consensusLooseTitleMap?.has(normalizedNameLoose)) {
+    return lookup.consensusLooseTitleMap.get(normalizedNameLoose);
+  }
+  if (normalizedSourceLeaf && lookup.consensusTitleMap?.has(normalizedSourceLeaf)) {
+    return lookup.consensusTitleMap.get(normalizedSourceLeaf);
+  }
+  if (normalizedSourceLoose && lookup.consensusLooseTitleMap?.has(normalizedSourceLoose)) {
+    return lookup.consensusLooseTitleMap.get(normalizedSourceLoose);
+  }
+
+  return null;
+};
+
 // Helper to detect if a storage error indicates the file no longer exists
-// Used to silently clean up stale document records when files are deleted from Supabase
+// Used to clean up stale document records only when the object is truly missing.
 const isStorageFileNotFoundError = (error) => {
-  // Check error status codes
-  if (error?.status === 404 || error?.status === 400) return true;
-  if (error?.statusCode === 404 || error?.statusCode === 400) return true;
+  // 404 is always "not found".
+  if (error?.status === 404 || error?.statusCode === 404) return true;
+
+  const errorDetails = [
+    error?.message,
+    error?.error_description,
+    error?.details,
+    error?.hint
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const mentionsNotFound = (
+    errorDetails.includes('not found') ||
+    errorDetails.includes('object not found') ||
+    errorDetails.includes('resource was not found') ||
+    errorDetails.includes('no such object')
+  );
+
+  // Supabase storage may use HTTP 400 for missing objects; require explicit not-found text.
+  if ((error?.status === 400 || error?.statusCode === 400) && mentionsNotFound) {
+    return true;
+  }
 
   // Check error name (Supabase uses StorageUnknownError for missing files)
   const errorName = error?.name?.toLowerCase() || error?.constructor?.name?.toLowerCase() || '';
-  if (errorName.includes('storageunknownerror') || errorName.includes('storageapierror')) return true;
+  if ((errorName.includes('storageunknownerror') || errorName.includes('storageapierror')) && mentionsNotFound) {
+    return true;
+  }
 
-  // Check error message
-  const errorMsg = error?.message?.toLowerCase() || '';
-  if (errorMsg.includes('not found') || errorMsg.includes('object not found')) return true;
-
-  // Check stringified error (fallback)
+  // Check stringified error (fallback) for explicit not-found wording only.
   try {
     const errorStr = String(error).toLowerCase();
-    if (errorStr.includes('storageunknownerror') || errorStr.includes('400') || errorStr.includes('not found')) return true;
-  } catch {}
+    if (errorStr.includes('not found') || errorStr.includes('resource was not found') || errorStr.includes('object not found')) {
+      return true;
+    }
+  } catch { }
+
+  return false;
+};
+
+const isSupabaseRowNotFoundError = (error) => {
+  if (!error) return false;
+
+  const code = String(error.code || '').toUpperCase();
+  if (code === 'PGRST116') return true;
+
+  if (error.status === 404 || error.statusCode === 404) return true;
+
+  const message = String(error.message || '').toLowerCase();
+  if (message.includes('no rows') || message.includes('not found')) return true;
 
   return false;
 };
@@ -969,7 +1643,6 @@ const saveHighlightAnnotations = (pdfId, highlightAnnotations) => {
     const key = `highlightAnnotations_${pdfId}`;
     const data = JSON.stringify(highlightAnnotations);
     localStorage.setItem(key, data);
-    // console.log('Successfully saved highlightAnnotations to localStorage:', { key, size: data.length });
   } catch (e) {
     console.error('Error saving highlight annotations:', e);
   }
@@ -977,12 +1650,28 @@ const saveHighlightAnnotations = (pdfId, highlightAnnotations) => {
 
 const saveAnnotationsByPage = (pdfId, annotationsByPage) => {
   if (!pdfId) return;
+  const key = `annotationsByPage_${pdfId}`;
+  const data = JSON.stringify(annotationsByPage);
   try {
-    const key = `annotationsByPage_${pdfId}`;
-    const data = JSON.stringify(annotationsByPage);
     localStorage.setItem(key, data);
   } catch (e) {
-    console.error('Error saving annotationsByPage:', e);
+    // Handle QuotaExceededError by clearing stale entries and retrying once
+    if (e?.name === 'QuotaExceededError' || e?.code === 22) {
+      try {
+        // Remove other annotationsByPage entries (not the current one) to free space
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('annotationsByPage_') && k !== key) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        localStorage.setItem(key, data);
+      } catch {
+        // Silently degrade — data is still saved to Supabase when cloud sync is enabled
+      }
+    }
   }
 };
 
@@ -1320,8 +2009,16 @@ const thumbnailQueue = {
   maxConcurrent: 3,
   running: 0,
   queue: [],
+  failedDocIds: new Set(), // Track docs that permanently failed
+  inFlightDocIds: new Set(), // Track docs currently being processed
 
-  async add(task) {
+  async add(task, docId) {
+    // Skip if this docId already failed or is already in-flight
+    if (docId && (this.failedDocIds.has(docId) || this.inFlightDocIds.has(docId))) {
+      return null;
+    }
+    if (docId) this.inFlightDocIds.add(docId);
+
     return new Promise((resolve, reject) => {
       const wrappedTask = async () => {
         try {
@@ -1330,6 +2027,7 @@ const thumbnailQueue = {
         } catch (error) {
           reject(error);
         } finally {
+          if (docId) this.inFlightDocIds.delete(docId);
           this.running--;
           this.processNext();
         }
@@ -1364,6 +2062,12 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
       // Check if component is still mounted
       if (!isMountedRef.current) return;
 
+      // Skip if this doc already failed (prevents infinite retry loop)
+      if (docId && thumbnailQueue.failedDocIds.has(docId)) {
+        if (isMountedRef.current) setIsLoading(false);
+        return;
+      }
+
       let arrayBuffer = null;
 
       // If we have a dataUrl, use it directly
@@ -1384,17 +2088,20 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
           if (isMountedRef.current) setIsLoading(false);
           return;
         }
+        // Re-check failedDocIds before download (another concurrent task may have flagged it)
+        if (docId && thumbnailQueue.failedDocIds.has(docId)) {
+          if (isMountedRef.current) setIsLoading(false);
+          return;
+        }
         try {
           const blob = await downloadDocument(filePath);
           arrayBuffer = await blob.arrayBuffer();
         } catch (error) {
-          console.error('Error downloading document for thumbnail:', error);
           if (isMountedRef.current) setIsLoading(false);
           // If file no longer exists in storage, notify parent to clean up
           const isFileNotFound = isStorageFileNotFoundError(error);
-          console.log('Thumbnail error check:', { isFileNotFound, docId, hasCallback: !!onFileNotFound, errorName: error?.name, errorConstructor: error?.constructor?.name });
           if (isFileNotFound && docId && onFileNotFound) {
-            console.log('Triggering file cleanup for:', docId);
+            thumbnailQueue.failedDocIds.add(docId);
             onFileNotFound(docId);
           }
           return;
@@ -1477,7 +2184,7 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
     };
 
     // Use the queue to limit concurrent thumbnail generation
-    thumbnailQueue.add(() => generateThumbnail());
+    thumbnailQueue.add(() => generateThumbnail(), docId);
 
     return () => {
       isMountedRef.current = false;
@@ -1985,7 +2692,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             refetchAllDocuments();
 
             perfUpload.end(file.name);
-            // console.log('Background upload completed for:', file.name, 'New Doc:', newDoc);
           } catch (err) {
             perfUpload.end(file.name);
             console.error('Error uploading file in background:', err);
@@ -2182,7 +2888,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     // Refetch projects to ensure we have the latest data
     const latestProjects = await refetchProjects() || supabaseProjects || [];
-    // console.log('Checking for name conflict. Current projects:', latestProjects.map(p => ({ id: p.id, name: p.name })));
 
     if (hasNameConflict(latestProjects, trimmedName, { getName: (project) => project?.name })) {
       const duplicateError = new Error('A project with this name already exists. Please choose a different name.');
@@ -2300,7 +3005,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // Try to clean up the project if no files were uploaded
       try {
         await deleteSupabaseProject(newProject.id);
-        // console.log('Cleaned up project after failed uploads');
       } catch (cleanupErr) {
         console.error('Error cleaning up project:', cleanupErr);
       }
@@ -2695,12 +3399,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               setDocuments(prev => prev.filter(d => d.id !== docId));
               continue;
             }
-            // Get document to get file path
             const doc = supabaseDocuments.find(d => d.id === docId);
-            if (doc?.file_path) {
-              await deleteFromStorage(doc.file_path);
-            }
+            const filePath = doc?.file_path || doc?.filePath;
+
+            // Delete DB record first so storage failures do not leave stale metadata.
             await deleteSupabaseDocument(docId);
+            if (filePath) {
+              try {
+                await deleteFromStorage(filePath);
+              } catch (storageError) {
+                if (!isStorageFileNotFoundError(storageError)) {
+                  console.error('Error deleting document file from storage:', storageError);
+                }
+              }
+            }
           } catch (err) {
             console.error('Error deleting document:', err);
           }
@@ -2729,10 +3441,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                 continue;
               }
               const doc = supabaseDocuments.find(d => d.id === docId);
-              if (doc?.file_path) {
-                await deleteFromStorage(doc.file_path);
-              }
+              const filePath = doc?.file_path || doc?.filePath;
+
+              // Delete DB record first so storage failures do not leave stale metadata.
               await deleteSupabaseDocument(docId);
+              if (filePath) {
+                try {
+                  await deleteFromStorage(filePath);
+                } catch (storageError) {
+                  if (!isStorageFileNotFoundError(storageError)) {
+                    console.error('Error deleting document file from storage:', storageError);
+                  }
+                }
+              }
             } catch (err) {
               console.error('Error deleting document:', err);
             }
@@ -3119,28 +3840,28 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       ? projects.length > 0
       : templates.length > 0;
 
-  // Handler for when a file is not found in storage (deleted from Supabase)
-  // Silently removes the stale document entry from UI and database
+  // Handler for when a file is not found in storage.
   const handleFileNotFound = useCallback(async (docId) => {
+    if (!docId) return;
+
     // Prevent duplicate cleanup attempts
     if (cleaningUpDocumentsRef.current.has(docId)) return;
     cleaningUpDocumentsRef.current.add(docId);
 
-    const doc = documents.find(d => d.id === docId);
-    console.log(`Removing stale document: ${doc?.name || docId} (file missing from storage)`);
-
     // Remove from UI immediately
     setDocuments(prev => prev.filter(d => d.id !== docId));
 
-    // Delete from database
+    // Delete stale DB row when present; treat already-missing rows as success.
     try {
       await deleteSupabaseDocument(docId);
-    } catch (deleteError) {
-      console.error('Error removing stale document record:', deleteError);
+    } catch (error) {
+      if (!isSupabaseRowNotFoundError(error)) {
+        console.error('[DocumentCleanup] Failed to delete stale document row:', error);
+      }
+    } finally {
+      cleaningUpDocumentsRef.current.delete(docId);
     }
-
-    cleaningUpDocumentsRef.current.delete(docId);
-  }, [documents, deleteSupabaseDocument]);
+  }, [deleteSupabaseDocument]);
 
   const handleDocumentClick = async (doc) => {
     try {
@@ -3220,14 +3941,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
       // Find the document to get the file path
       const doc = documents.find(d => d.id === docId);
+      const filePath = doc?.file_path || doc?.filePath;
 
-      if (doc?.file_path) {
-        await deleteFromStorage(doc.file_path);
-      } else if (doc?.filePath) {
-        await deleteFromStorage(doc.filePath);
-      }
-
+      // Delete DB row first so storage failures do not leave stale metadata.
       await deleteSupabaseDocument(docId);
+      if (filePath) {
+        try {
+          await deleteFromStorage(filePath);
+        } catch (storageError) {
+          if (!isStorageFileNotFoundError(storageError)) {
+            console.error('Error deleting document file from storage:', storageError);
+          }
+        }
+      }
       await refetchDocuments();
     } catch (error) {
       console.error('Error deleting document:', error);
@@ -5635,29 +6361,31 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               left: 0,
               right: 0,
               bottom: 0,
-              background: 'rgba(0,0,0,0.5)',
+              background: COLORS.modal.overlay,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              zIndex: 9999
+              zIndex: 10000
             }}>
               <div style={{
                 width: '560px',
-                background: '#1f1f1f',
-                color: '#eaeaea',
-                borderRadius: '16px',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
-                border: '1px solid #2a2a2a',
+                background: COLORS.modal.surface,
+                color: COLORS.modal.textPrimary,
+                borderRadius: BORDERS.radius.xl,
+                boxShadow: SHADOWS.xl,
+                border: `1px solid ${COLORS.modal.border}`,
                 padding: '24px'
               }}>
                 <div style={{
                   fontSize: '24px',
                   fontWeight: 700,
                   textAlign: 'center',
-                  marginBottom: '20px'
+                  marginBottom: '20px',
+                  color: COLORS.modal.textPrimary,
+                  fontFamily: FONT_FAMILY
                 }}>Create New Project</div>
 
-                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>Project Name</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px', color: COLORS.modal.textPrimary, fontFamily: FONT_FAMILY }}>Project Name</div>
                 <input
                   type="text"
                   value={projectName}
@@ -5667,16 +6395,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     width: '100%',
                     padding: '12px 14px',
                     borderRadius: '10px',
-                    border: '1px solid #333',
+                    border: `1px solid ${COLORS.modal.borderStrong}`,
                     outline: 'none',
-                    background: '#141414',
-                    color: '#eaeaea',
+                    background: '#1b1b1b',
+                    color: COLORS.modal.textPrimary,
                     fontFamily: FONT_FAMILY,
                     marginBottom: '18px'
                   }}
                 />
 
-                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>Upload PDFs</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px', color: COLORS.modal.textPrimary, fontFamily: FONT_FAMILY }}>Upload PDFs</div>
                 <div
                   onDrop={handleDrop}
                   onDragOver={handleDragOver}
@@ -5684,8 +6412,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                   style={{
                     padding: '24px',
                     borderRadius: '12px',
-                    border: `2px dashed ${isDragOver ? '#4A90E2' : '#3a3a3a'}`,
-                    background: isDragOver ? 'rgba(74, 144, 226, 0.08)' : '#161616',
+                    border: `2px dashed ${isDragOver ? COLORS.modal.borderActive : COLORS.modal.borderStrong}`,
+                    background: isDragOver ? COLORS.modal.panelHover : '#161616',
                     textAlign: 'center',
                     transition: 'all 0.15s'
                   }}
@@ -5694,22 +6422,26 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     onClick={() => projectFileInputRef.current?.click()}
                     style={{
                       padding: '10px 14px',
-                      background: '#2a2a2a',
-                      color: '#eaeaea',
-                      border: '1px solid #3a3a3a',
+                      background: COLORS.modal.secondaryButton,
+                      color: COLORS.modal.textPrimary,
+                      border: `1px solid ${COLORS.modal.borderStrong}`,
                       borderRadius: '10px',
                       cursor: 'pointer',
                       fontWeight: 600,
                       display: 'inline-flex',
-                      alignItems: 'center'
+                      alignItems: 'center',
+                      fontFamily: FONT_FAMILY,
+                      transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                     }}
+                    onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                    onMouseLeave={handleModalSecondaryButtonMouseLeave}
                   >
                     <Icon name="document" size={24} style={{ marginRight: '8px' }} /> Select Files
                   </button>
-                  <div style={{ color: '#9a9a9a', fontSize: '13px', marginTop: '10px' }}>
+                  <div style={{ color: COLORS.modal.textMuted, fontSize: '13px', marginTop: '10px', fontFamily: FONT_FAMILY }}>
                     or drag and drop PDFs here
                   </div>
-                  <div style={{ color: '#6f6f6f', fontSize: '12px', marginTop: '4px' }}>
+                  <div style={{ color: COLORS.modal.textMuted, fontSize: '12px', marginTop: '4px', fontFamily: FONT_FAMILY }}>
                     You can add multiple files
                   </div>
 
@@ -5719,11 +6451,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                       textAlign: 'left',
                       maxHeight: '160px',
                       overflow: 'auto',
-                      borderTop: '1px solid #2a2a2a',
+                      borderTop: `1px solid ${COLORS.modal.border}`,
                       paddingTop: '10px'
                     }}>
                       {projectFiles.map((f, i) => (
-                        <div key={`${f.name}-${i}`} style={{ fontSize: '13px', color: '#cfcfcf', marginBottom: '6px' }}>
+                        <div key={`${f.name}-${i}`} style={{ fontSize: '13px', color: COLORS.modal.textPrimary, marginBottom: '6px', fontFamily: FONT_FAMILY }}>
                           <Icon name="document" size={14} style={{ marginRight: '6px', display: 'inline-block', verticalAlign: 'middle' }} /> {f.name}
                         </div>
                       ))}
@@ -5736,12 +6468,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     onClick={handleCancelCreateProject}
                     style={{
                       padding: '10px 14px',
-                      background: '#2a2a2a',
-                      color: '#eaeaea',
-                      border: '1px solid #3a3a3a',
+                      background: COLORS.modal.secondaryButton,
+                      color: COLORS.modal.textPrimary,
+                      border: `1px solid ${COLORS.modal.borderStrong}`,
                       borderRadius: '10px',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      fontFamily: FONT_FAMILY,
+                      transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                     }}
+                    onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                    onMouseLeave={handleModalSecondaryButtonMouseLeave}
                   >
                     Cancel
                   </button>
@@ -5749,13 +6485,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     onClick={handleConfirmCreateProject}
                     style={{
                       padding: '10px 14px',
-                      background: '#4A90E2',
-                      color: 'white',
-                      border: 'none',
+                      background: projectName.trim() && projectFiles.length > 0 ? COLORS.modal.primaryButton : COLORS.modal.primaryButtonDisabled,
+                      color: COLORS.modal.textPrimary,
+                      border: `1px solid ${projectName.trim() && projectFiles.length > 0 ? COLORS.modal.borderStrong : COLORS.border.default}`,
                       borderRadius: '10px',
                       cursor: 'pointer',
                       fontWeight: 600,
-                      opacity: projectName.trim() && projectFiles.length > 0 ? 1 : 0.7
+                      opacity: projectName.trim() && projectFiles.length > 0 ? 1 : 0.7,
+                      fontFamily: FONT_FAMILY,
+                      transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!projectName.trim() || projectFiles.length === 0) return;
+                      handleModalPrimaryButtonMouseEnter(e);
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!projectName.trim() || projectFiles.length === 0) return;
+                      handleModalPrimaryButtonMouseLeave(e);
                     }}
                   >
                     Create Project
@@ -5776,24 +6522,24 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                 left: 0,
                 right: 0,
                 bottom: 0,
-                background: 'rgba(0,0,0,0.5)',
+                background: COLORS.modal.overlay,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                zIndex: 9999
+                zIndex: 10000
               }}>
               <div style={{
                 width: '700px',
                 maxHeight: '90vh',
                 overflow: 'auto',
-                background: '#1f1f1f',
-                color: '#eaeaea',
+                background: COLORS.modal.surface,
+                color: COLORS.modal.textPrimary,
                 borderRadius: '12px',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
-                border: '1px solid #2a2a2a',
+                boxShadow: SHADOWS.xl,
+                border: `1px solid ${COLORS.modal.border}`,
                 padding: '16px'
               }}>
-                <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>
+                <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: COLORS.modal.textPrimary, fontFamily: FONT_FAMILY }}>
                   {editingTemplateId ? 'Edit Template' : 'Create Template'}
                 </div>
 
@@ -6963,14 +7709,17 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                             }}
                             style={{
                               padding: '8px 16px',
-                              background: '#333',
-                              color: '#fff',
-                              border: '1px solid #444',
+                              background: COLORS.modal.secondaryButton,
+                              color: COLORS.modal.textPrimary,
+                              border: `1px solid ${COLORS.modal.borderStrong}`,
                               borderRadius: '6px',
                               cursor: 'pointer',
                               fontSize: '14px',
-                              fontFamily: FONT_FAMILY
+                              fontFamily: FONT_FAMILY,
+                              transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                             }}
+                            onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                            onMouseLeave={handleModalSecondaryButtonMouseLeave}
                           >
                             Cancel
                           </button>
@@ -6986,15 +7735,18 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                             }}
                             style={{
                               padding: '8px 16px',
-                              background: '#4A90E2',
-                              color: '#fff',
-                              border: 'none',
+                              background: COLORS.modal.primaryButton,
+                              color: COLORS.modal.textPrimary,
+                              border: `1px solid ${COLORS.modal.borderStrong}`,
                               borderRadius: '6px',
                               cursor: 'pointer',
                               fontSize: '14px',
                               fontFamily: FONT_FAMILY,
-                              fontWeight: '500'
+                              fontWeight: '500',
+                              transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                             }}
+                            onMouseEnter={handleModalPrimaryButtonMouseEnter}
+                            onMouseLeave={handleModalPrimaryButtonMouseLeave}
                           >
                             Apply
                           </button>
@@ -7004,9 +7756,45 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                   );
                 })()}
 
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #2a2a2a' }}>
-                  <button onClick={cancelTemplateModal} className="btn btn-secondary" style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}>Cancel</button>
-                  <button onClick={saveTemplate} className="btn btn-primary" disabled={!templateName.trim()} style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${COLORS.modal.border}` }}>
+                  <button
+                    onClick={cancelTemplateModal}
+                    className="btn"
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      background: COLORS.modal.secondaryButton,
+                      color: COLORS.modal.textPrimary,
+                      border: `1px solid ${COLORS.modal.borderStrong}`
+                    }}
+                    onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                    onMouseLeave={handleModalSecondaryButtonMouseLeave}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveTemplate}
+                    className="btn"
+                    disabled={!templateName.trim()}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      background: templateName.trim() ? COLORS.modal.primaryButton : COLORS.modal.primaryButtonDisabled,
+                      color: COLORS.modal.textPrimary,
+                      border: `1px solid ${templateName.trim() ? COLORS.modal.borderStrong : COLORS.border.default}`,
+                      opacity: templateName.trim() ? 1 : 0.7
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!templateName.trim()) return;
+                      handleModalPrimaryButtonMouseEnter(e);
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!templateName.trim()) return;
+                      handleModalPrimaryButtonMouseLeave(e);
+                    }}
+                  >
                     {editingTemplateId ? 'Save Changes' : 'Save Template'}
                   </button>
                 </div>
@@ -7024,7 +7812,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               left: 0,
               right: 0,
               bottom: 0,
-              background: 'rgba(0,0,0,0.5)',
+              background: COLORS.modal.overlay,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -7034,14 +7822,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                 width: '600px',
                 maxHeight: '85vh',
                 overflow: 'auto',
-                background: '#1f1f1f',
-                color: '#eaeaea',
+                background: COLORS.modal.surface,
+                color: COLORS.modal.textPrimary,
                 borderRadius: '12px',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
-                border: '1px solid #2a2a2a',
+                boxShadow: SHADOWS.xl,
+                border: `1px solid ${COLORS.modal.border}`,
                 padding: '16px'
               }}>
-                <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>
+                <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px', color: COLORS.modal.textPrimary, fontFamily: FONT_FAMILY }}>
                   {moveCopyType === 'module' ? 'Move/Copy Modules' : moveCopyType === 'category' ? 'Move/Copy Categories' : 'Move/Copy Checklist Items'}
                 </div>
 
@@ -7053,13 +7841,24 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                       onClick={() => setMoveCopyMode('copy')}
                       style={{
                         padding: '8px 16px',
-                        background: moveCopyMode === 'copy' ? '#4A90E2' : '#2a2a2a',
-                        color: 'white',
-                        border: 'none',
+                        background: moveCopyMode === 'copy' ? COLORS.modal.optionSelectedBg : COLORS.modal.secondaryButton,
+                        color: COLORS.modal.textPrimary,
+                        border: `1px solid ${moveCopyMode === 'copy' ? COLORS.modal.optionSelectedBorder : COLORS.modal.borderStrong}`,
                         borderRadius: '6px',
                         cursor: 'pointer',
                         fontWeight: 500,
-                        fontSize: '12px'
+                        fontSize: '12px',
+                        transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (moveCopyMode !== 'copy') handleModalOptionMouseEnter(e);
+                      }}
+                      onMouseLeave={(e) => {
+                        handleModalOptionMouseLeave(
+                          e,
+                          moveCopyMode === 'copy' ? COLORS.modal.optionSelectedBg : COLORS.modal.secondaryButton,
+                          moveCopyMode === 'copy' ? COLORS.modal.optionSelectedBorder : COLORS.modal.borderStrong
+                        );
                       }}
                     >
                       Copy
@@ -7068,13 +7867,24 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                       onClick={() => setMoveCopyMode('move')}
                       style={{
                         padding: '8px 16px',
-                        background: moveCopyMode === 'move' ? '#4A90E2' : '#2a2a2a',
-                        color: 'white',
-                        border: 'none',
+                        background: moveCopyMode === 'move' ? COLORS.modal.optionSelectedBg : COLORS.modal.secondaryButton,
+                        color: COLORS.modal.textPrimary,
+                        border: `1px solid ${moveCopyMode === 'move' ? COLORS.modal.optionSelectedBorder : COLORS.modal.borderStrong}`,
                         borderRadius: '6px',
                         cursor: 'pointer',
                         fontWeight: 500,
-                        fontSize: '12px'
+                        fontSize: '12px',
+                        transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (moveCopyMode !== 'move') handleModalOptionMouseEnter(e);
+                      }}
+                      onMouseLeave={(e) => {
+                        handleModalOptionMouseLeave(
+                          e,
+                          moveCopyMode === 'move' ? COLORS.modal.optionSelectedBg : COLORS.modal.secondaryButton,
+                          moveCopyMode === 'move' ? COLORS.modal.optionSelectedBorder : COLORS.modal.borderStrong
+                        );
                       }}
                     >
                       Move
@@ -7218,7 +8028,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                 )}
 
                 {/* Action Buttons */}
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #2a2a2a' }}>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px', paddingTop: '12px', borderTop: `1px solid ${COLORS.modal.border}` }}>
                   <button
                     onClick={() => {
                       setIsMoveCopyModalOpen(false);
@@ -7229,21 +8039,67 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                       setMoveCopyNewModuleName('');
                       setMoveCopyNewCategoryName('');
                     }}
-                    className="btn btn-secondary"
-                    style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}
+                    className="btn"
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      background: COLORS.modal.secondaryButton,
+                      color: COLORS.modal.textPrimary,
+                      border: `1px solid ${COLORS.modal.borderStrong}`
+                    }}
+                    onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                    onMouseLeave={handleModalSecondaryButtonMouseLeave}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={executeMoveCopy}
-                    className="btn btn-primary"
                     disabled={
                       (moveCopyType === 'module' && !moveCopyDestinationTemplateId) ||
                       (moveCopyType === 'module' && moveCopyDestinationTemplateId === 'new' && !moveCopyNewTemplateName.trim()) ||
                       (moveCopyType === 'category' && !moveCopyDestinationModuleId) ||
                       (moveCopyType === 'category' && moveCopyDestinationModuleId === 'new' && !moveCopyNewModuleName.trim())
                     }
-                    style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '13px' }}
+                    className="btn"
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      background: (
+                        (moveCopyType === 'module' && !moveCopyDestinationTemplateId) ||
+                        (moveCopyType === 'module' && moveCopyDestinationTemplateId === 'new' && !moveCopyNewTemplateName.trim()) ||
+                        (moveCopyType === 'category' && !moveCopyDestinationModuleId) ||
+                        (moveCopyType === 'category' && moveCopyDestinationModuleId === 'new' && !moveCopyNewModuleName.trim())
+                      ) ? COLORS.modal.primaryButtonDisabled : COLORS.modal.primaryButton,
+                      color: COLORS.modal.textPrimary,
+                      border: `1px solid ${
+                        (
+                          (moveCopyType === 'module' && !moveCopyDestinationTemplateId) ||
+                          (moveCopyType === 'module' && moveCopyDestinationTemplateId === 'new' && !moveCopyNewTemplateName.trim()) ||
+                          (moveCopyType === 'category' && !moveCopyDestinationModuleId) ||
+                          (moveCopyType === 'category' && moveCopyDestinationModuleId === 'new' && !moveCopyNewModuleName.trim())
+                        ) ? COLORS.border.default : COLORS.modal.borderStrong
+                      }`
+                    }}
+                    onMouseEnter={(e) => {
+                      if (
+                        (moveCopyType === 'module' && !moveCopyDestinationTemplateId) ||
+                        (moveCopyType === 'module' && moveCopyDestinationTemplateId === 'new' && !moveCopyNewTemplateName.trim()) ||
+                        (moveCopyType === 'category' && !moveCopyDestinationModuleId) ||
+                        (moveCopyType === 'category' && moveCopyDestinationModuleId === 'new' && !moveCopyNewModuleName.trim())
+                      ) return;
+                      handleModalPrimaryButtonMouseEnter(e);
+                    }}
+                    onMouseLeave={(e) => {
+                      if (
+                        (moveCopyType === 'module' && !moveCopyDestinationTemplateId) ||
+                        (moveCopyType === 'module' && moveCopyDestinationTemplateId === 'new' && !moveCopyNewTemplateName.trim()) ||
+                        (moveCopyType === 'category' && !moveCopyDestinationModuleId) ||
+                        (moveCopyType === 'category' && moveCopyDestinationModuleId === 'new' && !moveCopyNewModuleName.trim())
+                      ) return;
+                      handleModalPrimaryButtonMouseLeave(e);
+                    }}
                   >
                     {moveCopyMode === 'move' ? 'Move' : 'Copy'}
                   </button>
@@ -7261,64 +8117,62 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               left: 0,
               right: 0,
               bottom: 0,
-              background: 'rgba(0,0,0,0.5)',
+              background: COLORS.modal.overlay,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              zIndex: 9999
+              zIndex: 10000
             }}>
               <div style={{
                 width: '560px',
-                background: '#1f1f1f',
-                color: '#eaeaea',
-                borderRadius: '16px',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.45)',
-                border: '1px solid #2a2a2a',
+                background: COLORS.modal.surface,
+                color: COLORS.modal.textPrimary,
+                borderRadius: BORDERS.radius.xl,
+                boxShadow: SHADOWS.xl,
+                border: `1px solid ${COLORS.modal.border}`,
                 padding: '24px'
               }}>
                 <div style={{
                   fontSize: '24px',
                   fontWeight: 700,
                   textAlign: 'center',
-                  marginBottom: '20px'
+                  marginBottom: '20px',
+                  color: COLORS.modal.textPrimary,
+                  fontFamily: FONT_FAMILY
                 }}>Move {selectedIds.length} document(s)</div>
 
                 {/* Only show "Move to Documents" option when in projectFiles context */}
                 {getCurrentContextKey() === 'projectFiles' && (
                   <>
-                    <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Move to Documents</div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: COLORS.modal.textPrimary, fontFamily: FONT_FAMILY }}>Move to Documents</div>
                     <button
                       onClick={() => handleMoveToProject(null, false, true)}
                       style={{
                         width: '100%',
                         padding: '12px 14px',
-                        background: '#28A745',
-                        color: 'white',
-                        border: 'none',
+                        background: COLORS.modal.panel,
+                        color: COLORS.modal.textPrimary,
+                        border: `1px solid ${COLORS.modal.borderStrong}`,
                         borderRadius: '10px',
                         cursor: 'pointer',
                         marginBottom: '20px',
                         fontWeight: 600,
-                        transition: 'all 0.2s'
+                        transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                       }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#218838';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#28A745';
-                      }}
+                      onMouseEnter={handleModalOptionMouseEnter}
+                      onMouseLeave={handleModalOptionMouseLeave}
                     >
                       <Icon name="document" size={14} style={{ marginRight: '6px' }} /> Move to Documents Tab
                     </button>
                     <div style={{
-                      borderTop: '1px solid #3a3a3a',
+                      borderTop: `1px solid ${COLORS.modal.border}`,
                       paddingTop: '20px',
                       marginBottom: '20px'
                     }}></div>
                   </>
                 )}
 
-                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Move to existing project</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: COLORS.modal.textPrimary, fontFamily: FONT_FAMILY }}>Move to existing project</div>
                 {(() => {
                   // Filter out current project when in projectFiles context
                   const availableProjects = getCurrentContextKey() === 'projectFiles'
@@ -7326,7 +8180,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     : projects;
 
                   return availableProjects.length === 0 ? (
-                    <div style={{ color: '#888', fontSize: '13px', marginBottom: '20px', fontStyle: 'italic' }}>
+                    <div style={{ color: COLORS.modal.textMuted, fontSize: '13px', marginBottom: '20px', fontStyle: 'italic', fontFamily: FONT_FAMILY }}>
                       {getCurrentContextKey() === 'projectFiles' ? 'No other projects available' : 'No existing projects'}
                     </div>
                   ) : (
@@ -7338,26 +8192,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                           style={{
                             width: '100%',
                             padding: '12px 14px',
-                            background: '#2a2a2a',
-                            color: '#eaeaea',
-                            border: '1px solid #3a3a3a',
+                            background: COLORS.modal.panel,
+                            color: COLORS.modal.textPrimary,
+                            border: `1px solid ${COLORS.modal.borderStrong}`,
                             borderRadius: '10px',
                             cursor: 'pointer',
                             marginBottom: '8px',
                             textAlign: 'left',
-                            transition: 'all 0.2s'
+                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                           }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#4A90E2';
-                            e.currentTarget.style.borderColor = '#4A90E2';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#2a2a2a';
-                            e.currentTarget.style.borderColor = '#3a3a3a';
-                          }}
+                          onMouseEnter={handleModalOptionMouseEnter}
+                          onMouseLeave={handleModalOptionMouseLeave}
                         >
                           <div style={{ fontSize: '14px', fontWeight: 600 }}>{proj.name}</div>
-                          <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
+                          <div style={{ fontSize: '12px', color: COLORS.modal.textMuted, marginTop: '4px' }}>
                             {(allDocuments || []).filter(d => d.project_id === proj.id).length} file(s)
                           </div>
                         </button>
@@ -7367,12 +8215,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                 })()}
 
                 <div style={{
-                  borderTop: '1px solid #3a3a3a',
+                  borderTop: `1px solid ${COLORS.modal.border}`,
                   paddingTop: '20px',
                   marginBottom: '20px'
                 }}></div>
 
-                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Create new project</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: COLORS.modal.textPrimary, fontFamily: FONT_FAMILY }}>Create new project</div>
                 <input
                   type="text"
                   value={projectName}
@@ -7382,10 +8230,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                     width: '100%',
                     padding: '12px 14px',
                     borderRadius: '10px',
-                    border: '1px solid #333',
+                    border: `1px solid ${COLORS.modal.borderStrong}`,
                     outline: 'none',
-                    background: '#141414',
-                    color: '#eaeaea',
+                    background: '#1b1b1b',
+                    color: COLORS.modal.textPrimary,
                     fontFamily: FONT_FAMILY,
                     marginBottom: '18px'
                   }}
@@ -7394,14 +8242,35 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                   <button
                     onClick={() => { setIsMoveModalOpen(false); setProjectName(''); }}
-                    className="btn btn-secondary btn-md"
+                    className="btn btn-md"
+                    style={{
+                      background: COLORS.modal.secondaryButton,
+                      color: COLORS.modal.textPrimary,
+                      border: `1px solid ${COLORS.modal.borderStrong}`
+                    }}
+                    onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                    onMouseLeave={handleModalSecondaryButtonMouseLeave}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => handleMoveToProject(null, true)}
-                    className="btn btn-primary btn-md"
+                    className="btn btn-md"
                     disabled={!projectName.trim()}
+                    style={{
+                      background: projectName.trim() ? COLORS.modal.primaryButton : COLORS.modal.primaryButtonDisabled,
+                      color: COLORS.modal.textPrimary,
+                      border: `1px solid ${projectName.trim() ? COLORS.modal.borderStrong : COLORS.border.default}`,
+                      opacity: projectName.trim() ? 1 : 0.7
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!projectName.trim()) return;
+                      handleModalPrimaryButtonMouseEnter(e);
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!projectName.trim()) return;
+                      handleModalPrimaryButtonMouseLeave(e);
+                    }}
                   >
                     Create & Move
                   </button>
@@ -8087,10 +8956,99 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
 // PDF Viewer Component with improved typography
 function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange }) {
+  const syncfusionViewerElementId = `syncfusion-pdf-viewer-${tabId || 'default'}`;
+  const syncfusionResourceUrl = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return './ej2-pdfviewer-lib';
+    }
+    try {
+      // Syncfusion loads PDFium from a blob worker via importScripts.
+      // That requires an absolute URL (relative URLs are invalid in blob scope).
+      return new URL('./ej2-pdfviewer-lib', window.location.href).href;
+    } catch (error) {
+      console.warn('Failed to resolve Syncfusion resource URL, using relative fallback.', error);
+      return './ej2-pdfviewer-lib';
+    }
+  }, []);
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
   const canvasRef = useRef({});
+  const syncfusionViewerRef = useRef(null);
+  const pdfSidebarRef = useRef(null);
+  const syncfusionWrapperRef = useRef(null);
+  const syncfusionZoomSourceRef = useRef(null);
+  const syncfusionRefreshFrameRef = useRef(null);
+  const overlayVisibilityObserverRef = useRef(null);
+  const syncfusionEventTimesRef = useRef({});
+  const lastViewStateEmittedRef = useRef(null);
+  const lastAppliedInitialViewStateRef = useRef(null);
+  const syncfusionNavigateResetTimerRef = useRef(null);
+  const syncfusionWheelZoomRafRef = useRef(null);
+  const syncfusionWheelZoomDeltaRef = useRef(0);
+  const syncfusionWheelZoomAnchorRef = useRef(null);
+  const skipNextViewStateEmitRef = useRef(true);
+  const presenceAutoDisabledRef = useRef(false);
+  const presenceStructuralWarningShownRef = useRef(false);
+  const lastPresenceErrorClassRef = useRef(null);
+  const interactionPerfRef = useRef({ active: false, until: 0, timer: null, lastReason: null });
+  const syncfusionInteractionListenersRef = useRef({ detach: null, container: null });
+  const deferredExcelCheckTimerRef = useRef(null);
+  const syncfusionOverlayLayerRefs = useRef({});
+  const syncfusionOverlayContentRefs = useRef({});
+  const overlayLagRecorderRef = useRef({
+    active: false,
+    mode: null,
+    rafId: null,
+    startedAtMs: 0,
+    startedAtIso: null,
+    stoppedAtIso: null,
+    lastRafAtMs: 0,
+    pendingFrameMaxMs: 0,
+    nextSampleAtMs: 0,
+    lastSampleAtMs: 0,
+    lastEventTotals: null,
+    lastTransformTotals: null,
+    options: {
+      samplePageLimit: OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT,
+      maxSamples: 3600,
+      sampleIntervalMs: OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS,
+      captureIdlePageMetrics: false,
+      capturePerfAttribution: true
+    },
+    samples: [],
+    summary: null
+  });
+  const overlayLagRecorderDebugAtRef = useRef(0);
+  const overlayLagRecorderAutoKeyRef = useRef(null);
+  const overlayLagPerfObserverRef = useRef({
+    longTaskObserver: null,
+    eventObserver: null,
+    longTaskEntries: [],
+    eventEntries: []
+  });
+  const overlayLagEventTotalsRef = useRef({
+    syncfusionScroll: 0,
+    syncfusionWheelZoom: 0,
+    syncfusionWheelScroll: 0,
+    syncfusionPointerDown: 0,
+    syncfusionPointerDrag: 0,
+    syncfusionPageChange: 0,
+    syncfusionZoomChange: 0,
+    syncfusionContainerMutation: 0,
+    syncfusionContainerMapChange: 0,
+    overlayWheelZoom: 0,
+    overlayWheelScroll: 0,
+    overlayPointerDown: 0,
+    overlayPointerDrag: 0
+  });
+  const bumpOverlayLagEventTotal = useCallback((key, delta = 1) => {
+    if (!key) return;
+    const safeDelta = Number(delta);
+    if (!Number.isFinite(safeDelta) || safeDelta === 0) return;
+    const totals = overlayLagEventTotalsRef.current;
+    totals[key] = (Number(totals[key]) || 0) + safeDelta;
+  }, []);
 
   const renderTasksRef = useRef({});
   const isNavigatingRef = useRef(false);
@@ -8100,6 +9058,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showLocateModal, setShowLocateModal] = useState(false);
   const [locateSearchQuery, setLocateSearchQuery] = useState('');
   const scrollDataRef = useRef({ left: 0, top: 0 });
+  const wrapperDragEventAtRef = useRef(0);
+  const pendingRendererRestoreRef = useRef(null);
+  const [syncfusionDocumentBytes, setSyncfusionDocumentBytes] = useState(null);
+  const [syncfusionPageContainers, setSyncfusionPageContainers] = useState({});
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
@@ -8149,21 +9111,1309 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Zoom state for coordinated CSS transform zoom (keeps canvas and annotations in sync)
   // Using technique from Mozilla pdf.js and Adobe Acrobat for smooth cursor-centered zoom
-  const { renderedScale, cssScale, isZooming, zoomStyle, setAnchor } = useZoomState(scale);
+  const { renderedScale, zoomStyle, setAnchor } = useZoomState(scale);
   const [scrollMode, setScrollMode] = useState('continuous');
+  const useSyncfusionRenderer = true;
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [renderedPages, setRenderedPages] = useState(new Set());
-  const [debugLogging, setDebugLogging] = useState(isDebugEnabled());
+  const [debugLogging, setDebugLogging] = useState(false);
+  const [overlayLagAutoRecordEnabled, setOverlayLagAutoRecordEnabled] = useState(() => readOverlayLagRecorderAutoEnabled());
+  const [debugHudTick, setDebugHudTick] = useState(0);
+  const [interactionPerfActive, setInteractionPerfActive] = useState(false);
   const [mountedPages, setMountedPages] = useState(new Set([1])); // Track which pages should be mounted (DOM created)
   const [visiblePagesSet, setVisiblePagesSet] = useState(new Set([1])); // Track currently visible pages for render priority
+  const [syncfusionOverlayWindowPages, setSyncfusionOverlayWindowPages] = useState(new Set());
+  const syncfusionOverlayWindowPagesRef = useRef(new Set());
+  const [syncfusionCommittedPageScales, setSyncfusionCommittedPageScales] = useState({});
+  const [syncfusionLiveStableOverlayEnabled, setSyncfusionLiveStableOverlayEnabled] = useState(() => readSyncfusionLiveStableOverlayEnabled());
+  const [syncfusionDualLayerEnabled, setSyncfusionDualLayerEnabled] = useState(() => readSyncfusionDualLayerEnabled());
+  const [syncfusionInteractionActive, setSyncfusionInteractionActive] = useState(false);
+  const [syncfusionInteractionPhase, setSyncfusionInteractionPhase] = useState('idle'); // idle | interacting | committing
+  const syncfusionInteractionUntilRef = useRef(0);
+  const syncfusionInteractionTimerRef = useRef(null);
+  const syncfusionInteractionReasonRef = useRef(null);
+  const syncfusionInteractionTransitionsRef = useRef({ on: 0, off: 0 });
+  const syncfusionInteractionPhaseRef = useRef('idle');
+  const [syncfusionInteractionSessionId, setSyncfusionInteractionSessionId] = useState(0);
+  const syncfusionInteractionSessionIdRef = useRef(0);
+  const syncfusionInteractionStartViewerZoomRef = useRef(1);
+  const syncfusionInteractionModeFlipCountRef = useRef(0);
+  const [syncfusionInteractionModeFlipCount, setSyncfusionInteractionModeFlipCount] = useState(0);
+  const [syncfusionInteractionResidentPages, setSyncfusionInteractionResidentPages] = useState(new Set());
+  const [syncfusionInteractionPageModes, setSyncfusionInteractionPageModes] = useState({});
+  const syncfusionScaleConfirmPendingRef = useRef(false);
+  const syncfusionScaleConfirmTimerRef = useRef(null);
+  const [syncfusionInteractionProxyPayloads, setSyncfusionInteractionProxyPayloads] = useState({});
+  const [syncfusionCommittingProxyPages, setSyncfusionCommittingProxyPages] = useState(new Set());
+  const [syncfusionProxyReadyPages, setSyncfusionProxyReadyPages] = useState(new Set());
+  const [syncfusionLightweightPages, setSyncfusionLightweightPages] = useState(new Set());
+  const [syncfusionCommitQueueDepth, setSyncfusionCommitQueueDepth] = useState(0);
+  const [syncfusionVisiblePagesVersion, setSyncfusionVisiblePagesVersion] = useState(0);
+  const [syncfusionContainerMutationTick, setSyncfusionContainerMutationTick] = useState(0);
   const [pageHeights, setPageHeights] = useState({});
   const [pageSizes, setPageSizes] = useState({}); // { [page]: { width, height } }
   const [canPan, setCanPan] = useState(false);
   const [isLoadingPDF, setIsLoadingPDF] = useState(true);
+  const syncfusionPageContainersStateRef = useRef({});
+  const syncfusionCommittedPageScalesRef = useRef({});
+  const syncfusionInteractionActiveRef = useRef(false);
+  const syncfusionLightweightPagesRef = useRef(new Set());
+  const syncfusionInteractionResidentPagesRef = useRef(new Set());
+  const syncfusionInteractionPageModesRef = useRef({});
+  const syncfusionInteractionProxyPayloadsRef = useRef({});
+  const syncfusionCommittingProxyPagesRef = useRef(new Set());
+  const syncfusionProxyReadyPagesRef = useRef(new Set());
+  const syncfusionVisiblePagesRef = useRef(new Set());
+  const syncfusionCommitQueueRef = useRef([]);
+  const syncfusionCommitRafRef = useRef(null);
+  const syncfusionOverlayTransformSyncRafRef = useRef(null);
+  const syncfusionOverlayTransformLoopActiveRef = useRef(false);
+  const syncfusionOverlayTransformRatioByPageRef = useRef({});
+  const syncfusionOverlayTransformNodeByPageRef = useRef({});
+  const syncfusionInteractionPortalHostsRef = useRef({});
+  const syncfusionOverlayTransformStatsRef = useRef({
+    ticks: 0,
+    writes: 0,
+    resets: 0,
+    skips: 0
+  });
+  const syncfusionPendingZoomScaleRef = useRef(null);
+  const syncfusionContainerMutationReasonCountsRef = useRef({});
+  const lightweightCalloutCountByPageRef = useRef({});
+  const calloutsRef = useRef([]);
+  const syncfusionAnnotationsByPageRef = useRef({});
+  const syncfusionActiveSpaceIdRef = useRef(null);
+  const syncfusionActiveSpacePagesRef = useRef([]);
+  const syncfusionSelectedModuleIdRef = useRef(null);
+  const syncfusionShowSurveyPanelRef = useRef(false);
+
+  useEffect(() => {
+    pendingRendererRestoreRef.current = null;
+  }, [tabId]);
+
+  useEffect(() => {
+    const syncFlag = () => {
+      setSyncfusionLiveStableOverlayEnabled(readSyncfusionLiveStableOverlayEnabled());
+      setSyncfusionDualLayerEnabled(readSyncfusionDualLayerEnabled());
+      setOverlayLagAutoRecordEnabled(readOverlayLagRecorderAutoEnabled());
+    };
+    window.addEventListener('storage', syncFlag);
+    window.addEventListener('focus', syncFlag);
+    return () => {
+      window.removeEventListener('storage', syncFlag);
+      window.removeEventListener('focus', syncFlag);
+    };
+  }, []);
+
+  useEffect(() => {
+    writeOverlayLagRecorderAutoEnabled(overlayLagAutoRecordEnabled);
+  }, [overlayLagAutoRecordEnabled]);
+
+  useEffect(() => {
+    writeSyncfusionDualLayerEnabled(syncfusionDualLayerEnabled);
+  }, [syncfusionDualLayerEnabled]);
+
+  useEffect(() => {
+    syncfusionOverlayWindowPagesRef.current = syncfusionOverlayWindowPages;
+  }, [syncfusionOverlayWindowPages]);
+
+  useEffect(() => {
+    syncfusionPageContainersStateRef.current = syncfusionPageContainers;
+  }, [syncfusionPageContainers]);
+
+  useEffect(() => {
+    syncfusionCommittedPageScalesRef.current = syncfusionCommittedPageScales;
+  }, [syncfusionCommittedPageScales]);
+
+  useEffect(() => {
+    syncfusionInteractionActiveRef.current = syncfusionInteractionActive;
+  }, [syncfusionInteractionActive]);
+
+  useEffect(() => {
+    syncfusionInteractionPhaseRef.current = syncfusionInteractionPhase;
+    const active = syncfusionInteractionPhase !== 'idle';
+    syncfusionInteractionActiveRef.current = active;
+    setSyncfusionInteractionActive((prevActive) => (prevActive === active ? prevActive : active));
+    if (!active) {
+      syncfusionInteractionUntilRef.current = 0;
+      syncfusionInteractionReasonRef.current = null;
+      syncfusionInteractionStartViewerZoomRef.current = 1;
+      syncfusionCommitQueueRef.current = [];
+      setSyncfusionCommitQueueDepth(0);
+    }
+  }, [syncfusionInteractionPhase]);
+
+  useEffect(() => {
+    syncfusionLightweightPagesRef.current = syncfusionLightweightPages;
+  }, [syncfusionLightweightPages]);
+
+  useEffect(() => {
+    syncfusionInteractionResidentPagesRef.current = syncfusionInteractionResidentPages;
+  }, [syncfusionInteractionResidentPages]);
+
+  useEffect(() => {
+    syncfusionInteractionPageModesRef.current = syncfusionInteractionPageModes;
+  }, [syncfusionInteractionPageModes]);
+
+  useEffect(() => {
+    syncfusionInteractionProxyPayloadsRef.current = syncfusionInteractionProxyPayloads;
+  }, [syncfusionInteractionProxyPayloads]);
+
+  useEffect(() => {
+    syncfusionCommittingProxyPagesRef.current = syncfusionCommittingProxyPages;
+  }, [syncfusionCommittingProxyPages]);
+
+  useEffect(() => {
+    syncfusionProxyReadyPagesRef.current = syncfusionProxyReadyPages;
+  }, [syncfusionProxyReadyPages]);
+
+  useEffect(() => {
+    setPerfDebugEnabled(debugLogging);
+    setPdfDebugEnabled(debugLogging);
+    if (!debugLogging) {
+      clearDebugState();
+    }
+    setDebugData({ debugLogging });
+  }, [debugLogging]);
+
+  useEffect(() => {
+    if (!debugLogging) {
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      setDebugHudTick((prev) => prev + 1);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [debugLogging]);
+
+  useEffect(() => {
+    const handleDebugShortcut = (event) => {
+      const key = String(event.key || '').toLowerCase();
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || key !== 'd') {
+        return;
+      }
+      event.preventDefault();
+      setDebugLogging((prev) => !prev);
+    };
+
+    window.addEventListener('keydown', handleDebugShortcut);
+    return () => window.removeEventListener('keydown', handleDebugShortcut);
+  }, []);
+
+  useEffect(() => {
+    setDebugData({
+      pageNum,
+      numPages,
+      scale: Number(scale.toFixed(3)),
+      overlayPageCount: Object.keys(syncfusionPageContainers).length,
+      overlayWindowCount: syncfusionOverlayWindowPages.size,
+      interactionOverlayMode: syncfusionInteractionPhase,
+      interactionResidentPages: syncfusionInteractionResidentPages.size,
+      interactionSessionId: syncfusionInteractionSessionId,
+      interactionModeFlipCount: syncfusionInteractionModeFlipCount,
+      interactionCommitQueueDepth: syncfusionCommitQueueDepth,
+      syncfusionContainerMutationTick,
+      overlayLagAutoRecordEnabled,
+      liveStableOverlayEnabled: syncfusionLiveStableOverlayEnabled,
+      dualLayerEnabled: syncfusionDualLayerEnabled,
+      refreshQueueActive: syncfusionRefreshFrameRef.current !== null
+    });
+  }, [
+    syncfusionCommitQueueDepth,
+    syncfusionContainerMutationTick,
+    syncfusionDualLayerEnabled,
+    syncfusionInteractionModeFlipCount,
+    syncfusionInteractionPhase,
+    syncfusionInteractionSessionId,
+    numPages,
+    overlayLagAutoRecordEnabled,
+    pageNum,
+    scale,
+    syncfusionInteractionResidentPages,
+    syncfusionLiveStableOverlayEnabled,
+    syncfusionPageContainers,
+    syncfusionOverlayWindowPages
+  ]);
+
+  const clearInteractionPerfTimer = useCallback(() => {
+    const state = interactionPerfRef.current;
+    if (!state.timer) return;
+    clearTimeout(state.timer);
+    state.timer = null;
+  }, []);
+
+  const finishInteractionPerfWindow = useCallback(() => {
+    const state = interactionPerfRef.current;
+    clearInteractionPerfTimer();
+    if (!state.active) {
+      state.until = 0;
+      return;
+    }
+    state.active = false;
+    state.until = 0;
+    emitPdfDebugEvent('interaction_perf_mode_off', {
+      reason: state.lastReason || null
+    });
+    setInteractionPerfActive(false);
+    setDebugData({
+      interactionPerfMode: 'idle'
+    });
+  }, [clearInteractionPerfTimer]);
+
+  const isInteractionPerfWindowActive = useCallback(() => {
+    const state = interactionPerfRef.current;
+    return state.active && Date.now() < state.until;
+  }, []);
+
+  const getInteractionPerfResumeDelay = useCallback((minimumMs = 260, bufferMs = 140) => {
+    const state = interactionPerfRef.current;
+    const remaining = Math.max(0, (state.until || 0) - Date.now());
+    return Math.max(minimumMs, remaining + bufferMs);
+  }, []);
+
+  const markInteractionPerfActive = useCallback((reason = 'interaction', holdMs = INTERACTION_PERF_SCROLL_HOLD_MS) => {
+    const state = interactionPerfRef.current;
+    const safeHold = Math.max(INTERACTION_PERF_MIN_HOLD_MS, Number(holdMs) || INTERACTION_PERF_SCROLL_HOLD_MS);
+    const nextUntil = Date.now() + safeHold;
+    state.until = Math.max(state.until || 0, nextUntil);
+    state.lastReason = reason;
+
+    if (!state.active) {
+      state.active = true;
+      emitPdfDebugEvent('interaction_perf_mode_on', { reason, holdMs: safeHold });
+      setInteractionPerfActive(true);
+      setDebugData({
+        interactionPerfMode: 'active',
+        interactionReason: reason
+      });
+    }
+
+    const scheduleCheck = () => {
+      if (state.timer) return;
+      const runCheck = () => {
+        state.timer = null;
+        const remaining = state.until - Date.now();
+        if (remaining > 20) {
+          state.timer = setTimeout(runCheck, Math.max(24, remaining));
+          return;
+        }
+        finishInteractionPerfWindow();
+      };
+      state.timer = setTimeout(runCheck, Math.max(24, state.until - Date.now()));
+    };
+
+    scheduleCheck();
+  }, [clearInteractionPerfTimer, finishInteractionPerfWindow]);
+
+  const getSyncfusionViewerScale = useCallback(() => clampScale(
+    Number(
+      (syncfusionViewerRef.current?.getZoomValue?.() ??
+        syncfusionViewerRef.current?.zoomValue ??
+        (scaleRef.current || scale) * 100)
+    ) / 100
+  ), [scale]);
+
+  const isSyncfusionPageEligible = useCallback((pageNumber) => {
+    if (!(Number.isFinite(pageNumber) && pageNumber > 0)) return false;
+    const activeSpaceId = syncfusionActiveSpaceIdRef.current;
+    if (!activeSpaceId) return true;
+    const activeSpacePages = syncfusionActiveSpacePagesRef.current;
+    if (!Array.isArray(activeSpacePages) || activeSpacePages.length === 0) {
+      return false;
+    }
+    return activeSpacePages.includes(pageNumber);
+  }, []);
+
+  const listSyncfusionEligibleContainerPages = useCallback(() => Object.keys(
+    syncfusionPageContainersStateRef.current || pageContainersRef.current || {}
+  )
+    .map((pageKey) => Number(pageKey))
+    .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0 && isSyncfusionPageEligible(pageNumber))
+    .sort((left, right) => left - right), [isSyncfusionPageEligible]);
+
+  const sortSyncfusionPagesByDistance = useCallback((pages, originPage) => [...pages]
+    .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
+    .sort((left, right) => {
+      const leftDistance = Math.abs(left - originPage);
+      const rightDistance = Math.abs(right - originPage);
+      if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+      return left - right;
+    }), []);
+
+  const computeSyncfusionInteractionResidentPages = useCallback(() => {
+    const eligiblePages = listSyncfusionEligibleContainerPages();
+    if (eligiblePages.length === 0) {
+      return new Set();
+    }
+
+    const eligibleSet = new Set(eligiblePages);
+    const currentPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || eligiblePages[0] || 1;
+    const ordered = [];
+    const pushUnique = (pageNumber) => {
+      if (!Number.isFinite(pageNumber) || !eligibleSet.has(pageNumber)) return;
+      if (ordered.includes(pageNumber)) return;
+      ordered.push(pageNumber);
+    };
+
+    const visiblePages = sortSyncfusionPagesByDistance(
+      Array.from(syncfusionVisiblePagesRef.current || []).filter((pageNumber) => eligibleSet.has(pageNumber)),
+      currentPage
+    );
+    visiblePages.forEach(pushUnique);
+    visiblePages.forEach((pageNumber) => {
+      pushUnique(pageNumber - 1);
+      pushUnique(pageNumber + 1);
+    });
+    sortSyncfusionPagesByDistance(eligiblePages, currentPage).forEach(pushUnique);
+
+    if (ordered.length === 0) {
+      pushUnique(currentPage);
+    }
+
+    return new Set(ordered.slice(0, SYNCFUSION_INTERACTION_MAX_RESIDENT_PAGES));
+  }, [listSyncfusionEligibleContainerPages, sortSyncfusionPagesByDistance]);
+
+  const setSyncfusionInteractionResidentPagesStable = useCallback((candidatePages) => {
+    const currentPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || 1;
+    const previous = syncfusionInteractionResidentPagesRef.current || new Set();
+    const visiblePages = sortSyncfusionPagesByDistance(
+      Array.from(syncfusionVisiblePagesRef.current || []).filter((pageNumber) => isSyncfusionPageEligible(pageNumber)),
+      currentPage
+    );
+    const union = new Set([
+      ...Array.from(previous),
+      ...Array.from(candidatePages || []),
+      ...visiblePages,
+      currentPage
+    ].filter((pageNumber) => isSyncfusionPageEligible(pageNumber)));
+    const ordered = [];
+    const pushUnique = (pageNumber) => {
+      if (!Number.isFinite(pageNumber) || !union.has(pageNumber)) return;
+      if (ordered.includes(pageNumber)) return;
+      ordered.push(pageNumber);
+    };
+    visiblePages.forEach(pushUnique);
+    visiblePages.forEach((pageNumber) => {
+      pushUnique(pageNumber - 1);
+      pushUnique(pageNumber + 1);
+    });
+    sortSyncfusionPagesByDistance(Array.from(union), currentPage).forEach(pushUnique);
+    const residentCap = Math.max(
+      SYNCFUSION_INTERACTION_MAX_RESIDENT_PAGES,
+      visiblePages.length + 2
+    );
+    const next = new Set(ordered.slice(0, residentCap));
+    const unchanged =
+      previous.size === next.size &&
+      [...next].every((pageNumber) => previous.has(pageNumber));
+    if (unchanged) {
+      return previous;
+    }
+
+    const currentPayloads = syncfusionInteractionProxyPayloadsRef.current || {};
+    const nextPayloads = {};
+    let payloadPruned = false;
+    Object.entries(currentPayloads).forEach(([pageKey, payload]) => {
+      const pageNumber = Number(pageKey);
+      if (!(Number.isFinite(pageNumber) && pageNumber > 0)) {
+        payloadPruned = true;
+        return;
+      }
+      if (next.has(pageNumber)) {
+        nextPayloads[pageNumber] = payload;
+        return;
+      }
+      payloadPruned = true;
+    });
+    if (payloadPruned) {
+      syncfusionInteractionProxyPayloadsRef.current = nextPayloads;
+      setSyncfusionInteractionProxyPayloads(nextPayloads);
+    }
+
+    syncfusionInteractionResidentPagesRef.current = next;
+    setSyncfusionInteractionResidentPages(next);
+    setDebugData({ syncfusionInteractionResidentCount: next.size });
+    emitPdfDebugEvent('syncfusion_interaction_resident_pages', { count: next.size });
+    return next;
+  }, [isSyncfusionPageEligible, sortSyncfusionPagesByDistance]);
+
+  const clearSyncfusionOverlayTransformSyncRaf = useCallback(() => {
+    const rafId = syncfusionOverlayTransformSyncRafRef.current;
+    if (rafId === null) return;
+    if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(rafId);
+    } else {
+      clearTimeout(rafId);
+    }
+    syncfusionOverlayTransformSyncRafRef.current = null;
+    syncfusionOverlayTransformLoopActiveRef.current = false;
+  }, []);
+
+  const clearSyncfusionCommitRaf = useCallback(() => {
+    const rafId = syncfusionCommitRafRef.current;
+    if (rafId === null) return;
+    if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(rafId);
+    } else {
+      clearTimeout(rafId);
+    }
+    syncfusionCommitRafRef.current = null;
+  }, []);
+
+  const resetSyncfusionOverlayTransformStyles = useCallback(() => {
+    const overlayContentRefs = syncfusionOverlayContentRefs.current || {};
+    Object.keys(overlayContentRefs).forEach((pageKey) => {
+      const node = overlayContentRefs[pageKey];
+      if (!node || !node.isConnected || !node.style) return;
+      node.style.transform = '';
+      node.style.transformOrigin = '';
+      node.style.willChange = '';
+      node.style.backfaceVisibility = '';
+    });
+    syncfusionOverlayTransformRatioByPageRef.current = {};
+    syncfusionOverlayTransformNodeByPageRef.current = {};
+  }, []);
+
+  const clearSyncfusionInteractionTimer = useCallback(() => {
+    if (!syncfusionInteractionTimerRef.current) return;
+    clearTimeout(syncfusionInteractionTimerRef.current);
+    syncfusionInteractionTimerRef.current = null;
+  }, []);
+
+  const determineSyncfusionPageMode = useCallback((pageNumber, previousMode = 'full') => {
+    if (
+      SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES &&
+      syncfusionInteractionPhaseRef.current === 'interacting'
+    ) {
+      return 'proxy';
+    }
+
+    const annotations = syncfusionAnnotationsByPageRef.current?.[pageNumber];
+    const objectCount = Array.isArray(annotations?.objects) ? annotations.objects.length : 0;
+    const calloutCount = Number(lightweightCalloutCountByPageRef.current?.[pageNumber] || 0);
+
+    if (objectCount >= SYNCFUSION_INTERACTION_PROXY_FORCE_OBJECT_THRESHOLD) {
+      return 'proxy';
+    }
+    if (previousMode === 'proxy') {
+      if (
+        objectCount >= SYNCFUSION_INTERACTION_PROXY_OBJECT_THRESHOLD ||
+        calloutCount >= SYNCFUSION_INTERACTION_PROXY_CALLOUT_THRESHOLD
+      ) {
+        return 'proxy';
+      }
+    }
+    if (
+      objectCount >= SYNCFUSION_INTERACTION_PROXY_OBJECT_THRESHOLD ||
+      calloutCount >= SYNCFUSION_INTERACTION_PROXY_CALLOUT_THRESHOLD
+    ) {
+      return 'proxy';
+    }
+    return 'full';
+  }, []);
+
+  const buildSyncfusionProxyPayloadForPage = useCallback((pageNumber) => {
+    const selectedModuleId = syncfusionSelectedModuleIdRef.current;
+    const showSurveyPanel = syncfusionShowSurveyPanelRef.current === true;
+
+    const annotations = syncfusionAnnotationsByPageRef.current?.[pageNumber];
+    const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
+    const proxyObjects = objects
+      .filter((object) => {
+        if (!object || object.visible === false) return false;
+        if (!(showSurveyPanel && selectedModuleId)) return true;
+        const moduleId = object?.moduleId;
+        if (moduleId === null || moduleId === undefined) return false;
+        return moduleId === selectedModuleId;
+      })
+      .slice(0, 520)
+      .map((object, index) => ({
+        id: object?.id || object?.highlightId || object?.pdfAnnotationId || `obj-${pageNumber}-${index}`,
+        type: object?.type || null,
+        text: typeof object?.text === 'string' ? object.text : '',
+        left: Number(object?.left) || 0,
+        top: Number(object?.top) || 0,
+        width: Number(object?.width) || 0,
+        height: Number(object?.height) || 0,
+        scaleX: Number.isFinite(Number(object?.scaleX)) ? Number(object.scaleX) : 1,
+        scaleY: Number.isFinite(Number(object?.scaleY)) ? Number(object.scaleY) : 1,
+        stroke: object?.stroke ?? null,
+        fill: object?.fill ?? null,
+        strokeWidth: Number(object?.strokeWidth) || 1,
+        opacity: Number.isFinite(Number(object?.opacity)) ? Number(object.opacity) : 1,
+        angle: Number.isFinite(Number(object?.angle)) ? Number(object.angle) : 0,
+        fontSize: Number.isFinite(Number(object?.fontSize)) ? Number(object.fontSize) : 12,
+        globalCompositeOperation: object?.globalCompositeOperation || null
+      }));
+
+    const proxyCallouts = (calloutsRef.current || [])
+      .filter((callout) => Number(callout?.pageNumber) === pageNumber)
+      .filter((callout) => {
+        if (!(showSurveyPanel && selectedModuleId)) return true;
+        return callout?.moduleId === selectedModuleId;
+      })
+      .slice(0, 180)
+      .map((callout, index) => ({
+        id: callout?.id || `callout-${pageNumber}-${index}`,
+        pageNumber,
+        arrowTip: {
+          x: Number(callout?.arrowTip?.x) || 0,
+          y: Number(callout?.arrowTip?.y) || 0
+        },
+        knee: {
+          x: Number(callout?.knee?.x) || 0,
+          y: Number(callout?.knee?.y) || 0
+        },
+        textBoxPosition: {
+          x: Number(callout?.textBoxPosition?.x) || 0,
+          y: Number(callout?.textBoxPosition?.y) || 0
+        },
+        textBoxWidth: Number(callout?.textBoxWidth) || 0,
+        textBoxHeight: Number(callout?.textBoxHeight) || 0,
+        style: callout?.style || null
+      }));
+
+    return {
+      objects: proxyObjects,
+      callouts: proxyCallouts
+    };
+  }, []);
+
+  const freezeSyncfusionSessionPages = useCallback((pageNumbers, { reset = false } = {}) => {
+    const requestedPages = Array.from(new Set(
+      (Array.isArray(pageNumbers) ? pageNumbers : [])
+        .map((pageNumber) => Number(pageNumber))
+        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0 && isSyncfusionPageEligible(pageNumber))
+    ));
+
+    if (reset) {
+      const resetModes = {};
+      const resetPayloads = {};
+      requestedPages.forEach((pageNumber) => {
+        const mode = determineSyncfusionPageMode(pageNumber, 'full');
+        resetModes[pageNumber] = mode;
+        if (mode === 'proxy') {
+          resetPayloads[pageNumber] = buildSyncfusionProxyPayloadForPage(pageNumber);
+        }
+      });
+      syncfusionInteractionPageModesRef.current = resetModes;
+      syncfusionInteractionProxyPayloadsRef.current = resetPayloads;
+      setSyncfusionInteractionPageModes(resetModes);
+      setSyncfusionInteractionProxyPayloads(resetPayloads);
+      return requestedPages;
+    }
+
+    if (requestedPages.length === 0) {
+      return [];
+    }
+
+    const nextModes = { ...(syncfusionInteractionPageModesRef.current || {}) };
+    const nextPayloads = { ...(syncfusionInteractionProxyPayloadsRef.current || {}) };
+    const newlyAddedPages = [];
+    let modesChanged = false;
+    let payloadChanged = false;
+
+    requestedPages.forEach((pageNumber) => {
+      const existingMode = nextModes[pageNumber];
+      if (existingMode) {
+        if (existingMode === 'proxy' && !nextPayloads[pageNumber]) {
+          nextPayloads[pageNumber] = buildSyncfusionProxyPayloadForPage(pageNumber);
+          payloadChanged = true;
+        }
+        return;
+      }
+      const mode = determineSyncfusionPageMode(pageNumber, 'full');
+      nextModes[pageNumber] = mode;
+      modesChanged = true;
+      newlyAddedPages.push(pageNumber);
+      if (mode === 'proxy') {
+        nextPayloads[pageNumber] = buildSyncfusionProxyPayloadForPage(pageNumber);
+        payloadChanged = true;
+      }
+    });
+
+    if (modesChanged) {
+      syncfusionInteractionPageModesRef.current = nextModes;
+      setSyncfusionInteractionPageModes(nextModes);
+    }
+    if (payloadChanged) {
+      syncfusionInteractionProxyPayloadsRef.current = nextPayloads;
+      setSyncfusionInteractionProxyPayloads(nextPayloads);
+    }
+
+    return newlyAddedPages;
+  }, [buildSyncfusionProxyPayloadForPage, determineSyncfusionPageMode, isSyncfusionPageEligible]);
+
+  const syncSyncfusionLightweightPages = useCallback((phaseOverride = null) => {
+    const applyNext = (nextSet) => {
+      const previous = syncfusionLightweightPagesRef.current || new Set();
+      const unchanged = previous.size === nextSet.size &&
+        [...nextSet].every((pageNumber) => previous.has(pageNumber));
+      if (unchanged) {
+        return;
+      }
+      syncfusionLightweightPagesRef.current = nextSet;
+      setSyncfusionLightweightPages(nextSet);
+    };
+
+    const phase = phaseOverride || syncfusionInteractionPhaseRef.current;
+    if (phase === 'interacting') {
+      const residentPages = syncfusionInteractionResidentPagesRef.current || new Set();
+      const next = new Set(
+        Object.entries(syncfusionInteractionPageModesRef.current || {})
+          .filter(([, mode]) => mode === 'proxy')
+          .map(([pageKey]) => Number(pageKey))
+          .filter((pageNumber) => (
+            Number.isFinite(pageNumber) &&
+            pageNumber > 0 &&
+            (residentPages.size === 0 || residentPages.has(pageNumber))
+          ))
+      );
+      applyNext(next);
+      return;
+    }
+    if (phase === 'committing') {
+      const next = new Set(syncfusionCommittingProxyPagesRef.current || []);
+      applyNext(next);
+      return;
+    }
+    applyNext(new Set());
+  }, []);
+
+  const markSyncfusionProxyPageReady = useCallback((pageNumber, sessionId) => {
+    const safePageNumber = Number(pageNumber);
+    const safeSessionId = Number(sessionId);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return;
+    }
+    if (!(Number.isFinite(safeSessionId) && safeSessionId > 0)) {
+      return;
+    }
+    if (safeSessionId !== syncfusionInteractionSessionIdRef.current) {
+      return;
+    }
+    if (
+      syncfusionInteractionPhaseRef.current !== 'interacting' &&
+      syncfusionInteractionPhaseRef.current !== 'committing'
+    ) {
+      return;
+    }
+    setSyncfusionProxyReadyPages((prev) => {
+      if (prev.has(safePageNumber)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(safePageNumber);
+      syncfusionProxyReadyPagesRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const applySyncfusionOverlayTransformSync = useCallback(() => {
+    if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
+      return;
+    }
+    if (syncfusionInteractionPhaseRef.current !== 'interacting') {
+      return;
+    }
+
+    const viewerScale = getSyncfusionViewerScale();
+    const pageContainers = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+    const pageSizes = pageSizesRef.current || {};
+    const residentPages = syncfusionInteractionResidentPagesRef.current;
+    const candidatePages = residentPages && residentPages.size > 0
+      ? Array.from(residentPages)
+      : Object.keys(syncfusionOverlayContentRefs.current)
+        .map((pageKey) => Number(pageKey))
+        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
+    const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
+    const nodeByPage = syncfusionOverlayTransformNodeByPageRef.current || {};
+    const committedScales = syncfusionCommittedPageScalesRef.current || {};
+    const committedScaleRepairs = {};
+    const transformStats = syncfusionOverlayTransformStatsRef.current || { ticks: 0, writes: 0, resets: 0, skips: 0 };
+    transformStats.ticks += 1;
+
+    candidatePages.forEach((pageNumber) => {
+      const node = syncfusionOverlayContentRefs.current?.[pageNumber];
+      if (!node || !node.isConnected || !node.style) return;
+      const previousNode = nodeByPage[pageNumber];
+      const nodeChanged = previousNode !== node;
+      if (nodeChanged) {
+        nodeByPage[pageNumber] = node;
+      }
+      const pageBaseScaleRaw = Number(committedScales[pageNumber]);
+      const hasCommittedScale = Number.isFinite(pageBaseScaleRaw) && pageBaseScaleRaw > 0;
+      let pageBaseScale = hasCommittedScale
+        ? pageBaseScaleRaw
+        : Number(syncfusionInteractionStartViewerZoomRef.current) || viewerScale || 1;
+      const liveScaleRaw = measureSyncfusionPageHostScale(
+        pageNumber,
+        pageSizes,
+        pageContainers,
+        viewerScale
+      );
+      const liveScale = normalizeInteractionMeasuredScale(liveScaleRaw, viewerScale, viewerScale);
+      if (!hasCommittedScale && Number.isFinite(liveScale) && liveScale > 0) {
+        pageBaseScale = liveScale;
+        committedScaleRepairs[pageNumber] = liveScale;
+      }
+      const ratioRaw = liveScale / pageBaseScale;
+      const ratio = Number.isFinite(ratioRaw) && ratioRaw > 0 ? ratioRaw : 1;
+      const resetTransform = Math.abs(ratio - 1) <= 0.001;
+      const previousRatio = Number(ratioByPage[pageNumber]) || 1;
+      const hasInlineTransform = typeof node.style.transform === 'string' && node.style.transform.trim().length > 0;
+      if (resetTransform) {
+        if (Math.abs(previousRatio - 1) <= 0.0005 && !nodeChanged && !hasInlineTransform) {
+          transformStats.skips += 1;
+          return;
+        }
+        ratioByPage[pageNumber] = 1;
+        node.style.transform = '';
+        node.style.transformOrigin = '';
+        node.style.willChange = '';
+        node.style.backfaceVisibility = '';
+        transformStats.resets += 1;
+        return;
+      }
+      if (Math.abs(previousRatio - ratio) <= 0.0005 && !nodeChanged && hasInlineTransform) {
+        transformStats.skips += 1;
+        return;
+      }
+      ratioByPage[pageNumber] = ratio;
+      node.style.transform = `scale(${ratio})`;
+      node.style.transformOrigin = 'top left';
+      node.style.willChange = 'transform';
+      node.style.backfaceVisibility = 'hidden';
+      transformStats.writes += 1;
+    });
+    if (Object.keys(committedScaleRepairs).length > 0) {
+      syncfusionCommittedPageScalesRef.current = {
+        ...(syncfusionCommittedPageScalesRef.current || {}),
+        ...committedScaleRepairs
+      };
+      setSyncfusionCommittedPageScales((prev) => ({
+        ...(prev || {}),
+        ...committedScaleRepairs
+      }));
+    }
+    syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+    syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
+    syncfusionOverlayTransformStatsRef.current = transformStats;
+  }, [
+    getSyncfusionViewerScale,
+    syncfusionDualLayerEnabled,
+    syncfusionLiveStableOverlayEnabled,
+    useSyncfusionRenderer
+  ]);
+
+  const queueSyncfusionOverlayTransformSync = useCallback((force = false) => {
+    if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
+      return;
+    }
+    if (syncfusionOverlayTransformLoopActiveRef.current) {
+      if (force) {
+        applySyncfusionOverlayTransformSync();
+      }
+      return;
+    }
+    if (syncfusionOverlayTransformSyncRafRef.current !== null) {
+      return;
+    }
+    const raf =
+      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 16);
+    syncfusionOverlayTransformSyncRafRef.current = raf(() => {
+      syncfusionOverlayTransformSyncRafRef.current = null;
+      applySyncfusionOverlayTransformSync();
+    });
+  }, [
+    applySyncfusionOverlayTransformSync,
+    syncfusionDualLayerEnabled,
+    syncfusionLiveStableOverlayEnabled,
+    useSyncfusionRenderer
+  ]);
+
+  const startSyncfusionOverlayTransformLoop = useCallback(() => {
+    if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
+      return;
+    }
+    if (syncfusionOverlayTransformLoopActiveRef.current) {
+      return;
+    }
+    if (syncfusionOverlayTransformSyncRafRef.current !== null) {
+      clearSyncfusionOverlayTransformSyncRaf();
+    }
+    syncfusionOverlayTransformLoopActiveRef.current = true;
+    const raf =
+      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 16);
+    const tick = () => {
+      if (!syncfusionOverlayTransformLoopActiveRef.current) {
+        syncfusionOverlayTransformSyncRafRef.current = null;
+        return;
+      }
+      if (syncfusionInteractionPhaseRef.current !== 'interacting') {
+        syncfusionOverlayTransformLoopActiveRef.current = false;
+        syncfusionOverlayTransformSyncRafRef.current = null;
+        return;
+      }
+      applySyncfusionOverlayTransformSync();
+      syncfusionOverlayTransformSyncRafRef.current = raf(tick);
+    };
+    syncfusionOverlayTransformSyncRafRef.current = raf(tick);
+  }, [
+    applySyncfusionOverlayTransformSync,
+    clearSyncfusionOverlayTransformSyncRaf,
+    syncfusionDualLayerEnabled,
+    syncfusionLiveStableOverlayEnabled,
+    useSyncfusionRenderer
+  ]);
+
+  const finalizeSyncfusionInteractionIdle = useCallback((reason = 'settled') => {
+    const wasActive = syncfusionInteractionPhaseRef.current !== 'idle' || syncfusionInteractionActiveRef.current;
+    clearSyncfusionInteractionTimer();
+    clearSyncfusionOverlayTransformSyncRaf();
+    clearSyncfusionCommitRaf();
+    syncfusionCommitQueueRef.current = [];
+    setSyncfusionCommitQueueDepth(0);
+    syncfusionInteractionUntilRef.current = 0;
+    syncfusionInteractionReasonRef.current = null;
+    syncfusionInteractionPhaseRef.current = 'idle';
+    setSyncfusionInteractionPhase('idle');
+    setSyncfusionCommittingProxyPages(new Set());
+    syncfusionCommittingProxyPagesRef.current = new Set();
+    setSyncfusionProxyReadyPages(new Set());
+    syncfusionProxyReadyPagesRef.current = new Set();
+    const pendingScaleRaw = Number(syncfusionPendingZoomScaleRef.current);
+    if (Number.isFinite(pendingScaleRaw) && pendingScaleRaw > 0) {
+      const pendingScale = clampScale(pendingScaleRaw);
+      scaleRef.current = pendingScale;
+      setScale((prev) => (Math.abs(prev - pendingScale) <= 0.0005 ? prev : pendingScale));
+      setManualZoomScale((prev) => (Math.abs(prev - pendingScale) <= 0.0005 ? prev : pendingScale));
+    }
+    syncfusionPendingZoomScaleRef.current = null;
+    setSyncfusionInteractionResidentPages(new Set());
+    syncfusionInteractionResidentPagesRef.current = new Set();
+    setSyncfusionInteractionPageModes({});
+    syncfusionInteractionPageModesRef.current = {};
+    setSyncfusionInteractionProxyPayloads({});
+    syncfusionInteractionProxyPayloadsRef.current = {};
+    syncfusionInteractionPortalHostsRef.current = {};
+    syncSyncfusionLightweightPages('idle');
+    // Defer CSS transform removal until Fabric.js confirms it rendered at the new scale.
+    // This prevents the visual flicker between CSS transform removal and canvas re-render.
+    console.log(`[AnnotPerf] finalize idle (${reason}) — deferring CSS transform removal, waiting for PAL confirmation`);
+    syncfusionScaleConfirmPendingRef.current = true;
+    if (syncfusionScaleConfirmTimerRef.current) {
+      clearTimeout(syncfusionScaleConfirmTimerRef.current);
+    }
+    syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
+      syncfusionScaleConfirmTimerRef.current = null;
+      if (syncfusionScaleConfirmPendingRef.current) {
+        console.warn('[AnnotPerf] 400ms safety timeout — PAL never confirmed, forcing CSS transform removal');
+        syncfusionScaleConfirmPendingRef.current = false;
+        resetSyncfusionOverlayTransformStyles();
+      }
+    }, 400);
+    if (wasActive) {
+      syncfusionInteractionTransitionsRef.current.off += 1;
+      setDebugData({
+        syncfusionInteractionMode: 'idle',
+        syncfusionInteractionTransitions: { ...syncfusionInteractionTransitionsRef.current },
+        syncfusionInteractionEndReason: reason
+      });
+      emitPdfDebugEvent('syncfusion_interaction_mode_off', {
+        reason,
+        transitions: { ...syncfusionInteractionTransitionsRef.current }
+      });
+    }
+  }, [
+    clearSyncfusionCommitRaf,
+    clearSyncfusionInteractionTimer,
+    clearSyncfusionOverlayTransformSyncRaf,
+    resetSyncfusionOverlayTransformStyles,
+    syncSyncfusionLightweightPages
+  ]);
+
+  const handlePALScaleApplied = useCallback((pageNumber, appliedScale) => {
+    if (!syncfusionScaleConfirmPendingRef.current) return;
+    console.log(`[AnnotPerf] PAL confirmed scale=${appliedScale.toFixed(4)} on page ${pageNumber} — removing CSS transforms`);
+    syncfusionScaleConfirmPendingRef.current = false;
+    if (syncfusionScaleConfirmTimerRef.current) {
+      clearTimeout(syncfusionScaleConfirmTimerRef.current);
+      syncfusionScaleConfirmTimerRef.current = null;
+    }
+    resetSyncfusionOverlayTransformStyles();
+  }, [resetSyncfusionOverlayTransformStyles]);
+
+  const runSyncfusionCommitQueue = useCallback(() => {
+    if (syncfusionInteractionPhaseRef.current !== 'committing') {
+      return;
+    }
+    if (syncfusionCommitRafRef.current !== null) {
+      return;
+    }
+
+    const raf =
+      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 16);
+
+    const flushFrame = () => {
+      syncfusionCommitRafRef.current = null;
+      if (syncfusionInteractionPhaseRef.current !== 'committing') {
+        return;
+      }
+
+      const queue = syncfusionCommitQueueRef.current || [];
+      if (queue.length === 0) {
+        finalizeSyncfusionInteractionIdle('commit-complete');
+        return;
+      }
+
+      const frameStart = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      const committedScaleUpdates = {};
+      const committedPages = [];
+      let processedPages = 0;
+
+      while (queue.length > 0 && processedPages < SYNCFUSION_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME) {
+        const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+          ? performance.now()
+          : Date.now();
+        if (
+          processedPages > 0 &&
+          (now - frameStart) >= SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS
+        ) {
+          break;
+        }
+
+        const pageNumber = Number(queue.shift());
+        if (!(Number.isFinite(pageNumber) && pageNumber > 0)) {
+          continue;
+        }
+        processedPages += 1;
+        const viewerScale = getSyncfusionViewerScale();
+        const measuredScale = normalizeInteractionMeasuredScale(
+          measureSyncfusionPageScale(
+            pageNumber,
+            pageSizesRef.current || {},
+            syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+            viewerScale
+          ),
+          viewerScale,
+          viewerScale
+        );
+        committedScaleUpdates[pageNumber] = measuredScale;
+        committedPages.push(pageNumber);
+      }
+
+      if (Object.keys(committedScaleUpdates).length > 0) {
+        setSyncfusionCommittedPageScales((prev) => ({
+          ...prev,
+          ...committedScaleUpdates
+        }));
+      }
+
+      if (committedPages.length > 0) {
+        setSyncfusionCommittingProxyPages((prev) => {
+          const next = new Set(prev || []);
+          committedPages.forEach((pageNumber) => next.delete(pageNumber));
+          syncfusionCommittingProxyPagesRef.current = next;
+          return next;
+        });
+        setSyncfusionInteractionPageModes((prev) => {
+          const next = { ...(prev || {}) };
+          committedPages.forEach((pageNumber) => {
+            if (next[pageNumber] !== 'full') {
+              next[pageNumber] = 'full';
+            }
+          });
+          syncfusionInteractionPageModesRef.current = next;
+          return next;
+        });
+        syncSyncfusionLightweightPages('committing');
+      }
+
+      setSyncfusionCommitQueueDepth(queue.length);
+      if (queue.length === 0) {
+        finalizeSyncfusionInteractionIdle('commit-complete');
+        return;
+      }
+
+      syncfusionCommitRafRef.current = raf(flushFrame);
+    };
+
+    syncfusionCommitRafRef.current = raf(flushFrame);
+  }, [finalizeSyncfusionInteractionIdle, getSyncfusionViewerScale, syncSyncfusionLightweightPages]);
+
+  const enterSyncfusionCommitPhase = useCallback(() => {
+    if (syncfusionInteractionPhaseRef.current !== 'interacting') {
+      return;
+    }
+    clearSyncfusionInteractionTimer();
+    clearSyncfusionOverlayTransformSyncRaf();
+    clearSyncfusionCommitRaf();
+    syncfusionCommitQueueRef.current = [];
+    setSyncfusionCommitQueueDepth(0);
+    syncfusionCommittingProxyPagesRef.current = new Set();
+    setSyncfusionCommittingProxyPages(new Set());
+
+    const settledSessionId = syncfusionInteractionSessionIdRef.current;
+    const raf =
+      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 16);
+    raf(() => {
+      if (syncfusionInteractionSessionIdRef.current !== settledSessionId) {
+        return;
+      }
+      if (syncfusionInteractionPhaseRef.current !== 'interacting') {
+        return;
+      }
+      finalizeSyncfusionInteractionIdle('settled');
+    });
+  }, [
+    clearSyncfusionCommitRaf,
+    clearSyncfusionInteractionTimer,
+    clearSyncfusionOverlayTransformSyncRaf,
+    finalizeSyncfusionInteractionIdle
+  ]);
+
+  const scheduleSyncfusionInteractionSettleCheck = useCallback(() => {
+    if (syncfusionInteractionTimerRef.current) {
+      return;
+    }
+    const runCheck = () => {
+      syncfusionInteractionTimerRef.current = null;
+      if (syncfusionInteractionPhaseRef.current !== 'interacting') {
+        return;
+      }
+      const remaining = syncfusionInteractionUntilRef.current - Date.now();
+      if (remaining > 18) {
+        syncfusionInteractionTimerRef.current = setTimeout(runCheck, Math.max(20, remaining));
+        return;
+      }
+      enterSyncfusionCommitPhase();
+    };
+    syncfusionInteractionTimerRef.current = setTimeout(
+      runCheck,
+      Math.max(20, syncfusionInteractionUntilRef.current - Date.now())
+    );
+  }, [enterSyncfusionCommitPhase]);
+
+  const startSyncfusionInteractionSession = useCallback((reason, holdMs) => {
+    const viewerScale = getSyncfusionViewerScale();
+    const nextSessionId = syncfusionInteractionSessionIdRef.current + 1;
+    syncfusionInteractionSessionIdRef.current = nextSessionId;
+    setSyncfusionInteractionSessionId(nextSessionId);
+    syncfusionInteractionModeFlipCountRef.current = 0;
+    setSyncfusionInteractionModeFlipCount(0);
+    syncfusionInteractionReasonRef.current = reason;
+    syncfusionInteractionUntilRef.current = Date.now() + holdMs;
+    syncfusionInteractionStartViewerZoomRef.current = viewerScale;
+    syncfusionInteractionPhaseRef.current = 'interacting';
+    setSyncfusionInteractionPhase('interacting');
+    syncfusionInteractionTransitionsRef.current.on += 1;
+    setSyncfusionCommittingProxyPages(new Set());
+    syncfusionCommittingProxyPagesRef.current = new Set();
+    setSyncfusionProxyReadyPages(new Set());
+    syncfusionProxyReadyPagesRef.current = new Set();
+    syncfusionOverlayTransformRatioByPageRef.current = {};
+    syncfusionInteractionPortalHostsRef.current = {};
+    if (syncfusionScaleConfirmPendingRef.current) {
+      console.log(`[AnnotPerf] new interaction (${reason}) — cancelling pending scale confirmation`);
+    }
+    syncfusionScaleConfirmPendingRef.current = false;
+    if (syncfusionScaleConfirmTimerRef.current) {
+      clearTimeout(syncfusionScaleConfirmTimerRef.current);
+      syncfusionScaleConfirmTimerRef.current = null;
+    }
+
+    const seededResidentPages = computeSyncfusionInteractionResidentPages();
+    const fallbackPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || 1;
+    const residentPages = seededResidentPages.size > 0
+      ? seededResidentPages
+      : new Set([fallbackPage]);
+    syncfusionInteractionResidentPagesRef.current = residentPages;
+    setSyncfusionInteractionResidentPages(residentPages);
+    const portalHostSnapshot = {};
+    residentPages.forEach((pageNumber) => {
+      const stateHost = syncfusionPageContainersStateRef.current?.[pageNumber];
+      if (stateHost?.isConnected) {
+        portalHostSnapshot[pageNumber] = stateHost;
+        return;
+      }
+      const refHost = pageContainersRef.current?.[pageNumber];
+      if (refHost?.isConnected) {
+        portalHostSnapshot[pageNumber] = refHost;
+      }
+    });
+    syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+
+    const frozenScaleUpdates = {};
+    residentPages.forEach((pageNumber) => {
+      if (!(Number.isFinite(pageNumber) && pageNumber > 0)) return;
+      const measuredScale = normalizeInteractionMeasuredScale(
+        measureSyncfusionPageHostScale(
+          pageNumber,
+          pageSizesRef.current || {},
+          syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+          viewerScale
+        ),
+        viewerScale,
+        viewerScale
+      );
+      frozenScaleUpdates[pageNumber] = measuredScale;
+    });
+    if (Object.keys(frozenScaleUpdates).length > 0) {
+      syncfusionCommittedPageScalesRef.current = {
+        ...(syncfusionCommittedPageScalesRef.current || {}),
+        ...frozenScaleUpdates
+      };
+      setSyncfusionCommittedPageScales((prev) => ({
+        ...(prev || {}),
+        ...frozenScaleUpdates
+      }));
+    }
+
+    freezeSyncfusionSessionPages(Array.from(residentPages), { reset: true });
+    syncSyncfusionLightweightPages('interacting');
+
+    setDebugData({
+      syncfusionInteractionMode: 'interacting',
+      syncfusionInteractionReason: reason,
+      syncfusionInteractionSessionId: nextSessionId,
+      syncfusionInteractionTransitions: { ...syncfusionInteractionTransitionsRef.current }
+    });
+    emitPdfDebugEvent('syncfusion_interaction_mode_on', {
+      reason,
+      holdMs,
+      sessionId: nextSessionId,
+      transitions: { ...syncfusionInteractionTransitionsRef.current }
+    });
+    startSyncfusionOverlayTransformLoop();
+    applySyncfusionOverlayTransformSync();
+    queueSyncfusionOverlayTransformSync(true);
+    scheduleSyncfusionInteractionSettleCheck();
+  }, [
+    applySyncfusionOverlayTransformSync,
+    computeSyncfusionInteractionResidentPages,
+    freezeSyncfusionSessionPages,
+    getSyncfusionViewerScale,
+    queueSyncfusionOverlayTransformSync,
+    scheduleSyncfusionInteractionSettleCheck,
+    startSyncfusionOverlayTransformLoop,
+    syncSyncfusionLightweightPages
+  ]);
+
+  const finishSyncfusionInteractionWindow = useCallback(() => {
+    finalizeSyncfusionInteractionIdle('forced-reset');
+  }, [finalizeSyncfusionInteractionIdle]);
+
+  const markSyncfusionInteractionActive = useCallback((reason = 'interaction', holdMs = SYNCFUSION_INTERACTION_SETTLE_MS) => {
+    if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
+      return;
+    }
+
+    const safeHoldMs = Math.max(120, Number(holdMs) || SYNCFUSION_INTERACTION_SETTLE_MS);
+    syncfusionInteractionUntilRef.current = Math.max(
+      syncfusionInteractionUntilRef.current || 0,
+      Date.now() + safeHoldMs
+    );
+    syncfusionInteractionReasonRef.current = reason;
+
+    if (syncfusionInteractionPhaseRef.current === 'committing') {
+      clearSyncfusionCommitRaf();
+      syncfusionCommitQueueRef.current = [];
+      setSyncfusionCommitQueueDepth(0);
+      setSyncfusionCommittingProxyPages(new Set());
+      syncfusionCommittingProxyPagesRef.current = new Set();
+      syncfusionInteractionPhaseRef.current = 'idle';
+      setSyncfusionInteractionPhase('idle');
+    }
+
+    if (syncfusionInteractionPhaseRef.current !== 'interacting') {
+      startSyncfusionInteractionSession(reason, safeHoldMs);
+      return;
+    }
+    startSyncfusionOverlayTransformLoop();
+    queueSyncfusionOverlayTransformSync();
+    scheduleSyncfusionInteractionSettleCheck();
+  }, [
+    clearSyncfusionCommitRaf,
+    queueSyncfusionOverlayTransformSync,
+    scheduleSyncfusionInteractionSettleCheck,
+    startSyncfusionOverlayTransformLoop,
+    startSyncfusionInteractionSession,
+    syncfusionDualLayerEnabled,
+    syncfusionLiveStableOverlayEnabled,
+    useSyncfusionRenderer
+  ]);
+
+  useEffect(() => {
+    if (useSyncfusionRenderer && syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled) {
+      return undefined;
+    }
+    finishSyncfusionInteractionWindow();
+    return undefined;
+  }, [
+    finishSyncfusionInteractionWindow,
+    syncfusionDualLayerEnabled,
+    syncfusionLiveStableOverlayEnabled,
+    useSyncfusionRenderer
+  ]);
+
+  useEffect(() => () => {
+    clearInteractionPerfTimer();
+    clearSyncfusionCommitRaf();
+    clearSyncfusionOverlayTransformSyncRaf();
+    resetSyncfusionOverlayTransformStyles();
+    clearSyncfusionInteractionTimer();
+    if (syncfusionWheelZoomRafRef.current !== null) {
+      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(syncfusionWheelZoomRafRef.current);
+      } else {
+        clearTimeout(syncfusionWheelZoomRafRef.current);
+      }
+      syncfusionWheelZoomRafRef.current = null;
+    }
+    syncfusionWheelZoomDeltaRef.current = 0;
+    syncfusionWheelZoomAnchorRef.current = null;
+    if (deferredExcelCheckTimerRef.current) {
+      clearTimeout(deferredExcelCheckTimerRef.current);
+      deferredExcelCheckTimerRef.current = null;
+    }
+    const listeners = syncfusionInteractionListenersRef.current;
+    if (listeners.detach) {
+      listeners.detach();
+      listeners.detach = null;
+      listeners.container = null;
+    }
+    interactionPerfRef.current.active = false;
+    interactionPerfRef.current.until = 0;
+    if (syncfusionScaleConfirmTimerRef.current) {
+      clearTimeout(syncfusionScaleConfirmTimerRef.current);
+      syncfusionScaleConfirmTimerRef.current = null;
+    }
+  }, [
+    clearSyncfusionCommitRaf,
+    clearInteractionPerfTimer,
+    clearSyncfusionInteractionTimer,
+    clearSyncfusionOverlayTransformSyncRaf,
+    resetSyncfusionOverlayTransformStyles
+  ]);
 
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
+  const activeToolRef = useRef('pan');
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
   const [strokeColor, setStrokeColor] = useState('#ff0000');
   const [strokeOpacity, setStrokeOpacity] = useState(100);
   const [fillColor, setFillColor] = useState('#ff0000');
@@ -8176,6 +10426,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
   const [clipboardCallout, setClipboardCallout] = useState(null);
   const [clipboardCalloutType, setClipboardCalloutType] = useState(null); // 'cut' | 'copy'
+  const lightweightCalloutCountByPage = useMemo(() => {
+    const counts = {};
+    callouts.forEach((callout) => {
+      const page = Number(callout?.pageNumber);
+      if (!Number.isFinite(page)) return;
+      counts[page] = (counts[page] || 0) + 1;
+    });
+    return counts;
+  }, [callouts]);
+
+  useEffect(() => {
+    calloutsRef.current = Array.isArray(callouts) ? callouts : [];
+  }, [callouts]);
+
+  useEffect(() => {
+    lightweightCalloutCountByPageRef.current = lightweightCalloutCountByPage || {};
+  }, [lightweightCalloutCountByPage]);
 
   // Clipboard handlers for callouts
   const handleCutCallout = useCallback((calloutId) => {
@@ -8245,8 +10512,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [eraserSize, setEraserSize] = useState(20); // Default 20px radius
   const [eraserCursorPos, setEraserCursorPos] = useState({ visible: false });
   const eraserCursorRef = useRef(null);
-  const [showEraserMenu, setShowEraserMenu] = useState(false);
-  const eraserMenuRef = useRef(null);
 
   // Spacebar Pan state
   const previousToolRef = useRef(null);
@@ -8282,6 +10547,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [showTemplateSelection, setShowTemplateSelection] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [selectedModuleId, setSelectedModuleId] = useState(null);
+  useEffect(() => {
+    syncfusionSelectedModuleIdRef.current = selectedModuleId;
+  }, [selectedModuleId]);
+  useEffect(() => {
+    syncfusionShowSurveyPanelRef.current = showSurveyPanel === true;
+  }, [showSurveyPanel]);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef(null);
   const [showNewColumnsModal, setShowNewColumnsModal] = useState(false); // Modal for new Excel columns
@@ -8293,6 +10564,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [excelLockedFilePath, setExcelLockedFilePath] = useState('');
   const [excelLockedIsOneDrive, setExcelLockedIsOneDrive] = useState(false);
   const [pendingExcelSyncCallback, setPendingExcelSyncCallback] = useState(null);
+  const [hasPendingExcelSyncChanges, setHasPendingExcelSyncChanges] = useState(false);
+  const lastExcelSyncFingerprintRef = useRef(null);
 
   const [lastDrawTool, setLastDrawTool] = useState(() => {
     try {
@@ -8336,13 +10609,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [activeTool]);
 
-  // Close eraser menu when tool changes
-  useEffect(() => {
-    if (activeTool !== 'eraser') {
-      setShowEraserMenu(false);
-    }
-  }, [activeTool]);
-
   // Close secondary toolbar when pan or select tools are active
   useEffect(() => {
     if (activeTool === 'pan' || activeTool === 'select') {
@@ -8357,22 +10623,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
         setShowExportMenu(false);
       }
-      // Close eraser menu
-      // Don't close if clicking on the eraser button itself (let the button handler manage it)
-      const isEraserButton = event.target.closest('[data-eraser-button]');
-      if (eraserMenuRef.current && !eraserMenuRef.current.contains(event.target) && !isEraserButton) {
-        setShowEraserMenu(false);
-      }
     };
 
-    if (showExportMenu || showEraserMenu) {
+    if (showExportMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showExportMenu, showEraserMenu]);
+  }, [showExportMenu]);
 
   // Persist eraser mode
   useEffect(() => {
@@ -8485,32 +10745,88 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return rest;
   };
 
-  // Restore scroll position when PDF loads
+  const normalizeViewState = useCallback((viewState) => {
+    if (!viewState || typeof viewState !== 'object') return null;
+    return {
+      pageNum: coercePageNumber(viewState.pageNum, Number.POSITIVE_INFINITY) || 1,
+      scale: Number.isFinite(viewState.scale) ? Number(Number(viewState.scale).toFixed(4)) : 1,
+      zoomMode: viewState.zoomMode || ZOOM_MODES.MANUAL,
+      scrollMode: 'continuous',
+      scrollLeft: Number.isFinite(viewState.scrollLeft) ? Math.round(viewState.scrollLeft) : 0,
+      scrollTop: Number.isFinite(viewState.scrollTop) ? Math.round(viewState.scrollTop) : 0
+    };
+  }, []);
+
+  const areViewStatesEqual = useCallback((a, b) => {
+    if (!a || !b) return false;
+    const floatEqual = (left, right) => Math.abs(Number(left) - Number(right)) < 0.0001;
+    return (
+      Number(a.pageNum) === Number(b.pageNum) &&
+      floatEqual(a.scale, b.scale) &&
+      String(a.zoomMode) === String(b.zoomMode) &&
+      String(a.scrollMode) === String(b.scrollMode) &&
+      Number(a.scrollLeft) === Number(b.scrollLeft) &&
+      Number(a.scrollTop) === Number(b.scrollTop)
+    );
+  }, []);
+
+  // Restore scroll position when PDF loads or tab/document context changes.
   useEffect(() => {
-    if (initialViewState && containerRef.current) {
-      // Small delay to ensure content is rendered
-      setTimeout(() => {
-        if (containerRef.current) {
-          containerRef.current.scrollLeft = initialViewState.scrollLeft || 0;
-          containerRef.current.scrollTop = initialViewState.scrollTop || 0;
-        }
-      }, 100);
+    if (!initialViewState || !containerRef.current) return;
+    const normalized = normalizeViewState(initialViewState);
+    if (!normalized) return;
+
+    if (
+      areViewStatesEqual(normalized, lastAppliedInitialViewStateRef.current) ||
+      areViewStatesEqual(normalized, lastViewStateEmittedRef.current)
+    ) {
+      lastAppliedInitialViewStateRef.current = normalized;
+      return;
     }
-  }, [initialViewState, pdfDoc]); // Run when PDF doc is loaded
+
+    skipNextViewStateEmitRef.current = true;
+    lastAppliedInitialViewStateRef.current = normalized;
+
+    // Small delay to ensure content is rendered.
+    const timer = setTimeout(() => {
+      if (!containerRef.current) return;
+      containerRef.current.scrollLeft = normalized.scrollLeft;
+      containerRef.current.scrollTop = normalized.scrollTop;
+      lastViewStateEmittedRef.current = normalized;
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [areViewStatesEqual, initialViewState, normalizeViewState, pdfDoc, useSyncfusionRenderer]); // Run when PDF doc/viewer container is ready
 
   // Emit view state changes
   useEffect(() => {
     if (!onViewStateChange || !containerRef.current) return;
 
-    const handleScroll = () => {
-      if (containerRef.current) {
-        onViewStateChange({
-          pageNum,
-          scale,
-          zoomMode,
-          scrollLeft: containerRef.current.scrollLeft,
-          scrollTop: containerRef.current.scrollTop
-        });
+    const emitViewState = () => {
+      if (!containerRef.current) return;
+
+      const nextViewState = normalizeViewState({
+        pageNum,
+        scale,
+        zoomMode,
+        scrollMode,
+        scrollLeft: containerRef.current.scrollLeft,
+        scrollTop: containerRef.current.scrollTop
+      });
+      if (!nextViewState) return;
+
+      if (skipNextViewStateEmitRef.current) {
+        skipNextViewStateEmitRef.current = false;
+        lastViewStateEmittedRef.current = nextViewState;
+        return;
+      }
+
+      if (areViewStatesEqual(lastViewStateEmittedRef.current, nextViewState)) {
+        return;
+      }
+
+      lastViewStateEmittedRef.current = nextViewState;
+      if (onViewStateChange) {
+        onViewStateChange(nextViewState, tabId);
       }
     };
 
@@ -8518,20 +10834,821 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     let timeoutId;
     const debouncedHandleScroll = () => {
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(handleScroll, 500);
+      timeoutId = setTimeout(emitViewState, 300);
     };
 
     const container = containerRef.current;
     container.addEventListener('scroll', debouncedHandleScroll);
 
     // Also emit on page/zoom changes immediately
-    handleScroll();
+    emitViewState();
 
     return () => {
       container.removeEventListener('scroll', debouncedHandleScroll);
       clearTimeout(timeoutId);
     };
-  }, [pageNum, scale, zoomMode, onViewStateChange]);
+  }, [areViewStatesEqual, normalizeViewState, onViewStateChange, pageNum, scale, useSyncfusionRenderer, zoomMode, scrollMode, tabId]);
+
+  const detachSyncfusionInteractionListeners = useCallback(() => {
+    const existing = syncfusionInteractionListenersRef.current;
+    if (existing.detach) {
+      existing.detach();
+    }
+    syncfusionInteractionListenersRef.current = { detach: null, container: null };
+  }, []);
+
+  const clearSyncfusionWheelZoomRaf = useCallback(() => {
+    const rafId = syncfusionWheelZoomRafRef.current;
+    if (rafId !== null) {
+      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId);
+      } else {
+        clearTimeout(rafId);
+      }
+      syncfusionWheelZoomRafRef.current = null;
+    }
+    syncfusionWheelZoomDeltaRef.current = 0;
+    syncfusionWheelZoomAnchorRef.current = null;
+  }, []);
+
+  // Memoize document unload handler to prevent re-renders
+  const handleDocumentUnload = useCallback(() => {
+    pageContainersRef.current = {};
+    setSyncfusionPageContainers({});
+    setSyncfusionCommittedPageScales({});
+    finishSyncfusionInteractionWindow();
+  }, [finishSyncfusionInteractionWindow]);
+
+  const attachSyncfusionInteractionListeners = useCallback((viewerContainer) => {
+    if (!viewerContainer) return;
+
+    const existing = syncfusionInteractionListenersRef.current;
+
+    if (existing.container === viewerContainer && existing.detach) {
+      return;
+    }
+
+    detachSyncfusionInteractionListeners();
+
+    let pointerDown = false;
+    let lastDragEventAt = 0;
+    let lastInteractionPerfMarkAt = 0;
+    let lastInteractionMarkAt = 0;
+    let scrollMarkRafId = null;
+    let wheelScrollMarkRafId = null;
+    let wheelZoomMarkRafId = null;
+    const raf =
+      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 16);
+    const cancelRaf =
+      typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function'
+        ? window.cancelAnimationFrame.bind(window)
+        : (id) => clearTimeout(id);
+
+    const markSyncfusionInteraction = (reason, holdMs = INTERACTION_PERF_SCROLL_HOLD_MS, forcePerfMark = false) => {
+      switch (reason) {
+        case 'syncfusion-scroll':
+          bumpOverlayLagEventTotal('syncfusionScroll');
+          break;
+        case 'syncfusion-wheel-zoom':
+          bumpOverlayLagEventTotal('syncfusionWheelZoom');
+          break;
+        case 'syncfusion-wheel-scroll':
+          bumpOverlayLagEventTotal('syncfusionWheelScroll');
+          break;
+        case 'syncfusion-pointer-down':
+          bumpOverlayLagEventTotal('syncfusionPointerDown');
+          break;
+        case 'syncfusion-pointer-drag':
+          bumpOverlayLagEventTotal('syncfusionPointerDrag');
+          break;
+        default:
+          break;
+      }
+      const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      const shouldMarkPerf = forcePerfMark || (now - lastInteractionPerfMarkAt) >= SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS;
+      if (shouldMarkPerf) {
+        lastInteractionPerfMarkAt = now;
+        markInteractionPerfActive(reason, holdMs);
+      }
+      const shouldMarkInteraction = forcePerfMark || (now - lastInteractionMarkAt) >= SYNCFUSION_INTERACTION_MARK_THROTTLE_MS;
+      if (shouldMarkInteraction) {
+        lastInteractionMarkAt = now;
+        markSyncfusionInteractionActive(reason);
+      }
+    };
+
+    const queueInteractionMark = (queueKey, reason, holdMs = INTERACTION_PERF_SCROLL_HOLD_MS) => {
+      if (queueKey === 'scroll') {
+        if (scrollMarkRafId !== null) return;
+        scrollMarkRafId = raf(() => {
+          scrollMarkRafId = null;
+          markSyncfusionInteraction(reason, holdMs);
+        });
+        return;
+      }
+      if (queueKey === 'wheel-scroll') {
+        if (wheelScrollMarkRafId !== null) return;
+        wheelScrollMarkRafId = raf(() => {
+          wheelScrollMarkRafId = null;
+          markSyncfusionInteraction(reason, holdMs);
+        });
+        return;
+      }
+      if (queueKey === 'wheel-zoom') {
+        if (wheelZoomMarkRafId !== null) return;
+        wheelZoomMarkRafId = raf(() => {
+          wheelZoomMarkRafId = null;
+          markSyncfusionInteraction(reason, holdMs);
+        });
+      }
+    };
+
+    const onScroll = () => {
+      queueInteractionMark('scroll', 'syncfusion-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
+    };
+
+    const onWheel = (event) => {
+      // Intercept pinch-to-zoom (which sends Ctrl+Wheel events on many browsers)
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        queueInteractionMark('wheel-zoom', 'syncfusion-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
+
+        const containerRect = viewerContainer.getBoundingClientRect();
+        const pointerX = Number.isFinite(event.clientX) ? event.clientX - containerRect.left : containerRect.width / 2;
+        const pointerY = Number.isFinite(event.clientY) ? event.clientY - containerRect.top : containerRect.height / 2;
+        syncfusionWheelZoomAnchorRef.current = {
+          x: pointerX + viewerContainer.scrollLeft,
+          y: pointerY + viewerContainer.scrollTop
+        };
+        syncfusionWheelZoomDeltaRef.current += (-event.deltaY);
+
+        if (syncfusionWheelZoomRafRef.current !== null) {
+          return;
+        }
+
+        syncfusionWheelZoomRafRef.current = raf(() => {
+          syncfusionWheelZoomRafRef.current = null;
+          const delta = Number(syncfusionWheelZoomDeltaRef.current) || 0;
+          syncfusionWheelZoomDeltaRef.current = 0;
+          if (Math.abs(delta) < 0.01) {
+            return;
+          }
+
+          const anchor = syncfusionWheelZoomAnchorRef.current;
+          if (anchor) {
+            setAnchor(anchor);
+          }
+
+          const viewer = syncfusionViewerRef.current;
+          if (!viewer) {
+            return;
+          }
+          const currentZoom = Number(viewer.zoomValue || 100);
+          if (!Number.isFinite(currentZoom)) {
+            return;
+          }
+
+          let nextZoom = currentZoom + (delta * SYNCFUSION_WHEEL_ZOOM_SENSITIVITY);
+          nextZoom = Math.max(10, Math.min(400, nextZoom));
+          if (Math.abs(nextZoom - currentZoom) < 0.05) {
+            return;
+          }
+
+          if (viewer.magnificationModule && typeof viewer.magnificationModule.zoomTo === 'function') {
+            viewer.magnificationModule.zoomTo(nextZoom);
+          }
+        });
+
+      } else {
+        queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
+      }
+    };
+
+    const onPointerDown = (event) => {
+      pointerDown = true;
+      if (event.button === 0) {
+        const holdMs = activeToolRef.current === 'pan'
+          ? INTERACTION_PERF_SCROLL_HOLD_MS
+          : INTERACTION_PERF_DRAW_HOLD_MS;
+        markSyncfusionInteraction('syncfusion-pointer-down', holdMs, true);
+      }
+    };
+
+    const onPointerMove = () => {
+      if (!pointerDown) return;
+      const now = Date.now();
+      if (now - lastDragEventAt < 96) return;
+      lastDragEventAt = now;
+      const holdMs = activeToolRef.current === 'pan'
+        ? INTERACTION_PERF_SCROLL_HOLD_MS
+        : INTERACTION_PERF_DRAW_HOLD_MS;
+      markSyncfusionInteraction('syncfusion-pointer-drag', holdMs);
+    };
+
+    const onPointerEnd = () => {
+      pointerDown = false;
+    };
+
+    viewerContainer.addEventListener('scroll', onScroll, { passive: true });
+    // IMPORTANT: Passive must be false to allow preventDefault() for zoom override
+    viewerContainer.addEventListener('wheel', onWheel, { passive: false });
+    viewerContainer.addEventListener('pointerdown', onPointerDown, { passive: true });
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('pointerup', onPointerEnd, { passive: true });
+    window.addEventListener('pointercancel', onPointerEnd, { passive: true });
+
+    syncfusionInteractionListenersRef.current = {
+      container: viewerContainer,
+      detach: () => {
+        if (scrollMarkRafId !== null) {
+          cancelRaf(scrollMarkRafId);
+          scrollMarkRafId = null;
+        }
+        if (wheelScrollMarkRafId !== null) {
+          cancelRaf(wheelScrollMarkRafId);
+          wheelScrollMarkRafId = null;
+        }
+        if (wheelZoomMarkRafId !== null) {
+          cancelRaf(wheelZoomMarkRafId);
+          wheelZoomMarkRafId = null;
+        }
+        clearSyncfusionWheelZoomRaf();
+        viewerContainer.removeEventListener('scroll', onScroll);
+        viewerContainer.removeEventListener('wheel', onWheel);
+        viewerContainer.removeEventListener('pointerdown', onPointerDown);
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerEnd);
+        window.removeEventListener('pointercancel', onPointerEnd);
+      }
+    };
+  }, [
+    bumpOverlayLagEventTotal,
+    clearSyncfusionWheelZoomRaf,
+    detachSyncfusionInteractionListeners,
+    markInteractionPerfActive,
+    markSyncfusionInteractionActive,
+    setAnchor
+  ]);
+
+  useEffect(() => {
+    if (useSyncfusionRenderer) return;
+    detachSyncfusionInteractionListeners();
+    clearSyncfusionWheelZoomRaf();
+    finishSyncfusionInteractionWindow();
+    if (syncfusionNavigateResetTimerRef.current) {
+      clearTimeout(syncfusionNavigateResetTimerRef.current);
+      syncfusionNavigateResetTimerRef.current = null;
+    }
+    if (syncfusionRefreshFrameRef.current !== null) {
+      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(syncfusionRefreshFrameRef.current);
+      } else {
+        clearTimeout(syncfusionRefreshFrameRef.current);
+      }
+      syncfusionRefreshFrameRef.current = null;
+    }
+    syncfusionZoomSourceRef.current = null;
+    wrapperDragEventAtRef.current = 0;
+    setSyncfusionPageContainers((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+    setSyncfusionOverlayWindowPages((prev) => (prev.size === 0 ? prev : new Set()));
+    setSyncfusionCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+  }, [clearSyncfusionWheelZoomRaf, detachSyncfusionInteractionListeners, finishSyncfusionInteractionWindow, useSyncfusionRenderer]);
+
+  const bindSyncfusionViewerRefs = useCallback(() => {
+    if (!useSyncfusionRenderer) return;
+    const viewer = syncfusionViewerRef.current;
+    const viewerContainer =
+      viewer?.getViewerContainer?.() ||
+      viewer?.viewerBase?.viewerContainer ||
+      viewer?.element?.querySelector('.e-pv-viewer-container');
+    const pageContainer =
+      viewer?.getPageLayerContainer?.() ||
+      viewer?.viewerBase?.pageContainer ||
+      viewer?.element?.querySelector('.e-pv-page-container');
+    if (viewerContainer) {
+      containerRef.current = viewerContainer;
+      attachSyncfusionInteractionListeners(viewerContainer);
+    }
+    if (pageContainer) {
+      contentRef.current = pageContainer;
+    }
+  }, [attachSyncfusionInteractionListeners, useSyncfusionRenderer]);
+
+  const refreshSyncfusionPageContainers = useCallback(() => {
+    if (!useSyncfusionRenderer) return;
+    const viewer = syncfusionViewerRef.current;
+
+    const next = {};
+    const viewerPageCount = coercePageNumber(
+      viewer?.getPageCount?.() ?? viewer?.pageCount,
+      Number.POSITIVE_INFINITY
+    );
+    const maxPages = viewerPageCount || numPages || 0;
+
+    if (viewer?.getPageContainer && maxPages > 0) {
+      for (let page = 1; page <= maxPages; page += 1) {
+        const pageContainer = viewer.getPageContainer(page);
+        if (pageContainer) {
+          next[page] = pageContainer;
+        }
+      }
+    }
+
+    if (Object.keys(next).length === 0) {
+      const host = viewer?.element;
+      const pageDivs = host?.querySelectorAll?.('.e-pv-page-div') || [];
+      pageDivs.forEach((pageDiv) => {
+        let pageNumber = coercePageNumber(pageDiv?.dataset?.pageNumber, Number.POSITIVE_INFINITY);
+        if (!pageNumber) {
+          const match = pageDiv.id?.match?.(/_pageDiv_(\d+)$/);
+          if (match) {
+            pageNumber = Number(match[1]) + 1;
+          }
+        }
+        if (pageNumber) {
+          pageDiv.dataset.pageNumber = String(pageNumber);
+          next[pageNumber] = pageDiv;
+        }
+      });
+    }
+
+    const connectedNext = {};
+    Object.entries(next).forEach(([pageKey, pageHost]) => {
+      const pageNumber = Number(pageKey);
+      if (!(Number.isFinite(pageNumber) && pageNumber > 0)) return;
+      if (pageHost?.isConnected) {
+        connectedNext[pageNumber] = pageHost;
+      }
+    });
+
+    pageContainersRef.current = { ...connectedNext };
+    emitPdfDebugEvent('app_syncfusion_page_container_refresh', { count: Object.keys(connectedNext).length });
+    setDebugData({ overlayPageCount: Object.keys(connectedNext).length });
+    setSyncfusionPageContainers((prev) => {
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(connectedNext);
+      if (
+        prevKeys.length === nextKeys.length &&
+        prevKeys.every((key) => prev[key] === connectedNext[key])
+      ) {
+        return prev;
+      }
+      return connectedNext;
+    });
+  }, [numPages, useSyncfusionRenderer]);
+
+  const queueSyncfusionPageContainerRefresh = useCallback(() => {
+    if (!useSyncfusionRenderer) return;
+    if (syncfusionRefreshFrameRef.current !== null) return;
+    emitPdfDebugEvent('app_syncfusion_refresh_queued');
+    const raf =
+      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 16);
+    syncfusionRefreshFrameRef.current = raf(() => {
+      syncfusionRefreshFrameRef.current = null;
+      emitPdfDebugEvent('app_syncfusion_refresh_flush');
+      refreshSyncfusionPageContainers();
+    });
+  }, [useSyncfusionRenderer, refreshSyncfusionPageContainers]);
+
+  const resolveSyncfusionLivePageHost = useCallback((pageNumber, candidateMap = null) => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return null;
+    }
+    const mapCandidate = candidateMap?.[safePageNumber];
+    if (mapCandidate?.isConnected) {
+      return mapCandidate;
+    }
+    const refCandidate = pageContainersRef.current?.[safePageNumber];
+    if (refCandidate?.isConnected) {
+      return refCandidate;
+    }
+    if (!useSyncfusionRenderer) {
+      return null;
+    }
+
+    const viewer = syncfusionViewerRef.current;
+    const directCandidate = viewer?.getPageContainer?.(safePageNumber);
+    if (directCandidate?.isConnected) {
+      return directCandidate;
+    }
+
+    const viewerHost = viewer?.element;
+    if (!viewerHost) {
+      return null;
+    }
+
+    const cssEscapedPage = String(safePageNumber).replace(/"/g, '\\"');
+    const byDataAttr = viewerHost.querySelector?.(`.e-pv-page-div[data-page-number="${cssEscapedPage}"]`);
+    if (byDataAttr?.isConnected) {
+      byDataAttr.dataset.pageNumber = String(safePageNumber);
+      return byDataAttr;
+    }
+
+    const byId = viewerHost.querySelector?.(`#${syncfusionViewerElementId}_pageDiv_${safePageNumber - 1}`);
+    if (byId?.isConnected) {
+      byId.dataset.pageNumber = String(safePageNumber);
+      return byId;
+    }
+
+    return null;
+  }, [syncfusionViewerElementId, useSyncfusionRenderer]);
+
+  const sanitizeSyncfusionPageContainerMap = useCallback((containerMap) => {
+    const next = {};
+    Object.entries(containerMap || {}).forEach(([pageKey, pageHost]) => {
+      const pageNumber = Number(pageKey);
+      if (!(Number.isFinite(pageNumber) && pageNumber > 0)) {
+        return;
+      }
+      const resolvedHost = resolveSyncfusionLivePageHost(pageNumber, containerMap) || pageHost;
+      if (resolvedHost?.isConnected) {
+        next[pageNumber] = resolvedHost;
+      }
+    });
+    return next;
+  }, [resolveSyncfusionLivePageHost]);
+
+  const resolveSyncfusionOverlayPortalHost = useCallback((pageNumber, freezeDuringInteraction = false, candidateMap = null) => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return null;
+    }
+
+    const portalHosts = syncfusionInteractionPortalHostsRef.current || {};
+    const existingHost = portalHosts[safePageNumber];
+    if (freezeDuringInteraction && existingHost?.isConnected) {
+      return existingHost;
+    }
+
+    const resolvedHost = resolveSyncfusionLivePageHost(
+      safePageNumber,
+      candidateMap || syncfusionPageContainersStateRef.current || pageContainersRef.current || {}
+    );
+    if (freezeDuringInteraction) {
+      if (resolvedHost?.isConnected) {
+        if (portalHosts[safePageNumber] !== resolvedHost) {
+          syncfusionInteractionPortalHostsRef.current = {
+            ...portalHosts,
+            [safePageNumber]: resolvedHost
+          };
+        }
+        return resolvedHost;
+      }
+      if (existingHost) {
+        return existingHost;
+      }
+    }
+    return resolvedHost || null;
+  }, [resolveSyncfusionLivePageHost]);
+
+  const handleSyncfusionDebugEvent = useCallback((event) => {
+    const type = event?.type || 'unknown';
+    const key = `syncfusion_${type}`;
+    emitPdfDebugEvent(key, event);
+    setDebugData({ lastSyncfusionEvent: type });
+
+    const now = Date.now();
+    const eventTimes = syncfusionEventTimesRef.current[key] || [];
+    const nextTimes = [...eventTimes, now].filter((ts) => ts >= now - 2000);
+    syncfusionEventTimesRef.current[key] = nextTimes;
+  }, []);
+
+  const handleSyncfusionPageContainersChange = useCallback((pageContainerMap, meta = null) => {
+    if (!useSyncfusionRenderer) return;
+    const nextRaw = pageContainerMap && typeof pageContainerMap === 'object'
+      ? pageContainerMap
+      : {};
+    const next = sanitizeSyncfusionPageContainerMap(nextRaw);
+    const reason = typeof meta?.reason === 'string' && meta.reason.trim()
+      ? meta.reason.trim()
+      : 'unspecified';
+    const reasonCounts = syncfusionContainerMutationReasonCountsRef.current || {};
+    reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+    syncfusionContainerMutationReasonCountsRef.current = reasonCounts;
+    bumpOverlayLagEventTotal('syncfusionContainerMapChange');
+    if (reason === 'mutation') {
+      bumpOverlayLagEventTotal('syncfusionContainerMutation');
+    }
+    if (debugLogging && syncfusionInteractionPhaseRef.current !== 'idle') {
+      setSyncfusionContainerMutationTick((prev) => prev + 1);
+    }
+
+    const freezeContainerIdentity =
+      syncfusionLiveStableOverlayEnabled &&
+      syncfusionDualLayerEnabled &&
+      syncfusionInteractionPhaseRef.current !== 'idle';
+    if (freezeContainerIdentity) {
+      const stableMap = syncfusionPageContainersStateRef.current || {};
+      const residentPages = Array.from(syncfusionInteractionResidentPagesRef.current || []);
+      const merged = { ...stableMap };
+      let changed = false;
+      let unresolvedResidentHost = false;
+
+      residentPages.forEach((pageNumber) => {
+        if (!(Number.isFinite(pageNumber) && pageNumber > 0)) return;
+        const stableHost = merged[pageNumber];
+        if (stableHost?.isConnected) return;
+        const incomingHost = next[pageNumber];
+        if (incomingHost?.isConnected) {
+          merged[pageNumber] = incomingHost;
+          changed = true;
+          return;
+        }
+        const resolvedHost = resolveSyncfusionLivePageHost(pageNumber, next);
+        if (resolvedHost?.isConnected) {
+          merged[pageNumber] = resolvedHost;
+          changed = true;
+          return;
+        }
+        unresolvedResidentHost = true;
+      });
+
+      const stableKeys = Object.keys(stableMap);
+      const mergedKeys = Object.keys(merged);
+      const sameKeys =
+        stableKeys.length === mergedKeys.length &&
+        stableKeys.every((key) => Object.prototype.hasOwnProperty.call(merged, key));
+      const sameRefs =
+        sameKeys &&
+        stableKeys.every((key) => stableMap[key] === merged[key]);
+
+      if (!changed && sameRefs) {
+        pageContainersRef.current = { ...stableMap };
+        bindSyncfusionViewerRefs();
+        if (unresolvedResidentHost) {
+          queueSyncfusionPageContainerRefresh();
+        }
+        return;
+      }
+
+      pageContainersRef.current = { ...merged };
+      setSyncfusionPageContainers((prev) => {
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(merged);
+        if (
+          prevKeys.length === nextKeys.length &&
+          prevKeys.every((key) => prev[key] === merged[key])
+        ) {
+          return prev;
+        }
+        return merged;
+      });
+      bindSyncfusionViewerRefs();
+      return;
+    }
+
+    pageContainersRef.current = { ...next };
+    setSyncfusionPageContainers((prev) => {
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (
+        prevKeys.length === nextKeys.length &&
+        prevKeys.every((key) => prev[key] === next[key])
+      ) {
+        return prev;
+      }
+      return next;
+    });
+    bindSyncfusionViewerRefs();
+    setDebugData({
+      syncfusionContainerMutationReason: reason,
+      syncfusionContainerMutationCounts: reasonCounts
+    });
+    emitPdfDebugEvent('app_syncfusion_container_map_changed', {
+      count: Object.keys(next).length,
+      reason
+    });
+  }, [
+    bumpOverlayLagEventTotal,
+    bindSyncfusionViewerRefs,
+    debugLogging,
+    queueSyncfusionPageContainerRefresh,
+    resolveSyncfusionLivePageHost,
+    sanitizeSyncfusionPageContainerMap,
+    syncfusionDualLayerEnabled,
+    syncfusionLiveStableOverlayEnabled,
+    useSyncfusionRenderer
+  ]);
+
+  const handleSyncfusionDocumentLoad = useCallback((payload) => {
+    const viewer = syncfusionViewerRef.current;
+    const resolvedPageCount = coercePageNumber(
+      payload?.pageCount ?? viewer?.getPageCount?.() ?? viewer?.pageCount,
+      Number.POSITIVE_INFINITY
+    );
+    if (resolvedPageCount) {
+      setNumPages(resolvedPageCount);
+    }
+    const rawZoomValue = Number(payload?.zoomValue ?? viewer?.getZoomValue?.() ?? viewer?.zoomValue ?? 100);
+    const nextScale = clampScale(rawZoomValue / 100);
+    const currentPage = coercePageNumber(
+      payload?.currentPageNumber ?? viewer?.getCurrentPage?.() ?? 1,
+      resolvedPageCount || Number.POSITIVE_INFINITY
+    ) || 1;
+    const restoreSnapshot = pendingRendererRestoreRef.current?.targetMode === 'continuous'
+      ? pendingRendererRestoreRef.current
+      : null;
+    const restoredScale = restoreSnapshot ? clampScale(restoreSnapshot.scale) : nextScale;
+    const restoredPage = restoreSnapshot
+      ? (coercePageNumber(restoreSnapshot.pageNum, resolvedPageCount || Number.POSITIVE_INFINITY) || currentPage)
+      : currentPage;
+
+    scaleRef.current = restoredScale;
+    setScale(restoredScale);
+    setManualZoomScale(restoredScale);
+    setZoomMode(ZOOM_MODES.MANUAL);
+    setRenderedPages(new Set());
+
+    setPageNum(restoredPage);
+    setPageInputValue(String(restoredPage));
+    setIsPageInputDirty(false);
+
+    if (restoreSnapshot) {
+      const applySyncfusionRestore = () => {
+        const activeViewer = syncfusionViewerRef.current || viewer;
+        if (!activeViewer) return;
+        const zoomPercent = restoredScale * 100;
+        syncfusionZoomSourceRef.current = restoreSnapshot.zoomMode || ZOOM_MODES.MANUAL;
+        if (activeViewer?.magnificationModule?.zoomTo) {
+          try {
+            activeViewer.magnificationModule.zoomTo(zoomPercent);
+          } catch (error) {
+            console.warn('Unable to apply Syncfusion zoom restore:', error);
+          }
+        }
+        if (activeViewer?.goToPage) {
+          activeViewer.goToPage(restoredPage);
+        } else if (activeViewer?.navigationModule?.goToPage) {
+          activeViewer.navigationModule.goToPage(restoredPage);
+        }
+        setPageNum(restoredPage);
+        setPageInputValue(String(restoredPage));
+        setIsPageInputDirty(false);
+      };
+
+      applySyncfusionRestore();
+      setTimeout(applySyncfusionRestore, 120);
+      pendingRendererRestoreRef.current = null;
+    }
+
+    emitPdfDebugEvent('app_syncfusion_document_load', {
+      pageCount: resolvedPageCount || 0,
+      currentPage: restoredPage
+    });
+
+    bindSyncfusionViewerRefs();
+    queueSyncfusionPageContainerRefresh();
+  }, [bindSyncfusionViewerRefs, queueSyncfusionPageContainerRefresh]);
+
+  const handleSyncfusionDocumentLoadFailed = useCallback((args) => {
+    console.error('Syncfusion documentLoadFailed:', args);
+    setLastDebugError('SYNCFUSION_DOCUMENT_LOAD_FAILED', args);
+    emitPdfDebugEvent('app_syncfusion_document_load_failed');
+    setSyncfusionPageContainers({});
+    setSyncfusionCommittedPageScales({});
+    finishSyncfusionInteractionWindow();
+    pendingRendererRestoreRef.current = null;
+  }, [finishSyncfusionInteractionWindow]);
+
+  const handleSyncfusionPageChange = useCallback((payload) => {
+    const viewer = syncfusionViewerRef.current;
+    const reportedPageCount = coercePageNumber(
+      payload?.pageCount ?? viewer?.getPageCount?.() ?? viewer?.pageCount,
+      Number.POSITIVE_INFINITY
+    );
+    if (reportedPageCount) {
+      setNumPages(reportedPageCount);
+    }
+    const pageCandidate = payload?.currentPageNumber ?? viewer?.getCurrentPage?.() ?? viewer?.currentPageNumber ?? 1;
+    const currentPage = coercePageNumber(
+      pageCandidate,
+      reportedPageCount || numPages || Number.POSITIVE_INFINITY
+    );
+    if (currentPage) {
+      setPageNum(currentPage);
+      setPageInputValue(String(currentPage));
+      setIsPageInputDirty(false);
+      emitPdfDebugEvent('app_syncfusion_page_change', {
+        currentPage,
+        pageCount: reportedPageCount || numPages || 0
+      });
+    }
+    if (syncfusionNavigateResetTimerRef.current) {
+      clearTimeout(syncfusionNavigateResetTimerRef.current);
+      syncfusionNavigateResetTimerRef.current = null;
+    }
+    bumpOverlayLagEventTotal('syncfusionPageChange');
+    markInteractionPerfActive('syncfusion-page-change', INTERACTION_PERF_SCROLL_HOLD_MS);
+    markSyncfusionInteractionActive('syncfusion-page-change');
+    // Release navigation guards after Syncfusion applies the page change.
+    isNavigatingRef.current = false;
+    targetPageRef.current = null;
+  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, numPages]);
+
+  const handleSyncfusionZoomChange = useCallback((payload) => {
+    const rawZoomValue = Number(
+      payload?.zoomValue ??
+      syncfusionViewerRef.current?.getZoomValue?.() ??
+      syncfusionViewerRef.current?.zoomValue ??
+      100
+    );
+    const nextScale = clampScale(rawZoomValue / 100);
+    scaleRef.current = nextScale;
+    const shouldDeferScaleCommit =
+      useSyncfusionRenderer &&
+      syncfusionLiveStableOverlayEnabled &&
+      syncfusionDualLayerEnabled &&
+      syncfusionInteractionPhaseRef.current !== 'idle';
+    if (shouldDeferScaleCommit) {
+      syncfusionPendingZoomScaleRef.current = nextScale;
+    } else {
+      syncfusionPendingZoomScaleRef.current = null;
+      setScale((prev) => (Math.abs(prev - nextScale) <= 0.0005 ? prev : nextScale));
+      setManualZoomScale((prev) => (Math.abs(prev - nextScale) <= 0.0005 ? prev : nextScale));
+    }
+
+    const sourceMode = syncfusionZoomSourceRef.current;
+    if (sourceMode === ZOOM_MODES.MANUAL || !sourceMode) {
+      setZoomMode((prev) => (prev === ZOOM_MODES.MANUAL ? prev : ZOOM_MODES.MANUAL));
+    }
+    bumpOverlayLagEventTotal('syncfusionZoomChange');
+    emitPdfDebugEvent('app_syncfusion_zoom_change', { zoom: Number((nextScale * 100).toFixed(2)) });
+    syncfusionZoomSourceRef.current = null;
+    markInteractionPerfActive('syncfusion-zoom-change', INTERACTION_PERF_SCROLL_HOLD_MS);
+    markSyncfusionInteractionActive('syncfusion-zoom-change');
+    queueSyncfusionOverlayTransformSync(true);
+  }, [
+    bumpOverlayLagEventTotal,
+    markInteractionPerfActive,
+    markSyncfusionInteractionActive,
+    queueSyncfusionOverlayTransformSync,
+    syncfusionDualLayerEnabled,
+    syncfusionLiveStableOverlayEnabled,
+    useSyncfusionRenderer
+  ]);
+
+  const handleSyncfusionWrapperWheel = useCallback((event) => {
+    if (!useSyncfusionRenderer) return;
+    if (syncfusionInteractionListenersRef.current?.container) return;
+    if (event.ctrlKey || event.metaKey) {
+      bumpOverlayLagEventTotal('overlayWheelZoom');
+      markInteractionPerfActive('overlay-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
+      markSyncfusionInteractionActive('overlay-wheel-zoom');
+      return;
+    }
+    bumpOverlayLagEventTotal('overlayWheelScroll');
+    markInteractionPerfActive('overlay-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
+    markSyncfusionInteractionActive('overlay-wheel-scroll');
+  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, useSyncfusionRenderer]);
+
+  const handleSyncfusionWrapperPointerDown = useCallback(() => {
+    if (!useSyncfusionRenderer) return;
+    if (syncfusionInteractionListenersRef.current?.container) return;
+    const holdMs = activeToolRef.current === 'pan'
+      ? INTERACTION_PERF_SCROLL_HOLD_MS
+      : INTERACTION_PERF_DRAW_HOLD_MS;
+    bumpOverlayLagEventTotal('overlayPointerDown');
+    markInteractionPerfActive('overlay-pointer-down', holdMs);
+    markSyncfusionInteractionActive('overlay-pointer-down');
+  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, useSyncfusionRenderer]);
+
+  const handleSyncfusionWrapperPointerMove = useCallback((event) => {
+    if (!useSyncfusionRenderer) return;
+    if (syncfusionInteractionListenersRef.current?.container) return;
+    if ((event.buttons & 1) === 0) return;
+    const now = Date.now();
+    if (now - wrapperDragEventAtRef.current < 96) return;
+    wrapperDragEventAtRef.current = now;
+    const holdMs = activeToolRef.current === 'pan'
+      ? INTERACTION_PERF_SCROLL_HOLD_MS
+      : INTERACTION_PERF_DRAW_HOLD_MS;
+    bumpOverlayLagEventTotal('overlayPointerDrag');
+    markInteractionPerfActive('overlay-pointer-drag', holdMs);
+    markSyncfusionInteractionActive('overlay-pointer-drag');
+  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, useSyncfusionRenderer]);
+
+  useEffect(() => {
+    return () => {
+      if (syncfusionNavigateResetTimerRef.current) {
+        clearTimeout(syncfusionNavigateResetTimerRef.current);
+        syncfusionNavigateResetTimerRef.current = null;
+      }
+      if (syncfusionRefreshFrameRef.current === null) return;
+      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(syncfusionRefreshFrameRef.current);
+      } else {
+        clearTimeout(syncfusionRefreshFrameRef.current);
+      }
+      syncfusionRefreshFrameRef.current = null;
+    };
+  }, []);
 
   // Legacy state (to be migrated)
   const [surveyResponses, setSurveyResponses] = useState({}); // { [itemId]: { selection: 'Y'|'N'|'N/A', note: { text, photos, videos } } }
@@ -8756,6 +11873,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, []);
 
   const handleZoomModeSelect = useCallback((mode) => {
+    if (useSyncfusionRenderer) {
+      setIsZoomMenuOpen(false);
+      const viewer = syncfusionViewerRef.current;
+      const magnification = viewer?.magnificationModule;
+      if (!magnification) return;
+
+      if (mode === ZOOM_MODES.MANUAL) {
+        syncfusionZoomSourceRef.current = ZOOM_MODES.MANUAL;
+        setZoomMode(ZOOM_MODES.MANUAL);
+        const manualScale = manualZoomScaleRef.current || DEFAULT_ZOOM_PREFERENCES.manualScale;
+        magnification.zoomTo(manualScale * 100);
+        persistZoomPreferences({ mode: ZOOM_MODES.MANUAL, manualScale });
+      } else {
+        syncfusionZoomSourceRef.current = mode;
+        setZoomMode(mode);
+        if (mode === ZOOM_MODES.FIT_PAGE) {
+          magnification.fitToPage();
+        } else if (mode === ZOOM_MODES.FIT_WIDTH) {
+          magnification.fitToWidth();
+        } else if (mode === ZOOM_MODES.FIT_HEIGHT) {
+          // Syncfusion does not expose a direct fit-height API in the public module.
+          // Keep parity with existing behavior by using the current controller calculation.
+          zoomControllerRef.current?.setMode(mode);
+        }
+        persistZoomPreferences({ mode });
+      }
+      return;
+    }
+
     const controller = zoomControllerRef.current;
     if (!controller) return;
     setIsZoomMenuOpen(false);
@@ -8764,7 +11910,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     } else {
       controller.setMode(mode);
     }
-  }, []);
+  }, [persistZoomPreferences, useSyncfusionRenderer]);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -8867,10 +12013,967 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Sidebar state: Pages, Bookmarks, Spaces
   const [pageNames, setPageNames] = useState({}); // { [pageNumber]: name }
   const [bookmarks, setBookmarks] = useState([]); // Array of { id, name, type: 'bookmark'|'folder', pageIds: [], parentId: null, children: [] }
+  const [pdfBookmarks, setPdfBookmarks] = useState([]); // Bookmarks extracted from the PDF (Syncfusion primary, PDF.js fallback)
+  const [pdfOutlinePageLookup, setPdfOutlinePageLookup] = useState(null);
+  const [hasImportedPdfBookmarks, setHasImportedPdfBookmarks] = useState(false);
+  const pdfjsBookmarkAttemptRef = useRef(null);
+  const generateBookmarkId = useCallback(
+    () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    []
+  );
   const [spaces, setSpaces] = useState([]); // Array of { id, name, assignedPages: [{ pageId, wholePageIncluded, regions: [] }] }
   const [activeSpaceId, setActiveSpaceId] = useState(null); // Currently active space for filtering
+  useEffect(() => {
+    syncfusionActiveSpaceIdRef.current = activeSpaceId;
+  }, [activeSpaceId]);
   const [showRegionSelection, setShowRegionSelection] = useState(false); // Show region selection tool
   const [regionSelectionPage, setRegionSelectionPage] = useState(null); // Page for region selection
+
+  // Syncfusion can render at a slightly different effective scale than the app's requested zoom.
+  // Always prefer measured page scale for region editing/overlay alignment.
+  const getSyncfusionPageScale = useCallback((pageNumber, fallbackScale = scale) => {
+    return measureSyncfusionPageScale(pageNumber, pageSizes, syncfusionPageContainers, fallbackScale);
+  }, [pageSizes, scale, syncfusionPageContainers]);
+
+  const disconnectOverlayLagPerfObservers = useCallback(() => {
+    const state = overlayLagPerfObserverRef.current;
+    if (state.longTaskObserver) {
+      try {
+        state.longTaskObserver.disconnect();
+      } catch {
+        // Ignore observer teardown issues.
+      }
+      state.longTaskObserver = null;
+    }
+    if (state.eventObserver) {
+      try {
+        state.eventObserver.disconnect();
+      } catch {
+        // Ignore observer teardown issues.
+      }
+      state.eventObserver = null;
+    }
+  }, []);
+
+  const resetOverlayLagPerfObservers = useCallback((captureEventTiming = true) => {
+    const state = overlayLagPerfObserverRef.current;
+    disconnectOverlayLagPerfObservers();
+    state.longTaskEntries = [];
+    state.eventEntries = [];
+
+    if (typeof window === 'undefined' || typeof PerformanceObserver === 'undefined') {
+      return {
+        longTaskSupported: false,
+        eventTimingSupported: false
+      };
+    }
+
+    const supportedTypes = Array.isArray(PerformanceObserver.supportedEntryTypes)
+      ? PerformanceObserver.supportedEntryTypes
+      : [];
+    const supportsLongTask = supportedTypes.includes('longtask');
+    const supportsEventTiming = captureEventTiming && supportedTypes.includes('event');
+
+    const toShortAttribution = (value) => {
+      const safe = String(value || '').trim();
+      if (!safe) return null;
+      const compact = safe.replace(/^https?:\/\//i, '');
+      if (compact.length <= 120) return compact;
+      return `...${compact.slice(-117)}`;
+    };
+
+    if (supportsLongTask) {
+      try {
+        const observer = new PerformanceObserver((entryList) => {
+          const entries = entryList.getEntries();
+          const mapped = entries.map((entry) => {
+            const startTime = Number(entry.startTime) || 0;
+            const duration = Number(entry.duration) || 0;
+            const endTime = startTime + duration;
+            const attribution = Array.isArray(entry.attribution) ? entry.attribution : [];
+            let source = null;
+            for (let i = 0; i < attribution.length; i += 1) {
+              const item = attribution[i];
+              const scriptUrl = toShortAttribution(item?.scriptURL || item?.scriptUrl);
+              if (scriptUrl) {
+                source = scriptUrl;
+                break;
+              }
+              const containerName = toShortAttribution(item?.containerName);
+              if (containerName) {
+                source = `${item?.containerType || 'container'}:${containerName}`;
+                break;
+              }
+              const itemName = toShortAttribution(item?.name);
+              if (itemName) {
+                source = itemName;
+                break;
+              }
+            }
+            if (!source) {
+              source = toShortAttribution(entry.name) || 'longtask';
+            }
+            return { startTime, endTime, duration, source };
+          });
+          state.longTaskEntries.push(...mapped);
+          if (state.longTaskEntries.length > OVERLAY_LAG_RECORDER_PERF_ENTRY_LIMIT) {
+            state.longTaskEntries.splice(
+              0,
+              state.longTaskEntries.length - OVERLAY_LAG_RECORDER_PERF_ENTRY_LIMIT
+            );
+          }
+        });
+        observer.observe({ type: 'longtask', buffered: true });
+        state.longTaskObserver = observer;
+      } catch {
+        state.longTaskObserver = null;
+      }
+    }
+
+    if (supportsEventTiming) {
+      try {
+        const observer = new PerformanceObserver((entryList) => {
+          const entries = entryList.getEntries();
+          const mapped = entries.map((entry) => {
+            const startTime = Number(entry.startTime) || 0;
+            const duration = Number(entry.duration) || 0;
+            const endTime = startTime + duration;
+            const name = String(entry.name || 'event');
+            return { startTime, endTime, duration, name };
+          });
+          state.eventEntries.push(...mapped);
+          if (state.eventEntries.length > OVERLAY_LAG_RECORDER_PERF_ENTRY_LIMIT) {
+            state.eventEntries.splice(
+              0,
+              state.eventEntries.length - OVERLAY_LAG_RECORDER_PERF_ENTRY_LIMIT
+            );
+          }
+        });
+        observer.observe({
+          type: 'event',
+          buffered: true,
+          durationThreshold: OVERLAY_LAG_RECORDER_EVENT_TIMING_THRESHOLD_MS
+        });
+        state.eventObserver = observer;
+      } catch {
+        state.eventObserver = null;
+      }
+    }
+
+    return {
+      longTaskSupported: !!state.longTaskObserver,
+      eventTimingSupported: !!state.eventObserver
+    };
+  }, [disconnectOverlayLagPerfObservers]);
+
+  const consumeOverlayLagPerfAttribution = useCallback((windowStartMs, windowEndMs) => {
+    const state = overlayLagPerfObserverRef.current;
+    const longTaskEntries = state.longTaskEntries || [];
+    const eventEntries = state.eventEntries || [];
+    const safeWindowStart = Number.isFinite(windowStartMs) ? windowStartMs : 0;
+    const safeWindowEnd = Number.isFinite(windowEndMs) ? windowEndMs : safeWindowStart;
+    const pruneBefore = safeWindowStart - 2500;
+
+    while (longTaskEntries.length > 0 && Number(longTaskEntries[0]?.endTime || 0) < pruneBefore) {
+      longTaskEntries.shift();
+    }
+    while (eventEntries.length > 0 && Number(eventEntries[0]?.endTime || 0) < pruneBefore) {
+      eventEntries.shift();
+    }
+
+    const overlappingLongTasks = longTaskEntries.filter((entry) => (
+      Number(entry.endTime) >= safeWindowStart && Number(entry.startTime) <= safeWindowEnd
+    ));
+    const overlappingEvents = eventEntries.filter((entry) => (
+      Number(entry.endTime) >= safeWindowStart && Number(entry.startTime) <= safeWindowEnd
+    ));
+
+    const longTaskDurations = overlappingLongTasks
+      .map((entry) => Number(entry.duration))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const longTaskTotalMsRaw = longTaskDurations.reduce((sum, value) => sum + value, 0);
+    const longTaskSourceDurations = {};
+    overlappingLongTasks.forEach((entry) => {
+      const source = String(entry.source || 'longtask');
+      const duration = Number(entry.duration);
+      if (!Number.isFinite(duration) || duration <= 0) return;
+      longTaskSourceDurations[source] = (longTaskSourceDurations[source] || 0) + duration;
+    });
+    const longTaskTopSources = Object.entries(longTaskSourceDurations)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4)
+      .map(([source, durationMs]) => ({
+        source,
+        durationMs: roundOverlayRecorderValue(durationMs, 3)
+      }));
+
+    const eventDurations = overlappingEvents
+      .map((entry) => Number(entry.duration))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const eventTimingTotalMsRaw = eventDurations.reduce((sum, value) => sum + value, 0);
+    const eventTypeDurations = {};
+    overlappingEvents.forEach((entry) => {
+      const name = String(entry.name || 'event');
+      const duration = Number(entry.duration);
+      if (!Number.isFinite(duration) || duration <= 0) return;
+      eventTypeDurations[name] = (eventTypeDurations[name] || 0) + duration;
+    });
+    const eventTimingTopTypes = Object.entries(eventTypeDurations)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4)
+      .map(([eventType, durationMs]) => ({
+        eventType,
+        durationMs: roundOverlayRecorderValue(durationMs, 3)
+      }));
+
+    return {
+      longTaskCount: longTaskDurations.length,
+      longTaskTotalMs: roundOverlayRecorderValue(longTaskTotalMsRaw, 3),
+      longTaskMaxMs: roundOverlayRecorderValue(
+        longTaskDurations.length > 0 ? Math.max(...longTaskDurations) : null,
+        3
+      ),
+      longTaskTopSources,
+      eventTimingCount: eventDurations.length,
+      eventTimingTotalMs: roundOverlayRecorderValue(eventTimingTotalMsRaw, 3),
+      eventTimingMaxMs: roundOverlayRecorderValue(
+        eventDurations.length > 0 ? Math.max(...eventDurations) : null,
+        3
+      ),
+      eventTimingTopTypes,
+      perfQueueDepth: {
+        longTaskEntries: longTaskEntries.length,
+        eventEntries: eventEntries.length
+      }
+    };
+  }, []);
+
+  const summarizeOverlayLagSamples = useCallback((samples = []) => {
+    if (!Array.isArray(samples) || samples.length === 0) {
+      return {
+        sampleCount: 0
+      };
+    }
+
+    const frameDurations = samples.map((sample) => sample.frameMs).filter((value) => Number.isFinite(value) && value > 0);
+    const driftValues = samples.map((sample) => sample.worstDriftPx).filter((value) => Number.isFinite(value));
+    const scaleMismatchValues = samples.map((sample) => sample.worstScaleMismatch).filter((value) => Number.isFinite(value));
+    const missingOverlayCounts = samples.map((sample) => sample.missingOverlayCount).filter((value) => Number.isFinite(value) && value >= 0);
+    const sampleCaptureCosts = samples.map((sample) => sample.sampleCaptureCostMs).filter((value) => Number.isFinite(value) && value >= 0);
+    const longTaskCounts = samples.map((sample) => sample.longTaskCount).filter((value) => Number.isFinite(value) && value >= 0);
+    const longTaskTotals = samples.map((sample) => sample.longTaskTotalMs).filter((value) => Number.isFinite(value) && value >= 0);
+    const eventTimingTotals = samples.map((sample) => sample.eventTimingTotalMs).filter((value) => Number.isFinite(value) && value >= 0);
+    const samplesWithMissingOverlay = missingOverlayCounts.filter((count) => count > 0).length;
+    const jankThresholdMs = 32;
+    const jankFrames = frameDurations.filter((frameMs) => frameMs > jankThresholdMs).length;
+    const samplesWithLongTasks = longTaskCounts.filter((count) => count > 0).length;
+    const jankSamples = samples.filter((sample) => Number(sample.frameMs) > jankThresholdMs);
+    const jankSamplesWithLongTasks = jankSamples.filter((sample) => Number(sample.longTaskCount) > 0).length;
+
+    const interactionEventTotals = {};
+    samples.forEach((sample) => {
+      if (!sample?.interactionEventDeltas || typeof sample.interactionEventDeltas !== 'object') return;
+      Object.entries(sample.interactionEventDeltas).forEach(([key, value]) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric === 0) return;
+        interactionEventTotals[key] = (interactionEventTotals[key] || 0) + numeric;
+      });
+    });
+    const interactionEventHotspots = Object.entries(interactionEventTotals)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 6)
+      .map(([eventType, count]) => ({ eventType, count }));
+
+    const longTaskSourceTotals = {};
+    samples.forEach((sample) => {
+      if (!Array.isArray(sample?.longTaskTopSources)) return;
+      sample.longTaskTopSources.forEach((bucket) => {
+        const source = String(bucket?.source || '');
+        const durationMs = Number(bucket?.durationMs);
+        if (!source || !Number.isFinite(durationMs) || durationMs <= 0) return;
+        longTaskSourceTotals[source] = (longTaskSourceTotals[source] || 0) + durationMs;
+      });
+    });
+    const longTaskHotspots = Object.entries(longTaskSourceTotals)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 6)
+      .map(([source, durationMs]) => ({
+        source,
+        durationMs: roundOverlayRecorderValue(durationMs, 3)
+      }));
+
+    const avg = (values) => {
+      if (values.length === 0) return null;
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    };
+
+    return {
+      sampleCount: samples.length,
+      durationMs: roundOverlayRecorderValue((samples[samples.length - 1]?.tMs || 0) - (samples[0]?.tMs || 0), 1),
+      frameMsAvg: roundOverlayRecorderValue(avg(frameDurations), 3),
+      frameMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(frameDurations, 0.95), 3),
+      frameMsMax: roundOverlayRecorderValue(frameDurations.length ? Math.max(...frameDurations) : null, 3),
+      jankFrames,
+      jankFrameRatePct: frameDurations.length > 0
+        ? roundOverlayRecorderValue((jankFrames / frameDurations.length) * 100, 2)
+        : null,
+      worstDriftPxMax: roundOverlayRecorderValue(driftValues.length ? Math.max(...driftValues) : null, 3),
+      worstDriftPxP95: roundOverlayRecorderValue(percentileOverlayRecorder(driftValues, 0.95), 3),
+      scaleMismatchMax: roundOverlayRecorderValue(scaleMismatchValues.length ? Math.max(...scaleMismatchValues) : null, 5),
+      scaleMismatchP95: roundOverlayRecorderValue(percentileOverlayRecorder(scaleMismatchValues, 0.95), 5),
+      missingOverlayCountAvg: roundOverlayRecorderValue(avg(missingOverlayCounts), 3),
+      missingOverlayCountMax: roundOverlayRecorderValue(missingOverlayCounts.length ? Math.max(...missingOverlayCounts) : null, 3),
+      samplesWithMissingOverlay,
+      samplesWithMissingOverlayPct: missingOverlayCounts.length > 0
+        ? roundOverlayRecorderValue((samplesWithMissingOverlay / missingOverlayCounts.length) * 100, 2)
+        : null,
+      sampleCaptureCostMsAvg: roundOverlayRecorderValue(avg(sampleCaptureCosts), 3),
+      sampleCaptureCostMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(sampleCaptureCosts, 0.95), 3),
+      longTaskCountTotal: longTaskCounts.length ? longTaskCounts.reduce((sum, value) => sum + value, 0) : 0,
+      longTaskCountAvg: roundOverlayRecorderValue(avg(longTaskCounts), 3),
+      longTaskTotalMs: roundOverlayRecorderValue(longTaskTotals.length ? longTaskTotals.reduce((sum, value) => sum + value, 0) : 0, 3),
+      longTaskMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(longTaskTotals, 0.95), 3),
+      samplesWithLongTasks,
+      samplesWithLongTasksPct: longTaskCounts.length > 0
+        ? roundOverlayRecorderValue((samplesWithLongTasks / longTaskCounts.length) * 100, 2)
+        : null,
+      jankSamplesWithLongTasks,
+      jankSamplesWithLongTasksPct: jankSamples.length > 0
+        ? roundOverlayRecorderValue((jankSamplesWithLongTasks / jankSamples.length) * 100, 2)
+        : null,
+      eventTimingTotalMs: roundOverlayRecorderValue(eventTimingTotals.length ? eventTimingTotals.reduce((sum, value) => sum + value, 0) : 0, 3),
+      eventTimingMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(eventTimingTotals, 0.95), 3),
+      interactionEventHotspots,
+      longTaskHotspots
+    };
+  }, []);
+
+  const captureOverlayLagSample = useCallback(() => {
+    const recorder = overlayLagRecorderRef.current;
+    if (!recorder.active) {
+      return;
+    }
+
+    const nowMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const captureStartMs = nowMs;
+    const rafDeltaMs = recorder.lastRafAtMs > 0 ? nowMs - recorder.lastRafAtMs : 0;
+    recorder.lastRafAtMs = nowMs;
+    if (Number.isFinite(rafDeltaMs) && rafDeltaMs > 0) {
+      recorder.pendingFrameMaxMs = Math.max(recorder.pendingFrameMaxMs || 0, rafDeltaMs);
+    }
+
+    const sampleIntervalMs = Math.max(24, Math.min(2000, Number(recorder.options?.sampleIntervalMs) || OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS));
+    if (recorder.nextSampleAtMs > 0 && nowMs < recorder.nextSampleAtMs) {
+      return;
+    }
+    recorder.nextSampleAtMs = nowMs + sampleIntervalMs;
+    const sampleWindowStartMs = Number.isFinite(recorder.lastSampleAtMs) && recorder.lastSampleAtMs > 0
+      ? recorder.lastSampleAtMs
+      : Math.max(0, nowMs - sampleIntervalMs);
+    recorder.lastSampleAtMs = nowMs;
+
+    const frameMs = Number.isFinite(recorder.pendingFrameMaxMs) && recorder.pendingFrameMaxMs > 0
+      ? recorder.pendingFrameMaxMs
+      : (Number.isFinite(rafDeltaMs) && rafDeltaMs > 0 ? rafDeltaMs : sampleIntervalMs);
+    recorder.pendingFrameMaxMs = 0;
+    const perfAttribution = recorder.options?.capturePerfAttribution === false
+      ? {
+        longTaskCount: 0,
+        longTaskTotalMs: 0,
+        longTaskMaxMs: 0,
+        longTaskTopSources: [],
+        eventTimingCount: 0,
+        eventTimingTotalMs: 0,
+        eventTimingMaxMs: 0,
+        eventTimingTopTypes: [],
+        perfQueueDepth: {
+          longTaskEntries: 0,
+          eventEntries: 0
+        }
+      }
+      : consumeOverlayLagPerfAttribution(sampleWindowStartMs, nowMs);
+
+    const currentEventTotals = overlayLagEventTotalsRef.current || {};
+    const previousEventTotals = recorder.lastEventTotals || {};
+    const interactionEventDeltas = {};
+    Object.keys(currentEventTotals).forEach((eventKey) => {
+      const nextValue = Number(currentEventTotals[eventKey]) || 0;
+      const previousValue = Number(previousEventTotals[eventKey]) || 0;
+      interactionEventDeltas[eventKey] = Math.max(0, nextValue - previousValue);
+    });
+    recorder.lastEventTotals = { ...currentEventTotals };
+    const currentTransformTotals = syncfusionOverlayTransformStatsRef.current || { ticks: 0, writes: 0, resets: 0, skips: 0 };
+    const previousTransformTotals = recorder.lastTransformTotals || {};
+    const overlayTransformDeltas = {
+      ticks: Math.max(0, (Number(currentTransformTotals.ticks) || 0) - (Number(previousTransformTotals.ticks) || 0)),
+      writes: Math.max(0, (Number(currentTransformTotals.writes) || 0) - (Number(previousTransformTotals.writes) || 0)),
+      resets: Math.max(0, (Number(currentTransformTotals.resets) || 0) - (Number(previousTransformTotals.resets) || 0)),
+      skips: Math.max(0, (Number(currentTransformTotals.skips) || 0) - (Number(previousTransformTotals.skips) || 0))
+    };
+    recorder.lastTransformTotals = { ...currentTransformTotals };
+
+    const container = containerRef.current;
+    const viewer = syncfusionViewerRef.current;
+    const overlayLayerRefs = syncfusionOverlayLayerRefs.current;
+    const overlayContentRefs = syncfusionOverlayContentRefs.current;
+    const pageContainerMap = syncfusionPageContainersStateRef.current || {};
+    const residentPages = syncfusionInteractionResidentPagesRef.current;
+
+    const viewerScale = clampScale(
+      Number(
+        (viewer?.getZoomValue?.() ??
+          viewer?.zoomValue ??
+          (scaleRef.current || scale) * 100)
+      ) / 100
+    );
+
+    const shouldCapturePageMetrics = syncfusionInteractionActiveRef.current || recorder.options?.captureIdlePageMetrics === true;
+    const candidatePages = shouldCapturePageMetrics
+      ? (residentPages && residentPages.size > 0
+        ? Array.from(residentPages)
+        : Object.keys(overlayLayerRefs)
+          .map((pageKey) => Number(pageKey))
+          .filter((pageNumber) => Number.isFinite(pageNumber)))
+      : [];
+    candidatePages.sort((left, right) => Math.abs(left - pageNumRef.current) - Math.abs(right - pageNumRef.current));
+
+    const sampledPages = candidatePages.slice(0, recorder.options.samplePageLimit);
+    const pageDetails = [];
+    const missingOverlayPages = [];
+    const missingHostPages = [];
+    let worstDriftPx = 0;
+    let worstScaleMismatch = 0;
+    let worstDriftPage = null;
+    let worstScalePage = null;
+
+    sampledPages.forEach((pageNumber) => {
+      const overlayLayer = overlayLayerRefs[pageNumber];
+      const pageHost = pageContainerMap[pageNumber] || pageContainersRef.current[pageNumber];
+      if (!overlayLayer || !overlayLayer.isConnected) {
+        missingOverlayPages.push(pageNumber);
+        return;
+      }
+      if (!pageHost || !pageHost.isConnected) {
+        missingHostPages.push(pageNumber);
+        return;
+      }
+
+      const pageRect = pageHost.getBoundingClientRect();
+      const overlayRect = overlayLayer.getBoundingClientRect();
+      if (!Number.isFinite(pageRect.width) || pageRect.width <= 0 || !Number.isFinite(pageRect.height) || pageRect.height <= 0) {
+        return;
+      }
+
+      const driftX = overlayRect.left - pageRect.left;
+      const driftY = overlayRect.top - pageRect.top;
+      const driftPx = Math.hypot(driftX, driftY);
+      const widthRatio = overlayRect.width / pageRect.width;
+      const heightRatio = overlayRect.height / pageRect.height;
+      const ratioMismatch = Math.max(Math.abs(widthRatio - 1), Math.abs(heightRatio - 1));
+
+      const innerLayer = overlayContentRefs[pageNumber];
+      let observedScale = 1;
+      if (innerLayer && innerLayer.isConnected) {
+        const inlineTransform = typeof innerLayer.style?.transform === 'string'
+          ? innerLayer.style.transform
+          : '';
+        const transformValue = inlineTransform || (typeof window !== 'undefined' && window.getComputedStyle
+          ? window.getComputedStyle(innerLayer).transform
+          : null);
+        observedScale = parseCssTransformScaleX(transformValue);
+      }
+
+      const committedScales = syncfusionCommittedPageScalesRef.current || {};
+      const pageBaseScale = Number(committedScales[pageNumber]) || Number(syncfusionInteractionStartViewerZoomRef.current) || viewerScale || 1;
+      const liveScaleRaw = measureSyncfusionPageHostScale(
+        pageNumber,
+        pageSizesRef.current || {},
+        pageContainerMap,
+        viewerScale
+      );
+      const liveScale = normalizeInteractionMeasuredScale(liveScaleRaw, viewerScale, viewerScale);
+      const expectedScale = (syncfusionInteractionPhaseRef.current === 'interacting' || syncfusionInteractionPhaseRef.current === 'committing')
+        ? (liveScale / pageBaseScale)
+        : 1;
+      const scaleMismatch = Math.abs(observedScale - expectedScale);
+
+      if (driftPx > worstDriftPx) {
+        worstDriftPx = driftPx;
+        worstDriftPage = pageNumber;
+      }
+      if (scaleMismatch > worstScaleMismatch) {
+        worstScaleMismatch = scaleMismatch;
+        worstScalePage = pageNumber;
+      }
+
+      pageDetails.push({
+        pageNumber,
+        driftX: roundOverlayRecorderValue(driftX, 3),
+        driftY: roundOverlayRecorderValue(driftY, 3),
+        driftPx: roundOverlayRecorderValue(driftPx, 3),
+        ratioMismatch: roundOverlayRecorderValue(ratioMismatch, 5),
+        pageBaseScale: roundOverlayRecorderValue(pageBaseScale, 5),
+        liveScale: roundOverlayRecorderValue(liveScale, 5),
+        observedScale: roundOverlayRecorderValue(observedScale, 5),
+        expectedScale: roundOverlayRecorderValue(expectedScale, 5),
+        scaleMismatch: roundOverlayRecorderValue(scaleMismatch, 5)
+      });
+    });
+
+    const pageModeCounts = { full: 0, proxy: 0 };
+    Object.values(syncfusionInteractionPageModesRef.current || {}).forEach((mode) => {
+      if (mode === 'proxy') {
+        pageModeCounts.proxy += 1;
+      } else {
+        pageModeCounts.full += 1;
+      }
+    });
+
+    const sample = {
+      tMs: roundOverlayRecorderValue(nowMs - recorder.startedAtMs, 1),
+      frameMs: roundOverlayRecorderValue(frameMs, 3),
+      appScale: roundOverlayRecorderValue(scaleRef.current || scale, 5),
+      viewerScale: roundOverlayRecorderValue(viewerScale, 5),
+      interactionActive: syncfusionInteractionActiveRef.current,
+      interactionPhase: syncfusionInteractionPhaseRef.current,
+      interactionSessionId: syncfusionInteractionSessionIdRef.current,
+      interactionReason: syncfusionInteractionReasonRef.current,
+      lightweightPages: syncfusionLightweightPagesRef.current.size,
+      residentPages: syncfusionInteractionResidentPagesRef.current.size,
+      pageModeCounts,
+      modeFlipCount: syncfusionInteractionModeFlipCountRef.current,
+      commitQueueDepth: syncfusionCommitQueueRef.current?.length || 0,
+      interactionEventDeltas,
+      overlayTransformDeltas,
+      overlayWindowPages: syncfusionOverlayWindowPagesRef.current.size,
+      sampleIntervalMs: recorder.options?.sampleIntervalMs || null,
+      overlayLayerRefCount: Object.keys(overlayLayerRefs).length,
+      currentPage: pageNumRef.current,
+      scrollLeft: roundOverlayRecorderValue(container?.scrollLeft || 0, 3),
+      scrollTop: roundOverlayRecorderValue(container?.scrollTop || 0, 3),
+      longTaskCount: perfAttribution.longTaskCount || 0,
+      longTaskTotalMs: roundOverlayRecorderValue(perfAttribution.longTaskTotalMs, 3),
+      longTaskMaxMs: roundOverlayRecorderValue(perfAttribution.longTaskMaxMs, 3),
+      longTaskTopSources: perfAttribution.longTaskTopSources || [],
+      eventTimingCount: perfAttribution.eventTimingCount || 0,
+      eventTimingTotalMs: roundOverlayRecorderValue(perfAttribution.eventTimingTotalMs, 3),
+      eventTimingMaxMs: roundOverlayRecorderValue(perfAttribution.eventTimingMaxMs, 3),
+      eventTimingTopTypes: perfAttribution.eventTimingTopTypes || [],
+      perfQueueDepth: perfAttribution.perfQueueDepth || { longTaskEntries: 0, eventEntries: 0 },
+      expectedSampledPageCount: sampledPages.length,
+      sampledPageCount: pageDetails.length,
+      missingOverlayCount: missingOverlayPages.length,
+      missingHostCount: missingHostPages.length,
+      missingOverlayPages: missingOverlayPages.slice(0, 8),
+      missingHostPages: missingHostPages.slice(0, 8),
+      worstDriftPage,
+      worstDriftPx: roundOverlayRecorderValue(worstDriftPx, 3),
+      worstScalePage,
+      worstScaleMismatch: roundOverlayRecorderValue(worstScaleMismatch, 5),
+      pages: pageDetails
+    };
+    const sampleEndMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    sample.sampleCaptureCostMs = roundOverlayRecorderValue(Math.max(0, sampleEndMs - captureStartMs), 3);
+
+    recorder.samples.push(sample);
+    if (recorder.samples.length > recorder.options.maxSamples) {
+      recorder.samples.splice(0, recorder.samples.length - recorder.options.maxSamples);
+    }
+
+    if (nowMs - overlayLagRecorderDebugAtRef.current > 220) {
+      overlayLagRecorderDebugAtRef.current = nowMs;
+      setDebugData({
+        overlayLagRecorderActive: recorder.active,
+        overlayLagSampleCount: recorder.samples.length,
+        overlayLagWorstDriftPx: sample.worstDriftPx,
+        overlayLagWorstScaleMismatch: sample.worstScaleMismatch,
+        overlayLagFrameMs: sample.frameMs,
+        overlayLagLongTaskCount: sample.longTaskCount,
+        overlayLagLongTaskTotalMs: sample.longTaskTotalMs,
+        overlayLagSampleCaptureCostMs: sample.sampleCaptureCostMs
+      });
+    }
+  }, [consumeOverlayLagPerfAttribution, scale]);
+
+  const startOverlayLagRecorder = useCallback((options = {}) => {
+    const recorder = overlayLagRecorderRef.current;
+    if (recorder.active) {
+      return {
+        active: true,
+        alreadyActive: true,
+        sampleCount: recorder.samples.length
+      };
+    }
+
+    const samplePageLimit = Math.max(1, Math.min(12, Number(options.samplePageLimit) || 6));
+    const maxSamples = Math.max(300, Math.min(30000, Number(options.maxSamples) || 3600));
+    const sampleIntervalMs = Math.max(24, Math.min(2000, Number(options.sampleIntervalMs) || OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS));
+    const captureIdlePageMetrics = options.captureIdlePageMetrics === true;
+    const capturePerfAttribution = options.capturePerfAttribution !== false;
+    const mode = options.source === 'auto' ? 'auto' : 'manual';
+    const perfObserverSupport = resetOverlayLagPerfObservers(capturePerfAttribution);
+    recorder.active = true;
+    recorder.mode = mode;
+    recorder.samples = [];
+    recorder.summary = null;
+    recorder.options = {
+      samplePageLimit,
+      maxSamples,
+      sampleIntervalMs,
+      captureIdlePageMetrics,
+      capturePerfAttribution
+    };
+    recorder.startedAtMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    recorder.startedAtIso = new Date().toISOString();
+    recorder.stoppedAtIso = null;
+    recorder.lastRafAtMs = 0;
+    recorder.pendingFrameMaxMs = 0;
+    recorder.nextSampleAtMs = 0;
+    recorder.lastSampleAtMs = 0;
+    recorder.lastEventTotals = { ...(overlayLagEventTotalsRef.current || {}) };
+    recorder.lastTransformTotals = { ...(syncfusionOverlayTransformStatsRef.current || {}) };
+
+    emitPdfDebugEvent('overlay_lag_recorder_start', {
+      samplePageLimit,
+      maxSamples,
+      sampleIntervalMs,
+      captureIdlePageMetrics,
+      capturePerfAttribution,
+      perfObserverSupport,
+      mode
+    });
+    setDebugData({
+      overlayLagRecorderActive: true,
+      overlayLagSampleCount: 0,
+      overlayLagPerfObserverSupport: perfObserverSupport
+    });
+
+    const loop = () => {
+      if (!recorder.active) return;
+      captureOverlayLagSample();
+      recorder.rafId = requestAnimationFrame(loop);
+    };
+    recorder.rafId = requestAnimationFrame(loop);
+
+    return {
+      active: true,
+      startedAt: recorder.startedAtIso,
+      perfObserverSupport,
+      options: { ...recorder.options }
+    };
+  }, [captureOverlayLagSample, resetOverlayLagPerfObservers]);
+
+  const stopOverlayLagRecorder = useCallback(() => {
+    const recorder = overlayLagRecorderRef.current;
+    if (!recorder.active) {
+      const summary = recorder.summary || summarizeOverlayLagSamples(recorder.samples);
+      recorder.summary = summary;
+      return {
+        active: false,
+        sampleCount: recorder.samples.length,
+        summary
+      };
+    }
+
+    recorder.active = false;
+    if (recorder.rafId !== null) {
+      cancelAnimationFrame(recorder.rafId);
+      recorder.rafId = null;
+    }
+    disconnectOverlayLagPerfObservers();
+    recorder.stoppedAtIso = new Date().toISOString();
+    recorder.summary = summarizeOverlayLagSamples(recorder.samples);
+
+    emitPdfDebugEvent('overlay_lag_recorder_stop', {
+      sampleCount: recorder.samples.length
+    });
+    setDebugData({
+      overlayLagRecorderActive: false,
+      overlayLagSampleCount: recorder.samples.length,
+      overlayLagSummary: recorder.summary
+    });
+
+    return {
+      active: false,
+      sampleCount: recorder.samples.length,
+      summary: recorder.summary
+    };
+  }, [disconnectOverlayLagPerfObservers, summarizeOverlayLagSamples]);
+
+  const clearOverlayLagRecorder = useCallback(() => {
+    const recorder = overlayLagRecorderRef.current;
+    if (recorder.active) {
+      stopOverlayLagRecorder();
+    }
+    recorder.samples = [];
+    recorder.summary = null;
+    recorder.mode = null;
+    recorder.startedAtMs = 0;
+    recorder.startedAtIso = null;
+    recorder.stoppedAtIso = null;
+    recorder.lastRafAtMs = 0;
+    recorder.pendingFrameMaxMs = 0;
+    recorder.nextSampleAtMs = 0;
+    recorder.lastSampleAtMs = 0;
+    recorder.lastEventTotals = null;
+    recorder.lastTransformTotals = null;
+    disconnectOverlayLagPerfObservers();
+    overlayLagRecorderDebugAtRef.current = 0;
+    setDebugData({
+      overlayLagSampleCount: 0,
+      overlayLagSummary: null,
+      overlayLagPerfObserverSupport: null
+    });
+    return {
+      cleared: true
+    };
+  }, [disconnectOverlayLagPerfObservers, stopOverlayLagRecorder]);
+
+  const getOverlayLagRecorderDump = useCallback(() => {
+    const recorder = overlayLagRecorderRef.current;
+    const summary = recorder.summary || summarizeOverlayLagSamples(recorder.samples);
+    return cloneOverlayRecorderPayload({
+      metadata: {
+        startedAt: recorder.startedAtIso,
+        stoppedAt: recorder.stoppedAtIso,
+        active: recorder.active,
+        mode: recorder.mode,
+        options: recorder.options
+      },
+      summary,
+      samples: recorder.samples
+    });
+  }, [summarizeOverlayLagSamples]);
+
+  const downloadOverlayLagRecorderDump = useCallback((filename = null) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return null;
+    }
+    const payload = getOverlayLagRecorderDump();
+    if (!payload) return null;
+
+    const safeName = typeof filename === 'string' && filename.trim()
+      ? filename.trim()
+      : `overlay-lag-report-${new Date().toISOString().replace(/[:.]/g, '-')}.log`;
+    const resolvedName = /\.(json|log)$/i.test(safeName) ? safeName : `${safeName}.log`;
+    const isLogFile = /\.log$/i.test(resolvedName);
+    const blob = new Blob(
+      [JSON.stringify(payload, null, 2)],
+      { type: isLogFile ? 'text/plain;charset=utf-8' : 'application/json' }
+    );
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = resolvedName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(href);
+    return {
+      filename: anchor.download,
+      sampleCount: payload?.summary?.sampleCount || 0
+    };
+  }, [getOverlayLagRecorderDump]);
+
+  const handleSaveOverlayLagLog = useCallback(() => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    return downloadOverlayLagRecorderDump(`overlay-lag-report-${timestamp}.log`);
+  }, [downloadOverlayLagRecorderDump]);
+
+  useEffect(() => {
+    if (!useSyncfusionRenderer || !overlayLagAutoRecordEnabled) {
+      return;
+    }
+
+    const autoKey = `${tabId || 'tab'}:${pdfId || 'pdf'}`;
+    const recorder = overlayLagRecorderRef.current;
+    if (recorder.active && recorder.mode !== 'auto') {
+      overlayLagRecorderAutoKeyRef.current = autoKey;
+      return;
+    }
+    if (recorder.active && recorder.mode === 'auto' && overlayLagRecorderAutoKeyRef.current === autoKey) {
+      return;
+    }
+
+    if (recorder.active && recorder.mode === 'auto') {
+      clearOverlayLagRecorder();
+    }
+
+    startOverlayLagRecorder({
+      source: 'auto',
+      samplePageLimit: OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT,
+      maxSamples: OVERLAY_LAG_RECORDER_AUTO_MAX_SAMPLES,
+      sampleIntervalMs: OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS,
+      captureIdlePageMetrics: false,
+      capturePerfAttribution: false
+    });
+    overlayLagRecorderAutoKeyRef.current = autoKey;
+  }, [
+    clearOverlayLagRecorder,
+    overlayLagAutoRecordEnabled,
+    pdfId,
+    startOverlayLagRecorder,
+    tabId,
+    useSyncfusionRenderer
+  ]);
+
+  useEffect(() => {
+    if (overlayLagAutoRecordEnabled) {
+      return;
+    }
+    overlayLagRecorderAutoKeyRef.current = null;
+    const recorder = overlayLagRecorderRef.current;
+    if (recorder.active && recorder.mode === 'auto') {
+      stopOverlayLagRecorder();
+    }
+  }, [overlayLagAutoRecordEnabled, stopOverlayLagRecorder]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+    window.pdfOverlayRecorder = {
+      start: (options) => startOverlayLagRecorder(options || {}),
+      stop: () => stopOverlayLagRecorder(),
+      clear: () => clearOverlayLagRecorder(),
+      dump: () => getOverlayLagRecorderDump(),
+      download: (filename) => downloadOverlayLagRecorderDump(filename),
+      summary: () => {
+        const dump = getOverlayLagRecorderDump();
+        return dump?.summary || null;
+      },
+      isRecording: () => overlayLagRecorderRef.current.active,
+      status: () => ({
+        active: overlayLagRecorderRef.current.active,
+        mode: overlayLagRecorderRef.current.mode,
+        sampleCount: overlayLagRecorderRef.current.samples.length,
+        options: { ...overlayLagRecorderRef.current.options },
+        perfObservers: {
+          longTaskActive: !!overlayLagPerfObserverRef.current.longTaskObserver,
+          eventTimingActive: !!overlayLagPerfObserverRef.current.eventObserver,
+          queueDepth: {
+            longTaskEntries: overlayLagPerfObserverRef.current.longTaskEntries.length,
+            eventEntries: overlayLagPerfObserverRef.current.eventEntries.length
+          }
+        },
+        interactionEventTotals: { ...overlayLagEventTotalsRef.current },
+        overlayTransformTotals: { ...(syncfusionOverlayTransformStatsRef.current || {}) }
+      })
+    };
+
+    return () => {
+      if (window.pdfOverlayRecorder) {
+        delete window.pdfOverlayRecorder;
+      }
+    };
+  }, [
+    clearOverlayLagRecorder,
+    downloadOverlayLagRecorderDump,
+    getOverlayLagRecorderDump,
+    startOverlayLagRecorder,
+    stopOverlayLagRecorder
+  ]);
+
+  useEffect(() => () => {
+    const recorder = overlayLagRecorderRef.current;
+    if (recorder.active) {
+      recorder.active = false;
+    }
+    recorder.mode = null;
+    recorder.lastRafAtMs = 0;
+    recorder.pendingFrameMaxMs = 0;
+    recorder.nextSampleAtMs = 0;
+    if (recorder.rafId !== null) {
+      cancelAnimationFrame(recorder.rafId);
+      recorder.rafId = null;
+    }
+    disconnectOverlayLagPerfObservers();
+    overlayLagPerfObserverRef.current.longTaskEntries = [];
+    overlayLagPerfObserverRef.current.eventEntries = [];
+  }, [disconnectOverlayLagPerfObservers]);
+
+  useEffect(() => {
+    if (!useSyncfusionRenderer) {
+      setSyncfusionCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+      return;
+    }
+
+    const pageNumbers = Object.keys(syncfusionPageContainers)
+      .map((pageKey) => Number(pageKey))
+      .filter((pageNumber) => Number.isFinite(pageNumber));
+
+    if (
+      pageNumbers.length === 0 ||
+      (syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled && syncfusionInteractionPhase !== 'idle')
+    ) {
+      return;
+    }
+
+    const viewerScale = clampScale(
+      Number(
+        (syncfusionViewerRef.current?.getZoomValue?.() ??
+          syncfusionViewerRef.current?.zoomValue ??
+          scale * 100)
+      ) / 100
+    );
+
+    setSyncfusionCommittedPageScales((prev) => {
+      const next = {};
+      let changed = false;
+
+      pageNumbers.forEach((pageNumber) => {
+        const measuredScale = getSyncfusionPageScale(pageNumber, viewerScale);
+        const previousScale = prev[pageNumber];
+        const resolvedScale = Number.isFinite(measuredScale) && measuredScale > 0
+          ? measuredScale
+          : (Number.isFinite(previousScale) && previousScale > 0 ? previousScale : viewerScale);
+
+        next[pageNumber] = resolvedScale;
+        if (!Number.isFinite(previousScale) || Math.abs(previousScale - resolvedScale) > 0.003) {
+          changed = true;
+        }
+      });
+
+      if (!changed) {
+        const prevKeys = Object.keys(prev);
+        if (prevKeys.length !== pageNumbers.length) {
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [
+    getSyncfusionPageScale,
+    scale,
+    syncfusionDualLayerEnabled,
+    syncfusionInteractionPhase,
+    syncfusionLiveStableOverlayEnabled,
+    syncfusionPageContainers,
+    useSyncfusionRenderer
+  ]);
+
+  const regionSelectionScale = useMemo(() => {
+    if (!showRegionSelection || !regionSelectionPage || !useSyncfusionRenderer) {
+      return scale;
+    }
+
+    const viewerScale = clampScale(
+      Number(
+        (syncfusionViewerRef.current?.getZoomValue?.() ??
+          syncfusionViewerRef.current?.zoomValue ??
+          scale * 100)
+      ) / 100
+    );
+
+    return getSyncfusionPageScale(regionSelectionPage, viewerScale);
+  }, [showRegionSelection, regionSelectionPage, useSyncfusionRenderer, scale, getSyncfusionPageScale]);
 
   // When region selection is activated, set activeTool to 'select' if it's 'pan'
   // This ensures that spacebar pan can save/restore the correct tool
@@ -8957,7 +13060,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     try {
       const sidebarData = JSON.parse(localStorage.getItem(`pdfSidebar_${pdfId}`) || '{}');
       setPageNames(sidebarData.pageNames || {});
-      setBookmarks(sidebarData.bookmarks || []);
+      const storedBookmarksRaw = Array.isArray(sidebarData.bookmarks) ? sidebarData.bookmarks : [];
+      const storedBookmarks = storedBookmarksRaw.map((bookmark) => {
+        const nextPageIds = normalizeBookmarkPageIds(bookmark, Number.POSITIVE_INFINITY);
+
+        if (bookmark?.source === 'pdf' || bookmark?.isFromPDF === true) {
+          return {
+            ...bookmark,
+            pageIds: nextPageIds,
+            source: 'user',
+            isFromPDF: false
+          };
+        }
+
+        return {
+          ...bookmark,
+          pageIds: nextPageIds
+        };
+      });
+      setBookmarks(storedBookmarks);
+      const hasStoredPdfBookmarks = storedBookmarksRaw.some((bookmark) => (
+        bookmark?.source === 'pdf' ||
+        bookmark?.isFromPDF === true ||
+        (typeof bookmark?.id === 'string' && bookmark.id.startsWith('pdf:')) ||
+        (typeof bookmark?.id === 'string' && bookmark.id.startsWith('pdf-outline-')) ||
+        (typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('syncfusion:')) ||
+        (typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('pdfjs:')) ||
+        Array.isArray(bookmark?.outlinePath) ||
+        bookmark?.dest
+      ));
+      setHasImportedPdfBookmarks(hasStoredPdfBookmarks);
       // Migrate spaces: ensure regions have showBackgroundAnnotations
       // Requirement: "A region can contain multiple areas (polygons) within it"
       // Keep all regions as they represent multiple areas within the same logical region
@@ -9005,127 +13137,694 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
   const [redoHistory, setRedoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
   const isUndoingRef = useRef(false); // Flag to prevent saving history during undo/redo
-  const lastSavedStateRef = useRef(null); // Track last saved state to avoid duplicate saves
+  const annotationsByPageRef = useRef(annotationsByPage);
+  const highlightAnnotationsRef = useRef(highlightAnnotations);
+  const spacesRef = useRef(spaces);
+  const undoHistoryRef = useRef(undoHistory);
+  const redoHistoryRef = useRef(redoHistory);
+  const undoHistoryMetaRef = useRef([]);
+  const redoHistoryMetaRef = useRef([]);
+  const historyDebugTraceRef = useRef([]);
+  const historyDebugSeqRef = useRef(0);
+  const historyCheckpointSeqRef = useRef(0);
+  const historyDebugConsoleRef = useRef(readHistoryDebugConsoleEnabled());
+  const lastCheckpointHashRef = useRef(null);
+  const objectModifiedInteractionCheckpointRef = useRef(new Map());
 
-  // Explicitly add a checkpoint to history BEFORE making changes
-  const addHistoryCheckpoint = useCallback(() => {
-    if (isUndoingRef.current) return; // Don't save during undo/redo operations
+  useEffect(() => {
+    annotationsByPageRef.current = annotationsByPage;
+    syncfusionAnnotationsByPageRef.current = annotationsByPage || {};
+  }, [annotationsByPage]);
 
-    const currentState = {
-      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
-      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations)),
-      spaces: JSON.parse(JSON.stringify(spaces || []))
+  useEffect(() => {
+    highlightAnnotationsRef.current = highlightAnnotations;
+  }, [highlightAnnotations]);
+
+  const clearExcelSyncCheckpoint = useCallback(() => {
+    lastExcelSyncFingerprintRef.current = null;
+    setHasPendingExcelSyncChanges(false);
+  }, []);
+
+  const markExcelSyncCheckpoint = useCallback((templateOverride = null, highlightAnnotationsOverride = null) => {
+    const templateForSync = templateOverride || selectedTemplate;
+    if (!templateForSync?.linkedExcelPath) {
+      clearExcelSyncCheckpoint();
+      return null;
+    }
+
+    const annotationsForSync = highlightAnnotationsOverride || highlightAnnotationsRef.current || {};
+    const fingerprint = computeExcelSyncFingerprint(templateForSync, annotationsForSync);
+    lastExcelSyncFingerprintRef.current = fingerprint.hash;
+    setHasPendingExcelSyncChanges(false);
+    return fingerprint.hash;
+  }, [clearExcelSyncCheckpoint, selectedTemplate]);
+
+  useEffect(() => {
+    const pending = computeHasPendingExcelSyncChanges({
+      template: selectedTemplate,
+      highlightAnnotations,
+      baselineHash: lastExcelSyncFingerprintRef.current
+    });
+    setHasPendingExcelSyncChanges(pending);
+  }, [
+    selectedTemplate?.id,
+    selectedTemplate?.supabaseId,
+    selectedTemplate?.linkedExcelPath,
+    selectedTemplate?.oneDriveApiPath,
+    selectedTemplate?.oneDriveFileId,
+    highlightAnnotations
+  ]);
+
+  useEffect(() => {
+    spacesRef.current = spaces;
+  }, [spaces]);
+
+  useEffect(() => {
+    undoHistoryRef.current = undoHistory;
+  }, [undoHistory]);
+
+  useEffect(() => {
+    redoHistoryRef.current = redoHistory;
+  }, [redoHistory]);
+
+  const normalizeHistoryReason = useCallback((reason) => {
+    if (typeof reason !== 'string') return 'unspecified';
+    const trimmed = reason.trim();
+    return trimmed || 'unspecified';
+  }, []);
+
+  const getHistoryFingerprint = useCallback((value) => {
+    const serialized = JSON.stringify(value ?? null);
+    return {
+      serialized,
+      hash: hashHistoryString(serialized),
+      bytes: serialized.length
+    };
+  }, []);
+
+  const summarizeAnnotationPageTransitionForDebug = useCallback((previousPageState, nextPageState) => {
+    const previousObjects = Array.isArray(previousPageState?.objects) ? previousPageState.objects : [];
+    const nextObjects = Array.isArray(nextPageState?.objects) ? nextPageState.objects : [];
+    const changedObjectsPreview = [];
+    let changedObjectsCount = 0;
+    const objectCount = Math.max(previousObjects.length, nextObjects.length);
+
+    for (let index = 0; index < objectCount; index += 1) {
+      const previousObject = previousObjects[index];
+      const nextObject = nextObjects[index];
+      if (!previousObject && !nextObject) continue;
+
+      const previousDebug = previousObject ? toHistoryObjectDebug(previousObject, index) : null;
+      const nextDebug = nextObject ? toHistoryObjectDebug(nextObject, index) : null;
+      const previousSignature = previousDebug ? getHistoryObjectSignature(previousDebug) : null;
+      const nextSignature = nextDebug ? getHistoryObjectSignature(nextDebug) : null;
+
+      if (previousSignature === nextSignature) {
+        continue;
+      }
+
+      changedObjectsCount += 1;
+      if (changedObjectsPreview.length < HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT) {
+        changedObjectsPreview.push({
+          index,
+          changeType: getHistoryObjectDiffType(previousDebug, nextDebug),
+          before: previousDebug,
+          after: nextDebug
+        });
+      }
+    }
+
+    return {
+      previousObjectCount: previousObjects.length,
+      nextObjectCount: nextObjects.length,
+      changedObjectsCount,
+      changedObjectsPreview
+    };
+  }, []);
+
+  const summarizeHistorySnapshot = useCallback((snapshot) => {
+    const annotationsState = snapshot?.annotationsByPage || {};
+    const pageEntries = Object.entries(annotationsState);
+    let annotationObjectCount = 0;
+    const pageObjectCounts = {};
+
+    pageEntries.forEach(([pageKey, pageState]) => {
+      const objectCount = Array.isArray(pageState?.objects) ? pageState.objects.length : 0;
+      annotationObjectCount += objectCount;
+      if (objectCount > 0) {
+        pageObjectCounts[pageKey] = objectCount;
+      }
+    });
+
+    const spacesState = Array.isArray(snapshot?.spaces) ? snapshot.spaces : [];
+    let assignedPagesCount = 0;
+    let regionCount = 0;
+    spacesState.forEach((space) => {
+      const assignedPages = Array.isArray(space?.assignedPages) ? space.assignedPages : [];
+      assignedPagesCount += assignedPages.length;
+      assignedPages.forEach((page) => {
+        regionCount += Array.isArray(page?.regions) ? page.regions.length : 0;
+      });
+    });
+
+    const sortedPageEntries = Object.entries(pageObjectCounts)
+      .sort((a, b) => Number(a[0]) - Number(b[0]));
+
+    const pageObjectCountsPreview = Object.entries(pageObjectCounts)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .slice(0, HISTORY_PAGE_PREVIEW_LIMIT)
+      .reduce((acc, [pageKey, count]) => {
+        acc[pageKey] = count;
+        return acc;
+      }, {});
+
+    const pageStateHashPreview = sortedPageEntries
+      .slice(0, HISTORY_PAGE_PREVIEW_LIMIT)
+      .reduce((acc, [pageKey, count]) => {
+        const fingerprint = getHistoryFingerprint(annotationsState[pageKey] || null);
+        acc[pageKey] = `${count}:${fingerprint.hash}`;
+        return acc;
+      }, {});
+
+    const annotationsFingerprint = getHistoryFingerprint(annotationsState);
+
+    return {
+      annotationsPageCount: pageEntries.length,
+      annotationObjectCount,
+      highlightCount: Object.keys(snapshot?.highlightAnnotations || {}).length,
+      spacesCount: spacesState.length,
+      assignedPagesCount,
+      regionCount,
+      nonEmptyAnnotationPages: Object.keys(pageObjectCounts).length,
+      pageObjectCountsPreview,
+      pageStateHashPreview,
+      annotationsStateHash: annotationsFingerprint.hash,
+      annotationsStateBytes: annotationsFingerprint.bytes
+    };
+  }, [getHistoryFingerprint]);
+
+  const summarizeHistoryDelta = useCallback((fromState, toState) => {
+    const fromSnapshot = fromState || { annotationsByPage: {}, highlightAnnotations: {}, spaces: [] };
+    const toSnapshot = toState || { annotationsByPage: {}, highlightAnnotations: {}, spaces: [] };
+
+    const fromSummary = summarizeHistorySnapshot(fromSnapshot);
+    const toSummary = summarizeHistorySnapshot(toSnapshot);
+
+    const fromPages = fromSnapshot.annotationsByPage || {};
+    const toPages = toSnapshot.annotationsByPage || {};
+    const changedPages = [];
+    const pageKeys = new Set([...Object.keys(fromPages), ...Object.keys(toPages)]);
+    pageKeys.forEach((pageKey) => {
+      if (JSON.stringify(fromPages[pageKey] || null) !== JSON.stringify(toPages[pageKey] || null)) {
+        changedPages.push(pageKey);
+      }
+    });
+
+    changedPages.sort((left, right) => {
+      const leftNum = Number(left);
+      const rightNum = Number(right);
+      if (Number.isFinite(leftNum) && Number.isFinite(rightNum)) {
+        return leftNum - rightNum;
+      }
+      return String(left).localeCompare(String(right));
+    });
+
+    const changedPageDetailsPreview = changedPages
+      .slice(0, HISTORY_PAGE_PREVIEW_LIMIT)
+      .map((pageKey) => {
+        const previousPage = fromPages[pageKey] || null;
+        const nextPage = toPages[pageKey] || null;
+        const previousFingerprint = getHistoryFingerprint(previousPage);
+        const nextFingerprint = getHistoryFingerprint(nextPage);
+        return {
+          pageNumber: pageKey,
+          previousHash: previousFingerprint.hash,
+          nextHash: nextFingerprint.hash,
+          previousObjectCount: Array.isArray(previousPage?.objects) ? previousPage.objects.length : 0,
+          nextObjectCount: Array.isArray(nextPage?.objects) ? nextPage.objects.length : 0
+        };
+      });
+
+    const changedPageTransitionsPreview = changedPages
+      .slice(0, Math.min(3, HISTORY_PAGE_PREVIEW_LIMIT))
+      .map((pageKey) => ({
+        pageNumber: pageKey,
+        ...summarizeAnnotationPageTransitionForDebug(fromPages[pageKey] || null, toPages[pageKey] || null)
+      }));
+
+    return {
+      annotationObjectDelta: toSummary.annotationObjectCount - fromSummary.annotationObjectCount,
+      highlightDelta: toSummary.highlightCount - fromSummary.highlightCount,
+      spacesDelta: toSummary.spacesCount - fromSummary.spacesCount,
+      regionDelta: toSummary.regionCount - fromSummary.regionCount,
+      changedPagesCount: changedPages.length,
+      changedPagesPreview: changedPages.slice(0, HISTORY_PAGE_PREVIEW_LIMIT),
+      changedPageDetailsPreview,
+      changedPageTransitionsPreview
+    };
+  }, [getHistoryFingerprint, summarizeAnnotationPageTransitionForDebug, summarizeHistorySnapshot]);
+
+  const pushHistoryDebugEvent = useCallback((type, payload = {}) => {
+    const event = {
+      seq: historyDebugSeqRef.current + 1,
+      at: new Date().toISOString(),
+      type,
+      ...payload
+    };
+    historyDebugSeqRef.current = event.seq;
+
+    const timeline = historyDebugTraceRef.current;
+    timeline.push(event);
+    if (timeline.length > HISTORY_DEBUG_TRACE_LIMIT) {
+      timeline.splice(0, timeline.length - HISTORY_DEBUG_TRACE_LIMIT);
+    }
+
+    setDebugData({
+      historyEventSeq: event.seq,
+      historyEventType: type,
+      historyUndoDepth: undoHistoryRef.current.length,
+      historyRedoDepth: redoHistoryRef.current.length,
+      historyEventReason: event.reason || event.undoneReason || event.redoReason || null
+    });
+
+    if (historyDebugConsoleRef.current) {
+      console.info(`[HistoryDebug #${event.seq}] ${type}`, event);
+    }
+
+    return event;
+  }, []);
+
+  const getHistoryDebugRows = useCallback((events) => (
+    events.map((event) => {
+      const pageNumber = event.pageNumber ?? event.context?.pageNumber ?? '';
+      const source = event.source || event.context?.source || event.context?.saveContext?.source || '';
+      const interactionId = event.interactionId || event.context?.interactionId || event.context?.saveContext?.interactionId || '';
+      const checkpointPolicy = event.checkpointPolicy || event.context?.checkpointPolicy || event.context?.saveContext?.checkpointPolicy || '';
+      const changedPages = Array.isArray(event?.delta?.changedPagesPreview)
+        ? event.delta.changedPagesPreview.join(', ')
+        : '';
+      const changedObjectsCount =
+        event.changedObjectsCount ??
+        event.pageTransition?.changedObjectsCount ??
+        event.context?.changedObjectsCount ??
+        '';
+      return {
+        seq: event.seq,
+        at: event.at,
+        type: event.type,
+        reason: event.reason || event.undoneReason || event.redoReason || '',
+        source,
+        interactionId,
+        checkpointPolicy,
+        page: pageNumber,
+        checkpointId: event.checkpointId || '',
+        undoDepth: event.undoDepth ?? '',
+        redoDepth: event.redoDepth ?? '',
+        changedPages,
+        changedObjects: changedObjectsCount,
+        snapshotHash: event.snapshotHash || event.currentSnapshotHash || event.previousPageHash || '',
+        restoreHash: event.restoreSnapshotHash || event.nextPageHash || '',
+        noEffect: event.noEffect ? 'yes' : ''
+      };
+    })
+  ), []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const resolvePageFromEvent = (event) => {
+      const page = event?.pageNumber ?? event?.context?.pageNumber;
+      return Number.isFinite(Number(page)) ? Number(page) : null;
     };
 
-    // Avoid saving if state has not effectively changed from the last save
-    // This helps if multiple calls happen redundantly
-    const stateString = JSON.stringify(currentState);
-    if (lastSavedStateRef.current === stateString) return;
-    lastSavedStateRef.current = stateString;
+    const getLimitedEvents = (limit = 100) => {
+      const safeLimit = Math.max(1, Math.min(500, Number(limit) || 100));
+      return historyDebugTraceRef.current.slice(-safeLimit);
+    };
+
+    const api = {
+      getTimeline(limit = 100) {
+        return getLimitedEvents(limit);
+      },
+      getPageTimeline(pageNumber, limit = 100) {
+        const targetPage = Number(pageNumber);
+        if (!Number.isFinite(targetPage)) return [];
+        return getLimitedEvents(500)
+          .filter((event) => resolvePageFromEvent(event) === targetPage)
+          .slice(-Math.max(1, Math.min(500, Number(limit) || 100)));
+      },
+      dump(limit = 100) {
+        const events = getLimitedEvents(limit);
+        const rows = getHistoryDebugRows(events);
+        console.table(rows);
+        return rows;
+      },
+      dumpPage(pageNumber, limit = 100) {
+        const events = api.getPageTimeline(pageNumber, limit);
+        const rows = getHistoryDebugRows(events);
+        console.table(rows);
+        return rows;
+      },
+      getStacks() {
+        return {
+          undo: [...undoHistoryMetaRef.current],
+          redo: [...redoHistoryMetaRef.current]
+        };
+      },
+      clearTimeline() {
+        historyDebugTraceRef.current = [];
+      },
+      enableConsole() {
+        historyDebugConsoleRef.current = true;
+        writeHistoryDebugConsoleEnabled(true);
+      },
+      disableConsole() {
+        historyDebugConsoleRef.current = false;
+        writeHistoryDebugConsoleEnabled(false);
+      },
+      state() {
+        return {
+          consoleEnabled: historyDebugConsoleRef.current,
+          undoDepth: undoHistoryRef.current.length,
+          redoDepth: redoHistoryRef.current.length,
+          eventsTracked: historyDebugTraceRef.current.length
+        };
+      }
+    };
+
+    window.__pdfHistoryDebug = api;
+    return () => {
+      if (window.__pdfHistoryDebug === api) {
+        delete window.__pdfHistoryDebug;
+      }
+    };
+  }, [getHistoryDebugRows]);
+
+  const getHistorySnapshot = useCallback(() => ({
+    annotationsByPage: JSON.parse(JSON.stringify(annotationsByPageRef.current || {})),
+    highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotationsRef.current || {})),
+    spaces: JSON.parse(JSON.stringify(spacesRef.current || []))
+  }), []);
+
+  const migrateHistorySpaces = useCallback((historySpaces = []) => (
+    historySpaces.map(space => ({
+      ...space,
+      assignedPages: (space.assignedPages || []).map(page => {
+        const regions = page.regions || [];
+        const migratedRegions = regions.map(region => ({
+          ...region,
+          showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
+        }));
+        return {
+          ...page,
+          regions: migratedRegions
+        };
+      })
+    }))
+  ), []);
+
+  const restoreHistoryState = useCallback((stateToRestore) => {
+    const restoredAnnotationsByPage = stateToRestore.annotationsByPage || {};
+    const restoredHighlights = stateToRestore.highlightAnnotations || {};
+    const restoredSpaces = migrateHistorySpaces(stateToRestore.spaces || []);
+
+    annotationsByPageRef.current = restoredAnnotationsByPage;
+    highlightAnnotationsRef.current = restoredHighlights;
+    spacesRef.current = restoredSpaces;
+
+    setAnnotationsByPage(restoredAnnotationsByPage);
+    setHighlightAnnotations(restoredHighlights);
+    setSpaces(restoredSpaces);
+  }, [migrateHistorySpaces]);
+
+  const createHistoryMeta = useCallback((snapshot, reason, context = null, previousSnapshot = null) => {
+    const snapshotFingerprint = getHistoryFingerprint(snapshot);
+    return {
+      checkpointId: historyCheckpointSeqRef.current + 1,
+      createdAt: new Date().toISOString(),
+      reason: normalizeHistoryReason(reason),
+      context: context || null,
+      summary: summarizeHistorySnapshot(snapshot),
+      delta: summarizeHistoryDelta(previousSnapshot, snapshot),
+      snapshotHash: snapshotFingerprint.hash,
+      snapshotBytes: snapshotFingerprint.bytes
+    };
+  }, [getHistoryFingerprint, normalizeHistoryReason, summarizeHistoryDelta, summarizeHistorySnapshot]);
+
+  // Explicitly add a checkpoint to history BEFORE making changes
+  const addHistoryCheckpoint = useCallback((reason = 'unspecified', context = null) => {
+    const normalizedReason = normalizeHistoryReason(reason);
+    if (isUndoingRef.current) {
+      pushHistoryDebugEvent('checkpoint_skipped_while_restoring', {
+        reason: normalizedReason,
+        context: context || null,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length
+      });
+      return; // Don't save during undo/redo operations
+    }
+
+    const currentState = getHistorySnapshot();
+    const currentFingerprint = getHistoryFingerprint(currentState);
+    if (lastCheckpointHashRef.current === currentFingerprint.hash) {
+      pushHistoryDebugEvent('checkpoint_skipped_duplicate_fast', {
+        reason: normalizedReason,
+        context: context || null,
+        snapshotHash: currentFingerprint.hash,
+        snapshotBytes: currentFingerprint.bytes,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length
+      });
+      return;
+    }
+
+    const lastCheckpoint = undoHistoryRef.current[undoHistoryRef.current.length - 1];
+    const lastCheckpointFingerprint = lastCheckpoint ? getHistoryFingerprint(lastCheckpoint) : null;
+    if (lastCheckpoint && lastCheckpointFingerprint?.serialized === currentFingerprint.serialized) {
+      lastCheckpointHashRef.current = lastCheckpointFingerprint?.hash || currentFingerprint.hash;
+      pushHistoryDebugEvent('checkpoint_skipped_duplicate', {
+        reason: normalizedReason,
+        context: context || null,
+        snapshotHash: currentFingerprint.hash,
+        snapshotBytes: currentFingerprint.bytes,
+        previousSnapshotHash: lastCheckpointFingerprint?.hash || null,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length
+      });
+      return;
+    }
+
+    const checkpointMeta = createHistoryMeta(currentState, normalizedReason, context, lastCheckpoint || null);
+    historyCheckpointSeqRef.current = checkpointMeta.checkpointId;
+    const previousUndoDepth = undoHistoryRef.current.length;
+    const predictedUndoDepth = Math.min(50, previousUndoDepth + 1);
+    const didTrimOldest = undoHistoryRef.current.length >= 50;
+    const previousRedoDepth = redoHistoryRef.current.length;
 
     setUndoHistory(prev => {
       const newHistory = [...prev, currentState];
+      const newMeta = [...undoHistoryMetaRef.current, checkpointMeta];
       // Limit history to 50 entries
       if (newHistory.length > 50) {
-        return newHistory.slice(1);
+        const trimmedHistory = newHistory.slice(1);
+        undoHistoryRef.current = trimmedHistory;
+        undoHistoryMetaRef.current = newMeta.slice(1);
+        return trimmedHistory;
       }
+      undoHistoryRef.current = newHistory;
+      undoHistoryMetaRef.current = newMeta;
       return newHistory;
     });
     setRedoHistory([]); // Clear redo history when new action is performed
-  }, [annotationsByPage, highlightAnnotations, spaces]);
+    redoHistoryRef.current = [];
+    redoHistoryMetaRef.current = [];
+    lastCheckpointHashRef.current = currentFingerprint.hash;
+
+    pushHistoryDebugEvent('checkpoint_added', {
+      checkpointId: checkpointMeta.checkpointId,
+      reason: checkpointMeta.reason,
+      context: checkpointMeta.context,
+      undoDepth: predictedUndoDepth,
+      redoDepth: 0,
+      didTrimOldest,
+      summary: checkpointMeta.summary,
+      delta: checkpointMeta.delta,
+      snapshotHash: checkpointMeta.snapshotHash,
+      snapshotBytes: checkpointMeta.snapshotBytes
+    });
+
+    if (previousRedoDepth > 0) {
+      pushHistoryDebugEvent('redo_cleared_on_new_checkpoint', {
+        reason: checkpointMeta.reason,
+        undoDepth: predictedUndoDepth,
+        redoDepth: 0,
+        clearedRedoEntries: previousRedoDepth,
+        snapshotHash: checkpointMeta.snapshotHash
+      });
+    }
+  }, [createHistoryMeta, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
 
   // Undo function
   const handleUndo = useCallback(() => {
-    if (undoHistory.length < 2) return;
+    if (undoHistory.length === 0) {
+      pushHistoryDebugEvent('undo_noop_empty_stack', {
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length
+      });
+      return;
+    }
 
     isUndoingRef.current = true;
-    const stateToRestore = undoHistory[undoHistory.length - 2];
-    const stateToRedo = undoHistory[undoHistory.length - 1];
+    const previousUndoDepth = undoHistoryRef.current.length;
+    const previousRedoDepth = redoHistoryRef.current.length;
+    const predictedUndoDepth = Math.max(0, previousUndoDepth - 1);
+    const predictedRedoDepth = previousRedoDepth + 1;
+    const stateToRestore = undoHistory[undoHistory.length - 1];
+    const nextUndoCheckpoint = undoHistory.length > 1 ? undoHistory[undoHistory.length - 2] : null;
+    const currentState = getHistorySnapshot();
+    const currentFingerprint = getHistoryFingerprint(currentState);
+    const restoreFingerprint = getHistoryFingerprint(stateToRestore);
+    const undoDelta = summarizeHistoryDelta(currentState, stateToRestore);
+    const noEffect = currentFingerprint.serialized === restoreFingerprint.serialized;
+    const changedObjectsCount = Array.isArray(undoDelta?.changedPageTransitionsPreview)
+      ? undoDelta.changedPageTransitionsPreview.reduce((total, transition) => total + (transition?.changedObjectsCount || 0), 0)
+      : 0;
+    const checkpointMeta = undoHistoryMetaRef.current[undoHistoryMetaRef.current.length - 1] || null;
+    const redoMeta = createHistoryMeta(
+      currentState,
+      'redo_buffer_from_undo',
+      {
+        sourceCheckpointId: checkpointMeta?.checkpointId || null,
+        sourceReason: checkpointMeta?.reason || null
+      },
+      stateToRestore
+    );
+    historyCheckpointSeqRef.current = redoMeta.checkpointId;
 
-    // Save current state (which is the last item in undoHistory) to redo history
-    setRedoHistory(prev => [stateToRedo, ...prev]);
+    // Save current live state so redo can restore it
+    setRedoHistory(prev => [currentState, ...prev]);
+    redoHistoryRef.current = [currentState, ...redoHistoryRef.current];
+    redoHistoryMetaRef.current = [redoMeta, ...redoHistoryMetaRef.current];
 
-    // Restore previous state
-    setAnnotationsByPage(stateToRestore.annotationsByPage);
-    setHighlightAnnotations(stateToRestore.highlightAnnotations);
-    // Migrate spaces: ensure regions have showBackgroundAnnotations
-    // Requirement: "A region can contain multiple areas (polygons) within it"
-    // Keep all regions as they represent multiple areas within the same logical region
-    const migratedSpaces = (stateToRestore.spaces || []).map(space => ({
-      ...space,
-      assignedPages: (space.assignedPages || []).map(page => {
-        const regions = page.regions || [];
-        // Migrate: ensure showBackgroundAnnotations property exists
-        const migratedRegions = regions.map(region => ({
-          ...region,
-          showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
-        }));
-        return {
-          ...page,
-          regions: migratedRegions
-        };
-      })
-    }));
-    setSpaces(migratedSpaces);
-    lastSavedStateRef.current = JSON.stringify(stateToRestore);
+    // Restore checkpoint state
+    restoreHistoryState(stateToRestore);
 
     // Remove from undo history
-    setUndoHistory(prev => prev.slice(0, -1));
+    setUndoHistory(prev => {
+      const nextHistory = prev.slice(0, -1);
+      undoHistoryRef.current = nextHistory;
+      return nextHistory;
+    });
+    undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
+    lastCheckpointHashRef.current = nextUndoCheckpoint ? getHistoryFingerprint(nextUndoCheckpoint).hash : null;
+
+    pushHistoryDebugEvent('undo_applied', {
+      checkpointId: checkpointMeta?.checkpointId || null,
+      undoneReason: checkpointMeta?.reason || 'unknown',
+      context: checkpointMeta?.context || null,
+      source: checkpointMeta?.context?.source || null,
+      pageNumber: checkpointMeta?.context?.pageNumber ?? null,
+      changedObjectsCount,
+      noEffect,
+      undoDepth: predictedUndoDepth,
+      redoDepth: predictedRedoDepth,
+      restoreSummary: checkpointMeta?.summary || summarizeHistorySnapshot(stateToRestore),
+      delta: undoDelta,
+      currentSnapshotHash: currentFingerprint.hash,
+      restoreSnapshotHash: restoreFingerprint.hash
+    });
 
     setTimeout(() => {
       isUndoingRef.current = false;
-    }, 100);
-  }, [undoHistory]);
+    }, 150);
+  }, [createHistoryMeta, getHistoryFingerprint, getHistorySnapshot, pushHistoryDebugEvent, restoreHistoryState, summarizeHistoryDelta, summarizeHistorySnapshot, undoHistory]);
 
   // Redo function
   const handleRedo = useCallback(() => {
-    if (redoHistory.length === 0) return;
+    if (redoHistory.length === 0) {
+      pushHistoryDebugEvent('redo_noop_empty_stack', {
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length
+      });
+      return;
+    }
 
     isUndoingRef.current = true;
+    const previousUndoDepth = undoHistoryRef.current.length;
+    const previousRedoDepth = redoHistoryRef.current.length;
+    const predictedUndoDepth = Math.min(50, previousUndoDepth + 1);
+    const predictedRedoDepth = Math.max(0, previousRedoDepth - 1);
+    const currentState = getHistorySnapshot();
     const stateToRestore = redoHistory[0];
+    const currentFingerprint = getHistoryFingerprint(currentState);
+    const restoreFingerprint = getHistoryFingerprint(stateToRestore);
+    const redoDelta = summarizeHistoryDelta(currentState, stateToRestore);
+    const noEffect = currentFingerprint.serialized === restoreFingerprint.serialized;
+    const changedObjectsCount = Array.isArray(redoDelta?.changedPageTransitionsPreview)
+      ? redoDelta.changedPageTransitionsPreview.reduce((total, transition) => total + (transition?.changedObjectsCount || 0), 0)
+      : 0;
+    const redoMeta = redoHistoryMetaRef.current[0] || null;
+    const undoMeta = createHistoryMeta(
+      currentState,
+      'undo_buffer_from_redo',
+      {
+        sourceCheckpointId: redoMeta?.checkpointId || null,
+        sourceReason: redoMeta?.reason || null
+      },
+      stateToRestore
+    );
+    historyCheckpointSeqRef.current = undoMeta.checkpointId;
 
     // Save current state to undo history before redoing
-    const currentState = {
-      annotationsByPage: JSON.parse(JSON.stringify(annotationsByPage)),
-      highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotations)),
-      spaces: JSON.parse(JSON.stringify(spaces || []))
-    };
-    setUndoHistory(prev => [...prev, currentState]);
+    setUndoHistory(prev => {
+      const newHistory = [...prev, currentState];
+      const newMeta = [...undoHistoryMetaRef.current, undoMeta];
+      if (newHistory.length > 50) {
+        const trimmedHistory = newHistory.slice(1);
+        undoHistoryRef.current = trimmedHistory;
+        undoHistoryMetaRef.current = newMeta.slice(1);
+        return trimmedHistory;
+      }
+      undoHistoryRef.current = newHistory;
+      undoHistoryMetaRef.current = newMeta;
+      return newHistory;
+    });
+    lastCheckpointHashRef.current = currentFingerprint.hash;
 
     // Restore state
-    setAnnotationsByPage(stateToRestore.annotationsByPage);
-    setHighlightAnnotations(stateToRestore.highlightAnnotations);
-    // Migrate spaces: ensure regions have showBackgroundAnnotations
-    // Requirement: "A region can contain multiple areas (polygons) within it"
-    // Keep all regions as they represent multiple areas within the same logical region
-    const migratedSpaces = (stateToRestore.spaces || []).map(space => ({
-      ...space,
-      assignedPages: (space.assignedPages || []).map(page => {
-        const regions = page.regions || [];
-        // Migrate: ensure showBackgroundAnnotations property exists
-        const migratedRegions = regions.map(region => ({
-          ...region,
-          showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
-        }));
-        return {
-          ...page,
-          regions: migratedRegions
-        };
-      })
-    }));
-    setSpaces(migratedSpaces);
-    lastSavedStateRef.current = JSON.stringify(stateToRestore);
+    restoreHistoryState(stateToRestore);
 
     // Remove from redo history
-    setRedoHistory(prev => prev.slice(1));
+    setRedoHistory(prev => {
+      const nextHistory = prev.slice(1);
+      redoHistoryRef.current = nextHistory;
+      return nextHistory;
+    });
+    redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
+
+    pushHistoryDebugEvent('redo_applied', {
+      checkpointId: redoMeta?.checkpointId || null,
+      redoReason: redoMeta?.reason || 'unknown',
+      context: redoMeta?.context || null,
+      source: redoMeta?.context?.source || null,
+      pageNumber: redoMeta?.context?.pageNumber ?? null,
+      changedObjectsCount,
+      noEffect,
+      undoDepth: predictedUndoDepth,
+      redoDepth: predictedRedoDepth,
+      restoreSummary: redoMeta?.summary || summarizeHistorySnapshot(stateToRestore),
+      delta: redoDelta,
+      currentSnapshotHash: currentFingerprint.hash,
+      restoreSnapshotHash: restoreFingerprint.hash
+    });
 
     setTimeout(() => {
       isUndoingRef.current = false;
-    }, 100);
-  }, [redoHistory, annotationsByPage, highlightAnnotations]);
+    }, 150);
+  }, [createHistoryMeta, getHistoryFingerprint, getHistorySnapshot, pushHistoryDebugEvent, redoHistory, restoreHistoryState, summarizeHistoryDelta, summarizeHistorySnapshot]);
 
   // Check if undo is possible
-  const canUndo = undoHistory.length > 1;
+  const canUndo = undoHistory.length > 0;
 
   // Check if redo is possible
   const canRedo = redoHistory.length > 0;
@@ -9250,6 +13949,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       alert(`Error pasting page: ${error.message}`);
     }
   }, [pdfFile, onUpdatePDFFile]);
+
+  const pageClipboardPayload = useMemo(() => (
+    clipboardPage ? { pageNumber: clipboardPage, type: clipboardType } : null
+  ), [clipboardPage, clipboardType]);
+
+  const handlePastePageHere = useCallback((targetPageNumber) => (
+    handlePastePage(targetPageNumber, clipboardPage, clipboardType)
+  ), [clipboardPage, clipboardType, handlePastePage]);
 
   const handleReorderPages = useCallback((sourcePageNumber, targetPageNumber) => {
     // Reorder pages by swapping their positions
@@ -9390,6 +14097,251 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [pdfFile, onUpdatePDFFile]);
 
+  const importPdfBookmarksIntoSidebar = useCallback((incomingBookmarks = []) => {
+    if (!Array.isArray(incomingBookmarks) || incomingBookmarks.length === 0) {
+      return;
+    }
+
+    setBookmarks((prev) => {
+      const existing = Array.isArray(prev) ? prev : [];
+      const sourceToBookmarkId = new Map();
+      const outlinePathToBookmarkId = new Map();
+      const maxOrderByParent = new Map();
+      const updateByExistingId = new Map();
+
+      const normalizeIncomingPageIds = (bookmark) => {
+        if (useSyncfusionRenderer) {
+          const sourceId = typeof bookmark?.sourceId === 'string' ? bookmark.sourceId : null;
+          if (sourceId) {
+            const viewerResolvedPage = coercePageNumber(
+              syncfusionViewerRef.current?.resolveBookmarkPageFromSource?.(
+                sourceId,
+                bookmark?.dest ?? null,
+                true
+              ),
+              Number.POSITIVE_INFINITY
+            );
+            if (viewerResolvedPage) {
+              return [viewerResolvedPage];
+            }
+          }
+        }
+        return normalizeBookmarkPageIds(bookmark, Number.POSITIVE_INFINITY);
+      };
+
+      existing.forEach((bookmark) => {
+        if (!bookmark || typeof bookmark !== 'object') return;
+        if (typeof bookmark.sourceId === 'string' && bookmark.sourceId.trim()) {
+          sourceToBookmarkId.set(bookmark.sourceId, bookmark.id);
+        }
+        if (Array.isArray(bookmark.outlinePath) && bookmark.outlinePath.length > 0) {
+          outlinePathToBookmarkId.set(bookmark.outlinePath.join('>'), bookmark.id);
+        }
+        const parentKey = bookmark.parentId ?? null;
+        const orderValue = Number.isFinite(bookmark.order) ? bookmark.order : 0;
+        const currentMax = maxOrderByParent.get(parentKey);
+        if (currentMax === undefined || orderValue > currentMax) {
+          maxOrderByParent.set(parentKey, orderValue);
+        }
+      });
+
+      const incomingById = new Map();
+      incomingBookmarks.forEach((bookmark) => {
+        if (bookmark?.id) {
+          incomingById.set(bookmark.id, bookmark);
+        }
+      });
+
+      const deduped = [];
+      const seenKeys = new Set();
+      incomingBookmarks.forEach((bookmark, index) => {
+        if (!bookmark || typeof bookmark !== 'object') return;
+
+        const sourceId = typeof bookmark.sourceId === 'string' && bookmark.sourceId.trim()
+          ? bookmark.sourceId
+          : null;
+        const outlinePath = Array.isArray(bookmark.outlinePath) ? bookmark.outlinePath : null;
+        const outlineKey = outlinePath && outlinePath.length > 0 ? outlinePath.join('>') : null;
+        const dedupeKey = sourceId || (outlineKey ? `outline:${outlineKey}` : `index:${index}`);
+        const existingIdBySource = sourceId && sourceToBookmarkId.has(sourceId)
+          ? sourceToBookmarkId.get(sourceId)
+          : null;
+        const existingIdByOutline = outlineKey && outlinePathToBookmarkId.has(outlineKey)
+          ? outlinePathToBookmarkId.get(outlineKey)
+          : null;
+        const existingId = existingIdBySource || existingIdByOutline || null;
+
+        if (existingId) {
+          const normalizedPageIds = normalizeIncomingPageIds(bookmark);
+          const normalizedOutlinePath = Array.isArray(bookmark?.outlinePath)
+            ? bookmark.outlinePath
+            : null;
+          updateByExistingId.set(existingId, {
+            name: typeof bookmark?.name === 'string' && bookmark.name.trim() ? bookmark.name.trim() : null,
+            type: bookmark?.type === 'folder' ? 'folder' : 'bookmark',
+            pageIds: normalizedPageIds,
+            dest: bookmark?.dest ?? null,
+            sourceId,
+            outlinePath: normalizedOutlinePath
+          });
+          if (sourceId) {
+            sourceToBookmarkId.set(sourceId, existingId);
+          }
+          if (normalizedOutlinePath && normalizedOutlinePath.length > 0) {
+            outlinePathToBookmarkId.set(normalizedOutlinePath.join('>'), existingId);
+          }
+          return;
+        }
+        if (seenKeys.has(dedupeKey)) {
+          return;
+        }
+        seenKeys.add(dedupeKey);
+        deduped.push(bookmark);
+      });
+
+      const updatedExisting = updateByExistingId.size > 0
+        ? existing.map((bookmark) => {
+          const incomingUpdate = updateByExistingId.get(bookmark?.id);
+          if (!incomingUpdate) return bookmark;
+
+          const existingPageIds = Array.isArray(bookmark?.pageIds)
+            ? bookmark.pageIds
+            : [];
+          const nextPageIds = bookmark?.outlineCorrected === true
+            ? existingPageIds
+            : incomingUpdate.pageIds.length > 0
+              ? incomingUpdate.pageIds
+              : existingPageIds;
+
+          return {
+            ...bookmark,
+            name: incomingUpdate.name || bookmark?.name || 'Untitled',
+            type: incomingUpdate.type || bookmark?.type || 'bookmark',
+            pageIds: nextPageIds,
+            dest: bookmark?.outlineCorrected === true ? bookmark?.dest : (incomingUpdate.dest ?? bookmark?.dest ?? null),
+            sourceId: incomingUpdate.sourceId || bookmark?.sourceId,
+            outlinePath: incomingUpdate.outlinePath || bookmark?.outlinePath || null,
+            isFromPDF: true
+          };
+        })
+        : existing;
+
+      if (deduped.length === 0) {
+        return updatedExisting;
+      }
+
+      const idMap = new Map();
+      deduped.forEach((bookmark) => {
+        if (bookmark?.id) {
+          idMap.set(bookmark.id, generateBookmarkId());
+        }
+      });
+
+      const resolveParentId = (bookmark) => {
+        if (!bookmark?.parentId) return null;
+
+        if (idMap.has(bookmark.parentId)) {
+          return idMap.get(bookmark.parentId);
+        }
+
+        const parentIncoming = incomingById.get(bookmark.parentId);
+        const parentSourceId = typeof parentIncoming?.sourceId === 'string' ? parentIncoming.sourceId : null;
+        if (parentSourceId && sourceToBookmarkId.has(parentSourceId)) {
+          return sourceToBookmarkId.get(parentSourceId);
+        }
+        if (Array.isArray(parentIncoming?.outlinePath) && parentIncoming.outlinePath.length > 0) {
+          const parentOutlineKey = parentIncoming.outlinePath.join('>');
+          if (outlinePathToBookmarkId.has(parentOutlineKey)) {
+            return outlinePathToBookmarkId.get(parentOutlineKey);
+          }
+        }
+        return null;
+      };
+
+      const imported = deduped.map((bookmark, index) => {
+        const sourceId = typeof bookmark?.sourceId === 'string' && bookmark.sourceId.trim()
+          ? bookmark.sourceId
+          : `syncfusion:auto:${Date.now()}-${index}`;
+        const nextId = idMap.get(bookmark.id) || generateBookmarkId();
+        const parentId = resolveParentId(bookmark);
+        const baseOrder = Number.isFinite(bookmark?.order) ? bookmark.order : index;
+        const offset = maxOrderByParent.get(parentId) ?? -1;
+        const order = offset + 1 + baseOrder;
+        const normalizedPageIds = normalizeIncomingPageIds(bookmark);
+        const normalizedOutlinePath = Array.isArray(bookmark?.outlinePath)
+          ? bookmark.outlinePath
+          : null;
+
+        const nextBookmark = {
+          id: nextId,
+          name: typeof bookmark?.name === 'string' && bookmark.name.trim() ? bookmark.name.trim() : 'Untitled',
+          type: bookmark?.type === 'folder' ? 'folder' : 'bookmark',
+          pageIds: normalizedPageIds,
+          parentId,
+          order,
+          children: [],
+          source: bookmark?.source || 'pdf',
+          sourceId,
+          dest: bookmark?.dest ?? null,
+          outlinePath: normalizedOutlinePath,
+          isFromPDF: true
+        };
+
+        sourceToBookmarkId.set(sourceId, nextId);
+        if (normalizedOutlinePath && normalizedOutlinePath.length > 0) {
+          outlinePathToBookmarkId.set(normalizedOutlinePath.join('>'), nextId);
+        }
+        const existingOrder = maxOrderByParent.get(parentId);
+        if (existingOrder === undefined || order > existingOrder) {
+          maxOrderByParent.set(parentId, order);
+        }
+
+        return nextBookmark;
+      });
+
+      return [...updatedExisting, ...imported];
+    });
+  }, [generateBookmarkId, useSyncfusionRenderer]);
+
+  const handlePDFBookmarksAvailable = useCallback((bookmarksFromPDF) => {
+    if (!Array.isArray(bookmarksFromPDF) || bookmarksFromPDF.length === 0) {
+      return;
+    }
+    setPdfBookmarks(bookmarksFromPDF);
+    setDebugData({ pdfBookmarkCount: bookmarksFromPDF.length });
+    emitPdfDebugEvent('app_pdf_bookmarks_available', { count: bookmarksFromPDF.length });
+  }, []);
+
+  const handleReimportPdfBookmarks = useCallback(() => {
+    if (!Array.isArray(pdfBookmarks) || pdfBookmarks.length === 0) {
+      alert('No PDF bookmarks are available to import yet.');
+      return;
+    }
+    importPdfBookmarksIntoSidebar(pdfBookmarks);
+    setHasImportedPdfBookmarks(true);
+  }, [importPdfBookmarksIntoSidebar, pdfBookmarks]);
+
+  useEffect(() => {
+    if (!pdfId) return;
+    if (!Array.isArray(pdfBookmarks) || pdfBookmarks.length === 0) return;
+    importPdfBookmarksIntoSidebar(pdfBookmarks);
+    if (!hasImportedPdfBookmarks) {
+      setHasImportedPdfBookmarks(true);
+    }
+  }, [hasImportedPdfBookmarks, importPdfBookmarksIntoSidebar, pdfBookmarks, pdfId]);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onReimportPdfBookmarks) return undefined;
+    const unsubscribe = window.electronAPI.onReimportPdfBookmarks(() => {
+      handleReimportPdfBookmarks();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [handleReimportPdfBookmarks]);
+
   const handleBookmarkCreate = useCallback((bookmark) => {
     setBookmarks(prev => {
       const type = bookmark?.type === 'folder' ? 'folder' : 'bookmark';
@@ -9440,6 +14392,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         sanitizedUpdates = { ...sanitizedUpdates, name: trimmedName };
       }
 
+      // If user manually edits bookmark page numbers, that explicit page should win.
+      // Disable source/destination-driven navigation for that bookmark afterwards.
+      if (Object.prototype.hasOwnProperty.call(updates, 'pageIds')) {
+        const normalizedPageIds = normalizeBookmarkPageIds({
+          pageIds: updates.pageIds
+        }, Number.POSITIVE_INFINITY);
+
+        sanitizedUpdates = {
+          ...sanitizedUpdates,
+          pageIds: normalizedPageIds,
+          manualPageOverride: true,
+          sourceId: null,
+          dest: null,
+          isFromPDF: false,
+          source: 'user'
+        };
+      }
+
       return prev.map(bookmark => bookmark.id === id ? { ...bookmark, ...sanitizedUpdates } : bookmark);
     });
   }, []);
@@ -9468,7 +14438,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const handleSpaceCreate = useCallback((space) => {
     // Checkpoint history before creating space
-    addHistoryCheckpoint();
+    addHistoryCheckpoint('space:create', {
+      requestedName: typeof space?.name === 'string' ? space.name : null
+    });
 
     setSpaces(prev => {
       const trimmedName = typeof space?.name === 'string' ? space.name.trim() : '';
@@ -9497,11 +14469,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       };
       return [...prev, newSpace];
     });
-  }, []);
+  }, [addHistoryCheckpoint]);
 
   const handleSpaceUpdate = useCallback((id, updates) => {
     // Checkpoint history before updating space
-    addHistoryCheckpoint();
+    addHistoryCheckpoint('space:update', {
+      spaceId: id,
+      updateKeys: Object.keys(updates || {})
+    });
 
     setSpaces(prev => {
       const targetSpace = prev.find(space => space.id === id);
@@ -9544,7 +14519,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       return prev.map(space => space.id === id ? { ...space, ...sanitizedUpdates } : space);
     });
-  }, []);
+  }, [addHistoryCheckpoint]);
 
   const handleSpaceAssignPages = useCallback((spaceId, pageNumbers) => {
     if (!Array.isArray(pageNumbers) || pageNumbers.length === 0) {
@@ -9715,8 +14690,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setSpaces(prev => {
       const beforeSpace = prev.find(s => s.id === spaceId);
       const beforePage = beforeSpace?.assignedPages?.find(p => p.pageId === pageId);
-      // console.log('[App] Before update - space found:', !!beforeSpace, 'page found:', !!beforePage);
-      // console.log('[App] Before update - page entry:', beforePage);
 
       const updated = prev.map(space => {
         if (space.id !== spaceId) {
@@ -9729,7 +14702,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         let updatedPages;
         if (pageIndex >= 0) {
           // Page exists, update it
-          // console.log('[App] Updating existing page entry at index', pageIndex, { pageId, wholePageIncluded: true, regions: [] });
           updatedPages = assignedPages.map((page, index) => {
             if (index === pageIndex) {
               return {
@@ -9742,7 +14714,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           });
         } else {
           // Page doesn't exist, create it
-          // console.log('[App] Creating new page entry', { pageId, wholePageIncluded: true, regions: [] });
           updatedPages = [
             ...assignedPages,
             {
@@ -9754,7 +14725,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
 
         const afterPage = updatedPages.find(p => p.pageId === pageId);
-        // console.log('[App] After update - page entry:', afterPage);
 
         return {
           ...space,
@@ -9931,9 +14901,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
             // Get all highlights for this category and module (same logic as sidebar)
             const categoryHighlights = [];
-            // console.log(`Exporting Module: ${moduleName} (ID: ${moduleId})`);
-            // console.log(`Exporting Category: ${category.name} (ID: ${category.id})`);
-            // console.log('Total highlightAnnotations:', Object.keys(highlightAnnotations).length);
 
             Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
               const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
@@ -9953,7 +14920,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               const bIndex = b.excelRowIndex ?? Infinity;
               return aIndex - bIndex;
             });
-            // console.log(`Found ${categoryHighlights.length} highlights for this category.`);
 
             // Build header row: Changed By, Changed Date, Item, [checklist items], Ball in Court, Notes
             const headerRow = ['Changed By', 'Changed Date', 'Item'];
@@ -10337,7 +15303,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
               // Check if Live Sync is enabled with active session - use cell-level updates
               if (liveSyncEnabled && excelSessionId && oneDriveFileId && liveSyncStatus === 'connected') {
-                // console.log('Using Live Sync cell-level updates...');
 
                 // Update each worksheet via session API
                 for (const ws of workbook.worksheets) {
@@ -10373,7 +15338,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                     try {
                       await updateCellRange(graphClient, oneDriveFileId, excelSessionId, sheetName, range, values);
-                      // console.log(`Updated sheet "${sheetName}" range ${range}`);
                     } catch (sheetErr) {
                       console.warn(`Failed to update sheet "${sheetName}":`, sheetErr);
                       // Continue with other sheets
@@ -10429,6 +15393,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
             // Mark that linked Excel file exists (ensures dropdown menu shows)
             setLinkedExcelExists(true);
+            markExcelSyncCheckpoint(updatedTemplate, highlightAnnotationsRef.current);
 
             if (!silent) {
               setIsExporting(false);
@@ -10485,7 +15450,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       alert('Unable to create the Excel file. Please try again.');
     }
-  }, [selectedTemplate, items, highlightAnnotations, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus]);
+  }, [selectedTemplate, items, highlightAnnotations, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -10503,6 +15468,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // If file is deleted, automatically clear the link
   const lastCheckedExcelRef = useRef({ path: null, fileId: null, cleared: false });
   const checkInProgressRef = useRef(false);
+  const oneDriveTokenCooldownRef = useRef({ nextAttemptAt: 0, lastWarnAt: 0 });
   useEffect(() => {
     const checkLinkedExcelExists = async () => {
       // Prevent concurrent checks
@@ -10520,15 +15486,32 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return;
       }
 
+      if (isInteractionPerfWindowActive()) {
+        const retryDelay = getInteractionPerfResumeDelay();
+        emitPdfDebugEvent('sync_gate_excel_check_deferred', { retryDelay });
+        if (!deferredExcelCheckTimerRef.current) {
+          deferredExcelCheckTimerRef.current = setTimeout(() => {
+            deferredExcelCheckTimerRef.current = null;
+            checkLinkedExcelExists();
+          }, retryDelay);
+        }
+        return;
+      }
+
+      if (deferredExcelCheckTimerRef.current) {
+        clearTimeout(deferredExcelCheckTimerRef.current);
+        deferredExcelCheckTimerRef.current = null;
+      }
+
       // Skip if we already checked this exact combination
       if (lastCheckedExcelRef.current.path === excelPath &&
-          lastCheckedExcelRef.current.fileId === fileId) {
+        lastCheckedExcelRef.current.fileId === fileId) {
         return;
       }
 
       // Skip if we already cleared this path (prevent infinite loop)
       if (lastCheckedExcelRef.current.cleared &&
-          lastCheckedExcelRef.current.path === excelPath) {
+        lastCheckedExcelRef.current.path === excelPath) {
         return;
       }
 
@@ -10536,11 +15519,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       // Helper function to clear the Excel link
       const clearExcelLink = async (reason) => {
-        console.log('Clearing Excel link:', reason);
         lastCheckedExcelRef.current = { path: excelPath, fileId, cleared: true }; // Prevent re-checking
 
         setLinkedExcelExists(false);
         setLiveSyncEnabled(false);
+        clearExcelSyncCheckpoint();
 
         // Clear the link from the template
         setSelectedTemplate(prev => ({
@@ -10573,14 +15556,32 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       try {
         if (isOneDrive) {
+          if (msNeedsReconnect) {
+            setLinkedExcelExists(null);
+            return;
+          }
+
+          const now = Date.now();
+          const cooldownUntil = oneDriveTokenCooldownRef.current.nextAttemptAt || 0;
+          if (cooldownUntil > now) {
+            return;
+          }
+
           // Ensure fresh token before OneDrive API calls
-          if (ensureFreshToken) {
+          if (ensureFreshToken && graphClient) {
             const tokenValid = await ensureFreshToken();
             if (!tokenValid) {
-              console.log('Token refresh failed, skipping OneDrive check');
-              checkInProgressRef.current = false;
+              const cooldownMs = 60_000;
+              const warnIntervalMs = 15_000;
+              const currentTs = Date.now();
+              oneDriveTokenCooldownRef.current.nextAttemptAt = currentTs + cooldownMs;
+              if (currentTs - (oneDriveTokenCooldownRef.current.lastWarnAt || 0) >= warnIntervalMs) {
+                oneDriveTokenCooldownRef.current.lastWarnAt = currentTs;
+                console.warn('Token refresh failed, pausing OneDrive checks for 60s');
+              }
               return;
             }
+            oneDriveTokenCooldownRef.current.nextAttemptAt = 0;
           }
 
           // For OneDrive files, check by file ID first (tracks moves/renames)
@@ -10595,8 +15596,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
               if (newPath && newPath !== selectedTemplate?.oneDriveApiPath) {
                 // File was moved - update the path
-                console.log('OneDrive file was moved from', selectedTemplate?.oneDriveApiPath, 'to', newPath);
-
                 // Update paths in template
                 setSelectedTemplate(prev => ({
                   ...prev,
@@ -10631,7 +15630,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               const fileInfo = await getFileMetadata(graphClient, apiPath);
               if (fileInfo?.id) {
                 // Store the file ID for future tracking
-                console.log('Storing OneDrive file ID for tracking:', fileInfo.id);
                 setSelectedTemplate(prev => ({
                   ...prev,
                   oneDriveFileId: fileInfo.id
@@ -10687,7 +15685,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
 
     checkLinkedExcelExists();
-  }, [selectedTemplate?.linkedExcelPath, selectedTemplate?.isOneDrive, selectedTemplate?.oneDriveFileId, selectedTemplate?.id, selectedTemplate?.supabaseId, graphClient, updateSupabaseTemplate, sanitizeTemplateConfig, ensureFreshToken]);
+    return () => {
+      if (deferredExcelCheckTimerRef.current) {
+        clearTimeout(deferredExcelCheckTimerRef.current);
+        deferredExcelCheckTimerRef.current = null;
+      }
+    };
+  }, [selectedTemplate?.linkedExcelPath, selectedTemplate?.isOneDrive, selectedTemplate?.oneDriveFileId, selectedTemplate?.id, selectedTemplate?.supabaseId, graphClient, updateSupabaseTemplate, sanitizeTemplateConfig, ensureFreshToken, getInteractionPerfResumeDelay, isInteractionPerfWindowActive, msNeedsReconnect, clearExcelSyncCheckpoint]);
 
   // Keep handleUnlinkExcel for manual unlinking if needed in future
   const handleUnlinkExcel = useCallback(async () => {
@@ -10702,6 +15706,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setSelectedTemplate(updatedTemplate);
     setLinkedExcelExists(null);
     setLiveSyncEnabled(false);
+    clearExcelSyncCheckpoint();
     setShowExportMenu(false);
 
     // Persist to Supabase
@@ -10726,7 +15731,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       );
       handleTemplatesChange(updatedTemplates);
     }
-  }, [selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, sanitizeTemplateConfig]);
+  }, [selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, sanitizeTemplateConfig, clearExcelSyncCheckpoint]);
 
   // Load latest survey data by comparing timestamps between Supabase and Excel
   const loadLatestSurveyData = useCallback(async () => {
@@ -10759,7 +15764,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       }
 
-      console.log('Timestamp comparison:', {
+      debugLog('Timestamp comparison:', {
         supabase: supabaseTimestamp.toISOString(),
         excel: excelTimestamp.toISOString(),
         excelIsNewer: excelTimestamp > supabaseTimestamp
@@ -10767,7 +15772,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       if (excelTimestamp > supabaseTimestamp) {
         // Excel is newer - auto-import from Excel
-        console.log('Excel file is newer than Supabase data, auto-importing...');
+        debugLog('Excel file is newer than Supabase data, auto-importing...');
         // Note: handleSyncFromExcel should already be defined by this point
         // We'll trigger it via a small delay to ensure component is ready
         setTimeout(() => {
@@ -10854,7 +15859,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     try {
       await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
-      console.log('Successfully pushed survey data to Excel');
       // Show success message (especially important after retry)
       if (isRetry) {
         alert('Excel file updated successfully!');
@@ -10948,21 +15952,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             exportPendingData.buffer
           );
           oneDriveApiPath = `/drives/${folder.driveId}/items/${uploadResult?.id}`;
-          console.log('Uploaded to SharePoint, file ID:', uploadResult?.id);
         } else {
           // Upload to OneDrive personal
           oneDriveApiPath = folder.folderPath === '/'
             ? `/${fileName}`
             : `${folder.folderPath}/${fileName}`;
           uploadResult = await uploadExcelFile(graphClient, oneDriveApiPath, exportPendingData.buffer);
-          console.log('Uploaded to OneDrive, file ID:', uploadResult?.id);
         }
       } else {
         // Legacy behavior: auto-save to /Documents
         fileName = `${exportPendingData.fileName}_export.xlsx`;
         oneDriveApiPath = `/Documents/${fileName}`;
         uploadResult = await uploadExcelFile(graphClient, oneDriveApiPath, exportPendingData.buffer);
-        console.log('Uploaded to OneDrive (legacy), file ID:', uploadResult?.id);
       }
 
       const oneDriveFileId = uploadResult?.id;
@@ -10984,7 +15985,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             localOneDrivePath = `${cloudStoragePath}/${oneDriveFolders[0]}${oneDriveApiPath}`;
             // Write the file locally
             await window.electronAPI.writeFile(localOneDrivePath, exportPendingData.buffer);
-            console.log('Saved local copy to OneDrive sync folder:', localOneDrivePath);
           }
         } catch (localErr) {
           console.warn('Failed to save local copy to OneDrive sync folder:', localErr);
@@ -11012,6 +16012,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       // Mark that linked Excel file exists (enables dropdown menu)
       setLinkedExcelExists(true);
+      markExcelSyncCheckpoint(updatedTemplate, highlightAnnotationsRef.current);
 
       // Persist to Supabase
       const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
@@ -11048,7 +16049,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setPendingOneDriveExport(false);
       setOneDriveSaveSelection(null);
     }
-  }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken]);
+  }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken, markExcelSyncCheckpoint]);
 
   // Handler for OneDrive save modal - checks for duplicates before saving
   const handleOneDriveSave = useCallback(async (selection) => {
@@ -11542,11 +16543,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     if (updatesCount > 0 || deletionsCount > 0) {
       setHighlightAnnotations(newHighlightAnnotations);
+      markExcelSyncCheckpoint(templateToUse, newHighlightAnnotations);
       alert(`Sync complete! Updated ${updatesCount} items, deleted ${deletionsCount} items.`);
     } else {
+      markExcelSyncCheckpoint(templateToUse, newHighlightAnnotations);
       alert('Sync complete! No changes found.');
     }
-  }, [highlightAnnotations, items, setItems, setAnnotations, scale, setAnnotationsByPage]);
+  }, [highlightAnnotations, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint]);
 
   // Helper: Execute auto-sync import with canvas color tracking
   const executeAutoExcelImport = useCallback((worksheetDataList, templateToUse) => {
@@ -11978,6 +16981,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     if (updatesCount > 0 || deletionsCount > 0) {
       setHighlightAnnotations(newHighlightAnnotations);
+      markExcelSyncCheckpoint(templateToUse, newHighlightAnnotations);
       const message = deletionsCount > 0
         ? `Auto-synced ${updatesCount} items, deleted ${deletionsCount} items from Excel`
         : `Auto-synced ${updatesCount} items from Excel`;
@@ -12015,10 +17019,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       }
     } else {
+      markExcelSyncCheckpoint(templateToUse, newHighlightAnnotations);
       setLastSyncMessage('No changes found');
       setTimeout(() => setLastSyncMessage(''), 5000);
     }
-  }, [highlightAnnotations, items, setItems, setAnnotations, scale, setAnnotationsByPage]);
+  }, [highlightAnnotations, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint]);
 
   // Helper: Create new template with added checklist items from new columns
   const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory, templateName) => {
@@ -12194,7 +17199,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           config: configPayload,
           updated_at: new Date().toISOString()
         });
-        console.log('Template modified and persisted to Supabase');
       } catch (err) {
         console.error('Failed to persist template modification to Supabase:', err);
         alert('Warning: Template was modified locally but failed to save to cloud. Your changes may not persist.');
@@ -12416,7 +17420,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Auto-sync from Excel when file changes (file watcher)
   const handleAutoSyncFromExcel = useCallback(async () => {
     // Checkpoint history before sync
-    addHistoryCheckpoint();
+    addHistoryCheckpoint('excel:auto-sync', {
+      templateId: selectedTemplate?.id || null
+    });
 
     if (!selectedTemplate?.linkedExcelPath) {
       return;
@@ -12577,7 +17583,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setTimeout(() => setLastSyncMessage(''), 5000);
       }
     }
-  }, [selectedTemplate, graphClient, executeAutoExcelImport]);
+  }, [addHistoryCheckpoint, selectedTemplate, graphClient, executeAutoExcelImport]);
 
   // Set up file watcher when Excel file is linked
   useEffect(() => {
@@ -12597,7 +17603,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     window.electronAPI.startFileWatcher(selectedTemplate.linkedExcelPath, watchId)
       .then(() => {
         setFileWatcherActive(true);
-        // console.log('File watcher started for:', selectedTemplate.linkedExcelPath);
       })
       .catch(error => {
         console.error('Failed to start file watcher:', error);
@@ -12605,9 +17610,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     // Set up event listeners
     const removeChangeListener = window.electronAPI.onFileChanged(({ watchId: changedWatchId, filePath }) => {
-      // console.log('File changed event received:', { changedWatchId, watchId, filePath });
       if (changedWatchId === watchId) {
-        // console.log('Excel file changed, auto-syncing...', filePath);
         handleAutoSyncFromExcel();
       }
     });
@@ -12684,7 +17687,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               setExcelSessionId(sessionId);
               setUseFallbackSync(false);
               useSession = true;
-              console.log('[LiveSync] Session-based sync established (business account)');
 
               // Set up session refresh (every 3 minutes to prevent 5-min timeout)
               sessionRefreshInterval = setInterval(async () => {
@@ -12708,14 +17710,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               }, 3 * 60 * 1000); // 3 minutes
             }
           } catch (sessionErr) {
-            console.log('[LiveSync] Session API not available, using fallback sync:', sessionErr.message);
             setLiveSyncSupported(false);
           }
         }
 
         // Fall back to ETag-based sync for personal accounts or if session failed
         if (!useSession) {
-          console.log('[LiveSync] Using ETag-based sync (works with all account types)');
           setUseFallbackSync(true);
           setExcelSessionId(null);
 
@@ -12762,7 +17762,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   useEffect(() => {
     // Need either session-based or fallback mode to be active
     const canPoll = liveSyncEnabled && oneDriveFileId && graphClient && liveSyncStatus === 'connected' &&
-                    (excelSessionId || useFallbackSync);
+      (excelSessionId || useFallbackSync);
 
     if (!canPoll) {
       if (liveSyncPollRef.current) {
@@ -12773,6 +17773,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     const pollExcelChanges = async () => {
+      if (isInteractionPerfWindowActive()) {
+        emitPdfDebugEvent('sync_gate_live_poll_skipped');
+        return;
+      }
+
       try {
         if (useFallbackSync) {
           // ETag-based polling for personal accounts
@@ -12787,7 +17792,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           const lastETag = lastKnownETagRef.current;
 
           if (lastETag && currentETag !== lastETag) {
-            console.log('[LiveSync] File changed detected via ETag, syncing...');
             // File changed - trigger sync
             handleAutoSyncFromExcel();
           }
@@ -12809,7 +17813,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               const currentData = JSON.stringify(usedRange.values);
 
               if (lastData && lastData !== currentData) {
-                // console.log(`Excel changes detected in sheet: ${sheet.name}`);
                 handleAutoSyncFromExcel();
                 break; // Only sync once per poll cycle
               }
@@ -12839,14 +17842,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         liveSyncPollRef.current = null;
       }
     };
-  }, [liveSyncEnabled, excelSessionId, useFallbackSync, oneDriveFileId, graphClient, liveSyncStatus, handleAutoSyncFromExcel]);
+  }, [liveSyncEnabled, excelSessionId, useFallbackSync, oneDriveFileId, graphClient, liveSyncStatus, handleAutoSyncFromExcel, isInteractionPerfWindowActive]);
 
   // Live sync push to Excel
   // Supports both session-based (cell-level updates) and fallback (full file upload via Graph API)
   useEffect(() => {
     // Need either session-based or fallback mode to be active
     const canPush = liveSyncEnabled && oneDriveFileId && graphClient && liveSyncStatus === 'connected' &&
-                    (excelSessionId || useFallbackSync);
+      (excelSessionId || useFallbackSync);
 
     if (!canPush) {
       return;
@@ -12855,7 +17858,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Debounce updates (5 seconds to avoid too frequent syncs)
     const pushTimeout = setTimeout(async () => {
       try {
-        // console.log('[LiveSync] Pushing changes to Excel...');
         // Use silent mode to prevent alert popups during live sync
         // handleExportSurveyToExcel handles both session-based (cell updates) and
         // Graph API upload (full file) modes automatically
@@ -12897,21 +17899,110 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const lastSyncedAnnotationsRef = useRef({});
   const syncErrorCountRef = useRef(0); // Track consecutive sync errors
   const syncRLSErrorShownRef = useRef(false); // Track if RLS error warning was shown
+  const syncStructuralErrorShownRef = useRef(false); // Track if schema/not-found sync warning was shown
+  const syncStructuralAutoDisabledRef = useRef(readDocumentSyncStructuralDisabled()); // Session-scoped hard stop after structural backend failures
   const presenceCheckStartedRef = useRef(false); // Prevent duplicate presence checks (React Strict Mode)
+  const presenceCheckDocumentIdRef = useRef(null); // Track which document already initialized presence check
+  const documentSyncInitInFlightRef = useRef(false); // Prevent duplicate init work for same document
+  const initialPresenceSucceededRef = useRef(false); // Only send page-presence updates after initial success
+
+  const handlePresenceFailure = useCallback((presenceResult, context = 'presence') => {
+    if (!presenceResult || presenceResult.success) return false;
+
+    const errorClass = presenceResult.errorClass || (presenceResult.isRLSError ? 'RLS' : 'UNKNOWN');
+    lastPresenceErrorClassRef.current = errorClass;
+    setPresenceDebugStatus({
+      status: 'error',
+      disabled: presenceAutoDisabledRef.current,
+      lastErrorClass: errorClass
+    });
+    setLastDebugError(errorClass, {
+      context,
+      error: presenceResult.error || null
+    });
+
+    if (presenceResult.isRLSError) {
+      initialPresenceSucceededRef.current = false;
+      if (!syncRLSErrorShownRef.current) {
+        syncRLSErrorShownRef.current = true;
+        console.warn('[DocumentSync] RLS policy error detected on presence update. Cloud sync disabled.');
+      }
+      setDocumentSyncEnabled(false);
+      setPresenceDebugStatus({
+        status: 'disabled',
+        disabled: true,
+        lastErrorClass: errorClass
+      });
+      return true;
+    }
+
+    if (presenceResult.nonRetryable) {
+      initialPresenceSucceededRef.current = false;
+      syncStructuralAutoDisabledRef.current = true;
+      writeDocumentSyncStructuralDisabled(true);
+      if (!presenceAutoDisabledRef.current) {
+        presenceAutoDisabledRef.current = true;
+        setPresenceDebugStatus({
+          status: 'disabled',
+          disabled: true,
+          lastErrorClass: errorClass
+        });
+        if (!presenceStructuralWarningShownRef.current) {
+          presenceStructuralWarningShownRef.current = true;
+          console.warn(`[DocumentSync] Presence sync auto-disabled for this session (${errorClass}).`);
+        }
+      }
+      setDocumentSyncEnabled(false);
+      return true;
+    }
+
+    return false;
+  }, []);
 
   // Load annotations from Supabase when document is opened
   useEffect(() => {
     const documentId = pdfFile?.id;
     if (!documentId || !user?.id) {
       setDocumentSyncEnabled(false);
+      presenceCheckDocumentIdRef.current = null;
+      presenceCheckStartedRef.current = false;
+      documentSyncInitInFlightRef.current = false;
+      initialPresenceSucceededRef.current = false;
+      setPresenceDebugStatus({
+        status: 'idle',
+        disabled: presenceAutoDisabledRef.current,
+        lastErrorClass: lastPresenceErrorClassRef.current
+      });
+      return;
+    }
+
+    if (syncStructuralAutoDisabledRef.current) {
+      setDocumentSyncEnabled(false);
+      initialPresenceSucceededRef.current = false;
+      setPresenceDebugStatus({
+        status: 'disabled',
+        disabled: true,
+        lastErrorClass: lastPresenceErrorClassRef.current || 'SCHEMA_MISSING'
+      });
+      return;
+    }
+
+    if (presenceCheckDocumentIdRef.current === documentId && documentSyncInitInFlightRef.current) {
       return;
     }
 
     // Reset error count for new document (but NOT RLS error flag - RLS issues persist)
     syncErrorCountRef.current = 0;
+    if (presenceCheckDocumentIdRef.current !== documentId) {
+      presenceCheckDocumentIdRef.current = documentId;
+      presenceCheckStartedRef.current = false;
+      initialPresenceSucceededRef.current = false;
+    }
     // Note: Don't reset syncRLSErrorShownRef - if RLS failed before, it'll fail again
 
     setIsLoadingRemoteAnnotations(true);
+    documentSyncInitInFlightRef.current = true;
+    let deferredInitialPresenceTimer = null;
 
     loadAnnotationsFromSupabase(documentId)
       .then(async ({ highlightAnnotations: remoteAnnotations, error }) => {
@@ -12940,47 +18031,102 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           });
         }
 
-        setDocumentSyncEnabled(true);
+        setDocumentSyncEnabled(false);
+        setPresenceDebugStatus({
+          status: presenceAutoDisabledRef.current ? 'disabled' : 'ready',
+          disabled: presenceAutoDisabledRef.current,
+          lastErrorClass: lastPresenceErrorClassRef.current
+        });
 
         // Update presence (and detect RLS errors early)
-        // Skip if RLS error already detected or presence check already started (React Strict Mode)
-        if (syncRLSErrorShownRef.current || presenceCheckStartedRef.current) {
+        // Skip if RLS error already detected, presence already auto-disabled, or check already started.
+        if (syncRLSErrorShownRef.current || presenceAutoDisabledRef.current || presenceCheckStartedRef.current) {
+          initialPresenceSucceededRef.current = false;
+          setDocumentSyncEnabled(false);
           return;
         }
         // Set flag synchronously BEFORE async call to prevent race condition
         presenceCheckStartedRef.current = true;
 
+        if (isInteractionPerfWindowActive()) {
+          const retryDelay = getInteractionPerfResumeDelay();
+          emitPdfDebugEvent('sync_gate_initial_presence_deferred', { retryDelay });
+          deferredInitialPresenceTimer = setTimeout(async () => {
+            if (syncRLSErrorShownRef.current || presenceAutoDisabledRef.current) {
+              return;
+            }
+            const deferredPresenceResult = await updateDocumentPresence(documentId, user.id, {
+              clientType: 'app',
+              displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
+              currentPage: coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || pageNum
+            });
+
+            if (deferredPresenceResult.success) {
+              initialPresenceSucceededRef.current = true;
+              syncStructuralAutoDisabledRef.current = false;
+              writeDocumentSyncStructuralDisabled(false);
+              setDocumentSyncEnabled(true);
+              setPresenceDebugStatus({
+                status: 'active',
+                disabled: false,
+                lastErrorClass: null
+              });
+            } else {
+              initialPresenceSucceededRef.current = false;
+              setDocumentSyncEnabled(false);
+              handlePresenceFailure(deferredPresenceResult, 'initial-deferred');
+            }
+          }, retryDelay);
+          return;
+        }
+
         const presenceResult = await updateDocumentPresence(documentId, user.id, {
           clientType: 'app',
           displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
-          currentPage: pageNum
+          currentPage: coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || pageNum
         });
 
-        // If presence fails with RLS error, disable sync silently
-        if (!presenceResult.success && presenceResult.error) {
-          const isRLSError = presenceResult.error.code === '42501' || presenceResult.error.message?.includes('row-level security');
-          if (isRLSError) {
-            syncRLSErrorShownRef.current = true;
-            console.warn('[DocumentSync] RLS policy error detected on presence update. Cloud sync disabled.');
-            setDocumentSyncEnabled(false);
-          }
+        if (presenceResult.success) {
+          initialPresenceSucceededRef.current = true;
+          syncStructuralAutoDisabledRef.current = false;
+          writeDocumentSyncStructuralDisabled(false);
+          setDocumentSyncEnabled(true);
+          setPresenceDebugStatus({
+            status: 'active',
+            disabled: false,
+            lastErrorClass: null
+          });
+        } else {
+          initialPresenceSucceededRef.current = false;
+          setDocumentSyncEnabled(false);
+          handlePresenceFailure(presenceResult, 'initial');
         }
       })
       .finally(() => {
+        documentSyncInitInFlightRef.current = false;
         setIsLoadingRemoteAnnotations(false);
       });
 
     // Cleanup: remove presence when leaving document
     return () => {
+      if (deferredInitialPresenceTimer) {
+        clearTimeout(deferredInitialPresenceTimer);
+      }
       removeDocumentPresence(documentId, user.id, 'app');
     };
-  }, [pdfFile?.id, user?.id]);
+  }, [getInteractionPerfResumeDelay, handlePresenceFailure, isInteractionPerfWindowActive, pageNum, pdfFile?.id, user?.id]);
 
   // Subscribe to real-time annotation changes
   useEffect(() => {
     const documentId = pdfFile?.id;
     // Check both state and ref (ref is synchronous, state may lag)
-    if (!documentId || !user?.id || !documentSyncEnabled || syncRLSErrorShownRef.current) {
+    if (
+      !documentId ||
+      !user?.id ||
+      !documentSyncEnabled ||
+      syncRLSErrorShownRef.current ||
+      syncStructuralAutoDisabledRef.current
+    ) {
       return;
     }
 
@@ -13072,7 +18218,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   useEffect(() => {
     const documentId = pdfFile?.id;
     // Check both state and ref (ref is synchronous, state may lag)
-    if (!documentId || !user?.id || !documentSyncEnabled || syncRLSErrorShownRef.current) return;
+    if (
+      !documentId ||
+      !user?.id ||
+      !documentSyncEnabled ||
+      syncRLSErrorShownRef.current ||
+      syncStructuralAutoDisabledRef.current
+    ) return;
     if (Object.keys(highlightAnnotations).length === 0) return;
 
     // Check if annotations actually changed (avoid syncing our own remote updates)
@@ -13081,22 +18233,40 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
-    const syncTimeout = setTimeout(async () => {
-      const { success, synced, error } = await syncAnnotationsToSupabase(documentId, user.id, highlightAnnotations);
+    let cancelled = false;
+    let syncTimeout = null;
+
+    const runSync = async () => {
+      if (cancelled || syncStructuralAutoDisabledRef.current) return;
+      const {
+        success,
+        error,
+        errorClass,
+        nonRetryable,
+        isRLSError
+      } = await syncAnnotationsToSupabase(documentId, user.id, highlightAnnotations);
+
+      if (cancelled) return;
 
       if (success) {
         lastSyncedAnnotationsRef.current = annotationsString;
         syncErrorCountRef.current = 0; // Reset error count on success
+        syncStructuralErrorShownRef.current = false;
       } else {
         syncErrorCountRef.current++;
-
-        // Check for RLS policy errors (code 42501 = insufficient_privilege)
-        const isRLSError = error?.code === '42501' || error?.message?.includes('row-level security');
 
         if (isRLSError && !syncRLSErrorShownRef.current) {
           // Show warning once and disable sync
           syncRLSErrorShownRef.current = true;
           console.warn('[DocumentSync] RLS policy error detected. Cloud sync disabled. Please check your Supabase RLS policies.');
+          setDocumentSyncEnabled(false);
+        } else if (nonRetryable) {
+          syncStructuralAutoDisabledRef.current = true;
+          writeDocumentSyncStructuralDisabled(true);
+          if (!syncStructuralErrorShownRef.current) {
+            syncStructuralErrorShownRef.current = true;
+            console.warn(`[DocumentSync] Structural sync error (${errorClass || 'UNKNOWN'}). Auto-sync disabled for this session.`);
+          }
           setDocumentSyncEnabled(false);
         } else if (!isRLSError) {
           console.error('[DocumentSync] Sync failed:', error);
@@ -13108,23 +18278,91 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           setDocumentSyncEnabled(false);
         }
       }
-    }, 2000);
+    };
 
-    return () => clearTimeout(syncTimeout);
-  }, [highlightAnnotations, pdfFile?.id, user?.id, documentSyncEnabled]);
+    const scheduleSync = (delayMs) => {
+      syncTimeout = setTimeout(async () => {
+        if (cancelled || syncStructuralAutoDisabledRef.current) return;
+
+        if (isInteractionPerfWindowActive()) {
+          const retryDelay = getInteractionPerfResumeDelay();
+          emitPdfDebugEvent('sync_gate_annotation_sync_deferred', { retryDelay });
+          scheduleSync(retryDelay);
+          return;
+        }
+
+        await runSync();
+      }, delayMs);
+    };
+
+    scheduleSync(2000);
+
+    return () => {
+      cancelled = true;
+      if (syncTimeout) {
+        clearTimeout(syncTimeout);
+      }
+    };
+  }, [documentSyncEnabled, getInteractionPerfResumeDelay, highlightAnnotations, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
 
   // Update presence when page changes
   useEffect(() => {
     const documentId = pdfFile?.id;
     // Check both state and ref (ref is synchronous, state may lag)
-    if (!documentId || !user?.id || !documentSyncEnabled || syncRLSErrorShownRef.current) return;
+    if (
+      !documentId ||
+      !user?.id ||
+      !documentSyncEnabled ||
+      syncRLSErrorShownRef.current ||
+      presenceAutoDisabledRef.current ||
+      syncStructuralAutoDisabledRef.current ||
+      !initialPresenceSucceededRef.current
+    ) {
+      return;
+    }
 
-    updateDocumentPresence(documentId, user.id, {
-      clientType: 'app',
-      displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
-      currentPage: pageNum
-    });
-  }, [pageNum, pdfFile?.id, user?.id, documentSyncEnabled]);
+    let cancelled = false;
+    let deferredTimer = null;
+
+    const runPresenceUpdate = async () => {
+      const presenceResult = await updateDocumentPresence(documentId, user.id, {
+        clientType: 'app',
+        displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
+        currentPage: pageNum
+      });
+
+      if (cancelled) return;
+
+      if (presenceResult.success) {
+        setPresenceDebugStatus({
+          status: 'active',
+          disabled: false,
+          lastErrorClass: null
+        });
+        return;
+      }
+
+      handlePresenceFailure(presenceResult, 'page-change');
+    };
+
+    if (isInteractionPerfWindowActive()) {
+      const retryDelay = getInteractionPerfResumeDelay();
+      emitPdfDebugEvent('sync_gate_presence_deferred', { retryDelay });
+      deferredTimer = setTimeout(() => {
+        if (cancelled) return;
+        runPresenceUpdate();
+      }, retryDelay);
+    } else {
+      runPresenceUpdate();
+    }
+
+    return () => {
+      cancelled = true;
+      if (deferredTimer) {
+        clearTimeout(deferredTimer);
+      }
+    };
+  }, [documentSyncEnabled, getInteractionPerfResumeDelay, handlePresenceFailure, isInteractionPerfWindowActive, pageNum, pdfFile?.id, user?.id]);
 
   const handleExportSpaceToCSV = useCallback((spaceId) => {
     if (!features?.excelExport) {
@@ -13332,19 +18570,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const handleSpaceDelete = useCallback((id) => {
     // Checkpoint history before deleting space
-    addHistoryCheckpoint();
+    addHistoryCheckpoint('space:delete', { spaceId: id });
 
     setSpaces(prev => prev.filter(s => s.id !== id));
     if (activeSpaceId === id) {
       setActiveSpaceId(null);
     }
-  }, [activeSpaceId]);
+  }, [addHistoryCheckpoint, activeSpaceId]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
+    debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
     setActiveSpaceId(spaceId);
   }, [activeSpaceId, selectedSpaceId]);
 
   const handleExitSpaceMode = useCallback(() => {
+    debugLog('[SPACE TOGGLE] Deactivating space - regions disabled, all annotations with regionId should be hidden:', { previousActiveSpaceId: activeSpaceId });
     setActiveSpaceId(null);
   }, [activeSpaceId, selectedSpaceId]);
 
@@ -13368,18 +18608,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Toggle region overlay visibility
   const handleToggleRegionOverlay = useCallback((spaceId, pageId) => {
+    debugLog('[REGION TOGGLE] Called:', { spaceId, pageId, activeSpaceId });
     setRegionOverlayDisabled(prev => {
       const key = `${spaceId}-${pageId}`;
       const newMap = new Map(prev);
+      const wasDisabled = newMap.get(key) === true;
       // Toggle: if currently disabled (true), enable it (delete); if enabled, disable it (set to true)
-      if (newMap.get(key) === true) {
+      if (wasDisabled) {
         newMap.delete(key);
+        debugLog('[REGION TOGGLE] Enabling region overlay:', { spaceId, pageId, key });
       } else {
         newMap.set(key, true);
+        debugLog('[REGION TOGGLE] Disabling region overlay - annotations with regionId should be hidden:', { spaceId, pageId, key });
       }
       return newMap;
     });
-  }, []);
+  }, [activeSpaceId]);
 
   // Check if a region overlay is enabled
   const isRegionOverlayEnabled = useCallback((spaceId, pageId, page) => {
@@ -13419,39 +18663,99 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return Array.from(pageSet).sort((a, b) => a - b);
   }, [activeSpaceId, spaces]);
 
+  useEffect(() => {
+    syncfusionActiveSpacePagesRef.current = Array.isArray(activeSpacePages) ? activeSpacePages : [];
+  }, [activeSpacePages]);
+
   const annotationSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
 
-  useEffect(() => {
-    if (!selectedTemplate || !selectedModuleId) return;
-    const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-    /* console.log('[Survey Debug] Active module updated', {
-      moduleId: selectedModuleId,
-      moduleName,
-      activeSpaceId,
-      selectedSpaceId,
-      effectiveAnnotationSpaceId: annotationSpaceId
-    }); */
-  }, [selectedModuleId, selectedTemplate, activeSpaceId, selectedSpaceId, annotationSpaceId]);
-
-  useEffect(() => {
-    const moduleName = selectedTemplate && selectedModuleId
-      ? getModuleName(selectedTemplate, selectedModuleId)
-      : null;
-    /* console.log('[Survey Debug] Space context updated', {
-      activeSpaceId,
-      selectedSpaceId,
-      effectiveAnnotationSpaceId: annotationSpaceId,
-      moduleId: selectedModuleId,
-      moduleName
-    }); */
-  }, [activeSpaceId, selectedSpaceId, annotationSpaceId, selectedModuleId, selectedTemplate]);
 
   // Navigation functions
   const goToPage = useCallback((targetPage, options = {}) => {
-    const { fallback = 'nearest' } = options;
-    let desiredPage = targetPage;
+    const {
+      fallback = 'nearest',
+      bypassActiveSpace = false,
+      fromBookmark = false,
+      preferBookmarkSource = false,
+      bookmarkSourceId = null,
+      bookmarkDest = null,
+      bookmarkFallbackPage = null
+    } = options;
+    const viewerPageCount = useSyncfusionRenderer
+      ? coercePageNumber(
+        syncfusionViewerRef.current?.getPageCount?.() ??
+        syncfusionViewerRef.current?.pageCount,
+        Number.POSITIVE_INFINITY
+      )
+      : null;
+    const effectiveMaxPages = Number.isFinite(numPages) && numPages > 0
+      ? numPages
+      : (viewerPageCount || Number.POSITIVE_INFINITY);
+    if (effectiveMaxPages !== Number.POSITIVE_INFINITY && effectiveMaxPages < 1) return;
 
-    if (activeSpaceId) {
+    let desiredPage = coercePageNumber(targetPage, effectiveMaxPages);
+    const resolvePageFromBookmarkDest = () => {
+      const indexValue = Number(
+        bookmarkDest?.pageIndex ??
+        bookmarkDest?.PageIndex ??
+        bookmarkDest?.index ??
+        bookmarkDest?.Index
+      );
+      if (Number.isFinite(indexValue)) {
+        const fromIndex = coercePageNumber(Math.trunc(indexValue) + 1, effectiveMaxPages);
+        if (fromIndex) {
+          return fromIndex;
+        }
+      }
+
+      const directPage = coercePageNumber(
+        bookmarkDest?.pageNumber ??
+        bookmarkDest?.PageNumber ??
+        bookmarkDest?.page ??
+        bookmarkDest?.Page,
+        effectiveMaxPages
+      );
+      if (directPage) return directPage;
+      return null;
+    };
+    if (useSyncfusionRenderer && preferBookmarkSource && (bookmarkSourceId || bookmarkDest)) {
+      const viewer = syncfusionViewerRef.current;
+      const usedSourcePriority = typeof viewer?.goToBookmarkSource === 'function'
+        ? viewer.goToBookmarkSource(bookmarkSourceId, bookmarkDest, true)
+        : false;
+      if (usedSourcePriority) {
+        const pageFromDest = resolvePageFromBookmarkDest();
+        if (pageFromDest) {
+          setPageNum(pageFromDest);
+          setPageInputValue(String(pageFromDest));
+          setIsPageInputDirty(false);
+        }
+        return;
+      }
+    }
+    if (!desiredPage && useSyncfusionRenderer && (bookmarkSourceId || bookmarkDest)) {
+      const viewer = syncfusionViewerRef.current;
+      const usedBookmarkFallback = typeof viewer?.goToBookmarkSource === 'function'
+        ? viewer.goToBookmarkSource(bookmarkSourceId, bookmarkDest, preferBookmarkSource)
+        : false;
+      if (usedBookmarkFallback) {
+        const pageFromDest = resolvePageFromBookmarkDest();
+        if (pageFromDest) {
+          setPageNum(pageFromDest);
+          setPageInputValue(String(pageFromDest));
+          setIsPageInputDirty(false);
+        }
+        return;
+      }
+    }
+    if (!desiredPage && (bookmarkSourceId || bookmarkDest || bookmarkFallbackPage)) {
+      desiredPage = resolvePageFromBookmarkDest() || coercePageNumber(bookmarkFallbackPage, effectiveMaxPages);
+    }
+    if (!desiredPage) {
+      return;
+    }
+
+    if (activeSpaceId && !bypassActiveSpace) {
       if (!activeSpacePages || activeSpacePages.length === 0) {
         return;
       }
@@ -13477,7 +18781,71 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     }
 
-    if (desiredPage < 1 || desiredPage > numPages) return;
+    const normalizedDesiredPage = coercePageNumber(desiredPage, effectiveMaxPages);
+    if (!normalizedDesiredPage) return;
+    desiredPage = normalizedDesiredPage;
+
+    if (useSyncfusionRenderer) {
+      const viewer = syncfusionViewerRef.current;
+      const invokeNavigation = (context, method, ...args) => {
+        if (typeof method !== 'function') return false;
+        try {
+          return method.apply(context, args) !== false;
+        } catch {
+          return false;
+        }
+      };
+
+      const tryBookmarkNavigation = () => {
+        if (!bookmarkSourceId && !bookmarkDest) return false;
+        return invokeNavigation(
+          viewer,
+          viewer?.goToBookmarkSource,
+          bookmarkSourceId,
+          bookmarkDest,
+          preferBookmarkSource
+        );
+      };
+
+      const navigateWithPrimary = () => {
+        if (invokeNavigation(viewer, viewer?.goToPage, desiredPage)) return true;
+        if (invokeNavigation(viewer?.navigationModule, viewer?.navigationModule?.goToPage, desiredPage)) return true;
+        return tryBookmarkNavigation();
+      };
+
+      const navigateWithSecondary = () => {
+        if (invokeNavigation(viewer?.navigationModule, viewer?.navigationModule?.goToPage, desiredPage)) return true;
+        if (invokeNavigation(viewer, viewer?.goToPage, desiredPage)) return true;
+        return tryBookmarkNavigation();
+      };
+
+      if (!navigateWithPrimary()) return;
+      isNavigatingRef.current = true;
+      targetPageRef.current = desiredPage;
+      if (syncfusionNavigateResetTimerRef.current) {
+        clearTimeout(syncfusionNavigateResetTimerRef.current);
+      }
+      syncfusionNavigateResetTimerRef.current = setTimeout(() => {
+        if (targetPageRef.current === desiredPage) {
+          isNavigatingRef.current = false;
+          targetPageRef.current = null;
+        }
+        syncfusionNavigateResetTimerRef.current = null;
+      }, 1500);
+      setTimeout(() => {
+        const currentAfterNavigate = coercePageNumber(
+          viewer?.getCurrentPage?.() ?? viewer?.currentPageNumber,
+          Number.POSITIVE_INFINITY
+        );
+        if (currentAfterNavigate !== desiredPage) {
+          navigateWithSecondary();
+        }
+      }, 120);
+      setPageNum(desiredPage);
+      setPageInputValue(String(desiredPage));
+      setIsPageInputDirty(false);
+      return;
+    }
 
     if (scrollMode === 'single') {
       setPageNum(desiredPage);
@@ -13524,7 +18892,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setIsPageInputDirty(false);
       }
     }
-  }, [numPages, scrollMode, activeSpaceId, activeSpacePages]);
+  }, [numPages, scrollMode, activeSpaceId, activeSpacePages, useSyncfusionRenderer]);
+
+  const getSyncfusionThumbnail = useCallback((pageNumber) => {
+    const viewer = syncfusionViewerRef.current;
+    if (!viewer?.getThumbnailDataUrl) return Promise.resolve(null);
+    emitPdfDebugEvent('app_thumbnail_request', { pageNumber });
+    return viewer.getThumbnailDataUrl(pageNumber, {
+      timeout: 900,
+      interval: 70,
+      targetWidth: 220
+    }).then((thumbnail) => {
+      if (thumbnail) {
+        emitPdfDebugEvent('app_thumbnail_success', { pageNumber });
+      } else {
+        emitPdfDebugEvent('app_thumbnail_miss', { pageNumber });
+      }
+      return thumbnail;
+    }).catch((error) => {
+      setLastDebugError('THUMBNAIL_ERROR', { pageNumber, message: error?.message || String(error) });
+      emitPdfDebugEvent('app_thumbnail_error', { pageNumber });
+      return null;
+    });
+  }, []);
 
   // Compute search results grouped by page for efficient rendering
   const searchResultsByPage = useMemo(() => {
@@ -13576,20 +18966,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, []);
 
   const handleRegionSetFullPage = useCallback(() => {
-    // console.log('[App] ===== handleRegionSetFullPage CALLED =====', { activeSpaceId, regionSelectionPage });
     if (!activeSpaceId || !regionSelectionPage) {
       console.warn('[App] ERROR: Missing activeSpaceId or regionSelectionPage', { activeSpaceId, regionSelectionPage });
       return;
     }
 
-    // console.log('[App] Clearing all areas and setting full page mode');
     handleSpaceClearRegions(activeSpaceId, regionSelectionPage);
 
     // Close the region selection tool after setting full page
-    // console.log('[App] Closing region selection tool');
     setShowRegionSelection(false);
     setRegionSelectionPage(null);
-    // console.log('[App] ===== handleRegionSetFullPage COMPLETED =====');
   }, [activeSpaceId, regionSelectionPage, handleSpaceClearRegions]);
 
   const canSetRegionToFullPage = useMemo(() => {
@@ -13671,13 +19057,39 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   useEffect(() => {
     // Reset to regular mode whenever the active PDF changes
     // Clear all PDF-specific state first to ensure clean transition
+    const previousUndoDepth = undoHistoryRef.current.length;
+    const previousRedoDepth = redoHistoryRef.current.length;
+
+    setUndoHistory([]);
+    setRedoHistory([]);
+    undoHistoryRef.current = [];
+    redoHistoryRef.current = [];
+    undoHistoryMetaRef.current = [];
+    redoHistoryMetaRef.current = [];
+    lastCheckpointHashRef.current = null;
+    objectModifiedInteractionCheckpointRef.current.clear();
+    isUndoingRef.current = false;
+    annotationsByPageRef.current = {};
+    highlightAnnotationsRef.current = {};
+    spacesRef.current = [];
+    setSyncfusionDocumentBytes(null);
+    setSyncfusionPageContainers({});
+    setSyncfusionCommittedPageScales({});
+    finishSyncfusionInteractionWindow();
+    pageContainersRef.current = {};
+    setRenderedPages(new Set());
+    syncfusionZoomSourceRef.current = null;
     setActiveSpaceId(null);
     setBookmarks([]);
+    setPdfBookmarks([]);
+    setHasImportedPdfBookmarks(false);
+    pdfjsBookmarkAttemptRef.current = null;
     setSpaces([]);
     setPageNames({});
     setPageTransformations({});
     setShowSurveyPanel(false);
     setSelectedTemplate(null);
+    clearExcelSyncCheckpoint();
     setSelectedModuleId(null);
     setSelectedCategoryId(null);
     setShowRegionSelection(false);
@@ -13701,6 +19113,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setNoteDialogOpen(null);
     setNoteDialogContent({ text: '', photos: [], videos: [] });
     setActiveTool('pan');
+
+    pushHistoryDebugEvent('history_reset_for_pdf_change', {
+      reason: 'pdf:change',
+      previousUndoDepth,
+      previousRedoDepth,
+      undoDepth: 0,
+      redoDepth: 0,
+      nextPdfName: pdfFile?.name || null
+    });
 
 
     if (!pdfFile) {
@@ -13727,7 +19148,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const loadedCallouts = loadCallouts(id);
     setCallouts(loadedCallouts);
     setHasUnsavedAnnotations(false); // Reset unsaved flag
-  }, [pdfFile]);
+  }, [clearExcelSyncCheckpoint, finishSyncfusionInteractionWindow, pdfFile, pushHistoryDebugEvent]);
 
   // Save items and annotations to localStorage when they change
   useEffect(() => {
@@ -13738,10 +19159,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Save highlightAnnotations to localStorage when they change
   useEffect(() => {
     if (!pdfId) {
-      // console.log('Skipping save - no pdfId');
       return;
     }
-    // console.log('Saving highlightAnnotations to localStorage:', { pdfId, count: Object.keys(highlightAnnotations).length });
     saveHighlightAnnotations(pdfId, highlightAnnotations);
   }, [pdfId, highlightAnnotations]);
 
@@ -13780,7 +19199,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Save survey data to Supabase Storage
   const saveSurveyDataToSupabase = useCallback(async (currentAnnotations, currentSpaces, currentTemplate) => {
     if (!pdfFile || !pdfFile.projectId || !pdfId) {
-      // console.log('Skipping Supabase save: missing context', { pdfFile, projectId: pdfFile?.projectId, pdfId });
       return;
     }
 
@@ -13854,7 +19272,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       // Restore view state if available
       if (data.zoomLevel) setScale(data.zoomLevel);
-      if (data.currentPage) setPageNum(data.currentPage);
+      const restoredPage = coercePageNumber(data.currentPage, numPages || Number.POSITIVE_INFINITY);
+      if (restoredPage) setPageNum(restoredPage);
 
       // Template restoration is handled by the document's template_id usually, 
       // but we can fallback to data.templateId if needed.
@@ -13862,7 +19281,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     } catch (error) {
       // It's normal for new documents to not have data yet
     }
-  }, [downloadFromStorage, pdfFile]);
+  }, [downloadFromStorage, pdfFile, numPages]);
 
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
@@ -13871,8 +19290,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (!pdfId || !pdfFile) return;
 
     try {
-      // console.log('Saving document with embedded annotations...', silent ? '(auto-save)' : '');
-      // console.log('PDF file path:', pdfFilePath);
 
       // Save PDF with embedded annotations (overwrites original file if path available)
       await savePDFWithAnnotationsPdfLib(pdfFile, annotationsByPage, pageSizes, pdfFilePath);
@@ -13882,11 +19299,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       savedAnnotationsByPageRef.current = { ...annotationsByPage };
       setHasUnsavedAnnotations(false);
       // Notify parent component that changes have been saved
+      // Notify parent component that changes have been saved
       if (onUnsavedAnnotationsChange) {
-        onUnsavedAnnotationsChange(false);
+        onUnsavedAnnotationsChange(false, tabId);
       }
 
-      console.log('Document saved successfully');
       if (!silent) {
         alert('PDF saved with annotations! The file has been updated.');
       }
@@ -13895,11 +19312,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (features?.cloudSync) {
         await saveSurveyDataToSupabase(highlightAnnotations, spaces, selectedTemplate);
       } else {
-        // console.log('Skipping Supabase sync (Free Plan)');
       }
 
       // Check if we should sync to linked Excel file
-      if (selectedTemplate?.linkedExcelPath && !silent) {
+      const shouldOfferExcelSync = (
+        !silent &&
+        features?.excelExport &&
+        selectedTemplate?.linkedExcelPath &&
+        hasPendingExcelSyncChanges
+      );
+      if (shouldOfferExcelSync) {
         if (selectedTemplate.excelSyncPreference === 'always') {
           // Auto-sync to Excel without prompting
           pushToExcelWithRetry();
@@ -13914,7 +19336,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         alert('Error saving PDF: ' + error.message);
       }
     }
-  }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath, onUnsavedAnnotationsChange, selectedTemplate, pushToExcelWithRetry, features?.cloudSync, highlightAnnotations, spaces]);
+  }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath, onUnsavedAnnotationsChange, selectedTemplate, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, highlightAnnotations, spaces, tabId, hasPendingExcelSyncChanges]);
 
   // Auto-save every 30 seconds when there are unsaved changes and a file path is available
   useEffect(() => {
@@ -13924,7 +19346,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     const autoSaveInterval = setInterval(() => {
-      // console.log('Auto-saving document...');
       handleSaveDocument(true); // silent=true for auto-save
     }, 30000); // 30 seconds
 
@@ -13938,11 +19359,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     const handleBeforeQuit = async () => {
-      // console.log('App is quitting, saving document...');
       if (pdfFilePath && hasUnsavedAnnotations) {
         try {
           await handleSaveDocument(true); // silent=true
-          // console.log('Document saved before quit');
         } catch (error) {
           console.error('Error saving before quit:', error);
         }
@@ -13966,11 +19385,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // For item-level notes, noteDialogOpen is just the highlightId
     const highlightId = noteDialogOpen;
 
-    // console.log('Note dialog opened for item:', highlightId);
 
     const existingNote = highlightAnnotations[highlightId]?.note;
 
-    // console.log('Found item-level note:', existingNote);
 
     if (existingNote) {
       setNoteDialogContent({
@@ -13997,13 +19414,219 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [selectedTemplate, pdfId]); // Only run when template changes
 
-  // Load PDF
+  const resolvePdfOutlinePageNumber = useCallback(async (pdf, destination) => {
+    if (!pdf || destination === null || destination === undefined) return null;
+
+    let resolvedDestination = destination;
+    try {
+      if (typeof resolvedDestination === 'string') {
+        resolvedDestination = await pdf.getDestination(resolvedDestination);
+      }
+    } catch (error) {
+      return null;
+    }
+
+    if (!Array.isArray(resolvedDestination) || resolvedDestination.length === 0) {
+      return null;
+    }
+
+    const pageRef = resolvedDestination[0];
+    try {
+      if (typeof pageRef === 'number') {
+        return coercePageNumber(pageRef + 1, pdf.numPages);
+      }
+      if (pageRef && typeof pageRef === 'object') {
+        const pageIndex = await pdf.getPageIndex(pageRef);
+        return coercePageNumber(pageIndex + 1, pdf.numPages);
+      }
+    } catch (error) {
+      return null;
+    }
+
+    return null;
+  }, []);
+
+  const extractPdfOutlineBookmarks = useCallback(async (pdf) => {
+    if (!pdf?.getOutline) return [];
+
+    let outlineItems = null;
+    try {
+      outlineItems = await pdf.getOutline();
+    } catch {
+      return [];
+    }
+
+    if (!Array.isArray(outlineItems) || outlineItems.length === 0) {
+      return [];
+    }
+
+    const imported = [];
+
+    const walkOutline = async (items, parentId = null, path = []) => {
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        if (!item) continue;
+
+        const childItems = Array.isArray(item.items) ? item.items : [];
+        const hasChildren = childItems.length > 0;
+        const pageNumber = await resolvePdfOutlinePageNumber(pdf, item.dest);
+        const hasValidPage = Boolean(pageNumber);
+
+        // Skip non-navigable external outline entries unless they contain children.
+        if (!hasChildren && !hasValidPage) {
+          continue;
+        }
+
+        const title = typeof item.title === 'string' ? item.title.trim() : '';
+        const fallbackName = hasChildren ? `Section ${index + 1}` : `Bookmark ${index + 1}`;
+        const name = title || fallbackName;
+        const nextPath = [...path, name];
+        const sourceId = `pdfjs:${nextPath.join('>')}#${index}`;
+        const id = `pdf:${sourceId}`;
+        const pageIds = hasValidPage ? [pageNumber] : [];
+
+        imported.push({
+          id,
+          name,
+          type: hasChildren ? 'folder' : 'bookmark',
+          pageIds,
+          parentId,
+          children: [],
+          source: 'pdf',
+          sourceId,
+          outlinePath: nextPath,
+          order: index,
+          dest: {
+            pageNumber: hasValidPage ? pageNumber : null
+          },
+          isFromPDF: true
+        });
+
+        if (hasChildren) {
+          await walkOutline(childItems, id, nextPath);
+        }
+      }
+    };
+
+    await walkOutline(outlineItems, null, []);
+    return imported;
+  }, [resolvePdfOutlinePageNumber]);
+
   useEffect(() => {
-    // console.log('PDFViewer useEffect triggered. pdfFile:', pdfFile);
-    if (!pdfFile) {
-      // console.log('No PDF file provided to viewer');
+    if (!pdfDoc) return undefined;
+    if (Array.isArray(pdfBookmarks) && pdfBookmarks.length > 0) return undefined;
+
+    const attemptKey = pdfId || `${pdfFile?.name || 'document'}:${pdfDoc?.numPages || 0}`;
+    if (pdfjsBookmarkAttemptRef.current === attemptKey) {
+      return undefined;
+    }
+    pdfjsBookmarkAttemptRef.current = attemptKey;
+
+    let cancelled = false;
+    const fallbackTimer = setTimeout(async () => {
+      try {
+        const outlineBookmarks = await extractPdfOutlineBookmarks(pdfDoc);
+        if (cancelled || !Array.isArray(outlineBookmarks) || outlineBookmarks.length === 0) {
+          return;
+        }
+        setPdfBookmarks((prev) => {
+          if (Array.isArray(prev) && prev.length > 0) {
+            return prev;
+          }
+          return outlineBookmarks.map((bookmark, index) => ({
+            ...bookmark,
+            source: 'pdf',
+            sourceId: bookmark.sourceId || `pdfjs:${bookmark.id || index}`,
+            isFromPDF: true
+          }));
+        });
+      } catch { }
+    }, 3200);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(fallbackTimer);
+    };
+  }, [extractPdfOutlineBookmarks, pdfBookmarks, pdfDoc, pdfFile?.name, pdfId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPdfOutlinePageLookup(null);
+
+    if (!pdfDoc) {
+      return undefined;
+    }
+
+    const loadOutlineLookup = async () => {
+      try {
+        const outlineBookmarks = await extractPdfOutlineBookmarks(pdfDoc);
+        if (cancelled || !Array.isArray(outlineBookmarks) || outlineBookmarks.length === 0) {
+          return;
+        }
+        setPdfOutlinePageLookup(buildOutlinePageLookup(outlineBookmarks));
+      } catch { }
+    };
+
+    loadOutlineLookup();
+    return () => {
+      cancelled = true;
+    };
+  }, [extractPdfOutlineBookmarks, pdfDoc, pdfId]);
+
+  useEffect(() => {
+    if (!pdfOutlinePageLookup || !Array.isArray(bookmarks) || bookmarks.length === 0) {
       return;
     }
+
+    setBookmarks((prev) => {
+      let changed = false;
+      const next = prev.map((bookmark) => {
+        if (!bookmark || bookmark.type === 'folder') return bookmark;
+        if (bookmark.manualPageOverride === true) return bookmark;
+
+        const resolvedPage = resolveBookmarkPageFromOutlineLookup(bookmark, pdfOutlinePageLookup);
+        if (!resolvedPage) return bookmark;
+
+        const currentPage = coercePageNumber(
+          Array.isArray(bookmark?.pageIds) ? bookmark.pageIds[0] : null,
+          Number.POSITIVE_INFINITY
+        );
+        const shouldDisableSourceNavigation = typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('syncfusion:');
+        const needsPageUpdate = currentPage !== resolvedPage;
+        const needsSourceDisable = shouldDisableSourceNavigation && bookmark.disableSourceNavigation !== true;
+
+        if (!needsPageUpdate && !needsSourceDisable) {
+          return bookmark;
+        }
+
+        changed = true;
+        return {
+          ...bookmark,
+          pageIds: [resolvedPage],
+          outlineCorrected: true,
+          disableSourceNavigation: shouldDisableSourceNavigation ? true : bookmark.disableSourceNavigation,
+          dest: bookmark?.dest && typeof bookmark.dest === 'object'
+            ? {
+              ...bookmark.dest,
+              pageNumber: resolvedPage,
+              PageNumber: resolvedPage,
+              pageIndex: resolvedPage - 1,
+              PageIndex: resolvedPage - 1
+            }
+            : bookmark.dest
+        };
+      });
+
+      return changed ? next : prev;
+    });
+  }, [bookmarks.length, pdfOutlinePageLookup]);
+
+  // Load PDF
+  useEffect(() => {
+    if (!pdfFile) {
+      return;
+    }
+    let isCancelled = false;
 
     const loadPDF = async () => {
       const docName = pdfFile.name || 'unknown';
@@ -14031,8 +19654,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
 
-        // console.log('ArrayBuffer created, size:', arrayBuffer.byteLength);
-        // console.log('PDF load check:', {
+        // Keep an immutable copy for Syncfusion client-side rendering so mode toggles can switch renderers.
+        setSyncfusionDocumentBytes(new Uint8Array(arrayBuffer.slice(0)));
+
         //   size: arrayBuffer.byteLength,
         //   version: pdfjsLib.version,
         //   workerSrc: pdfjsLib.GlobalWorkerOptions.workerSrc
@@ -14041,7 +19665,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         try {
           const checkHeader = new Uint8Array(arrayBuffer.slice(0, 5));
           const headerStr = String.fromCharCode(...checkHeader);
-          // console.log('PDF Header Check:', headerStr);
           if (headerStr.indexOf('%PDF-') !== 0) {
             console.error('CRITICAL: File does not start with %PDF-');
           }
@@ -14072,13 +19695,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             });
             pdf = await recoveryTask.promise;
             perfLoad.mark(docName, 'PDF.js document parsed (recovery mode)');
-            // console.log('PDF loaded in recovery mode');
           } catch (recoveryError) {
             // If recovery also fails, throw the original error
             throw firstError;
           }
         }
-        // console.log('PDF loaded successfully. Pages:', pdf.numPages);
+        if (isCancelled) return;
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
         setPageNum(1);
@@ -14087,24 +19709,58 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         if (pdfFile.projectId) {
           await loadSurveyDataFromSupabase(pdfFile);
         }
+        if (isCancelled) return;
 
-        // Calculate page sizes for layout and annotation layer
+        // Calculate page sizes progressively so the first page can render immediately.
         perfLoad.mark(docName, 'Calculating page sizes');
-        const heights = {};
-        const sizes = {};
-        const pages = {};
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const viewport = page.getViewport({ scale: 1.0 });
-          heights[i] = viewport.height;
-          sizes[i] = { width: viewport.width, height: viewport.height };
-          pages[i] = page; // Store page object for text layer
+        setPageHeights({});
+        setPageSizes({});
+        setPageObjects({});
+
+        const firstPage = await pdf.getPage(1);
+        if (isCancelled) return;
+        const firstViewport = firstPage.getViewport({ scale: 1.0 });
+        setPageHeights({ 1: firstViewport.height });
+        setPageSizes({ 1: { width: firstViewport.width, height: firstViewport.height } });
+        setPageObjects({ 1: firstPage });
+
+        const maxWorkers = typeof navigator !== 'undefined' && Number.isFinite(navigator.hardwareConcurrency)
+          ? Math.max(2, Math.min(8, Math.floor(navigator.hardwareConcurrency / 2)))
+          : 4;
+        const remainingPages = [];
+        for (let i = 2; i <= pdf.numPages; i++) {
+          remainingPages.push(i);
         }
+
+        for (let start = 0; start < remainingPages.length; start += maxWorkers) {
+          const batch = remainingPages.slice(start, start + maxWorkers);
+          const batchResults = await Promise.all(batch.map(async (pageNumber) => {
+            const page = await pdf.getPage(pageNumber);
+            const viewport = page.getViewport({ scale: 1.0 });
+            return {
+              pageNumber,
+              page,
+              viewport
+            };
+          }));
+          if (isCancelled) return;
+
+          const batchHeights = {};
+          const batchSizes = {};
+          const batchPages = {};
+
+          batchResults.forEach(({ pageNumber, page, viewport }) => {
+            batchHeights[pageNumber] = viewport.height;
+            batchSizes[pageNumber] = { width: viewport.width, height: viewport.height };
+            batchPages[pageNumber] = page;
+          });
+
+          setPageHeights((prev) => ({ ...prev, ...batchHeights }));
+          setPageSizes((prev) => ({ ...prev, ...batchSizes }));
+          setPageObjects((prev) => ({ ...prev, ...batchPages }));
+        }
+
         perfLoad.mark(docName, `Page sizes calculated (${pdf.numPages} pages)`);
-        // console.log('Page sizes calculated:', Object.keys(sizes).length, 'pages');
-        setPageHeights(heights);
-        setPageSizes(sizes);
-        setPageObjects(pages);
 
         // Clear render cache when new PDF loads
         pageRenderCacheRef.current.clear();
@@ -14114,33 +19770,51 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // Import existing PDF annotations as editable Fabric.js objects
         perfLoad.mark(docName, 'Importing PDF annotations');
         try {
-          const { annotationsByPage: importedAnnotations, unsupportedTypes } = await importAnnotationsFromPdf(pdf);
+          const { annotationsByPage: importedAnnotations, unsupportedTypes } = await importAnnotationsFromPdf(pdf, {
+            rawPdfBytes: arrayBuffer
+          });
+          if (isCancelled) return;
 
-          if (Object.keys(importedAnnotations).length > 0) {
-            // Merge imported annotations with any existing annotations
-            setAnnotationsByPage(prev => {
-              const merged = { ...prev };
-              Object.entries(importedAnnotations).forEach(([pageNum, pageData]) => {
-                if (merged[pageNum]) {
-                  // Merge objects, keeping existing and adding imported
-                  merged[pageNum] = {
-                    ...merged[pageNum],
-                    objects: [
-                      ...(merged[pageNum].objects || []),
-                      ...(pageData.objects || [])
-                    ]
-                  };
-                } else {
-                  merged[pageNum] = pageData;
-                }
-              });
-              return merged;
+          // Replace previously imported PDF annotations (stale styling) while preserving user-created annotations.
+          setAnnotationsByPage((prev) => {
+            const next = {};
+
+            Object.entries(prev || {}).forEach(([pageKey, pageData]) => {
+              const existingObjects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+              const preservedObjects = existingObjects.filter((obj) => !obj?.isPdfImported);
+
+              next[pageKey] = {
+                ...(pageData || {}),
+                objects: preservedObjects
+              };
             });
-          }
+
+            Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
+              const currentPage = next[pageKey] || {};
+              const preservedObjects = Array.isArray(currentPage.objects) ? currentPage.objects : [];
+              const importedObjects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+              const seen = new Set();
+              const dedupedImported = [];
+
+              importedObjects.forEach((obj, index) => {
+                const key = `${obj?.pdfAnnotationType || obj?.type || 'annotation'}:${obj?.pdfAnnotationId || index}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+                dedupedImported.push(obj);
+              });
+
+              next[pageKey] = {
+                ...currentPage,
+                ...(pageData || {}),
+                objects: [...preservedObjects, ...dedupedImported]
+              };
+            });
+
+            return next;
+          });
 
           // Track unsupported annotation types for notification
           if (unsupportedTypes.length > 0) {
-            // console.log('Unsupported annotation types found:', unsupportedTypes);
             setUnsupportedAnnotationTypes(unsupportedTypes);
             setShowUnsupportedNotice(true);
           }
@@ -14155,6 +19829,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
         perfLoad.mark(docName, 'PDF ready for rendering');
         perfLoad.end(docName);
+        if (isCancelled) return;
         setIsLoadingPDF(false);
 
         // Pre-mount first 5 pages for faster initial scrolling
@@ -14167,6 +19842,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       } catch (error) {
         perfLoad.end(docName);
+        if (isCancelled) return;
         console.error('Error loading PDF:', error);
         console.error('Error stack:', error.stack);
         setIsLoadingPDF(false);
@@ -14175,13 +19851,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
 
     loadPDF();
+    return () => {
+      isCancelled = true;
+    };
   }, [pdfFile]);
 
   // Memoized render page function with caching
   // NOTE: Rendering is now handled by PDFPageCanvas. This function is kept for compatibility
   // with preRenderNearbyPages and IntersectionObserver logic, but it no longer draws to canvas directly.
   const renderPage = useCallback(async (pageNumber, priority = 'normal') => {
-    if (!pdfDoc) return;
+    if (useSyncfusionRenderer || !pdfDoc) return;
 
     // We can use this to trigger pre-fetching or other logic if needed,
     // but for now, PDFPageTiles handles the heavy lifting.
@@ -14190,11 +19869,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // If we need to track "rendered" state for other logic:
     // setRenderedPages(prev => new Set([...prev, pageNumber]));
 
-  }, [pdfDoc, scale]);
+  }, [pdfDoc, scale, useSyncfusionRenderer]);
 
   // Pre-render nearby pages for instant display
   const preRenderNearbyPages = useCallback((currentPage) => {
-    if (!pdfDoc || scrollMode !== 'continuous') return;
+    if (useSyncfusionRenderer || !pdfDoc || scrollMode !== 'continuous') return;
 
     const preRenderDistance = 2; // Pre-render 2 pages ahead and behind
     const pagesToPreRender = [];
@@ -14221,11 +19900,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       });
     });
-  }, [pdfDoc, scrollMode, numPages, scale, renderPage]);
+  }, [numPages, pdfDoc, renderPage, scale, scrollMode, useSyncfusionRenderer]);
 
   // Optimized IntersectionObserver with debouncing
   useEffect(() => {
-    if (scrollMode !== 'continuous' || !pdfDoc) return;
+    if (useSyncfusionRenderer || scrollMode !== 'continuous' || !pdfDoc) return;
 
     if (observerRef.current) {
       observerRef.current.disconnect();
@@ -14319,7 +19998,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Use a small timeout to ensure DOM elements are mounted
     const setupTimer = setTimeout(() => {
       const containers = Object.values(pageContainersRef.current).filter(Boolean);
-      // console.log('Setting up IntersectionObserver for', containers.length, 'page containers');
       containers.forEach(container => {
         if (container) {
           observer.observe(container);
@@ -14346,11 +20024,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       clearTimeout(updateTimer);
     };
-  }, [pdfDoc, scrollMode, renderPage, preRenderNearbyPages]);
+  }, [pdfDoc, preRenderNearbyPages, renderPage, scrollMode, useSyncfusionRenderer]);
 
   // Render single page mode with pre-rendering
   useEffect(() => {
-    if (scrollMode !== 'single' || !pdfDoc) return;
+    if (useSyncfusionRenderer || scrollMode !== 'single' || !pdfDoc) return;
     renderPage(pageNum);
 
     // Pre-render adjacent pages for instant navigation
@@ -14360,7 +20038,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (pageNum < numPages) {
       renderPage(pageNum + 1, 'low');
     }
-  }, [scrollMode, pdfDoc, pageNum, scale, renderPage, numPages]);
+  }, [numPages, pageNum, pdfDoc, renderPage, scale, scrollMode, useSyncfusionRenderer]);
 
   // Render first page when PDF loads in continuous mode
   // NOTE: PDFPageCanvas handles rendering automatically when mounted.
@@ -14371,7 +20049,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Re-render all visible pages when scale changes
   useEffect(() => {
-    if (!pdfDoc) return;
+    if (useSyncfusionRenderer || !pdfDoc) return;
 
     // Clear cache for old scale (keep cache for other scales in case user zooms back)
     // Only clear if scale changed significantly
@@ -14387,7 +20065,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       renderPage(pageNum);
     }
     // IntersectionObserver will handle continuous mode
-  }, [scale, pdfDoc, scrollMode, pageNum, renderPage]);
+  }, [pageNum, pdfDoc, renderPage, scale, scrollMode, useSyncfusionRenderer]);
 
   // Re-render pages when transformations change (CSS transforms apply automatically, but this ensures consistency)
   useEffect(() => {
@@ -14442,6 +20120,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const container = containerRef.current;
     const previousScale = scaleRef.current || 1.0;
     const safeScale = clampScale(incomingScale);
+
+    if (useSyncfusionRenderer) {
+      const viewer = syncfusionViewerRef.current;
+      markSyncfusionInteractionActive('set-scale-with-viewport');
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const anchor = options.anchor || {};
+        const cursorX = typeof anchor.x === 'number' ? anchor.x : rect.width / 2;
+        const cursorY = typeof anchor.y === 'number' ? anchor.y : rect.height / 2;
+        setAnchor({
+          x: cursorX + container.scrollLeft,
+          y: cursorY + container.scrollTop
+        });
+      }
+      scaleRef.current = safeScale;
+      setScale(safeScale);
+
+      if (viewer?.magnificationModule) {
+        const zoomPercent = safeScale * 100;
+        const zoomSource = options.mode || syncfusionZoomSourceRef.current || ZOOM_MODES.MANUAL;
+        syncfusionZoomSourceRef.current = zoomSource;
+        if (options.anchor && viewer.magnificationModule.initiateMouseZoom) {
+          viewer.magnificationModule.initiateMouseZoom(options.anchor.x, options.anchor.y, zoomPercent);
+        } else if (viewer.magnificationModule.zoomTo) {
+          viewer.magnificationModule.zoomTo(zoomPercent);
+        }
+      }
+      return;
+    }
 
     if (!container) {
       if (Math.abs(safeScale - previousScale) > 0.0001 || options.force) {
@@ -14504,7 +20211,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       isZoomingRef.current = false;
       perfZoom.end(safeScale);
     });
-  }, [setScale, setAnchor]);
+  }, [markSyncfusionInteractionActive, setScale, setAnchor, useSyncfusionRenderer]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index) => {
@@ -14561,12 +20268,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const zoomForHeight = viewportHeight / targetHeight;
       let targetZoom = Math.min(zoomForWidth, zoomForHeight);
 
-      // Clamp zoom to reasonable bounds (don't zoom too far in or out)
-      targetZoom = Math.max(1.0, Math.min(targetZoom, 3.0));
+      // Clamp zoom to reasonable bounds to avoid costly large re-layouts.
+      targetZoom = Math.max(1.0, Math.min(targetZoom, 2.2));
 
       // Only zoom if significantly different from current zoom
       const currentScale = scaleRef.current;
-      const shouldZoom = Math.abs(targetZoom - currentScale) > 0.1 && targetZoom > currentScale;
+      const shouldZoom = Math.abs(targetZoom - currentScale) > 0.12 && targetZoom > (currentScale + 0.05);
 
       if (shouldZoom) {
         // Store original zoom level if not already stored
@@ -14578,9 +20285,42 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setScaleWithViewportPreservation(targetZoom, { preserveCenter: false });
       }
 
+      const resolvePageContentElement = (pageContainerNode) => {
+        if (!pageContainerNode || typeof pageContainerNode.querySelector !== 'function') {
+          return pageContainerNode;
+        }
+
+        const syncfusionPageCanvas = pageContainerNode.querySelector('.e-pv-page-canvas');
+        if (syncfusionPageCanvas) {
+          return syncfusionPageCanvas;
+        }
+
+        const canvasNodes = Array.from(pageContainerNode.querySelectorAll('canvas'));
+        if (canvasNodes.length === 0) {
+          return pageContainerNode;
+        }
+
+        let bestCanvas = null;
+        let bestArea = -1;
+        canvasNodes.forEach((canvasNode) => {
+          const width = Number(canvasNode.clientWidth) || Number(canvasNode.width) || 0;
+          const height = Number(canvasNode.clientHeight) || Number(canvasNode.height) || 0;
+          const area = width > 0 && height > 0 ? width * height : 0;
+          if (area > bestArea) {
+            bestArea = area;
+            bestCanvas = canvasNode;
+          }
+        });
+
+        return bestCanvas || pageContainerNode;
+      };
+
       // Calculate scroll position to center the match
       const scrollToMatch = () => {
-        const updatedScale = shouldZoom ? targetZoom : currentScale;
+        const scaleBasis = shouldZoom ? targetZoom : currentScale;
+        const effectiveScale = useSyncfusionRenderer
+          ? getSyncfusionPageScale(pageNumber, scaleBasis)
+          : scaleBasis;
         const pageContainerCurrent = pageContainersRef.current[pageNumber];
 
         if (!pageContainerCurrent) {
@@ -14588,61 +20328,47 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           return;
         }
 
+        const pageContentElement = resolvePageContentElement(pageContainerCurrent);
+
         // Get the current positions
         const containerRectCurrent = container.getBoundingClientRect();
-        const pageRect = pageContainerCurrent.getBoundingClientRect();
+        const pageRect = (pageContentElement || pageContainerCurrent).getBoundingClientRect();
+        const containerStyles = window.getComputedStyle(container);
+        const paddingTop = parseFloat(containerStyles.paddingTop || '0');
+        const paddingLeft = parseFloat(containerStyles.paddingLeft || '0');
 
-        // Calculate the match center position in viewport coordinates
-        const matchCenterX = bounds.centerX * updatedScale;
-        const matchCenterY = bounds.centerY * updatedScale;
+        // Calculate the match center position in page content coordinates
+        const matchCenterX = bounds.centerX * effectiveScale;
+        const matchCenterY = bounds.centerY * effectiveScale;
 
-        // Calculate the offset from page container to match center
-        const pageOffsetX = pageRect.left - containerRectCurrent.left + container.scrollLeft;
-        const pageOffsetY = pageRect.top - containerRectCurrent.top + container.scrollTop;
+        // Convert page content position into container scroll space
+        const pageOffsetX = pageRect.left - containerRectCurrent.left + container.scrollLeft - paddingLeft;
+        const pageOffsetY = pageRect.top - containerRectCurrent.top + container.scrollTop - paddingTop;
 
         // Calculate target scroll position to center the match
         const targetScrollX = pageOffsetX + matchCenterX - containerRectCurrent.width / 2;
         const targetScrollY = pageOffsetY + matchCenterY - containerRectCurrent.height / 2;
 
-        // Smooth scroll to the match
+        const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+        const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+
         container.scrollTo({
-          left: Math.max(0, targetScrollX),
-          top: Math.max(0, targetScrollY),
-          behavior: 'smooth'
+          left: Math.max(0, Math.min(targetScrollX, maxScrollLeft)),
+          top: Math.max(0, Math.min(targetScrollY, maxScrollTop)),
+          behavior: 'auto'
         });
 
-        // Clear navigation flag after scroll completes
+        // Clear navigation flag after centering completes.
         setTimeout(() => {
           isNavigatingToMatchRef.current = false;
-        }, 400);
+        }, 120);
       };
 
       // If we zoomed, wait for the zoom to apply before scrolling
       if (shouldZoom) {
-        setTimeout(scrollToMatch, 150);
+        setTimeout(scrollToMatch, useSyncfusionRenderer ? 90 : 30);
       } else {
-        // If in continuous mode, first navigate to page then scroll to match
-        if (scrollMode === 'continuous') {
-          const pageContainerTarget = pageContainersRef.current[pageNumber];
-          if (pageContainerTarget) {
-            const containerRectCurrent = container.getBoundingClientRect();
-            const pageRect = pageContainerTarget.getBoundingClientRect();
-
-            // Calculate position to center the match in viewport
-            const matchCenterY = bounds.centerY * currentScale;
-            const pageTopInContainer = pageRect.top - containerRectCurrent.top + container.scrollTop;
-            const targetScrollY = pageTopInContainer + matchCenterY - containerRectCurrent.height / 2;
-
-            container.scrollTo({
-              top: Math.max(0, targetScrollY),
-              behavior: 'smooth'
-            });
-          }
-        }
-
-        setTimeout(() => {
-          isNavigatingToMatchRef.current = false;
-        }, 400);
+        scrollToMatch();
       }
     };
 
@@ -14663,11 +20389,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           behavior: 'auto' // Instant scroll to page first
         });
       }
-      setTimeout(performZoomAndCenter, 100);
+      setTimeout(performZoomAndCenter, useSyncfusionRenderer ? 60 : 20);
     } else {
-      setTimeout(performZoomAndCenter, 50);
+      setTimeout(performZoomAndCenter, useSyncfusionRenderer ? 40 : 10);
     }
-  }, [scrollMode, pageSizes, goToPage, setScaleWithViewportPreservation]);
+  }, [scrollMode, pageSizes, goToPage, setScaleWithViewportPreservation, useSyncfusionRenderer, getSyncfusionPageScale]);
 
   // Handler for search results change from SearchTextPanel
   const handleSearchResultsChange = useCallback((results) => {
@@ -14756,6 +20482,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Using smaller increments and minimal throttle for fluid feel
   const wheelTimerRef = useRef(null);
   const handleWheel = useCallback((e) => {
+    if (useSyncfusionRenderer) return;
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
 
@@ -14793,10 +20520,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         container.scrollLeft += e.deltaX;
       }
     }
-  }, []);
+  }, [useSyncfusionRenderer]);
 
   // Attach wheel event listener with passive: false to allow preventDefault
   useEffect(() => {
+    if (useSyncfusionRenderer) return undefined;
     const wheelHandler = (e) => {
       // Check if event target is within container OR if event coordinates are within container bounds
       // This handles cases where overlay divs (like region selection tool) are positioned over the container
@@ -14836,10 +20564,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => {
       document.removeEventListener('wheel', wheelHandler, { capture: true });
     };
-  }, [handleWheel]);
+  }, [handleWheel, useSyncfusionRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
+    if (useSyncfusionRenderer) return;
     // Only allow pan when:
     // 1. Pan tool is active (spacebar pan should work even when region selection is active)
     // 2. Can pan (content exceeds viewport) OR showRegionSelection is true (allow panning in region selection mode)
@@ -14876,9 +20605,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       });
       e.preventDefault();
     }
-  }, [activeTool, showRegionSelection, canPan]);
+  }, [activeTool, showRegionSelection, canPan, useSyncfusionRenderer]);
 
   const handleMouseMove = useCallback((e) => {
+    if (useSyncfusionRenderer) return;
     if (isPanning) {
       const container = containerRef.current;
       if (container) {
@@ -14904,12 +20634,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         canvasMouseDownRef.current = null; // Clear after starting pan
       }
     }
-  }, [isPanning, panStart, activeTool, canPan, showRegionSelection]);
+  }, [isPanning, panStart, activeTool, canPan, showRegionSelection, useSyncfusionRenderer]);
 
   const handleMouseUp = useCallback(() => {
+    if (useSyncfusionRenderer) return;
     setIsPanning(false);
     canvasMouseDownRef.current = null; // Clear canvas mouse down tracking
-  }, []);
+  }, [useSyncfusionRenderer]);
 
   // Stop panning if tool changes away from pan
   // Note: Don't stop panning when region selection becomes active - spacebar pan should work
@@ -14922,6 +20653,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Add native event listener as backup for panning when overlay has pointerEvents: none
   // This ensures events are caught even when they pass through the overlay
   useEffect(() => {
+    if (useSyncfusionRenderer) return undefined;
     if (!showRegionSelection || activeTool !== 'pan') return;
 
     const container = containerRef.current;
@@ -14956,7 +20688,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => {
       container.removeEventListener('mousedown', nativeMouseDown, { capture: true });
     };
-  }, [showRegionSelection, activeTool, canPan]);
+  }, [showRegionSelection, activeTool, canPan, useSyncfusionRenderer]);
 
   // Track eraser cursor position when eraser tool is active
   useEffect(() => {
@@ -15034,6 +20766,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const handlePageInputBlur = useCallback(() => {
     commitPageInput();
   }, [commitPageInput]);
+
+  useEffect(() => {
+    const normalized = coercePageNumber(pageNum);
+    if (normalized) return;
+    setPageNum(1);
+    setPageInputValue('1');
+    setIsPageInputDirty(false);
+  }, [pageNum]);
 
   // Sync input value when pageNum changes from other sources (prev/next buttons, IntersectionObserver, etc.)
   // But only if the input is not currently focused (user isn't typing)
@@ -15255,6 +20995,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const key = e.key.toLowerCase();
 
         if (!e.altKey) {
+          if (key === 'f') {
+            e.preventDefault();
+            pdfSidebarRef.current?.openSearchPanel({ focus: true, select: true });
+            return;
+          }
           // Save document (Cmd/Ctrl+S)
           if (key === 's') {
             e.preventDefault();
@@ -15307,14 +21052,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode]);
 
-  // Mode toggle
-  const toggleScrollMode = useCallback(() => {
-    setScrollMode(prev => prev === 'continuous' ? 'single' : 'continuous');
-  }, []);
+  // Enforce continuous mode
+  useEffect(() => {
+    if (scrollMode !== 'continuous') {
+      setScrollMode('continuous');
+    }
+  }, [scrollMode]);
 
   // Memoized styles for performance
   // Memoized styles for performance
   const containerStyle = useMemo(() => {
+    if (useSyncfusionRenderer) {
+      const shouldShowGrabCursor = activeTool === 'pan' && !showRegionSelection;
+      return {
+        flex: 1,
+        overflow: 'hidden',
+        overflowAnchor: 'none',
+        cursor: shouldShowGrabCursor ? 'grab' : 'default',
+        background: '#2b2b2b',
+        position: 'relative',
+        fontFamily: FONT_FAMILY,
+        minHeight: 0,
+        minWidth: 0
+      };
+    }
+
     // Only show grab cursor when pan tool is active and region selection is not active
     const shouldShowGrabCursor = activeTool === 'pan' && !showRegionSelection;
 
@@ -15329,6 +21091,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return {
       flex: 1,
       overflow: 'auto',
+      overflowAnchor: 'none',
       cursor: cursorStyle,
       background: '#2b2b2b',
       padding: '20px',
@@ -15337,11 +21100,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       minHeight: 0,
       minWidth: 0
     };
-  }, [isPanning, canPan, activeTool, showRegionSelection, eraserCursorPos.visible]);
+  }, [isPanning, canPan, activeTool, showRegionSelection, eraserCursorPos.visible, useSyncfusionRenderer]);
 
   const contentStyle = useMemo(() => ({
     minWidth: 'max-content',
     minHeight: scrollMode === 'single' ? '100%' : 'auto',
+    overflowAnchor: 'none',
     display: 'flex',
     flexDirection: 'column',
     gap: scrollMode === 'continuous' ? '20px' : '0',
@@ -15349,23 +21113,213 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     ...(scrollMode === 'single' && { justifyContent: 'center' })
   }), [scrollMode]);
 
-  const handleSaveAnnotations = useCallback((pageNumber, json) => {
-    // Checkpoint history before saving annotation changes
-    addHistoryCheckpoint();
+  const normalizeCanvasJsonForHistory = useCallback((value) => {
+    const transientKeys = new Set([
+      '_originalHasControls',
+      '_originalHasBorders',
+      '_lastLeft',
+      '_lastTop',
+      '_dragSessionId',
+      'hasBorders',
+      'hasControls',
+      'lockMovementX',
+      'lockMovementY',
+      'lockScalingFlip',
+      'perPixelTargetFind',
+      'targetFindTolerance',
+      'hoverCursor',
+      'moveCursor',
+      'selectable',
+      'evented',
+      'dirty',
+      'cacheKey',
+      'isMoving'
+    ]);
+
+    const walk = (node) => {
+      if (Array.isArray(node)) {
+        return node.map(walk);
+      }
+      if (!node || typeof node !== 'object') {
+        return node;
+      }
+
+      const normalized = {};
+      Object.entries(node).forEach(([key, child]) => {
+        if (transientKeys.has(key)) {
+          return;
+        }
+        normalized[key] = walk(child);
+      });
+
+      // Callout control handles are shown/hidden during selection only.
+      if (normalized.partType === 'knee' || normalized.partType === 'arrowTip') {
+        normalized.opacity = 0;
+      }
+
+      return normalized;
+    };
+
+    return walk(value);
+  }, []);
+
+  const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
+    const currentPageAnnotations = annotationsByPageRef.current?.[pageNumber];
+    const normalizedCurrentAnnotations = normalizeCanvasJsonForHistory(currentPageAnnotations);
+    const normalizedIncomingAnnotations = normalizeCanvasJsonForHistory(json);
+    const normalizedSaveContext = saveContext && typeof saveContext === 'object'
+      ? saveContext
+      : null;
+    const source = normalizeHistoryReason(normalizedSaveContext?.source || 'annotations:save');
+    const interactionId = typeof normalizedSaveContext?.interactionId === 'string' && normalizedSaveContext.interactionId.trim()
+      ? normalizedSaveContext.interactionId.trim()
+      : null;
+    const checkpointPolicyRaw = typeof normalizedSaveContext?.checkpointPolicy === 'string'
+      ? normalizedSaveContext.checkpointPolicy.trim().toLowerCase()
+      : 'normal';
+    const checkpointPolicy = checkpointPolicyRaw === 'skip' || checkpointPolicyRaw === 'force'
+      ? checkpointPolicyRaw
+      : 'normal';
+    const interactionPageKey = String(pageNumber);
+    const lastInteractionIdForPage = objectModifiedInteractionCheckpointRef.current.get(interactionPageKey) || null;
+    const shouldSkipCheckpointByPolicy = checkpointPolicy === 'skip';
+    const shouldSkipCheckpointByInteraction = checkpointPolicy !== 'force'
+      && source === 'object:modified'
+      && Boolean(interactionId)
+      && lastInteractionIdForPage === interactionId;
+    const previousPageFingerprint = getHistoryFingerprint(normalizedCurrentAnnotations);
+    const nextPageFingerprint = getHistoryFingerprint(normalizedIncomingAnnotations);
+    const pageTransition = summarizeAnnotationPageTransitionForDebug(
+      normalizedCurrentAnnotations,
+      normalizedIncomingAnnotations
+    );
+
+    if (previousPageFingerprint.serialized === nextPageFingerprint.serialized) {
+      pushHistoryDebugEvent('annotations_save_noop', {
+        reason: 'annotations:save',
+        source,
+        interactionId,
+        checkpointPolicy,
+        pageNumber,
+        previousPageHash: previousPageFingerprint.hash,
+        nextPageHash: nextPageFingerprint.hash,
+        changedObjectsCount: pageTransition.changedObjectsCount,
+        pageTransition,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+        saveContext: normalizedSaveContext
+      });
+      return;
+    }
+
+    const previousObjectCount = Array.isArray(normalizedCurrentAnnotations?.objects)
+      ? normalizedCurrentAnnotations.objects.length
+      : 0;
+    const nextObjectCount = Array.isArray(normalizedIncomingAnnotations?.objects)
+      ? normalizedIncomingAnnotations.objects.length
+      : 0;
+    const objectDelta = nextObjectCount - previousObjectCount;
+
+    pushHistoryDebugEvent('annotations_save_detected', {
+      reason: 'annotations:save',
+      source,
+      interactionId,
+      checkpointPolicy,
+      pageNumber,
+      previousObjectCount,
+      nextObjectCount,
+      objectDelta,
+      changedObjectsCount: pageTransition.changedObjectsCount,
+      pageTransition,
+      previousPageHash: previousPageFingerprint.hash,
+      nextPageHash: nextPageFingerprint.hash,
+      undoDepth: undoHistoryRef.current.length,
+      redoDepth: redoHistoryRef.current.length,
+      saveContext: normalizedSaveContext
+    });
+
+    if (shouldSkipCheckpointByPolicy) {
+      pushHistoryDebugEvent('annotations_checkpoint_skipped_policy', {
+        reason: 'annotations:save',
+        source,
+        interactionId,
+        checkpointPolicy,
+        pageNumber,
+        previousObjectCount,
+        nextObjectCount,
+        objectDelta,
+        changedObjectsCount: pageTransition.changedObjectsCount,
+        pageTransition,
+        previousPageHash: previousPageFingerprint.hash,
+        nextPageHash: nextPageFingerprint.hash,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+        saveContext: normalizedSaveContext
+      });
+    } else if (shouldSkipCheckpointByInteraction) {
+      pushHistoryDebugEvent('annotations_checkpoint_skipped_interaction_duplicate', {
+        reason: 'annotations:save',
+        source,
+        interactionId,
+        checkpointPolicy,
+        pageNumber,
+        previousObjectCount,
+        nextObjectCount,
+        objectDelta,
+        changedObjectsCount: pageTransition.changedObjectsCount,
+        pageTransition,
+        previousPageHash: previousPageFingerprint.hash,
+        nextPageHash: nextPageFingerprint.hash,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+        saveContext: normalizedSaveContext
+      });
+    } else {
+      if (source === 'object:modified' && interactionId) {
+        objectModifiedInteractionCheckpointRef.current.set(interactionPageKey, interactionId);
+      }
+
+      // Checkpoint history before saving annotation changes
+      addHistoryCheckpoint('annotations:save', {
+        pageNumber,
+        source,
+        interactionId,
+        checkpointPolicy,
+        previousObjectCount,
+        nextObjectCount,
+        objectDelta,
+        changedObjectsCount: pageTransition.changedObjectsCount,
+        changedObjectsPreview: pageTransition.changedObjectsPreview,
+        previousPageHash: previousPageFingerprint.hash,
+        nextPageHash: nextPageFingerprint.hash,
+        saveContext: normalizedSaveContext
+      });
+    }
 
     // Only update if changes actually occurred
     setAnnotationsByPage(prev => {
       // Deep compare to avoid unnecessary updates/renders
-      if (JSON.stringify(prev[pageNumber]) === JSON.stringify(json)) {
+      if (JSON.stringify(normalizeCanvasJsonForHistory(prev[pageNumber])) === JSON.stringify(normalizedIncomingAnnotations)) {
         return prev;
       }
 
       return {
         ...prev,
-        [pageNumber]: json
+        [pageNumber]: normalizedIncomingAnnotations
       };
     });
-  }, [addHistoryCheckpoint]);
+    annotationsByPageRef.current = {
+      ...(annotationsByPageRef.current || {}),
+      [pageNumber]: normalizedIncomingAnnotations
+    };
+  }, [
+    addHistoryCheckpoint,
+    getHistoryFingerprint,
+    normalizeCanvasJsonForHistory,
+    normalizeHistoryReason,
+    pushHistoryDebugEvent,
+    summarizeAnnotationPageTransitionForDebug
+  ]);
 
   // Helper function to check if two bounds match (with tolerance for floating point)
   const boundsMatch = (bounds1, bounds2, tolerance = 5) => {
@@ -15548,10 +21502,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Handle highlight deletion from PDF (via eraser tool)
   const handleHighlightDeleted = useCallback((pageNumber, bounds, highlightId = null) => {
     // Checkpoint history before deletion
-    addHistoryCheckpoint();
+    addHistoryCheckpoint('highlight:delete', {
+      pageNumber,
+      highlightId: highlightId || null
+    });
 
 
-    // console.log('[App] handleHighlightDeleted called', { pageNumber, bounds, highlightId, selectedModuleId, selectedTemplate });
     if (!selectedModuleId || !selectedTemplate) {
       // console.warn('[App] handleHighlightDeleted aborted: Missing module or template');
       return;
@@ -15740,11 +21696,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       }, 100);
     }
-  }, [selectedModuleId, selectedTemplate, highlightAnnotations, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, highlightAnnotations, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
 
   // Handle deletion of a highlight item (from survey panel)
   const handleDeleteHighlightItem = useCallback((highlightId) => {
-    // console.log('[App] handleDeleteHighlightItem called', { highlightId });
     const highlight = highlightAnnotations[highlightId];
     if (!highlight) {
       console.warn('[App] handleDeleteHighlightItem aborted: Highlight not found', highlightId);
@@ -15759,11 +21714,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Handle highlight creation from annotation tool
   const handleHighlightCreated = useCallback((pageNumber, bounds) => {
     // Checkpoint history before creation
-    addHistoryCheckpoint();
+    addHistoryCheckpoint('highlight:create', {
+      pageNumber,
+      hasPendingLocationItem: Boolean(pendingLocationItem),
+      selectedCategoryId: selectedCategoryId || null
+    });
 
 
     // Only handle if survey mode is active
-    if (!selectedTemplate) {
+    if (!showSurveyPanel || !selectedTemplate) {
       return;
     }
 
@@ -15839,17 +21798,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Create a unique ID for this highlight
     const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
-    const debugSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
-    /* console.log('[Survey Debug] Highlight created', {
-      highlightId,
-      pageNumber,
-      bounds,
-      moduleId: effectiveModuleId,
-      moduleName,
-      activeSpaceId,
-      selectedSpaceId,
-      effectiveSpaceId: debugSpaceId
-    }); */
+
 
     // Immediately add highlight to canvas (always show selection feedback)
     // This ensures the user sees their selection regardless of category selection state
@@ -15923,7 +21872,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       }
     }
-  }, [selectedModuleId, selectedTemplate, selectedCategoryId, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId]);
 
   // Auto-switch to highlight tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
@@ -16005,6 +21954,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return updated;
       });
     }, 100);
+  }, []);
+
+  const handleSyncfusionTextSelectionEnd = useCallback(() => {
+    // Selection-only mode for Syncfusion renderer:
+    // keep native text selection/copy behavior and do not create survey highlights.
   }, []);
 
   // Filter annotations by active module for rendering on PDF
@@ -16189,9 +22143,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           const tolerance = 5 / currentScale;
           const matchesValidHighlight = validBoundsForPage.some(bounds => {
             return Math.abs(objX - bounds.x) < tolerance &&
-                   Math.abs(objY - bounds.y) < tolerance &&
-                   Math.abs(objWidth - bounds.width) < tolerance &&
-                   Math.abs(objHeight - bounds.height) < tolerance;
+              Math.abs(objY - bounds.y) < tolerance &&
+              Math.abs(objWidth - bounds.width) < tolerance &&
+              Math.abs(objHeight - bounds.height) < tolerance;
           });
 
           if (!matchesValidHighlight) {
@@ -16226,6 +22180,300 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [activeSpaceId, activeSpacePages]);
 
   useEffect(() => {
+    if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
+      setSyncfusionInteractionResidentPages((prev) => (prev.size === 0 ? prev : new Set()));
+      syncfusionInteractionResidentPagesRef.current = new Set();
+      return;
+    }
+    if (syncfusionInteractionPhase !== 'interacting') {
+      return;
+    }
+
+    const candidateResidentPages = computeSyncfusionInteractionResidentPages();
+    if (candidateResidentPages.size === 0) {
+      return;
+    }
+
+    const nextResidentPages = setSyncfusionInteractionResidentPagesStable(candidateResidentPages);
+    const knownModes = syncfusionInteractionPageModesRef.current || {};
+    const pagesMissingMode = Array.from(nextResidentPages).filter((pageNumber) => !knownModes[pageNumber]);
+    if (pagesMissingMode.length > 0) {
+      const viewerScale = getSyncfusionViewerScale();
+      const frozenScaleUpdates = {};
+      const portalHosts = syncfusionInteractionPortalHostsRef.current || {};
+      let portalHostChanged = false;
+      pagesMissingMode.forEach((pageNumber) => {
+        if (!(Number.isFinite(pageNumber) && pageNumber > 0)) return;
+        const measuredScale = normalizeInteractionMeasuredScale(
+          measureSyncfusionPageHostScale(
+            pageNumber,
+            pageSizesRef.current || {},
+            syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+            viewerScale
+          ),
+          viewerScale,
+          viewerScale
+        );
+        frozenScaleUpdates[pageNumber] = measuredScale;
+        if (!portalHosts[pageNumber]?.isConnected) {
+          const stateHost = syncfusionPageContainersStateRef.current?.[pageNumber];
+          if (stateHost?.isConnected) {
+            portalHosts[pageNumber] = stateHost;
+            portalHostChanged = true;
+          } else {
+            const refHost = pageContainersRef.current?.[pageNumber];
+            if (refHost?.isConnected) {
+              portalHosts[pageNumber] = refHost;
+              portalHostChanged = true;
+            }
+          }
+        }
+      });
+      if (portalHostChanged) {
+        syncfusionInteractionPortalHostsRef.current = { ...portalHosts };
+      }
+      if (Object.keys(frozenScaleUpdates).length > 0) {
+        syncfusionCommittedPageScalesRef.current = {
+          ...(syncfusionCommittedPageScalesRef.current || {}),
+          ...frozenScaleUpdates
+        };
+        setSyncfusionCommittedPageScales((prev) => ({
+          ...(prev || {}),
+          ...frozenScaleUpdates
+        }));
+      }
+      freezeSyncfusionSessionPages(pagesMissingMode, { reset: false });
+      syncSyncfusionLightweightPages('interacting');
+      queueSyncfusionOverlayTransformSync(true);
+    }
+  }, [
+    computeSyncfusionInteractionResidentPages,
+    freezeSyncfusionSessionPages,
+    getSyncfusionViewerScale,
+    pageNum,
+    queueSyncfusionOverlayTransformSync,
+    setSyncfusionInteractionResidentPagesStable,
+    syncSyncfusionLightweightPages,
+    syncfusionDualLayerEnabled,
+    syncfusionInteractionPhase,
+    syncfusionLiveStableOverlayEnabled,
+    syncfusionPageContainers,
+    syncfusionVisiblePagesVersion,
+    useSyncfusionRenderer
+  ]);
+
+  useEffect(() => {
+    syncSyncfusionLightweightPages(syncfusionInteractionPhase);
+  }, [
+    syncSyncfusionLightweightPages,
+    syncfusionCommittingProxyPages,
+    syncfusionInteractionPageModes,
+    syncfusionInteractionPhase
+  ]);
+
+  useEffect(() => {
+    if (!useSyncfusionRenderer) return;
+    Object.entries(syncfusionPageContainers).forEach(([pageKey, pageDiv]) => {
+      const pageNumber = Number(pageKey);
+      if (!pageDiv || !Number.isFinite(pageNumber)) return;
+      pageDiv.style.display = shouldShowPage(pageNumber) ? '' : 'none';
+    });
+  }, [useSyncfusionRenderer, syncfusionPageContainers, shouldShowPage]);
+
+  useEffect(() => {
+    if (!useSyncfusionRenderer || !containerRef.current) {
+      setSyncfusionOverlayWindowPages(new Set());
+      syncfusionVisiblePagesRef.current = new Set();
+      return;
+    }
+
+    if (overlayVisibilityObserverRef.current) {
+      overlayVisibilityObserverRef.current.disconnect();
+      overlayVisibilityObserverRef.current = null;
+    }
+
+    const visiblePages = new Set();
+    syncfusionVisiblePagesRef.current = new Set();
+    const lingerUntilByPage = new Map();
+    let pruneTimer = null;
+    const clearPruneTimer = () => {
+      if (!pruneTimer) return;
+      clearTimeout(pruneTimer);
+      pruneTimer = null;
+    };
+    const applyWindowPages = () => {
+      if (syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled && syncfusionInteractionPhase !== 'idle') {
+        const residentSource = syncfusionInteractionResidentPagesRef.current?.size > 0
+          ? syncfusionInteractionResidentPagesRef.current
+          : syncfusionInteractionResidentPages;
+        const residentPages = Array.from(residentSource)
+          .filter((pageNumber) => shouldShowPage(pageNumber));
+        const residentSet = new Set(residentPages);
+        if (residentSet.size > 0) {
+          setSyncfusionOverlayWindowPages((prev) => {
+            if (
+              prev.size === residentSet.size &&
+              [...residentSet].every((pageNumber) => prev.has(pageNumber))
+            ) {
+              return prev;
+            }
+            setDebugData({ overlayWindowCount: residentSet.size, overlayWindowMode: 'interaction-bypass' });
+            emitPdfDebugEvent('app_overlay_window_update', { count: residentSet.size, reason: 'interaction-bypass' });
+            return residentSet;
+          });
+        }
+        // Keep the current window stable until resident pages are available.
+        clearPruneTimer();
+        return;
+      }
+
+      const viewerScaleForWindow = clampScale(
+        Number(
+          (syncfusionViewerRef.current?.getZoomValue?.() ??
+            syncfusionViewerRef.current?.zoomValue ??
+            (scaleRef.current || scale) * 100)
+        ) / 100
+      );
+      const overlayPrefetchPages = getSyncfusionOverlayPrefetchPages(viewerScaleForWindow);
+      const requestedPages = new Set();
+      visiblePages.forEach((pageNumber) => {
+        for (let offset = -overlayPrefetchPages; offset <= overlayPrefetchPages; offset += 1) {
+          const candidate = pageNumber + offset;
+          if (candidate > 0) {
+            requestedPages.add(candidate);
+          }
+        }
+      });
+
+      const fallbackPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || 1;
+      if (requestedPages.size === 0) {
+        for (let offset = -overlayPrefetchPages; offset <= overlayPrefetchPages; offset += 1) {
+          const candidate = fallbackPage + offset;
+          if (candidate > 0) {
+            requestedPages.add(candidate);
+          }
+        }
+      }
+
+      const now = Date.now();
+      const windowPages = new Set(requestedPages);
+      const previousWindowPages = syncfusionOverlayWindowPagesRef.current;
+      previousWindowPages.forEach((pageNumber) => {
+        if (requestedPages.has(pageNumber)) {
+          lingerUntilByPage.delete(pageNumber);
+          return;
+        }
+
+        const existingExpiry = lingerUntilByPage.get(pageNumber);
+        const expiryAt = Number.isFinite(existingExpiry)
+          ? existingExpiry
+          : (now + SYNCFUSION_OVERLAY_WINDOW_LINGER_MS);
+
+        if (expiryAt > now) {
+          lingerUntilByPage.set(pageNumber, expiryAt);
+          windowPages.add(pageNumber);
+          return;
+        }
+
+        lingerUntilByPage.delete(pageNumber);
+      });
+
+      setSyncfusionOverlayWindowPages((prev) => {
+        if (
+          prev.size === windowPages.size &&
+          [...windowPages].every((pageNumber) => prev.has(pageNumber))
+        ) {
+          return prev;
+        }
+        setDebugData({ overlayWindowCount: windowPages.size });
+        emitPdfDebugEvent('app_overlay_window_update', { count: windowPages.size });
+        return windowPages;
+      });
+
+      clearPruneTimer();
+      let shortestRemainingMs = null;
+      lingerUntilByPage.forEach((expiryAt, pageNumber) => {
+        if (requestedPages.has(pageNumber)) {
+          lingerUntilByPage.delete(pageNumber);
+          return;
+        }
+        const remainingMs = expiryAt - now;
+        if (remainingMs <= 0) {
+          lingerUntilByPage.delete(pageNumber);
+          return;
+        }
+        if (shortestRemainingMs === null || remainingMs < shortestRemainingMs) {
+          shortestRemainingMs = remainingMs;
+        }
+      });
+
+      if (shortestRemainingMs !== null) {
+        pruneTimer = setTimeout(() => {
+          pruneTimer = null;
+          applyWindowPages();
+        }, Math.max(24, Math.ceil(shortestRemainingMs) + 8));
+      }
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      let changed = false;
+      entries.forEach((entry) => {
+        const pageNumber = coercePageNumber(entry.target?.dataset?.pageNumber, Number.POSITIVE_INFINITY);
+        if (!pageNumber) return;
+        if (entry.isIntersecting) {
+          if (!visiblePages.has(pageNumber)) {
+            visiblePages.add(pageNumber);
+            changed = true;
+          }
+          return;
+        }
+        if (visiblePages.delete(pageNumber)) {
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        syncfusionVisiblePagesRef.current = new Set(visiblePages);
+        if (syncfusionInteractionPhaseRef.current === 'interacting') {
+          setSyncfusionVisiblePagesVersion((prev) => prev + 1);
+        }
+        applyWindowPages();
+      }
+    }, {
+      root: containerRef.current,
+      rootMargin: SYNCFUSION_OVERLAY_ROOT_MARGIN,
+      threshold: 0.01
+    });
+
+    overlayVisibilityObserverRef.current = observer;
+    Object.entries(syncfusionPageContainers).forEach(([pageKey, pageDiv]) => {
+      const pageNumber = Number(pageKey);
+      if (!pageDiv || !Number.isFinite(pageNumber) || !shouldShowPage(pageNumber)) return;
+      observer.observe(pageDiv);
+    });
+
+    applyWindowPages();
+
+    return () => {
+      clearPruneTimer();
+      observer.disconnect();
+      syncfusionVisiblePagesRef.current = new Set();
+      if (overlayVisibilityObserverRef.current === observer) {
+        overlayVisibilityObserverRef.current = null;
+      }
+    };
+  }, [
+    scale,
+    shouldShowPage,
+    syncfusionDualLayerEnabled,
+    syncfusionInteractionPhase,
+    syncfusionInteractionResidentPages,
+    syncfusionLiveStableOverlayEnabled,
+    syncfusionPageContainers,
+    useSyncfusionRenderer
+  ]);
+
+  useEffect(() => {
     if (!activeSpaceId) {
       return;
     }
@@ -16242,12 +22490,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (numPages > 0) {
       const visiblePages = Array.from({ length: numPages }, (_, i) => i + 1)
         .filter(pageNumber => shouldShowPage(pageNumber));
-      /* console.log('Pages visibility check:', {
-        totalPages: numPages,
-        visiblePages: visiblePages.length,
-        activeSpaceId,
-        visiblePageNumbers: visiblePages
-      }); */
     }
   }, [numPages, activeSpaceId, shouldShowPage, spaces]);
 
@@ -16324,6 +22566,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Helper function to set region lightbulb state
   const setRegionLightbulbState = useCallback((spaceId, pageId, value) => {
+    debugLog('[setRegionLightbulbState] Called:', { spaceId, pageId, value });
     setSpaces(prev => prev.map(space => {
       if (space.id !== spaceId) {
         return space;
@@ -16385,6 +22628,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }}>
         {/* Sidebar - keep visible during loading */}
         <PDFSidebar
+          ref={pdfSidebarRef}
           pdfDoc={null}
           numPages={0}
           pageNum={1}
@@ -16555,8 +22799,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setShowTemplateSelection(true);
               } else {
                 setShowSurveyPanel(false);
-                setSelectedTemplate(null);
                 setSelectedModuleId(null);
+                setSelectedSpaceId(null);
+                setSelectedCategoryId(null);
                 setActiveTool('select');
               }
             }}
@@ -16617,7 +22862,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }}
             currentSpaceId={activeSpaceId}
             currentPageId={regionSelectionPage}
-            scale={scale}
+            scale={regionSelectionScale}
             initialRegions={regionSelectionPage ? (getPageRegions(regionSelectionPage) || []) : []}
             onSetFullPage={handleRegionSetFullPage}
             canSetFullPage={canSetRegionToFullPage}
@@ -16684,6 +22929,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
           {/* Sidebar */}
           <PDFSidebar
+            ref={pdfSidebarRef}
             features={features}
             pdfDoc={pdfDoc}
             numPages={numPages}
@@ -16706,6 +22952,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             onResetPage={handleResetPage}
             onReorderPages={handleReorderPages}
             pageTransformations={pageTransformations}
+            getThumbnail={undefined}
             bookmarks={bookmarks}
             onBookmarkCreate={handleBookmarkCreate}
             onBookmarkUpdate={handleBookmarkUpdate}
@@ -16749,372 +22996,804 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
           {/* PDF Container - Optimized */}
           <div
-            ref={containerRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            ref={useSyncfusionRenderer ? syncfusionWrapperRef : containerRef}
+            onMouseDown={useSyncfusionRenderer ? undefined : handleMouseDown}
+            onMouseMove={useSyncfusionRenderer ? undefined : handleMouseMove}
+            onMouseUp={useSyncfusionRenderer ? undefined : handleMouseUp}
+            onMouseLeave={useSyncfusionRenderer ? undefined : handleMouseUp}
+            onWheelCapture={useSyncfusionRenderer ? handleSyncfusionWrapperWheel : undefined}
+            onPointerDown={useSyncfusionRenderer ? handleSyncfusionWrapperPointerDown : undefined}
+            onPointerMove={useSyncfusionRenderer ? handleSyncfusionWrapperPointerMove : undefined}
             style={containerStyle}
             data-testid="pdf-container"
           >
-            <div
-              ref={contentRef}
-              style={contentStyle}>
-              {scrollMode === 'continuous' ? (
-                numPages > 0 ? Array.from({ length: numPages }, (_, i) => i + 1)
-                  .filter(pageNumber => shouldShowPage(pageNumber))
-                  .map(pageNumber => {
-                    const pageRegions = getPageRegions(pageNumber);
-                    const isMounted = mountedPages.has(pageNumber);
+            {debugLogging && (() => {
+              // Touch tick state so the HUD refreshes even without other renders.
+              const tick = debugHudTick;
+              const snapshot = getDebugSnapshot();
+              const rates = snapshot.rates || {};
+              const rateEntries = Object.entries(rates)
+                .filter(([name]) => name.startsWith('syncfusion_') || name.startsWith('app_syncfusion_'))
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 4);
 
-                    return (
-                      <div
-                        key={pageNumber}
-                        ref={el => pageContainersRef.current[pageNumber] = el}
-                        data-page-num={pageNumber}
-                        style={{
-                          minHeight: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * scale}px` : '800px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                          position: 'relative'
-                        }}
-                      >
-                        {isMounted ? (
-                          <div style={{
-                            position: 'relative',
-                            transform: getPageTransform(pageNumber),
-                            transformOrigin: 'center center'
-                          }}>
-                            {/* Zoom container - applies CSS transform for smooth cursor-centered zoom */}
-                            <div style={zoomStyle}>
-                              <PDFPageCanvas
-                                page={pageObjects[pageNumber]}
-                                scale={renderedScale}
-                                pageNum={pageNumber}
-                                isVisible={visiblePagesSet.has(pageNumber)}
-                                priority={visiblePagesSet.has(pageNumber) ? 0 : (Math.abs(pageNumber - pageNum) <= 2 ? 1 : 2)}
-                                onFinishRender={() => {
-                                  setRenderedPages(prev => new Set([...prev, pageNumber]));
-                                }}
-                              />
-                              {pageSizes[pageNumber] && pageObjects[pageNumber] && (
-                                <TextLayer
-                                  pageNumber={pageNumber}
-                                  page={pageObjects[pageNumber]}
-                                  scale={renderedScale}
-                                  width={pageSizes[pageNumber].width}
-                                  height={pageSizes[pageNumber].height}
-                                  onTextSelected={handleTextSelected}
-                                  isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
-                                />
-                              )}
-                              {/* Search Highlight Layer */}
-                              {pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
-                                <SearchHighlightLayer
-                                  pageNumber={pageNumber}
-                                  width={pageSizes[pageNumber].width}
-                                  height={pageSizes[pageNumber].height}
-                                  scale={renderedScale}
-                                  highlights={searchResultsByPage[pageNumber]}
-                                  activeMatchId={currentMatch?.id}
-                                  isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
-                                />
-                              )}
-                              {pageSizes[pageNumber] && (
-                                <PageAnnotationLayer
-                                  pageNumber={pageNumber}
-                                  width={pageSizes[pageNumber].width}
-                                  height={pageSizes[pageNumber].height}
-                                  scale={renderedScale}
-                                  tool={activeTool}
-                                  strokeColor={strokeColor}
-                                  strokeWidth={Number(strokeWidth) || 3}
-                                  arrowheadStyle={arrowheadStyle}
-                                  annotations={annotationsByPage[pageNumber]}
-                                  onSaveAnnotations={handleSaveAnnotations}
-                                  onToolChange={setActiveTool}
-                                  highlightColor="rgba(255, 193, 7, 0.3)"
-                                  newHighlights={newHighlightsByPage[pageNumber]}
-                                  highlightsToRemove={highlightsToRemoveByPage[pageNumber]}
-                                  onHighlightCreated={handleHighlightCreated}
-                                  onHighlightDeleted={handleHighlightDeleted}
-                                  onHighlightClicked={handleHighlightClicked}
-                                  selectedSpaceId={annotationSpaceId}
-                                  activeSpaceId={activeSpaceId}
-                                  selectedModuleId={selectedModuleId}
-                                  selectedCategoryId={selectedCategoryId}
-                                  activeRegions={(() => {
-                                    return pageRegions;
-                                  })()}
-                                  spaces={spaces}
-                                  getRegionLightbulbState={getRegionLightbulbState}
-                                  activeRegionId={activeRegionId}
-                                  isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNumber}
-                                  eraserMode={eraserMode}
-                                  eraserSize={eraserSize}
-                                  showSurveyPanel={showSurveyPanel}
-                                  isRegionOverlayEnabled={isRegionOverlayEnabled}
-                                  layerVisibility={annotationLayerVisibility}
-                                  callouts={callouts}
-                                  setCallouts={setCallouts}
-                                  selectedCalloutId={selectedCalloutId}
-                                  setSelectedCalloutId={setSelectedCalloutId}
-                                  clipboardCallout={clipboardCallout}
-                                  clipboardCalloutType={clipboardCalloutType}
-                                  onCutCallout={handleCutCallout}
-                                  onCopyCallout={handleCopyCallout}
-                                  onPasteCallout={handlePasteCallout}
-                                  middleAreaBounds={middleAreaBounds}
-                                  surveyPanelWidth={surveyPanelWidth}
-                                  onDuplicatePage={handleDuplicatePage}
-                                  onRotatePageCW={handleRotatePageCW}
-                                  onRotatePageCCW={handleRotatePageCCW}
-                                  onInsertBlankPage={handleInsertBlankPage}
-                                  pageClipboard={clipboardPage ? { pageNumber: clipboardPage, type: clipboardType } : null}
-                                  onPastePageHere={(targetPage) => handlePastePage(targetPage, clipboardPage, clipboardType)}
-                                />
-                              )}
-                              {/* Space Region Dimming Overlay */}
-                              {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates AND overlay is enabled */}
-                              {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
-                                // Get the page object from the active space to check overlay state
-                                const space = spaces.find(s => s.id === activeSpaceId);
-                                const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
+              const refreshFlushCount = snapshot.counters?.app_syncfusion_refresh_flush || 0;
+              const refreshQueueCount = snapshot.counters?.app_syncfusion_refresh_queued || 0;
+              const overlayPageCount = Object.keys(syncfusionPageContainers).length;
+              const overlayWindowCount = syncfusionOverlayWindowPages.size;
 
-                                // Check if overlay should be shown for this page
-                                if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNumber, page)) {
-                                  return null;
-                                }
-
-                                // Filter to only regions with valid areas
-                                const validRegions = pageRegions.filter(region => {
-                                  if (!region || !Array.isArray(region.coordinates)) return false;
-                                  const coords = region.coordinates;
-                                  return (region.shapeType === 'rectangular' && coords.length >= 8) ||
-                                    (region.shapeType === 'polygon' && coords.length >= 6);
-                                });
-
-                                if (validRegions.length === 0) return null;
-
-                                return (
-                                  <SpaceRegionOverlay
-                                    pageNumber={pageNumber}
-                                    regions={validRegions}
-                                    width={pageSizes[pageNumber]?.width || 0}
-                                    height={pageSizes[pageNumber]?.height || 0}
-                                    scale={renderedScale}
-                                  />
-                                );
-                              })()}
-                              {/* Region Selection Overlay for this specific page */}
-                              {showRegionSelection && regionSelectionPage === pageNumber && (
-                                <div style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  width: `${(pageSizes[pageNumber]?.width || 0) * renderedScale}px`,
-                                  height: `${(pageSizes[pageNumber]?.height || 0) * renderedScale}px`,
-                                  pointerEvents: 'none',
-                                  zIndex: 1000
-                                }}>
-                                  <div id="region-selection-target" style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: '100%'
-                                  }} />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          /* Lightweight placeholder for unmounted pages */
-                          <div style={{
-                            width: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * 0.7 * scale}px` : '595px',
-                            height: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * scale}px` : '800px',
-                            background: '#f5f5f5',
-                            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: '#999',
-                            fontSize: '14px'
-                          }}>
-                            Page {pageNumber}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }) : (
-                  <div style={{
-                    padding: '40px',
-                    textAlign: 'center',
-                    color: '#999',
-                    fontSize: '14px'
-                  }}>
-                    {numPages === 0 ? 'No pages to display' : 'No pages match the current filter'}
+              return (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 12,
+                    right: 12,
+                    zIndex: 4000,
+                    background: 'rgba(15, 15, 15, 0.86)',
+                    border: '1px solid rgba(255,255,255,0.16)',
+                    borderRadius: 8,
+                    color: '#d8d8d8',
+                    fontFamily: FONT_FAMILY,
+                    fontSize: 11,
+                    lineHeight: 1.4,
+                    padding: '8px 10px',
+                    minWidth: 240,
+                    pointerEvents: 'none'
+                  }}
+                >
+                  <div style={{ color: '#8be9fd', fontWeight: 600, marginBottom: 4 }}>
+                    PDF Debug #{tick}
                   </div>
-                )
-              ) : (
-                shouldShowPage(pageNum) && (() => {
-                  const pageRegions = getPageRegions(pageNum);
-                  return (
-                    <div
-                      style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <div style={{
-                        position: 'relative',
-                        transform: getPageTransform(pageNum),
-                        transformOrigin: 'center center',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
-                      }}>
-                        {/* Zoom container - applies CSS transform for smooth cursor-centered zoom */}
-                        <div style={zoomStyle}>
-                          <PDFPageCanvas
-                            page={pageObjects[pageNum]}
-                            scale={renderedScale}
-                            pageNum={pageNum}
-                            isVisible={true}
-                            priority={0}
-                            onFinishRender={() => {
-                              setRenderedPages(prev => new Set([...prev, pageNum]));
-                            }}
-                          />
-                          {pageSizes[pageNum] && pageObjects[pageNum] && (
-                            <TextLayer
-                              pageNumber={pageNum}
-                              page={pageObjects[pageNum]}
-                              scale={renderedScale}
-                              width={pageSizes[pageNum].width}
-                              height={pageSizes[pageNum].height}
-                              onTextSelected={handleTextSelected}
-                              isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
-                            />
-                          )}
-                          {/* Search Highlight Layer */}
-                          {pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
-                            <SearchHighlightLayer
-                              pageNumber={pageNum}
-                              width={pageSizes[pageNum].width}
-                              height={pageSizes[pageNum].height}
-                              scale={renderedScale}
-                              highlights={searchResultsByPage[pageNum]}
-                              activeMatchId={currentMatch?.id}
-                              isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNum}
-                            />
-                          )}
-                          {pageSizes[pageNum] && (
-                            <PageAnnotationLayer
-                              pageNumber={pageNum}
-                              width={pageSizes[pageNum].width}
-                              height={pageSizes[pageNum].height}
-                              scale={renderedScale}
-                              tool={activeTool}
-                              strokeColor={strokeColor}
-                              strokeWidth={Number(strokeWidth) || 3}
-                              arrowheadStyle={arrowheadStyle}
-                              annotations={annotationsByPage[pageNum]}
-                              onSaveAnnotations={handleSaveAnnotations}
-                              newHighlights={newHighlightsByPage[pageNum]}
-                              highlightsToRemove={highlightsToRemoveByPage[pageNum]}
-                              onHighlightCreated={handleHighlightCreated}
-                              onHighlightDeleted={handleHighlightDeleted}
-                              onHighlightClicked={handleHighlightClicked}
-                              selectedSpaceId={annotationSpaceId}
-                              activeSpaceId={activeSpaceId}
-                              selectedModuleId={selectedModuleId}
-                              selectedCategoryId={selectedCategoryId}
-                              activeRegions={pageRegions}
-                              spaces={spaces}
-                              getRegionLightbulbState={getRegionLightbulbState}
-                              activeRegionId={activeRegionId}
-                              isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNum}
-                              eraserMode={eraserMode}
-                              eraserSize={eraserSize}
-                              showSurveyPanel={showSurveyPanel}
-                              isRegionOverlayEnabled={isRegionOverlayEnabled}
-                              layerVisibility={annotationLayerVisibility}
-                              callouts={callouts}
-                              setCallouts={setCallouts}
-                              selectedCalloutId={selectedCalloutId}
-                              setSelectedCalloutId={setSelectedCalloutId}
-                              clipboardCallout={clipboardCallout}
-                              clipboardType={clipboardType}
-                              onCutCallout={handleCutCallout}
-                              onCopyCallout={handleCopyCallout}
-                              onPasteCallout={handlePasteCallout}
-                              middleAreaBounds={middleAreaBounds}
-                              surveyPanelWidth={surveyPanelWidth}
-                              onDuplicatePage={handleDuplicatePage}
-                              onRotatePageCW={handleRotatePageCW}
-                              onRotatePageCCW={handleRotatePageCCW}
-                              onInsertBlankPage={handleInsertBlankPage}
-                              pageClipboard={clipboardPage ? { pageNumber: clipboardPage, type: clipboardType } : null}
-                              onPastePageHere={(targetPage) => handlePastePage(targetPage, clipboardPage, clipboardType)}
-                            />
-                          )}
-                        </div>
-                        {/* Space Region Dimming Overlay */}
-                        {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates AND overlay is enabled */}
-                        {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNum) && (() => {
-                          // Get the page object from the active space to check overlay state
-                          const space = spaces.find(s => s.id === activeSpaceId);
-                          const page = space?.assignedPages?.find(p => p.pageId === pageNum);
+                  <div>Page: {pageNum}/{numPages || 0}</div>
+                  <div>Zoom: {Math.round(scale * 100)}%</div>
+                  <div>Overlay pages: {overlayWindowCount}/{overlayPageCount}</div>
+                  <div>Live-stable overlay: {syncfusionLiveStableOverlayEnabled ? 'on' : 'off'}</div>
+                  <div>Dual layer: {syncfusionDualLayerEnabled ? 'on' : 'off'}</div>
+                  <div>
+                    Syncfusion interaction: {syncfusionInteractionPhase}
+                    {syncfusionInteractionReasonRef.current ? ` (${syncfusionInteractionReasonRef.current})` : ''}
+                  </div>
+                  <div>
+                    Resident pages: {syncfusionInteractionResidentPages.size}/{SYNCFUSION_INTERACTION_MAX_RESIDENT_PAGES}
+                    {' '}LW: {syncfusionLightweightPages.size}
+                  </div>
+                  <div>
+                    Session: {syncfusionInteractionSessionId}
+                    {' '}queue={syncfusionCommitQueueDepth}
+                    {' '}flips={syncfusionInteractionModeFlipCount}
+                  </div>
+                  <div>
+                    Recorder: {snapshot.data?.overlayLagRecorderActive ? 'on' : 'off'}
+                    {' '}samples={snapshot.data?.overlayLagSampleCount || 0}
+                    {' '}drift={snapshot.data?.overlayLagWorstDriftPx ?? 'n/a'}px
+                  </div>
+                  <div>
+                    Recorder LT: {snapshot.data?.overlayLagLongTaskCount ?? 'n/a'}
+                    {' '}({snapshot.data?.overlayLagLongTaskTotalMs ?? 'n/a'}ms)
+                    {' '}cap={snapshot.data?.overlayLagSampleCaptureCostMs ?? 'n/a'}ms
+                  </div>
+                  <div>Refresh: q={refreshQueueCount} f={refreshFlushCount}</div>
+                  <div>
+                    Perf mode: {interactionPerfActive ? 'active' : 'idle'}
+                    {interactionPerfActive && snapshot.data?.interactionReason ? ` (${snapshot.data.interactionReason})` : ''}
+                  </div>
+                  <div>Presence: {snapshot.presence?.status || 'idle'}{snapshot.presence?.lastErrorClass ? ` (${snapshot.presence.lastErrorClass})` : ''}</div>
+                  <div>Last error: {snapshot.lastErrorClass || 'none'}</div>
+                  <div>History: u={undoHistory.length} r={redoHistory.length}</div>
+                  <div>
+                    Last history event: {snapshot.data?.historyEventType || 'none'}
+                    {snapshot.data?.historyEventSeq ? ` #${snapshot.data.historyEventSeq}` : ''}
+                    {snapshot.data?.historyEventReason ? ` (${snapshot.data.historyEventReason})` : ''}
+                  </div>
+                  {rateEntries.length > 0 && (
+                    <div style={{ marginTop: 4, color: '#a9a9a9' }}>
+                      {rateEntries.map(([name, rate]) => (
+                        <div key={name}>{name}: {rate}/s</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            {useSyncfusionRenderer ? (
+              <>
+                <div
+                  className="syncfusion-renderer-only"
+                  style={{
+                    position: 'absolute',
+                    inset: 0
+                  }}
+                >
+                  <SyncfusionPDFContainer
+                    id={syncfusionViewerElementId}
+                    ref={syncfusionViewerRef}
+                    resourceUrl={syncfusionResourceUrl}
+                    documentSource={syncfusionDocumentBytes}
+                    style={{ width: '100%', height: '100%' }}
+                    initialRenderPages={SYNCFUSION_INITIAL_RENDER_PAGES}
+                    scrollDelayMs={SYNCFUSION_SCROLL_DELAY_MS}
+                    restrictZoomRequest={
+                      SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION &&
+                      syncfusionLiveStableOverlayEnabled &&
+                      syncfusionDualLayerEnabled &&
+                      syncfusionInteractionPhase !== 'idle'
+                    }
+                    interactionMode={activeTool === 'pan' ? 'Pan' : 'TextSelection'}
+                    onDocumentLoaded={handleSyncfusionDocumentLoad}
+                    onDocumentLoadFailed={handleSyncfusionDocumentLoadFailed}
+                    onPageChanged={handleSyncfusionPageChange}
+                    onZoomChanged={handleSyncfusionZoomChange}
+                    onTextSelectionEnd={handleSyncfusionTextSelectionEnd}
+                    onPDFBookmarksAvailable={handlePDFBookmarksAvailable}
+                    onPageContainersChange={handleSyncfusionPageContainersChange}
+                    onDebugEvent={handleSyncfusionDebugEvent}
+                    onDocumentUnload={handleDocumentUnload}
+                  />
+                </div>
+                {numPages > 0 && (() => {
+                  const syncfusionViewerScale = clampScale(
+                    Number(
+                      (syncfusionViewerRef.current?.getZoomValue?.() ??
+                        syncfusionViewerRef.current?.zoomValue ??
+                        scale * 100)
+                    ) / 100
+                  );
+                  const useLiveStableOverlay = syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled;
+                  const shouldFreezeOverlayScale = useLiveStableOverlay && syncfusionInteractionPhase !== 'idle';
+                  const shouldFreezePortalHost = useLiveStableOverlay && syncfusionInteractionPhase !== 'idle';
+                  const useInteractionWindow = shouldFreezeOverlayScale;
+                  const interactionWindowSet = new Set();
+                  if (useInteractionWindow) {
+                    syncfusionInteractionResidentPages.forEach((pageNumber) => interactionWindowSet.add(pageNumber));
+                    syncfusionOverlayWindowPages.forEach((pageNumber) => interactionWindowSet.add(pageNumber));
+                    visiblePagesSet.forEach((pageNumber) => interactionWindowSet.add(pageNumber));
+                    const currentPage = coercePageNumber(pageNum, Number.POSITIVE_INFINITY);
+                    if (Number.isFinite(currentPage) && currentPage > 0) {
+                      interactionWindowSet.add(currentPage);
+                    }
+                  }
+                  const overlayWindowPageNumbers = useInteractionWindow
+                    ? Array.from(
+                      interactionWindowSet.size > 0
+                        ? interactionWindowSet
+                        : (
+                          syncfusionOverlayWindowPages.size > 0
+                            ? syncfusionOverlayWindowPages
+                            : syncfusionInteractionResidentPages
+                        )
+                    )
+                    : Object.keys(syncfusionPageContainers).map((pageKey) => Number(pageKey));
 
-                          // Check if overlay should be shown for this page
-                          if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNum, page)) {
-                            return null;
-                          }
+                  return overlayWindowPageNumbers
+                    .filter((pageNumber) => {
+                      if (!Number.isFinite(pageNumber) || !shouldShowPage(pageNumber)) {
+                        return false;
+                      }
+                      if (useInteractionWindow) {
+                        return interactionWindowSet.size === 0 || interactionWindowSet.has(pageNumber);
+                      }
+                      return syncfusionOverlayWindowPages.size === 0 || syncfusionOverlayWindowPages.has(pageNumber);
+                    })
+                    .sort((a, b) => a - b)
+                    .map(pageNumber => {
+                      const pageRegions = getPageRegions(pageNumber);
+                      const pageHost = resolveSyncfusionOverlayPortalHost(
+                        pageNumber,
+                        shouldFreezePortalHost,
+                        syncfusionPageContainers
+                      );
+                      const pageAnnotations = annotationsByPage[pageNumber];
+                      const pageSize = pageSizes[pageNumber];
+                      const fallbackLayerScale = Number.isFinite(syncfusionViewerScale) && syncfusionViewerScale > 0
+                        ? syncfusionViewerScale
+                        : 1;
+                      const fallbackWidth = Number(pageHost?.clientWidth || pageHost?.getBoundingClientRect?.()?.width || 0);
+                      const fallbackHeight = Number(pageHost?.clientHeight || pageHost?.getBoundingClientRect?.()?.height || 0);
+                      const derivedPageSize = (!pageSize && fallbackWidth > 0 && fallbackHeight > 0)
+                        ? {
+                          width: fallbackWidth / fallbackLayerScale,
+                          height: fallbackHeight / fallbackLayerScale
+                        }
+                        : null;
+                      const resolvedPageSize = pageSize || derivedPageSize;
+                      if (!resolvedPageSize || !pageHost || !pageHost.isConnected) {
+                        delete syncfusionOverlayLayerRefs.current[pageNumber];
+                        delete syncfusionOverlayContentRefs.current[pageNumber];
+                        return null;
+                      }
 
-                          // Filter to only regions with valid areas
-                          const validRegions = pageRegions.filter(region => {
-                            if (!region || !Array.isArray(region.coordinates)) return false;
-                            const coords = region.coordinates;
-                            return (region.shapeType === 'rectangular' && coords.length >= 8) ||
-                              (region.shapeType === 'polygon' && coords.length >= 6);
-                          });
+                      const committedPageScale = syncfusionCommittedPageScales[pageNumber];
+                      const hasCommittedPageScale = Number.isFinite(committedPageScale) && committedPageScale > 0;
+                      const shouldMeasureLiveScale = !shouldFreezeOverlayScale || !hasCommittedPageScale;
+                      const measuredPageScale = shouldMeasureLiveScale
+                        ? getSyncfusionPageScale(pageNumber, syncfusionViewerScale)
+                        : syncfusionViewerScale;
+                      const fallbackPageScale = Number.isFinite(measuredPageScale) && measuredPageScale > 0
+                        ? measuredPageScale
+                        : (Number.isFinite(syncfusionViewerScale) && syncfusionViewerScale > 0 ? syncfusionViewerScale : 1);
+                      const frozenPageScale = hasCommittedPageScale
+                        ? committedPageScale
+                        : fallbackPageScale;
+                      const layerScaleRaw = shouldFreezeOverlayScale
+                        ? frozenPageScale
+                        : fallbackPageScale;
+                      const layerScale = Number.isFinite(layerScaleRaw) && layerScaleRaw > 0
+                        ? layerScaleRaw
+                        : 1;
+                      const interactionPageMode = syncfusionInteractionPageModes[pageNumber] || 'full';
+                      const isProxyPageWhileInteracting = interactionPageMode === 'proxy';
+                      const isProxyPageWhileCommitting = syncfusionCommittingProxyPages.has(pageNumber);
+                      const shouldRenderLightweightAnnotations = useLiveStableOverlay && (
+                        (syncfusionInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
+                        (syncfusionInteractionPhase === 'committing' && isProxyPageWhileCommitting)
+                      );
+                      const pageAnnotationObjects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
+                      const firstObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[0] : null;
+                      const lastObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[pageAnnotationObjects.length - 1] : null;
+                      const annotationRevision = `${pageAnnotationObjects.length}:${firstObject?.id || firstObject?.highlightId || firstObject?.pdfAnnotationId || firstObject?.type || ''}:${lastObject?.id || lastObject?.highlightId || lastObject?.pdfAnnotationId || lastObject?.type || ''}`;
+                      const pageCalloutCount = lightweightCalloutCountByPage[pageNumber] || 0;
+                      const calloutRevision = `${pageCalloutCount}:${selectedModuleId || ''}:${showSurveyPanel ? 1 : 0}`;
+                      const proxyPayload = syncfusionInteractionProxyPayloads[pageNumber] || null;
+                      const proxyRevision = `${syncfusionInteractionSessionId}:${pageNumber}`;
+                      const proxyHasRenderablePayload = !!(
+                        proxyPayload &&
+                        (
+                          (Array.isArray(proxyPayload.objects) && proxyPayload.objects.length > 0) ||
+                          (Array.isArray(proxyPayload.callouts) && proxyPayload.callouts.length > 0)
+                        )
+                      );
+                      const isProxyReady = syncfusionProxyReadyPages.has(pageNumber);
+                      const shouldHideFullLayer = (
+                        shouldRenderLightweightAnnotations &&
+                        proxyHasRenderablePayload &&
+                        isProxyReady
+                      );
 
-                          if (validRegions.length === 0) return null;
-
-                          return (
-                            <SpaceRegionOverlay
-                              pageNumber={pageNum}
-                              regions={validRegions}
-                              width={pageSizes[pageNum]?.width || 0}
-                              height={pageSizes[pageNum]?.height || 0}
-                              scale={renderedScale}
-                            />
-                          );
-                        })()}
-                        {/* Region Selection Overlay for this specific page */}
-                        {showRegionSelection && regionSelectionPage === pageNum && (
-                          <div style={{
+                      return createPortal(
+                        <div
+                          key={`syncfusion-overlay-${pageNumber}`}
+                          ref={(node) => {
+                            if (node) {
+                              syncfusionOverlayLayerRefs.current[pageNumber] = node;
+                            } else {
+                              delete syncfusionOverlayLayerRefs.current[pageNumber];
+                            }
+                          }}
+                          style={{
                             position: 'absolute',
                             top: 0,
                             left: 0,
-                            width: `${(pageSizes[pageNum]?.width || 0) * scale}px`,
-                            height: `${(pageSizes[pageNum]?.height || 0) * scale}px`,
+                            width: '100%',
+                            height: '100%',
                             pointerEvents: 'none',
-                            zIndex: 1000
-                          }}>
-                            <div id="region-selection-target" style={{
+                            zIndex: 20,
+                            transform: getPageTransform(pageNumber),
+                            transformOrigin: 'center center'
+                          }}
+                        >
+                          <div
+                            ref={(node) => {
+                              const previousNode = syncfusionOverlayContentRefs.current[pageNumber];
+                              const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
+                              const nodeByPage = syncfusionOverlayTransformNodeByPageRef.current || {};
+                              if (node) {
+                                syncfusionOverlayContentRefs.current[pageNumber] = node;
+                                if (
+                                  node !== previousNode &&
+                                  syncfusionInteractionPhaseRef.current === 'interacting'
+                                ) {
+                                  delete ratioByPage[pageNumber];
+                                  syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+                                  nodeByPage[pageNumber] = node;
+                                  syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
+                                  applySyncfusionOverlayTransformSync();
+                                }
+                              } else {
+                                delete syncfusionOverlayContentRefs.current[pageNumber];
+                                delete ratioByPage[pageNumber];
+                                delete nodeByPage[pageNumber];
+                                syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+                                syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
+                              }
+                            }}
+                          >
+                            {searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                              <SearchHighlightLayer
+                                pageNumber={pageNumber}
+                                width={resolvedPageSize.width}
+                                height={resolvedPageSize.height}
+                                scale={layerScale}
+                                highlights={searchResultsByPage[pageNumber]}
+                                activeMatchId={currentMatch?.id}
+                                isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
+                              />
+                            )}
+                            <div style={shouldHideFullLayer ? { visibility: 'hidden' } : undefined}>
+                              <PageAnnotationLayer
+                                pageNumber={pageNumber}
+                                width={resolvedPageSize.width}
+                                height={resolvedPageSize.height}
+                                scale={layerScale}
+                                canvasTopPadding={0}
+                                tool={activeTool}
+                                strokeColor={strokeColor}
+                                strokeWidth={Number(strokeWidth) || 3}
+                                arrowheadStyle={arrowheadStyle}
+                                annotations={pageAnnotations}
+                                onSaveAnnotations={handleSaveAnnotations}
+                                onToolChange={setActiveTool}
+                                highlightColor="rgba(255, 193, 7, 0.3)"
+                                newHighlights={newHighlightsByPage[pageNumber]}
+                                highlightsToRemove={highlightsToRemoveByPage[pageNumber]}
+                                onHighlightCreated={handleHighlightCreated}
+                                onHighlightDeleted={handleHighlightDeleted}
+                                onHighlightClicked={handleHighlightClicked}
+                                selectedSpaceId={annotationSpaceId}
+                                activeSpaceId={activeSpaceId}
+                                selectedModuleId={selectedModuleId}
+                                selectedCategoryId={selectedCategoryId}
+                                activeRegions={pageRegions}
+                                spaces={spaces}
+                                getRegionLightbulbState={getRegionLightbulbState}
+                                activeRegionId={activeRegionId}
+                                isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNumber}
+                                eraserMode={eraserMode}
+                                eraserSize={eraserSize}
+                                showSurveyPanel={showSurveyPanel}
+                                isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                layerVisibility={annotationLayerVisibility}
+                                callouts={callouts}
+                                setCallouts={setCallouts}
+                                selectedCalloutId={selectedCalloutId}
+                                setSelectedCalloutId={setSelectedCalloutId}
+                                clipboardCallout={clipboardCallout}
+                                clipboardCalloutType={clipboardCalloutType}
+                                onCutCallout={handleCutCallout}
+                                onCopyCallout={handleCopyCallout}
+                                onPasteCallout={handlePasteCallout}
+                                middleAreaBounds={middleAreaBounds}
+                                surveyPanelWidth={surveyPanelWidth}
+                                onDuplicatePage={handleDuplicatePage}
+                                onRotatePageCW={handleRotatePageCW}
+                                onRotatePageCCW={handleRotatePageCCW}
+                                onInsertBlankPage={handleInsertBlankPage}
+                                pageClipboard={pageClipboardPayload}
+                                onPastePageHere={handlePastePageHere}
+                                isHidden={shouldHideFullLayer}
+                                onScaleApplied={handlePALScaleApplied}
+                              />
+                            </div>
+                            {shouldRenderLightweightAnnotations ? (
+                              <LightweightAnnotationOverlay
+                                pageNumber={pageNumber}
+                                width={resolvedPageSize.width}
+                                height={resolvedPageSize.height}
+                                scale={layerScale}
+                                interactionSessionId={syncfusionInteractionSessionId}
+                                proxyObjects={proxyPayload?.objects}
+                                proxyCallouts={proxyPayload?.callouts}
+                                annotations={pageAnnotations}
+                                callouts={callouts}
+                                selectedModuleId={selectedModuleId}
+                                showSurveyPanel={showSurveyPanel}
+                                annotationRevision={proxyPayload ? proxyRevision : annotationRevision}
+                                calloutRevision={proxyPayload ? proxyRevision : calloutRevision}
+                                onRenderReady={markSyncfusionProxyPageReady}
+                              />
+                            ) : null}
+                            {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
+                              const space = spaces.find(s => s.id === activeSpaceId);
+                              const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
+
+                              if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNumber, page)) {
+                                return null;
+                              }
+
+                              const validRegions = pageRegions.filter(region => {
+                                if (!region || !Array.isArray(region.coordinates)) return false;
+                                const coords = region.coordinates;
+                                return (region.shapeType === 'rectangular' && coords.length >= 8) ||
+                                  (region.shapeType === 'polygon' && coords.length >= 6);
+                              });
+
+                              if (validRegions.length === 0) return null;
+
+                              return (
+                                <SpaceRegionOverlay
+                                  pageNumber={pageNumber}
+                                  regions={validRegions}
+                                  width={resolvedPageSize.width}
+                                  height={resolvedPageSize.height}
+                                  scale={layerScale}
+                                />
+                              );
+                            })()}
+                            {showRegionSelection && regionSelectionPage === pageNumber && (
+                              <div style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: `${resolvedPageSize.width * layerScale}px`,
+                                height: `${resolvedPageSize.height * layerScale}px`,
+                                pointerEvents: 'none',
+                                zIndex: 1000
+                              }}>
+                                <div id="region-selection-target" style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  width: '100%',
+                                  height: '100%'
+                                }} />
+                              </div>
+                            )}
+                          </div>
+                        </div>,
+                        pageHost
+                      );
+                    });
+                })()}
+              </>
+            ) : (
+              <div
+                ref={contentRef}
+                style={contentStyle}>
+                {scrollMode === 'continuous' ? (
+                  numPages > 0 ? Array.from({ length: numPages }, (_, i) => i + 1)
+                    .filter(pageNumber => shouldShowPage(pageNumber))
+                    .map(pageNumber => {
+                      const pageRegions = getPageRegions(pageNumber);
+                      const isMounted = mountedPages.has(pageNumber);
+
+                      return (
+                        <div
+                          key={pageNumber}
+                          ref={el => pageContainersRef.current[pageNumber] = el}
+                          data-page-num={pageNumber}
+                          style={{
+                            minHeight: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * scale}px` : '800px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            position: 'relative'
+                          }}
+                        >
+                          {isMounted ? (
+                            <div style={{
+                              position: 'relative',
+                              transform: getPageTransform(pageNumber),
+                              transformOrigin: 'center center'
+                            }}>
+                              {/* Zoom container - applies CSS transform for smooth cursor-centered zoom */}
+                              <div style={zoomStyle}>
+                                <PDFPageCanvas
+                                  page={pageObjects[pageNumber]}
+                                  scale={renderedScale}
+                                  pageNum={pageNumber}
+                                  isVisible={visiblePagesSet.has(pageNumber)}
+                                  priority={visiblePagesSet.has(pageNumber) ? 0 : (Math.abs(pageNumber - pageNum) <= 2 ? 1 : 2)}
+                                  onFinishRender={() => {
+                                    setRenderedPages(prev => new Set([...prev, pageNumber]));
+                                  }}
+                                />
+                                {pageSizes[pageNumber] && pageObjects[pageNumber] && (
+                                  <TextLayer
+                                    pageNumber={pageNumber}
+                                    page={pageObjects[pageNumber]}
+                                    scale={renderedScale}
+                                    width={pageSizes[pageNumber].width}
+                                    height={pageSizes[pageNumber].height}
+                                    onTextSelected={handleTextSelected}
+                                    isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
+                                  />
+                                )}
+                                {/* Search Highlight Layer */}
+                                {pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                                  <SearchHighlightLayer
+                                    pageNumber={pageNumber}
+                                    width={pageSizes[pageNumber].width}
+                                    height={pageSizes[pageNumber].height}
+                                    scale={renderedScale}
+                                    highlights={searchResultsByPage[pageNumber]}
+                                    activeMatchId={currentMatch?.id}
+                                    isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
+                                  />
+                                )}
+                                {pageSizes[pageNumber] && (
+                                  <PageAnnotationLayer
+                                    pageNumber={pageNumber}
+                                    width={pageSizes[pageNumber].width}
+                                    height={pageSizes[pageNumber].height}
+                                    scale={renderedScale}
+                                    tool={activeTool}
+                                    strokeColor={strokeColor}
+                                    strokeWidth={Number(strokeWidth) || 3}
+                                    arrowheadStyle={arrowheadStyle}
+                                    annotations={annotationsByPage[pageNumber]}
+                                    onSaveAnnotations={handleSaveAnnotations}
+                                    onToolChange={setActiveTool}
+                                    highlightColor="rgba(255, 193, 7, 0.3)"
+                                    newHighlights={newHighlightsByPage[pageNumber]}
+                                    highlightsToRemove={highlightsToRemoveByPage[pageNumber]}
+                                    onHighlightCreated={handleHighlightCreated}
+                                    onHighlightDeleted={handleHighlightDeleted}
+                                    onHighlightClicked={handleHighlightClicked}
+                                    selectedSpaceId={annotationSpaceId}
+                                    activeSpaceId={activeSpaceId}
+                                    selectedModuleId={selectedModuleId}
+                                    selectedCategoryId={selectedCategoryId}
+                                    activeRegions={(() => {
+                                      return pageRegions;
+                                    })()}
+                                    spaces={spaces}
+                                    getRegionLightbulbState={getRegionLightbulbState}
+                                    activeRegionId={activeRegionId}
+                                    isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNumber}
+                                    eraserMode={eraserMode}
+                                    eraserSize={eraserSize}
+                                    showSurveyPanel={showSurveyPanel}
+                                    isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                    layerVisibility={annotationLayerVisibility}
+                                    callouts={callouts}
+                                    setCallouts={setCallouts}
+                                    selectedCalloutId={selectedCalloutId}
+                                    setSelectedCalloutId={setSelectedCalloutId}
+                                    clipboardCallout={clipboardCallout}
+                                    clipboardCalloutType={clipboardCalloutType}
+                                    onCutCallout={handleCutCallout}
+                                    onCopyCallout={handleCopyCallout}
+                                    onPasteCallout={handlePasteCallout}
+                                    middleAreaBounds={middleAreaBounds}
+                                    surveyPanelWidth={surveyPanelWidth}
+                                    onDuplicatePage={handleDuplicatePage}
+                                    onRotatePageCW={handleRotatePageCW}
+                                    onRotatePageCCW={handleRotatePageCCW}
+                                    onInsertBlankPage={handleInsertBlankPage}
+                                    pageClipboard={pageClipboardPayload}
+                                    onPastePageHere={handlePastePageHere}
+                                  />
+                                )}
+                                {/* Space Region Dimming Overlay */}
+                                {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates AND overlay is enabled */}
+                                {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
+                                  // Get the page object from the active space to check overlay state
+                                  const space = spaces.find(s => s.id === activeSpaceId);
+                                  const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
+
+                                  // Check if overlay should be shown for this page
+                                  if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNumber, page)) {
+                                    return null;
+                                  }
+
+                                  // Filter to only regions with valid areas
+                                  const validRegions = pageRegions.filter(region => {
+                                    if (!region || !Array.isArray(region.coordinates)) return false;
+                                    const coords = region.coordinates;
+                                    return (region.shapeType === 'rectangular' && coords.length >= 8) ||
+                                      (region.shapeType === 'polygon' && coords.length >= 6);
+                                  });
+
+                                  if (validRegions.length === 0) return null;
+
+                                  return (
+                                    <SpaceRegionOverlay
+                                      pageNumber={pageNumber}
+                                      regions={validRegions}
+                                      width={pageSizes[pageNumber]?.width || 0}
+                                      height={pageSizes[pageNumber]?.height || 0}
+                                      scale={renderedScale}
+                                    />
+                                  );
+                                })()}
+                                {/* Region Selection Overlay for this specific page */}
+                                {showRegionSelection && regionSelectionPage === pageNumber && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: `${(pageSizes[pageNumber]?.width || 0) * renderedScale}px`,
+                                    height: `${(pageSizes[pageNumber]?.height || 0) * renderedScale}px`,
+                                    pointerEvents: 'none',
+                                    zIndex: 1000
+                                  }}>
+                                    <div id="region-selection-target" style={{
+                                      position: 'absolute',
+                                      top: 0,
+                                      left: 0,
+                                      width: '100%',
+                                      height: '100%'
+                                    }} />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            /* Lightweight placeholder for unmounted pages */
+                            <div style={{
+                              width: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * 0.7 * scale}px` : '595px',
+                              height: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * scale}px` : '800px',
+                              background: '#f5f5f5',
+                              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#999',
+                              fontSize: '14px'
+                            }}>
+                              Page {pageNumber}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }) : (
+                    <div style={{
+                      padding: '40px',
+                      textAlign: 'center',
+                      color: '#999',
+                      fontSize: '14px'
+                    }}>
+                      {numPages === 0 ? 'No pages to display' : 'No pages match the current filter'}
+                    </div>
+                  )
+                ) : (
+                  shouldShowPage(pageNum) && (() => {
+                    const pageRegions = getPageRegions(pageNum);
+                    return (
+                      <div
+                        style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <div style={{
+                          position: 'relative',
+                          transform: getPageTransform(pageNum),
+                          transformOrigin: 'center center',
+                          boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+                        }}>
+                          {/* Zoom container - applies CSS transform for smooth cursor-centered zoom */}
+                          <div style={zoomStyle}>
+                            <PDFPageCanvas
+                              page={pageObjects[pageNum]}
+                              scale={renderedScale}
+                              pageNum={pageNum}
+                              isVisible={true}
+                              priority={0}
+                              onFinishRender={() => {
+                                setRenderedPages(prev => new Set([...prev, pageNum]));
+                              }}
+                            />
+                            {pageSizes[pageNum] && pageObjects[pageNum] && (
+                              <TextLayer
+                                pageNumber={pageNum}
+                                page={pageObjects[pageNum]}
+                                scale={renderedScale}
+                                width={pageSizes[pageNum].width}
+                                height={pageSizes[pageNum].height}
+                                onTextSelected={handleTextSelected}
+                                isSelectionMode={activeTool === 'pan' || activeTool === 'text-select'}
+                              />
+                            )}
+                            {/* Search Highlight Layer */}
+                            {pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
+                              <SearchHighlightLayer
+                                pageNumber={pageNum}
+                                width={pageSizes[pageNum].width}
+                                height={pageSizes[pageNum].height}
+                                scale={renderedScale}
+                                highlights={searchResultsByPage[pageNum]}
+                                activeMatchId={currentMatch?.id}
+                                isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNum}
+                              />
+                            )}
+                            {pageSizes[pageNum] && (
+                              <PageAnnotationLayer
+                                pageNumber={pageNum}
+                                width={pageSizes[pageNum].width}
+                                height={pageSizes[pageNum].height}
+                                scale={renderedScale}
+                                tool={activeTool}
+                                strokeColor={strokeColor}
+                                strokeWidth={Number(strokeWidth) || 3}
+                                arrowheadStyle={arrowheadStyle}
+                                annotations={annotationsByPage[pageNum]}
+                                onSaveAnnotations={handleSaveAnnotations}
+                                newHighlights={newHighlightsByPage[pageNum]}
+                                highlightsToRemove={highlightsToRemoveByPage[pageNum]}
+                                onHighlightCreated={handleHighlightCreated}
+                                onHighlightDeleted={handleHighlightDeleted}
+                                onHighlightClicked={handleHighlightClicked}
+                                selectedSpaceId={annotationSpaceId}
+                                activeSpaceId={activeSpaceId}
+                                selectedModuleId={selectedModuleId}
+                                selectedCategoryId={selectedCategoryId}
+                                activeRegions={pageRegions}
+                                spaces={spaces}
+                                getRegionLightbulbState={getRegionLightbulbState}
+                                activeRegionId={activeRegionId}
+                                isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNum}
+                                eraserMode={eraserMode}
+                                eraserSize={eraserSize}
+                                showSurveyPanel={showSurveyPanel}
+                                isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                layerVisibility={annotationLayerVisibility}
+                                callouts={callouts}
+                                setCallouts={setCallouts}
+                                selectedCalloutId={selectedCalloutId}
+                                setSelectedCalloutId={setSelectedCalloutId}
+                                clipboardCallout={clipboardCallout}
+                                clipboardType={clipboardType}
+                                onCutCallout={handleCutCallout}
+                                onCopyCallout={handleCopyCallout}
+                                onPasteCallout={handlePasteCallout}
+                                middleAreaBounds={middleAreaBounds}
+                                surveyPanelWidth={surveyPanelWidth}
+                                onDuplicatePage={handleDuplicatePage}
+                                onRotatePageCW={handleRotatePageCW}
+                                onRotatePageCCW={handleRotatePageCCW}
+                                onInsertBlankPage={handleInsertBlankPage}
+                                pageClipboard={pageClipboardPayload}
+                                onPastePageHere={handlePastePageHere}
+                              />
+                            )}
+                          </div>
+                          {/* Space Region Dimming Overlay */}
+                          {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates AND overlay is enabled */}
+                          {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNum) && (() => {
+                            // Get the page object from the active space to check overlay state
+                            const space = spaces.find(s => s.id === activeSpaceId);
+                            const page = space?.assignedPages?.find(p => p.pageId === pageNum);
+
+                            // Check if overlay should be shown for this page
+                            if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNum, page)) {
+                              return null;
+                            }
+
+                            // Filter to only regions with valid areas
+                            const validRegions = pageRegions.filter(region => {
+                              if (!region || !Array.isArray(region.coordinates)) return false;
+                              const coords = region.coordinates;
+                              return (region.shapeType === 'rectangular' && coords.length >= 8) ||
+                                (region.shapeType === 'polygon' && coords.length >= 6);
+                            });
+
+                            if (validRegions.length === 0) return null;
+
+                            return (
+                              <SpaceRegionOverlay
+                                pageNumber={pageNum}
+                                regions={validRegions}
+                                width={pageSizes[pageNum]?.width || 0}
+                                height={pageSizes[pageNum]?.height || 0}
+                                scale={renderedScale}
+                              />
+                            );
+                          })()}
+                          {/* Region Selection Overlay for this specific page */}
+                          {showRegionSelection && regionSelectionPage === pageNum && (
+                            <div style={{
                               position: 'absolute',
                               top: 0,
                               left: 0,
-                              width: '100%',
-                              height: '100%'
-                            }} />
-                          </div>
-                        )}
+                              width: `${(pageSizes[pageNum]?.width || 0) * scale}px`,
+                              height: `${(pageSizes[pageNum]?.height || 0) * scale}px`,
+                              pointerEvents: 'none',
+                              zIndex: 1000
+                            }}>
+                              <div id="region-selection-target" style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '100%'
+                              }} />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })()
-              )}
-            </div>
+                    );
+                  })()
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -17144,21 +23823,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 ].map(t => (
                   <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <button
-                      data-eraser-button={t.id === 'eraser' ? 'true' : undefined}
                       onClick={() => {
-                        if (t.id === 'eraser') {
-                          if (activeTool === 'eraser') {
-                            // If eraser is already active, toggle the menu
-                            setShowEraserMenu(!showEraserMenu);
-                          } else {
-                            // If eraser is not active, set it as active and open the menu
-                            setActiveTool(t.id);
-                            setShowEraserMenu(true);
-                          }
-                        } else {
-                          setActiveTool(t.id);
-                          if (t.id !== 'eraser') setShowEraserMenu(false);
-                        }
+                        setActiveTool(t.id);
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
@@ -17179,86 +23845,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       title={t.label}
                     >
                       <Icon name={t.iconName} size={20} />
-                      {t.id === 'eraser' && activeTool === 'eraser' && (
-                        <div
-                          data-eraser-button="true"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowEraserMenu(!showEraserMenu);
-                          }}
-                          style={{
-                            position: 'absolute',
-                            left: '50%',
-                            top: '50%',
-                            transform: 'translate(12px, -50%)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '2px',
-                            pointerEvents: 'auto'
-                          }}
-                        >
-                          <Icon name="chevronUp" size={12} />
-                        </div>
-                      )}
                     </button>
-
-                    {/* Eraser Mode Popup specific to the Eraser tool in sub-toolbar */}
-                    {t.id === 'eraser' && activeTool === 'eraser' && showEraserMenu && (
-                      <div
-                        ref={eraserMenuRef}
-                        style={{
-                          position: 'absolute',
-                          bottom: '100%',
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          marginBottom: '6px',
-                          background: '#1e1e1e',
-                          border: '1px solid #333',
-                          borderRadius: '6px',
-                          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-                          zIndex: 1000,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          padding: '4px',
-                          minWidth: '140px'
-                        }}
-                      >
-                        <div style={{
-                          padding: '4px 8px',
-                          fontSize: '10px',
-                          color: '#888',
-                          textTransform: 'uppercase',
-                          fontWeight: 600,
-                          borderBottom: '1px solid #333',
-                          marginBottom: '4px'
-                        }}>
-                          Eraser Type
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEraserMode('partial');
-                            setShowEraserMenu(false);
-                          }}
-                          className={`btn ${eraserMode === 'partial' ? 'btn-active' : 'btn-ghost'}`}
-                          style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
-                        >
-                          Partial Eraser
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEraserMode('entire');
-                            setShowEraserMenu(false);
-                          }}
-                          className={`btn ${eraserMode === 'entire' ? 'btn-active' : 'btn-ghost'}`}
-                          style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
-                        >
-                          Entire Eraser
-                        </button>
-                      </div>
-                    )}
                   </div>
                 ))}
               </>
@@ -17428,56 +24015,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               title="Draw"
             >
               <Icon name="pen" size={22} />
-            </button>
-
-            {/* Shape Category */}
-            {/* Shape Category Button */}
-            {/* Shape Category Button */}
-            <button
-              onClick={() => {
-                const isActive = activeCategoryDropdown === 'shape';
-                setActiveCategoryDropdown(isActive ? null : 'shape');
-                if (!isActive) {
-                  if (!['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
-                    setActiveTool(lastShapeTool);
-                  }
-                }
-              }}
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setTooltip({ visible: true, text: 'Shape', x: rect.left + rect.width / 2, y: rect.top - 10 });
-              }}
-              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
-              title="Shape"
-            >
-              <Icon name="rect" size={16} />
-            </button>
-
-            {/* Review Category */}
-            {/* Review Category Button */}
-            {/* Review Category Button */}
-            <button
-              onClick={() => {
-                const isActive = activeCategoryDropdown === 'review';
-                setActiveCategoryDropdown(isActive ? null : 'review');
-                if (!isActive) {
-                  if (!['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
-                    setActiveTool(lastReviewTool);
-                  }
-                }
-              }}
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setTooltip({ visible: true, text: 'Review', x: rect.left + rect.width / 2, y: rect.top - 10 });
-              }}
-              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'review' || ['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
-              title="Review"
-            >
-              <Icon name="text" size={16} />
             </button>
 
             {/* Survey Category Button (Conditional) */}
@@ -17755,47 +24292,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               )}
             </div>
 
-            {/* Debug Logging Toggle */}
             <button
-              onClick={() => {
-                const newState = !debugLogging;
-                setDebugLogging(newState);
-                setDebugEnabled(newState);
-              }}
+              onClick={handleSaveOverlayLagLog}
               className="btn btn-default btn-sm"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '4px 8px',
-                background: debugLogging ? '#4CAF50' : 'transparent',
-                color: debugLogging ? '#fff' : '#888',
-                fontSize: '11px',
-                borderRadius: '4px'
-              }}
-              title={debugLogging ? 'Click to disable performance logging' : 'Click to enable performance logging'}
+              style={{ fontSize: '12px', padding: '6px 10px' }}
+              title="Download overlay lag diagnostics (.log JSON payload)"
             >
-              <span style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: debugLogging ? '#fff' : '#666'
-              }} />
-              {debugLogging ? 'Debug' : 'Debug'}
+              Save Lag Log
             </button>
 
-            {/* View Mode Toggle */}
             <button
-              onClick={toggleScrollMode}
+              onClick={() => setOverlayLagAutoRecordEnabled((prev) => !prev)}
               className="btn btn-default btn-sm"
               style={{
-                paddingLeft: '10px',
-                paddingRight: '10px',
-                position: 'absolute',
-                left: '8px'
+                fontSize: '12px',
+                padding: '6px 10px',
+                background: overlayLagAutoRecordEnabled ? '#2d4a2d' : undefined,
+                borderColor: overlayLagAutoRecordEnabled ? '#4f7a4f' : undefined
               }}
+              title="Automatically record lag diagnostics when the app opens"
             >
-              {scrollMode === 'continuous' ? 'Continuous' : 'Single Page'}
+              Auto Log: {overlayLagAutoRecordEnabled ? 'On' : 'Off'}
             </button>
 
             {/* Page Navigation */}
@@ -17804,7 +24321,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               alignItems: 'center',
               gap: '8px',
               position: 'absolute',
-              left: '114px'
+              left: '8px'
             }}>
               <button
                 onClick={goToPreviousPage}
@@ -17905,7 +24422,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 left: 0,
                 right: 0,
                 bottom: 0,
-                background: 'rgba(0, 0, 0, 0.5)',
+                background: COLORS.modal.overlay,
                 zIndex: 10000,
                 animation: 'fadeIn 0.2s ease-out',
                 display: 'flex',
@@ -17916,15 +24433,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  background: '#2b2b2b',
-                  border: '1px solid #444',
+                  background: COLORS.modal.surface,
+                  border: `1px solid ${COLORS.modal.border}`,
                   borderRadius: '8px',
                   padding: '24px',
                   width: '500px',
                   maxWidth: '90vw',
                   maxHeight: '80vh',
                   overflow: 'auto',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                  boxShadow: SHADOWS.xl,
                   animation: 'fadeIn 0.2s ease-out'
                 }}
               >
@@ -17938,7 +24455,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     margin: 0,
                     fontSize: '18px',
                     fontWeight: '600',
-                    color: '#fff',
+                    color: COLORS.modal.textPrimary,
                     fontFamily: FONT_FAMILY
                   }}>
                     Select Space
@@ -17957,7 +24474,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 </div>
 
                 {appTemplates.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                  <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
                     <p>No templates available. Please create a template first.</p>
                   </div>
                 ) : (() => {
@@ -17971,7 +24488,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                   if (allSpaces.length === 0) {
                     return (
-                      <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                      <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
                         <p>No spaces available in any template.</p>
                       </div>
                     );
@@ -18001,6 +24518,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           onClick={(e) => {
                             e.stopPropagation();
                             e.preventDefault();
+                            const space = module;
 
                             // Find the template that contains this module
                             const template = appTemplates.find(t => t.id === module.templateId);
@@ -18255,16 +24773,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 return;
                               }
 
-                              // console.log('Source space ID:', sourceSpaceId);
-                              // console.log('Source template:', sourceTemplate);
-                              // console.log('Destination space ID:', space.id);
-                              // console.log('Destination template:', template);
-                              // console.log('All items:', items);
-                              // console.log('All annotations:', annotations);
 
                               selectedHighlightIds.forEach(highlightId => {
                                 const highlight = highlightAnnotations[highlightId];
-                                // console.log(`Processing highlight ${highlightId}:`, highlight);
 
                                 if (!highlight) {
                                   console.warn(`Highlight ${highlightId} not found`);
@@ -18278,8 +24789,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                                 // Find corresponding item by matching name and category (same logic as transfer)
                                 const categoryName = getCategoryName(sourceTemplate, highlight.spaceId, highlight.categoryId);
-                                // console.log(`Category name for highlight ${highlightId}:`, categoryName);
-                                // console.log(`Highlight name:`, highlight.name);
 
                                 // Find items that match name and category
                                 const matchingItem = Object.values(items).find(item =>
@@ -18287,7 +24796,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   item.itemType === categoryName
                                 );
 
-                                // console.log(`Matching item for highlight ${highlightId}:`, matchingItem);
 
                                 // Verify the item has an annotation in the same space
                                 if (matchingItem) {
@@ -18297,20 +24805,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     ann.spaceId === highlight.spaceId
                                   );
 
-                                  // console.log(`Matching annotation for item ${matchingItem.itemId}:`, matchingAnnotation);
 
                                   if (matchingAnnotation && matchingItem.itemId) {
                                     // Found corresponding item in new system
                                     // Avoid duplicates
                                     if (!itemIdsToCopy.includes(matchingItem.itemId)) {
-                                      // console.log(`Adding item ${matchingItem.itemId} to copy list`);
                                       itemIdsToCopy.push(matchingItem.itemId);
                                     }
                                   } else {
                                     // No annotation found, but item exists - still copy it
                                     // The item might not have an annotation yet, but we can still copy it
                                     if (!itemIdsToCopy.includes(matchingItem.itemId)) {
-                                      // console.log(`Adding item ${matchingItem.itemId} to copy list (no annotation)`);
                                       itemIdsToCopy.push(matchingItem.itemId);
                                     }
                                   }
@@ -18319,14 +24824,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 }
                               });
 
-                              // console.log('Items to copy:', itemIdsToCopy);
 
                               if (itemIdsToCopy.length > 0) {
                                 // Check if categories need to be created
                                 const itemsToCheck = itemIdsToCopy.map(itemId => items[itemId]).filter(Boolean);
                                 const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
 
-                                // console.log('Item types to copy:', itemTypes);
 
                                 const missingCategories = itemTypes.filter(itemType =>
                                   !categoryExists(template, space.id, itemType)
@@ -18347,20 +24850,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     annotations
                                   );
 
-                                  // console.log('Transfer result:', result);
 
                                   // Update items and annotations
                                   setItems(result.newItems);
                                   setAnnotations(result.updatedAnnotations);
 
                                   // Create highlight entries for visual display
-                                  // console.log('Creating highlight entries for', itemIdsToCopy.length, 'items');
                                   const newHighlights = {};
                                   itemIdsToCopy.forEach(itemId => {
                                     const item = result.newItems[itemId];
-                                    // console.log('Processing item for highlight creation:', itemId, item);
                                     if (!item) {
-                                      // console.log('Item not found in result.newItems');
                                       return;
                                     }
 
@@ -18369,13 +24868,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       ann.itemId === itemId && ann.spaceId === space.id
                                     );
 
-                                    // console.log('Destination annotation:', destAnnotation);
 
                                     // Find source annotation to get coordinates
                                     const sourceAnnotation = Object.values(annotations).find(a =>
                                       a.itemId === itemId && a.spaceId === sourceSpaceId
                                     );
-                                    // console.log('Source annotation:', sourceAnnotation);
 
                                     // Find source highlight by matching the selected ID
                                     const sourceHighlightId = selectedHighlightIds.find(id => {
@@ -18384,12 +24881,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     });
                                     const sourceHighlight = sourceHighlightId ? highlightAnnotations[sourceHighlightId] : null;
 
-                                    // console.log('Source highlight:', sourceHighlight);
 
                                     // Find destination category ID
                                     const destSpace = template.spaces.find(s => s.id === space.id);
                                     const destCategory = destSpace?.categories?.find(c => c.name === item.itemType);
-                                    // console.log('Destination category:', destCategory);
 
                                     // Use destination annotation coordinates, or source annotation coordinates, or source highlight bounds
                                     let bounds = null;
@@ -18401,7 +24896,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       bounds = sourceHighlight.bounds;
                                     }
 
-                                    // console.log('Bounds for highlight:', bounds);
 
                                     if (bounds) {
                                       const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -18418,7 +24912,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         // Do NOT copy BIC properties - item starts blank in new space
                                         checklistResponses: {}
                                       };
-                                      // console.log('Created highlight (no BIC):', newHighlights[highlightId]);
 
                                       // Add to newHighlightsByPage as transparent with dashed outline (needs BIC)
                                       setNewHighlightsByPage(prev => ({
@@ -18433,13 +24926,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         ]
                                       }));
                                     } else {
-                                      // console.log('No bounds available, skipping highlight creation');
                                     }
                                   });
 
                                   // Add new highlights to highlightAnnotations
                                   if (Object.keys(newHighlights).length > 0) {
-                                    // console.log('Adding', Object.keys(newHighlights).length, 'new highlights to highlightAnnotations');
                                     setHighlightAnnotations(prev => ({
                                       ...prev,
                                       ...newHighlights
@@ -18452,17 +24943,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   setShowSpaceSelection(false);
 
                                   // Switch to the destination space to show the copied items
-                                  setSelectedTemplate(template);
-                                  setSelectedSpaceId(space.id);
-                                  setShowSurveyPanel(true);
+                              setSelectedTemplate(template);
+                              setSelectedSpaceId(space.id);
+                              setShowSurveyPanel(true);
 
-                                  // console.log('Copy completed successfully');
                                   // Explicitly return to prevent any further code execution
                                   return;
                                 }
                               } else {
                                 // No items found - handle as legacy highlights
-                                // console.log('No items found, treating highlights as legacy highlights');
                                 const legacyHighlights = selectedHighlightIds
                                   .map(id => highlightAnnotations[id])
                                   .filter(Boolean);
@@ -18473,7 +24962,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   return;
                                 }
 
-                                // console.log('Copying legacy highlights:', legacyHighlights);
 
                                 // Check if all required categories exist in destination space
                                 const destSpace = template.spaces.find(s => s.id === space.id);
@@ -18506,7 +24994,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     categoryId: destCategory?.id || null
                                   };
 
-                                  // console.log(`Created legacy highlight copy: ${newId}`, newHighlights[newId]);
                                 });
 
                                 // Update highlightAnnotations
@@ -18525,7 +25012,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 setSelectedSpaceId(space.id);
                                 setShowSurveyPanel(true);
 
-                                // console.log('Legacy highlights copied successfully');
                                 return;
                               }
                             } else {
@@ -18539,18 +25025,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             textAlign: 'left',
                             justifyContent: 'flex-start',
                             padding: '12px 16px',
-                            background: '#333',
-                            border: '1px solid #444'
+                            background: COLORS.modal.panel,
+                            border: `1px solid ${COLORS.modal.borderStrong}`,
+                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                           }}
+                          onMouseEnter={handleModalOptionMouseEnter}
+                          onMouseLeave={handleModalOptionMouseLeave}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <Icon name="template" size={20} />
                             <div>
-                              <div style={{ fontWeight: '500', color: '#fff' }}>
-                                {space.name || 'Untitled Space'}
+                              <div style={{ fontWeight: '500', color: COLORS.modal.textPrimary }}>
+                                {module.name || 'Untitled Space'}
                               </div>
-                              <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
-                                {space.templateName || 'Untitled Template'}
+                              <div style={{ fontSize: '12px', color: COLORS.modal.textMuted, marginTop: '2px' }}>
+                                {module.templateName || 'Untitled Template'}
                               </div>
                             </div>
                           </div>
@@ -18575,7 +25064,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 left: 0,
                 right: 0,
                 bottom: 0,
-                background: 'rgba(0, 0, 0, 0.5)',
+                background: COLORS.modal.overlay,
                 zIndex: 10000,
                 animation: 'fadeIn 0.2s ease-out',
                 display: 'flex',
@@ -18586,15 +25075,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  background: '#2b2b2b',
-                  border: '1px solid #444',
+                  background: COLORS.modal.surface,
+                  border: `1px solid ${COLORS.modal.border}`,
                   borderRadius: '8px',
                   padding: '24px',
                   width: '500px',
                   maxWidth: '90vw',
                   maxHeight: '80vh',
                   overflow: 'auto',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                  boxShadow: SHADOWS.xl,
                   animation: 'fadeIn 0.2s ease-out'
                 }}
               >
@@ -18608,7 +25097,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     margin: 0,
                     fontSize: '18px',
                     fontWeight: '600',
-                    color: '#fff',
+                    color: COLORS.modal.textPrimary,
                     fontFamily: FONT_FAMILY
                   }}>
                     Select Template
@@ -18631,7 +25120,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     style={{
                       textAlign: 'center',
                       padding: '40px',
-                      color: '#999',
+                      color: COLORS.modal.textMuted,
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
@@ -18649,8 +25138,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         setActiveTool('select');
                         onRequestCreateTemplate?.();
                       }}
-                      className="btn btn-primary btn-md"
-                      style={{ minWidth: '160px' }}
+                      className="btn btn-md"
+                      style={{
+                        minWidth: '160px',
+                        background: COLORS.modal.primaryButton,
+                        border: `1px solid ${COLORS.modal.borderStrong}`,
+                        color: COLORS.modal.textPrimary
+                      }}
+                      onMouseEnter={handleModalPrimaryButtonMouseEnter}
+                      onMouseLeave={handleModalPrimaryButtonMouseLeave}
                     >
                       Create Template
                     </button>
@@ -18673,17 +25169,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             textAlign: 'left',
                             justifyContent: 'flex-start',
                             padding: '12px 16px',
-                            background: '#333',
-                            border: '1px solid #444'
+                            background: COLORS.modal.panel,
+                            border: `1px solid ${COLORS.modal.borderStrong}`,
+                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                           }}
+                          onMouseEnter={handleModalOptionMouseEnter}
+                          onMouseLeave={handleModalOptionMouseLeave}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <Icon name="template" size={20} />
                             <div>
-                              <div style={{ fontWeight: '500', color: '#fff' }}>
+                              <div style={{ fontWeight: '500', color: COLORS.modal.textPrimary }}>
                                 {template.name || 'Untitled Template'}
                               </div>
-                              <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
+                              <div style={{ fontSize: '12px', color: COLORS.modal.textMuted, marginTop: '2px' }}>
                                 {((template.modules || template.spaces) || []).length} module{((template.modules || template.spaces) || []).length !== 1 ? 's' : ''}
                               </div>
                             </div>
@@ -18700,8 +25199,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         setActiveTool('select');
                         onRequestCreateTemplate?.();
                       }}
-                      className="btn btn-primary btn-md"
-                      style={{ alignSelf: 'center', minWidth: '160px' }}
+                      className="btn btn-md"
+                      style={{
+                        alignSelf: 'center',
+                        minWidth: '160px',
+                        background: COLORS.modal.primaryButton,
+                        border: `1px solid ${COLORS.modal.borderStrong}`,
+                        color: COLORS.modal.textPrimary
+                      }}
+                      onMouseEnter={handleModalPrimaryButtonMouseEnter}
+                      onMouseLeave={handleModalPrimaryButtonMouseLeave}
                     >
                       Create Template
                     </button>
@@ -18858,8 +25365,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           setSelectedCategories({});
                         } else {
                           setShowSurveyPanel(false);
-                          setSelectedTemplate(null);
                           setSelectedSpaceId(null);
+                          setSelectedModuleId(null);
                           setSelectedCategoryId(null);
                           setActiveTool('select');
                         }
@@ -19084,13 +25591,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               <button
                                 onClick={() => {
                                   const selectedIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
-                                  // console.log('=== Copy to Spaces Button Clicked ===');
-                                  // console.log('copiedItemSelection:', copiedItemSelection);
-                                  // console.log('selectedIds:', selectedIds);
-                                  // console.log('highlightAnnotations keys:', Object.keys(highlightAnnotations));
-                                  // console.log('Checking if selected IDs exist in highlightAnnotations:');
                                   selectedIds.forEach(id => {
-                                    // console.log(`  ${id}: ${highlightAnnotations[id] ? 'EXISTS' : 'NOT FOUND'}`);
                                   });
                                   if (selectedIds.length === 0) return;
                                   setShowSpaceSelection(true);
@@ -20041,7 +26542,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                             } else {
                                                               delete newSelection[highlightId];
                                                             }
-                                                            // console.log('Updated selection:', newSelection);
                                                             return newSelection;
                                                           });
                                                         }
@@ -20247,7 +26747,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                       e.stopPropagation();
                                                       const highlightData = highlightAnnotations[highlightId];
                                                       const existingNote = highlightData?.note;
-                                                      // console.log('Opening item-level note dialog:', { highlightId, existingNote });
 
                                                       if (existingNote) {
                                                         setNoteDialogContent({
@@ -20408,7 +26907,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                               const entityId = e.target.value;
                                                               const entity = entityId ? ballInCourtEntities.find(e => e.id === entityId) : null;
 
-                                                              // console.log('Ball in Court dropdown changed:', { entityId, entity, matchingItem, highlightId, highlightData });
 
                                                               // Update highlight annotation - the useEffect will automatically rebuild newHighlightsByPage
                                                               setHighlightAnnotations(prev => {
@@ -20421,7 +26919,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                                                     ballInCourtColor: entity?.color
                                                                   }
                                                                 };
-                                                                // console.log('Updated highlight annotation:', updated[highlightId]);
                                                                 return updated;
                                                               });
 
@@ -20858,17 +27355,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 <div style={{
                   padding: '10px 12px',
                   borderTop: '1px solid #3a3a3a',
-                  background: '#3d2c00',
+                  background: COLORS.modal.panel,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '10px'
                 }}>
-                  <span style={{ color: '#ffb800', fontSize: '16px' }}>⚠️</span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ color: '#ffcc00', fontSize: '12px', fontWeight: 600, marginBottom: '2px' }}>
+                    <div style={{ color: COLORS.modal.textPrimary, fontSize: '12px', fontWeight: 600, marginBottom: '2px', fontFamily: FONT_FAMILY }}>
                       Microsoft session expired
                     </div>
-                    <div style={{ color: '#cca800', fontSize: '11px' }}>
+                    <div style={{ color: COLORS.modal.textMuted, fontSize: '11px', fontFamily: FONT_FAMILY }}>
                       Reconnect to sync with OneDrive
                     </div>
                   </div>
@@ -20876,15 +27372,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     type="button"
                     onClick={msLogin}
                     style={{
-                      background: '#ff9500',
-                      border: 'none',
-                      color: '#000',
+                      background: COLORS.modal.primaryButton,
+                      border: `1px solid ${COLORS.modal.borderActive}`,
+                      color: COLORS.modal.textPrimary,
                       fontSize: '11px',
                       fontWeight: 600,
                       padding: '6px 12px',
                       borderRadius: '4px',
                       cursor: 'pointer',
-                      whiteSpace: 'nowrap'
+                      whiteSpace: 'nowrap',
+                      fontFamily: FONT_FAMILY
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = COLORS.modal.primaryButtonHover;
+                      e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = COLORS.modal.primaryButton;
+                      e.currentTarget.style.boxShadow = 'none';
                     }}
                   >
                     Reconnect
@@ -21033,7 +27538,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               const excelPath = selectedTemplate.linkedExcelPath;
                               const isOneDrive = selectedTemplate.isOneDrive;
 
-                              // console.log('Attempting to open Excel file:', { excelPath, isOneDrive });
 
                               if (!excelPath) {
                                 alert('No Excel file is linked to this survey.');
@@ -21183,7 +27687,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 try {
                                   // Check if file exists first
                                   const exists = await window.electronAPI.fileExists(excelPath);
-                                  // console.log('File exists:', exists);
 
                                   if (!exists) {
                                     alert(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`);
@@ -21365,7 +27868,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  background: 'rgba(0, 0, 0, 0.5)',
+                  background: COLORS.modal.overlay,
                   zIndex: 10001,
                   animation: 'fadeIn 0.2s ease-out',
                   display: 'flex',
@@ -21376,15 +27879,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 <div
                   onClick={(e) => e.stopPropagation()}
                   style={{
-                    background: '#2b2b2b',
-                    border: '1px solid #444',
+                    background: COLORS.modal.surface,
+                    border: `1px solid ${COLORS.modal.border}`,
                     borderRadius: '8px',
                     padding: '24px',
                     width: '500px',
                     maxWidth: '90vw',
                     maxHeight: '80vh',
                     overflow: 'auto',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                    boxShadow: SHADOWS.xl,
                     animation: 'fadeIn 0.2s ease-out'
                   }}
                 >
@@ -21398,7 +27901,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       margin: 0,
                       fontSize: '18px',
                       fontWeight: '600',
-                      color: '#fff',
+                      color: COLORS.modal.textPrimary,
                       fontFamily: FONT_FAMILY
                     }}>
                       Categorize Highlight
@@ -21442,7 +27945,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     </button>
                   </div>
 
-                  <p style={{ color: '#999', fontSize: '14px', marginBottom: '20px' }}>
+                  <p style={{ color: COLORS.modal.textMuted, fontSize: '14px', marginBottom: '20px' }}>
                     Select a category for this highlighted item:
                   </p>
 
@@ -21450,7 +27953,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
                     if (!module || !module.categories || module.categories.length === 0) {
                       return (
-                        <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                        <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
                           <p>No categories available for this module.</p>
                         </div>
                       );
@@ -21486,15 +27989,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               textAlign: 'left',
                               justifyContent: 'flex-start',
                               padding: '12px 16px',
-                              background: 'transparent',
-                              border: '1px solid transparent'
+                              background: COLORS.modal.panel,
+                              border: `1px solid ${COLORS.modal.borderStrong}`,
+                              transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                             }}
+                            onMouseEnter={handleModalOptionMouseEnter}
+                            onMouseLeave={handleModalOptionMouseLeave}
                           >
-                            <div style={{ fontWeight: '500', color: '#fff' }}>
+                            <div style={{ fontWeight: '500', color: COLORS.modal.textPrimary }}>
                               {category.name || 'Untitled Category'}
                             </div>
                             {category.checklist && category.checklist.length > 0 && (
-                              <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
+                              <div style={{ fontSize: '12px', color: COLORS.modal.textMuted, marginTop: '4px' }}>
                                 {category.checklist.length} checklist item{category.checklist.length !== 1 ? 's' : ''}
                               </div>
                             )}
@@ -21532,7 +28038,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    background: 'rgba(0, 0, 0, 0.5)',
+                    background: COLORS.modal.overlay,
                     zIndex: 10003,
                     animation: 'fadeIn 0.2s ease-out',
                     display: 'flex',
@@ -21543,13 +28049,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   <div
                     onClick={(e) => e.stopPropagation()}
                     style={{
-                      background: '#2b2b2b',
-                      border: '1px solid #444',
+                      background: COLORS.modal.surface,
+                      border: `1px solid ${COLORS.modal.border}`,
                       borderRadius: '8px',
                       padding: '24px',
                       width: '500px',
                       maxWidth: '90vw',
-                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                      boxShadow: SHADOWS.xl,
                       animation: 'fadeIn 0.2s ease-out'
                     }}
                   >
@@ -21563,7 +28069,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         margin: 0,
                         fontSize: '18px',
                         fontWeight: '600',
-                        color: '#fff',
+                        color: COLORS.modal.textPrimary,
                         fontFamily: FONT_FAMILY
                       }}>
                         Ball in Court
@@ -21591,7 +28097,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                     <div style={{
                       fontSize: '14px',
-                      color: '#999',
+                      color: COLORS.modal.textMuted,
                       marginBottom: '16px'
                     }}>
                       Select the entity responsible for this highlight:
@@ -21664,21 +28170,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             alignItems: 'center',
                             gap: '12px',
                             padding: '12px 16px',
-                            background: '#333',
-                            border: '1px solid #444',
+                            background: COLORS.modal.panel,
+                            border: `1px solid ${COLORS.modal.borderStrong}`,
                             borderRadius: '6px',
                             cursor: 'pointer',
-                            transition: 'all 0.2s',
+                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
                             textAlign: 'left'
                           }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#3a3a3a';
-                            e.currentTarget.style.borderColor = '#555';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#333';
-                            e.currentTarget.style.borderColor = '#444';
-                          }}
+                          onMouseEnter={handleModalOptionMouseEnter}
+                          onMouseLeave={handleModalOptionMouseLeave}
                         >
                           <div
                             style={{
@@ -21691,7 +28191,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             }}
                           />
                           <span style={{
-                            color: '#fff',
+                            color: COLORS.modal.textPrimary,
                             fontSize: '14px',
                             fontWeight: '500',
                             fontFamily: FONT_FAMILY
@@ -21769,7 +28269,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    background: 'rgba(0, 0, 0, 0.5)',
+                    background: COLORS.modal.overlay,
                     zIndex: 10002,
                     animation: 'fadeIn 0.2s ease-out',
                     display: 'flex',
@@ -21780,13 +28280,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   <div
                     onClick={(e) => e.stopPropagation()}
                     style={{
-                      background: '#2b2b2b',
-                      border: '1px solid #444',
+                      background: COLORS.modal.surface,
+                      border: `1px solid ${COLORS.modal.border}`,
                       borderRadius: '8px',
                       padding: '24px',
                       width: '500px',
                       maxWidth: '90vw',
-                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                      boxShadow: SHADOWS.xl,
                       animation: 'fadeIn 0.2s ease-out'
                     }}
                   >
@@ -21800,7 +28300,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         margin: 0,
                         fontSize: '18px',
                         fontWeight: '600',
-                        color: '#fff',
+                        color: COLORS.modal.textPrimary,
                         fontFamily: FONT_FAMILY
                       }}>
                         Name Highlight
@@ -21940,8 +28440,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       </button>
                     </div>
 
-                    <p style={{ color: '#999', fontSize: '14px', marginBottom: '16px' }}>
-                      Category: <strong style={{ color: '#fff' }}>{category?.name || 'Untitled Category'}</strong>
+                    <p style={{ color: COLORS.modal.textMuted, fontSize: '14px', marginBottom: '16px' }}>
+                      Category: <strong style={{ color: COLORS.modal.textPrimary }}>{category?.name || 'Untitled Category'}</strong>
                     </p>
 
                     <input
@@ -22040,9 +28540,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         width: '100%',
                         padding: '12px 16px',
                         background: '#1b1b1b',
-                        border: '1px solid #444',
+                        border: `1px solid ${COLORS.modal.borderStrong}`,
                         borderRadius: '6px',
-                        color: '#fff',
+                        color: COLORS.modal.textPrimary,
                         fontSize: '14px',
                         fontFamily: FONT_FAMILY,
                         outline: 'none',
@@ -22178,8 +28678,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         }}
                         className="btn btn-default btn-md"
                         style={{
-                          padding: '10px 20px'
+                          padding: '10px 20px',
+                          background: COLORS.modal.secondaryButton,
+                          border: `1px solid ${COLORS.modal.borderStrong}`,
+                          color: COLORS.modal.textPrimary
                         }}
+                        onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                        onMouseLeave={handleModalSecondaryButtonMouseLeave}
                       >
                         Cancel
                       </button>
@@ -22309,8 +28814,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         }}
                         className="btn btn-primary btn-md"
                         style={{
-                          padding: '10px 20px'
+                          padding: '10px 20px',
+                          background: COLORS.modal.primaryButton,
+                          border: `1px solid ${COLORS.modal.borderStrong}`,
+                          color: COLORS.modal.textPrimary
                         }}
+                        onMouseEnter={handleModalPrimaryButtonMouseEnter}
+                        onMouseLeave={handleModalPrimaryButtonMouseLeave}
                       >
                         Save
                       </button>
@@ -22334,7 +28844,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  background: 'rgba(0, 0, 0, 0.5)',
+                  background: COLORS.modal.overlay,
                   zIndex: 10001,
                   animation: 'fadeIn 0.2s ease-out',
                   display: 'flex',
@@ -22345,15 +28855,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 <div
                   onClick={(e) => e.stopPropagation()}
                   style={{
-                    background: '#2b2b2b',
-                    border: '1px solid #444',
+                    background: COLORS.modal.surface,
+                    border: `1px solid ${COLORS.modal.border}`,
                     borderRadius: '8px',
                     padding: '24px',
                     width: '600px',
                     maxWidth: '90vw',
                     maxHeight: '80vh',
                     overflow: 'auto',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                    boxShadow: SHADOWS.xl,
                     animation: 'fadeIn 0.2s ease-out'
                   }}
                 >
@@ -22367,7 +28877,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       margin: 0,
                       fontSize: '18px',
                       fontWeight: '600',
-                      color: '#fff',
+                      color: COLORS.modal.textPrimary,
                       fontFamily: FONT_FAMILY
                     }}>
                       Note
@@ -22391,7 +28901,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       marginBottom: '8px',
                       fontSize: '14px',
                       fontWeight: '500',
-                      color: '#ddd'
+                      color: COLORS.modal.textPrimary
                     }}>
                       Notes
                     </label>
@@ -22402,9 +28912,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       style={{
                         width: '100%',
                         padding: '10px',
-                        background: '#333',
-                        color: '#ddd',
-                        border: '1px solid #555',
+                        background: COLORS.modal.panel,
+                        color: COLORS.modal.textPrimary,
+                        border: `1px solid ${COLORS.modal.borderStrong}`,
                         borderRadius: '5px',
                         fontSize: '14px',
                         fontFamily: FONT_FAMILY,
@@ -22420,7 +28930,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       marginBottom: '8px',
                       fontSize: '14px',
                       fontWeight: '500',
-                      color: '#ddd'
+                      color: COLORS.modal.textPrimary
                     }}>
                       Photos
                     </label>
@@ -22464,7 +28974,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             alignItems: 'center',
                             gap: '8px',
                             padding: '8px',
-                            background: '#333',
+                            background: COLORS.modal.panel,
                             borderRadius: '4px'
                           }}>
                             <img src={photo.dataUrl} alt={photo.name} style={{
@@ -22473,7 +28983,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               objectFit: 'cover',
                               borderRadius: '4px'
                             }} />
-                            <span style={{ flex: 1, color: '#ddd', fontSize: '13px' }}>{photo.name}</span>
+                            <span style={{ flex: 1, color: COLORS.modal.textPrimary, fontSize: '13px' }}>{photo.name}</span>
                             <button
                               type="button"
                               onClick={() => {
@@ -22483,7 +28993,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 }));
                               }}
                               className="btn btn-icon btn-icon-sm"
-                              style={{ background: '#444' }}
+                              style={{ background: COLORS.modal.secondaryButton, border: `1px solid ${COLORS.modal.borderStrong}` }}
+                              onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                              onMouseLeave={handleModalSecondaryButtonMouseLeave}
                             >
                               <Icon name="close" size={14} />
                             </button>
@@ -22499,7 +29011,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       marginBottom: '8px',
                       fontSize: '14px',
                       fontWeight: '500',
-                      color: '#ddd'
+                      color: COLORS.modal.textPrimary
                     }}>
                       Videos
                     </label>
@@ -22543,7 +29055,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             alignItems: 'center',
                             gap: '8px',
                             padding: '8px',
-                            background: '#333',
+                            background: COLORS.modal.panel,
                             borderRadius: '4px'
                           }}>
                             <video src={video.dataUrl} style={{
@@ -22552,7 +29064,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               objectFit: 'cover',
                               borderRadius: '4px'
                             }} />
-                            <span style={{ flex: 1, color: '#ddd', fontSize: '13px' }}>{video.name}</span>
+                            <span style={{ flex: 1, color: COLORS.modal.textPrimary, fontSize: '13px' }}>{video.name}</span>
                             <button
                               type="button"
                               onClick={() => {
@@ -22562,7 +29074,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 }));
                               }}
                               className="btn btn-icon btn-icon-sm"
-                              style={{ background: '#444' }}
+                              style={{ background: COLORS.modal.secondaryButton, border: `1px solid ${COLORS.modal.borderStrong}` }}
+                              onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                              onMouseLeave={handleModalSecondaryButtonMouseLeave}
                             >
                               <Icon name="close" size={14} />
                             </button>
@@ -22577,26 +29091,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       type="button"
                       onClick={() => setNoteDialogOpen(null)}
                       className="btn btn-default btn-md"
+                      style={{
+                        background: COLORS.modal.secondaryButton,
+                        border: `1px solid ${COLORS.modal.borderStrong}`,
+                        color: COLORS.modal.textPrimary
+                      }}
+                      onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                      onMouseLeave={handleModalSecondaryButtonMouseLeave}
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
                       onClick={() => {
-                        // console.log('noteDialogOpen:', noteDialogOpen);
-                        // console.log('noteDialogContent:', noteDialogContent);
 
                         // For item-level notes, noteDialogOpen is just the highlightId
                         const highlightId = noteDialogOpen;
 
-                        // console.log('Saving item-level note for highlightId:', highlightId);
-                        // console.log('Note text:', noteDialogContent.text);
-                        // console.log('Photos:', noteDialogContent.photos.length);
-                        // console.log('Videos:', noteDialogContent.videos.length);
 
                         // Update highlight annotation with item-level note
                         setHighlightAnnotations(prev => {
-                          // console.log('Current highlight data:', prev[highlightId]);
 
                           const existingHighlight = prev[highlightId] || {};
 
@@ -22605,7 +29119,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             photos: noteDialogContent.photos,
                             videos: noteDialogContent.videos
                           };
-                          // console.log('Saving note:', newNote);
 
                           const updated = {
                             ...prev,
@@ -22615,12 +29128,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             }
                           };
 
-                          // console.log('Updated highlight with note:', JSON.stringify(updated[highlightId], null, 2));
 
                           // Save to localStorage immediately
                           if (pdfId) {
                             saveHighlightAnnotations(pdfId, updated);
-                            // console.log('Saved to localStorage, pdfId:', pdfId);
                           } else {
                             console.warn('Cannot save to localStorage: pdfId is null');
                           }
@@ -22628,11 +29139,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           return updated;
                         });
 
-                        // console.log('Closing dialog');
                         setNoteDialogOpen(null);
                         setNoteDialogContent({ text: '', photos: [], videos: [] }); // Clear dialog content
                       }}
                       className="btn btn-primary btn-md"
+                      style={{
+                        background: COLORS.modal.primaryButton,
+                        border: `1px solid ${COLORS.modal.borderStrong}`,
+                        color: COLORS.modal.textPrimary
+                      }}
+                      onMouseEnter={handleModalPrimaryButtonMouseEnter}
+                      onMouseLeave={handleModalPrimaryButtonMouseLeave}
                     >
                       Save
                     </button>
@@ -22655,7 +29172,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  background: 'rgba(0, 0, 0, 0.5)',
+                  background: COLORS.modal.overlay,
                   zIndex: 10003,
                   animation: 'fadeIn 0.2s ease-out',
                   display: 'flex',
@@ -22666,13 +29183,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 <div
                   onClick={(e) => e.stopPropagation()}
                   style={{
-                    background: '#2b2b2b',
-                    border: '1px solid #444',
+                    background: COLORS.modal.surface,
+                    border: `1px solid ${COLORS.modal.border}`,
                     borderRadius: '8px',
                     padding: '24px',
                     width: '500px',
                     maxWidth: '90vw',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                    boxShadow: SHADOWS.xl,
                     animation: 'fadeIn 0.2s ease-out'
                   }}
                 >
@@ -22686,7 +29203,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       margin: 0,
                       fontSize: '18px',
                       fontWeight: '600',
-                      color: '#fff',
+                      color: COLORS.modal.textPrimary,
                       fontFamily: FONT_FAMILY
                     }}>
                       Copy Items to Which Space?
@@ -22704,7 +29221,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     </button>
                   </div>
 
-                  <p style={{ color: '#999', fontSize: '14px', marginBottom: '20px' }}>
+                  <p style={{ color: COLORS.modal.textMuted, fontSize: '14px', marginBottom: '20px' }}>
                     Copy {transferState.items.length} item{transferState.items.length !== 1 ? 's' : ''} to:
                   </p>
 
@@ -22723,18 +29240,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             const itemIdsToCopy = [];
                             const legacyHighlightsToCopy = [];
 
-                            // console.log('Copying items:', transferState.items);
-                            // console.log('Source module:', transferState.sourceModuleId);
-                            // console.log('Destination module:', module.id);
 
                             transferState.items.forEach(highlightId => {
                               const highlight = highlightAnnotations[highlightId];
-                              // console.log('Processing highlight:', highlightId, highlight);
 
                               if (!highlight) {
                                 // Not a highlight, might be an itemId directly
                                 if (items[highlightId]) {
-                                  // console.log('Found direct itemId:', highlightId);
                                   itemIdsToCopy.push(highlightId);
                                 }
                                 return;
@@ -22742,7 +29254,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                               // Try to find corresponding item by matching name and category (same logic as migration)
                               const categoryName = getCategoryName(selectedTemplate, highlight.spaceId, highlight.categoryId);
-                              // console.log('Category name:', categoryName, 'Highlight name:', highlight.name);
 
                               // Find items that match name and category
                               const matchingItem = Object.values(items).find(item =>
@@ -22750,7 +29261,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 item.itemType === categoryName
                               );
 
-                              // console.log('Matching item:', matchingItem);
 
                               // Verify the item has an annotation in the same space
                               if (matchingItem) {
@@ -22760,33 +29270,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   ann.spaceId === highlight.spaceId
                                 );
 
-                                // console.log('Matching annotation:', matchingAnnotation);
-                                // console.log('All annotations for item:', Object.values(annotations).filter(a => a.itemId === matchingItem.itemId));
 
                                 if (matchingAnnotation && matchingItem.itemId) {
                                   // Found corresponding item in new system
                                   // Avoid duplicates
                                   if (!itemIdsToCopy.includes(matchingItem.itemId)) {
-                                    // console.log('Adding itemId to copy:', matchingItem.itemId);
                                     itemIdsToCopy.push(matchingItem.itemId);
                                   }
                                 } else {
                                   // No annotation found, but item exists - still copy it
                                   // The item might not have an annotation yet, but we can still copy it
-                                  // console.log('No matching annotation, but item exists - copying anyway');
                                   if (!itemIdsToCopy.includes(matchingItem.itemId)) {
                                     itemIdsToCopy.push(matchingItem.itemId);
                                   }
                                 }
                               } else {
                                 // Legacy highlight, no corresponding item found
-                                // console.log('No matching item, treating as legacy highlight');
                                 legacyHighlightsToCopy.push(highlight);
                               }
                             });
 
-                            // console.log('Items to copy:', itemIdsToCopy);
-                            // console.log('Legacy highlights to copy:', legacyHighlightsToCopy);
 
                             // Handle new system items
                             if (itemIdsToCopy.length > 0) {
@@ -22820,13 +29323,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 setAnnotations(result.updatedAnnotations);
 
                                 // Create highlight entries for UI display
-                                // console.log('Creating highlight entries for', itemIdsToCopy.length, 'items');
                                 const newHighlights = {};
                                 itemIdsToCopy.forEach(itemId => {
                                   const item = result.newItems[itemId];
-                                  // console.log('Processing item for highlight creation:', itemId, item);
                                   if (!item) {
-                                    // console.log('Item not found in result.newItems');
                                     return;
                                   }
 
@@ -22836,14 +29336,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     return ann.itemId === itemId && annModuleId === module.id;
                                   });
 
-                                  // console.log('Destination annotation:', destAnnotation);
 
                                   // Find source annotation to get coordinates
                                   const sourceAnnotation = Object.values(annotations).find(a => {
                                     const aModuleId = a.moduleId || a.spaceId; // Support legacy spaceId
                                     return a.itemId === itemId && aModuleId === transferState.sourceModuleId;
                                   });
-                                  // console.log('Source annotation:', sourceAnnotation);
 
                                   // Find source highlight by matching coordinates or by finding the highlight we selected
                                   let sourceHighlight = null;
@@ -22869,12 +29367,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     }
                                   }
 
-                                  // console.log('Source highlight:', sourceHighlight);
 
                                   // Find destination category ID
                                   const destModule = ((selectedTemplate.modules || selectedTemplate.spaces) || []).find(m => m.id === module.id);
                                   const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
-                                  // console.log('Destination category:', destCategory);
 
                                   // Use destination annotation coordinates, or source annotation coordinates, or source highlight bounds
                                   // Convert pdfCoordinates format to bounds format (they should be the same structure)
@@ -22887,7 +29383,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     bounds = sourceHighlight.bounds;
                                   }
 
-                                  // console.log('Bounds for highlight:', bounds);
 
                                   if (bounds) {
                                     const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -22900,9 +29395,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       name: item.name || sourceHighlight?.name || 'Untitled Item',
                                       checklistResponses: {}
                                     };
-                                    // console.log('Created highlight:', newHighlights[highlightId]);
                                   } else {
-                                    // console.log('No bounds available, skipping highlight creation');
                                   }
                                 });
 
@@ -22920,8 +29413,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                             // Handle legacy highlights (if any)
                             if (legacyHighlightsToCopy.length > 0) {
-                              // console.log('Copying legacy highlights:', legacyHighlightsToCopy);
-                              // console.log('To module:', module.id, module.name);
 
                               // Find matching category in destination module
                               const allModules = (selectedTemplate.modules || selectedTemplate.spaces) || [];
@@ -22932,8 +29423,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 c => c.name === sourceCategory?.name
                               );
 
-                              // console.log('Source category:', sourceCategory);
-                              // console.log('Dest category:', destCategory);
 
                               // Create new highlights in destination module with same data
                               const newHighlights = {};
@@ -22947,7 +29436,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 };
                               });
 
-                              // console.log('New highlights to add:', newHighlights);
 
                               // Update highlightAnnotations state
                               setHighlightAnnotations(prev => ({
@@ -22972,11 +29460,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             textAlign: 'left',
                             justifyContent: 'flex-start',
                             padding: '12px 16px',
-                            background: '#333',
-                            border: '1px solid #444'
+                            background: COLORS.modal.panel,
+                            border: `1px solid ${COLORS.modal.borderStrong}`,
+                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                           }}
+                          onMouseEnter={handleModalOptionMouseEnter}
+                          onMouseLeave={handleModalOptionMouseLeave}
                         >
-                          <div style={{ fontWeight: '500', color: '#fff' }}>
+                          <div style={{ fontWeight: '500', color: COLORS.modal.textPrimary }}>
                             {module.name || 'Untitled Module'}
                           </div>
                         </button>
@@ -23000,7 +29491,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  background: 'rgba(0, 0, 0, 0.5)',
+                  background: COLORS.modal.overlay,
                   zIndex: 10004,
                   animation: 'fadeIn 0.2s ease-out',
                   display: 'flex',
@@ -23011,13 +29502,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 <div
                   onClick={(e) => e.stopPropagation()}
                   style={{
-                    background: '#2b2b2b',
-                    border: '1px solid #444',
+                    background: COLORS.modal.surface,
+                    border: `1px solid ${COLORS.modal.border}`,
                     borderRadius: '8px',
                     padding: '24px',
                     width: '500px',
                     maxWidth: '90vw',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                    boxShadow: SHADOWS.xl,
                     animation: 'fadeIn 0.2s ease-out'
                   }}
                 >
@@ -23031,7 +29522,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       margin: 0,
                       fontSize: '18px',
                       fontWeight: '600',
-                      color: '#fff',
+                      color: COLORS.modal.textPrimary,
                       fontFamily: FONT_FAMILY
                     }}>
                       Missing Categories Detected
@@ -23049,7 +29540,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     </button>
                   </div>
 
-                  <p style={{ color: '#999', fontSize: '14px', marginBottom: '20px' }}>
+                  <p style={{ color: COLORS.modal.textMuted, fontSize: '14px', marginBottom: '20px' }}>
                     The following categories need to be created in the destination space:
                   </p>
 
@@ -23064,10 +29555,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       return missingCategories.map(itemType => (
                         <div key={itemType} style={{
                           padding: '12px',
-                          background: '#333',
-                          border: '1px solid #444',
+                          background: COLORS.modal.panel,
+                          border: `1px solid ${COLORS.modal.borderStrong}`,
                           borderRadius: '4px',
-                          color: '#fff',
+                          color: COLORS.modal.textPrimary,
                           fontWeight: '500'
                         }}>
                           {itemType}
@@ -23143,14 +29634,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         setTransferState(null);
                       }}
                       className="btn btn-primary btn-md"
-                      style={{ flex: 1 }}
+                      style={{
+                        flex: 1,
+                        background: COLORS.modal.primaryButton,
+                        border: `1px solid ${COLORS.modal.borderStrong}`,
+                        color: COLORS.modal.textPrimary
+                      }}
+                      onMouseEnter={handleModalPrimaryButtonMouseEnter}
+                      onMouseLeave={handleModalPrimaryButtonMouseLeave}
                     >
                       Copy As-Is
                     </button>
                     <button
                       onClick={() => setTransferState(null)}
                       className="btn btn-default btn-md"
-                      style={{ flex: 1 }}
+                      style={{
+                        flex: 1,
+                        background: COLORS.modal.secondaryButton,
+                        border: `1px solid ${COLORS.modal.borderStrong}`,
+                        color: COLORS.modal.textPrimary
+                      }}
+                      onMouseEnter={handleModalSecondaryButtonMouseEnter}
+                      onMouseLeave={handleModalSecondaryButtonMouseLeave}
                     >
                       Cancel
                     </button>
@@ -23170,7 +29675,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               left: 0,
               right: 0,
               bottom: 0,
-              background: 'rgba(0, 0, 0, 0.7)',
+              background: COLORS.modal.overlay,
               zIndex: 10000,
               display: 'flex',
               alignItems: 'center',
@@ -23182,8 +29687,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             <div
               onClick={(e) => e.stopPropagation()}
               style={{
-                background: '#2b2b2b',
-                border: '1px solid #444',
+                background: COLORS.modal.surface,
+                border: `1px solid ${COLORS.modal.border}`,
                 borderRadius: '8px',
                 padding: '24px',
                 width: '600px',
@@ -23191,7 +29696,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 maxHeight: '80vh',
                 display: 'flex',
                 flexDirection: 'column',
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                boxShadow: SHADOWS.xl,
                 animation: 'fadeIn 0.2s ease-out'
               }}
             >
@@ -23205,7 +29710,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   margin: 0,
                   fontSize: '18px',
                   fontWeight: '600',
-                  color: '#fff',
+                  color: COLORS.modal.textPrimary,
                   fontFamily: FONT_FAMILY
                 }}>
                   Locate Item
@@ -23234,9 +29739,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     width: '100%',
                     padding: '12px',
                     background: '#1b1b1b',
-                    border: '1px solid #444',
+                    border: `1px solid ${COLORS.modal.borderStrong}`,
                     borderRadius: '6px',
-                    color: '#fff',
+                    color: COLORS.modal.textPrimary,
                     fontSize: '14px',
                     fontFamily: FONT_FAMILY,
                     outline: 'none'
@@ -23258,7 +29763,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     return (
                       <div style={{
                         textAlign: 'center',
-                        color: '#666',
+                        color: COLORS.modal.textMuted,
                         marginTop: '40px'
                       }}>
                         Start typing to search...
@@ -23304,7 +29809,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     return (
                       <div style={{
                         textAlign: 'center',
-                        color: '#666',
+                        color: COLORS.modal.textMuted,
                         marginTop: '40px'
                       }}>
                         No items found.
@@ -23354,31 +29859,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         flexDirection: 'column',
                         alignItems: 'flex-start',
                         padding: '12px',
-                        background: '#333',
-                        border: '1px solid #444',
+                        background: COLORS.modal.panel,
+                        border: `1px solid ${COLORS.modal.borderStrong}`,
                         borderRadius: '6px',
                         cursor: 'pointer',
-                        textAlign: 'left'
+                        textAlign: 'left',
+                        transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                       }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#3a3a3a';
-                        e.currentTarget.style.borderColor = '#555';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#333';
-                        e.currentTarget.style.borderColor = '#444';
-                      }}
+                      onMouseEnter={handleModalOptionMouseEnter}
+                      onMouseLeave={handleModalOptionMouseLeave}
                     >
                       <div style={{
                         fontWeight: '600',
-                        color: '#fff',
+                        color: COLORS.modal.textPrimary,
                         marginBottom: '4px'
                       }}>
                         {highlight.name || 'Untitled Item'}
                       </div>
                       <div style={{
                         fontSize: '12px',
-                        color: '#999',
+                        color: COLORS.modal.textMuted,
                         display: 'flex',
                         gap: '8px'
                       }}>
@@ -23389,7 +29889,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       {highlight.note?.text && (
                         <div style={{
                           fontSize: '12px',
-                          color: '#777',
+                          color: COLORS.modal.textMuted,
                           marginTop: '4px',
                           fontStyle: 'italic',
                           overflow: 'hidden',
@@ -23418,44 +29918,47 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0, 0, 0, 0.75)',
+          background: COLORS.modal.overlay,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 10000,
-          backdropFilter: 'blur(4px)',
+          backdropFilter: 'blur(3px)',
           animation: 'fadeIn 0.2s ease-out'
         }}>
           <div style={{
-            background: '#252525',
-            borderRadius: '12px',
-            padding: '40px',
-            maxWidth: '520px',
+            background: COLORS.modal.surface,
+            borderRadius: BORDERS.radius.xl,
+            padding: '24px',
+            maxWidth: '460px',
             width: '90%',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            boxShadow: SHADOWS.xl,
+            border: `1px solid ${COLORS.modal.border}`,
+            fontFamily: FONT_FAMILY,
             animation: 'fadeIn 0.2s ease-out'
           }}>
             <h2 style={{
-              color: '#FFFFFF',
-              marginBottom: '12px',
-              fontSize: '22px',
-              fontWeight: 600,
+              color: COLORS.modal.textPrimary,
+              marginBottom: '8px',
+              fontSize: TYPOGRAPHY.fontSize['3xl'],
+              fontWeight: TYPOGRAPHY.fontWeight.semibold,
               letterSpacing: '-0.01em',
-              lineHeight: '1.3'
+              lineHeight: TYPOGRAPHY.lineHeight.tight,
+              fontFamily: FONT_FAMILY
             }}>
               Choose Export Location
             </h2>
             <p style={{
-              color: '#C8C8C8',
-              marginBottom: '32px',
-              lineHeight: '1.5',
-              fontSize: '14px',
-              letterSpacing: '-0.01em'
+              color: COLORS.modal.textMuted,
+              marginBottom: '18px',
+              lineHeight: TYPOGRAPHY.lineHeight.normal,
+              fontSize: TYPOGRAPHY.fontSize.lg,
+              letterSpacing: '-0.01em',
+              fontFamily: FONT_FAMILY
             }}>
-              Where would you like to save your Excel file?
+              Choose where to export this Excel file.
             </p>
-            <div style={{ display: 'flex', gap: '12px', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
               <button
                 onClick={async () => {
                   setShowExportLocationModal(false);
@@ -23501,6 +30004,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         handleTemplatesChange(updatedTemplates);
                       }
 
+                      setLinkedExcelExists(true);
+                      markExcelSyncCheckpoint(updatedTemplate, highlightAnnotationsRef.current);
                       alert('Export to computer successful!');
                     }
                   } catch (error) {
@@ -23511,37 +30016,54 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   setIsExporting(false);
                 }}
                 style={{
-                  padding: '16px 20px',
-                  background: '#4A90E2',
-                  border: '1px solid #4A90E2',
-                  borderRadius: '8px',
-                  color: '#FFFFFF',
+                  width: '100%',
+                  padding: '12px 14px',
+                  background: COLORS.modal.panel,
+                  border: `1px solid ${COLORS.modal.borderStrong}`,
+                  borderRadius: BORDERS.radius.md,
+                  color: COLORS.modal.textPrimary,
                   fontSize: '14px',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '10px',
+                  justifyContent: 'flex-start',
+                  textAlign: 'left',
                   letterSpacing: '-0.01em',
-                  boxShadow: '0 2px 8px rgba(74, 144, 226, 0.2)'
+                  boxShadow: 'none',
+                  fontFamily: FONT_FAMILY
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#3A7BC8';
-                  e.currentTarget.style.borderColor = '#3A7BC8';
+                  e.currentTarget.style.background = COLORS.modal.panelHover;
+                  e.currentTarget.style.borderColor = COLORS.modal.borderActive;
                   e.currentTarget.style.transform = 'translateY(-1px)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(74, 144, 226, 0.3)';
+                  e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = '#4A90E2';
-                  e.currentTarget.style.borderColor = '#4A90E2';
+                  e.currentTarget.style.background = COLORS.modal.panel;
+                  e.currentTarget.style.borderColor = COLORS.modal.borderStrong;
                   e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.2)';
+                  e.currentTarget.style.boxShadow = 'none';
                 }}
               >
-                <span style={{ fontSize: '18px' }}>💻</span>
-                <span>Save to Computer</span>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: '2px'
+                }}>
+                  <span style={{ fontSize: '15px', lineHeight: 1.25 }}>Save to Computer</span>
+                  <span style={{
+                    fontSize: '12px',
+                    color: COLORS.modal.textMuted,
+                    fontWeight: 500,
+                    lineHeight: 1.3,
+                    letterSpacing: '0'
+                  }}>
+                    Export as a local .xlsx file
+                  </span>
+                </div>
               </button>
               <button
                 onClick={async () => {
@@ -23560,63 +30082,84 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 }}
                 disabled={isExportingToOneDrive}
                 style={{
-                  padding: '16px 20px',
-                  background: isExportingToOneDrive ? '#6BA3D6' : '#4A90E2',
-                  border: '1px solid #4A90E2',
-                  borderRadius: '8px',
-                  color: '#FFFFFF',
+                  width: '100%',
+                  padding: '12px 14px',
+                  background: isExportingToOneDrive ? COLORS.modal.primaryButtonDisabled : COLORS.modal.panel,
+                  border: `1px solid ${isExportingToOneDrive ? COLORS.border.default : COLORS.modal.borderStrong}`,
+                  borderRadius: BORDERS.radius.md,
+                  color: COLORS.modal.textPrimary,
                   fontSize: '14px',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: isExportingToOneDrive ? 'wait' : 'pointer',
                   transition: 'all 0.2s ease',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '10px',
+                  justifyContent: 'flex-start',
+                  textAlign: 'left',
                   letterSpacing: '-0.01em',
-                  boxShadow: '0 2px 8px rgba(74, 144, 226, 0.2)',
-                  opacity: isExportingToOneDrive ? 0.8 : 1
+                  boxShadow: 'none',
+                  opacity: isExportingToOneDrive ? 0.9 : 1,
+                  fontFamily: FONT_FAMILY
                 }}
                 onMouseEnter={(e) => {
                   if (!isExportingToOneDrive) {
-                    e.currentTarget.style.background = '#3A7BC8';
-                    e.currentTarget.style.borderColor = '#3A7BC8';
+                    e.currentTarget.style.background = COLORS.modal.panelHover;
+                    e.currentTarget.style.borderColor = COLORS.modal.borderActive;
                     e.currentTarget.style.transform = 'translateY(-1px)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(74, 144, 226, 0.3)';
+                    e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!isExportingToOneDrive) {
-                    e.currentTarget.style.background = '#4A90E2';
-                    e.currentTarget.style.borderColor = '#4A90E2';
+                    e.currentTarget.style.background = COLORS.modal.panel;
+                    e.currentTarget.style.borderColor = COLORS.modal.borderStrong;
                     e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.2)';
+                    e.currentTarget.style.boxShadow = 'none';
                   }
                 }}
               >
                 {isExportingToOneDrive ? (
-                  <>
+                  <div style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '10px'
+                  }}>
                     <span style={{
-                      width: '18px',
-                      height: '18px',
-                      border: '2px solid #FFFFFF',
+                      width: '16px',
+                      height: '16px',
+                      border: `2px solid ${COLORS.modal.textPrimary}`,
                       borderTopColor: 'transparent',
                       borderRadius: '50%',
                       animation: 'spin 1s linear infinite'
                     }} />
-                    <span>Exporting...</span>
+                    <span style={{ fontSize: '14px', fontWeight: 600 }}>Preparing OneDrive export...</span>
                     <style>{`
                       @keyframes spin {
                         0% { transform: rotate(0deg); }
                         100% { transform: rotate(360deg); }
                       }
                     `}</style>
-                  </>
+                  </div>
                 ) : (
-                  <>
-                    <span style={{ fontSize: '18px' }}>☁️</span>
-                    <span>Save to OneDrive</span>
-                  </>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    gap: '2px'
+                  }}>
+                    <span style={{ fontSize: '15px', lineHeight: 1.25 }}>Save to OneDrive</span>
+                    <span style={{
+                      fontSize: '12px',
+                      color: COLORS.modal.textMuted,
+                      fontWeight: 500,
+                      lineHeight: 1.3,
+                      letterSpacing: '0'
+                    }}>
+                      Export to cloud storage with sync support
+                    </span>
+                  </div>
                 )}
               </button>
               <button
@@ -23626,27 +30169,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   setIsExporting(false);
                 }}
                 style={{
-                  padding: '12px 20px',
-                  background: 'transparent',
-                  border: '1px solid #3A3A3A',
-                  borderRadius: '8px',
-                  color: '#C8C8C8',
-                  fontSize: '14px',
+                  width: '100%',
+                  padding: '10px 14px',
+                  background: COLORS.modal.secondaryButton,
+                  border: `1px solid ${COLORS.modal.borderStrong}`,
+                  borderRadius: BORDERS.radius.md,
+                  color: COLORS.text.tertiary,
+                  fontSize: '13px',
                   fontWeight: 500,
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   letterSpacing: '-0.01em',
-                  marginTop: '4px'
+                  marginTop: '2px',
+                  fontFamily: FONT_FAMILY
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                  e.currentTarget.style.borderColor = '#4A4A4A';
-                  e.currentTarget.style.color = '#FFFFFF';
+                  e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
+                  e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+                  e.currentTarget.style.color = COLORS.modal.textPrimary;
+                  e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.borderColor = '#3A3A3A';
-                  e.currentTarget.style.color = '#C8C8C8';
+                  e.currentTarget.style.background = COLORS.modal.secondaryButton;
+                  e.currentTarget.style.borderColor = COLORS.modal.borderStrong;
+                  e.currentTarget.style.color = COLORS.text.tertiary;
+                  e.currentTarget.style.boxShadow = 'none';
                 }}
               >
                 Cancel
@@ -23688,38 +30235,55 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0, 0, 0, 0.7)',
+          background: COLORS.modal.overlay,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 10000
+          zIndex: 10000,
+          backdropFilter: 'blur(3px)'
         }}>
           <div style={{
-            background: '#2a2a2a',
-            borderRadius: '12px',
-            padding: '32px',
+            background: COLORS.modal.surface,
+            borderRadius: BORDERS.radius.xl,
+            padding: '24px',
             maxWidth: '450px',
             width: '90%',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+            boxShadow: SHADOWS.xl,
+            border: `1px solid ${COLORS.modal.border}`,
+            fontFamily: FONT_FAMILY
           }}>
-            <h2 style={{ color: '#fff', marginBottom: '16px', fontSize: '24px' }}>
+            <h2 style={{
+              color: COLORS.modal.textPrimary,
+              marginBottom: '8px',
+              fontSize: TYPOGRAPHY.fontSize['3xl'],
+              fontWeight: TYPOGRAPHY.fontWeight.semibold,
+              lineHeight: TYPOGRAPHY.lineHeight.tight,
+              fontFamily: FONT_FAMILY
+            }}>
               Microsoft Account Required
             </h2>
-            <p style={{ color: '#ccc', marginBottom: '24px', lineHeight: '1.6' }}>
+            <p style={{
+              color: COLORS.modal.textMuted,
+              marginBottom: '18px',
+              lineHeight: TYPOGRAPHY.lineHeight.normal,
+              fontSize: TYPOGRAPHY.fontSize.lg,
+              fontFamily: FONT_FAMILY
+            }}>
               To sync with Excel files in OneDrive or Microsoft Teams, you need to connect your Microsoft account.
             </p>
             {isMSAuthenticated && !msNeedsReconnect ? (
               <div>
                 <div style={{
-                  background: '#1e1e1e',
-                  padding: '16px',
-                  borderRadius: '8px',
-                  marginBottom: '24px'
+                  background: COLORS.background.tertiary,
+                  padding: '12px',
+                  borderRadius: BORDERS.radius.md,
+                  marginBottom: '16px',
+                  border: `1px solid ${COLORS.modal.borderStrong}`
                 }}>
-                  <p style={{ color: '#27ae60', marginBottom: '8px', fontSize: '14px' }}>
-                    ✓ Connected as
+                  <p style={{ color: COLORS.modal.textMuted, marginBottom: '6px', fontSize: '13px', fontFamily: FONT_FAMILY }}>
+                    Connected as
                   </p>
-                  <p style={{ color: '#fff', fontWeight: 600 }}>
+                  <p style={{ color: COLORS.modal.textPrimary, fontWeight: 600, fontFamily: FONT_FAMILY }}>
                     {msAccount?.name || msAccount?.username}
                   </p>
                 </div>
@@ -23728,13 +30292,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   style={{
                     width: '100%',
                     padding: '12px',
-                    background: '#27ae60',
-                    border: 'none',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    fontSize: '16px',
+                    background: COLORS.modal.primaryButton,
+                    border: `1px solid ${COLORS.modal.borderActive}`,
+                    borderRadius: BORDERS.radius.md,
+                    color: COLORS.modal.textPrimary,
+                    fontSize: TYPOGRAPHY.fontSize.lg,
                     fontWeight: 600,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    fontFamily: FONT_FAMILY
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = COLORS.modal.primaryButtonHover;
+                    e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = COLORS.modal.primaryButton;
+                    e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
                   Continue
@@ -23743,15 +30316,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             ) : msNeedsReconnect ? (
               <div>
                 <div style={{
-                  background: '#3d2c00',
-                  padding: '16px',
-                  borderRadius: '8px',
-                  marginBottom: '24px'
+                  background: COLORS.background.tertiary,
+                  padding: '12px',
+                  borderRadius: BORDERS.radius.md,
+                  marginBottom: '16px',
+                  border: `1px solid ${COLORS.modal.borderStrong}`
                 }}>
-                  <p style={{ color: '#ffcc00', marginBottom: '8px', fontSize: '14px' }}>
-                    ⚠️ Session expired
+                  <p style={{ color: COLORS.modal.textPrimary, marginBottom: '6px', fontSize: '13px', fontFamily: FONT_FAMILY, fontWeight: 600 }}>
+                    Session expired
                   </p>
-                  <p style={{ color: '#ccc', fontSize: '13px' }}>
+                  <p style={{ color: COLORS.modal.textMuted, fontSize: '13px', fontFamily: FONT_FAMILY }}>
                     Your Microsoft session has expired. Please reconnect to continue syncing with OneDrive.
                   </p>
                 </div>
@@ -23766,19 +30340,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   }}
                   style={{
                     width: '100%',
-                    padding: '16px',
-                    background: '#ff9500',
-                    border: 'none',
-                    borderRadius: '8px',
-                    color: '#000',
-                    fontSize: '16px',
+                    padding: '12px',
+                    background: COLORS.modal.primaryButton,
+                    border: `1px solid ${COLORS.modal.borderActive}`,
+                    borderRadius: BORDERS.radius.md,
+                    color: COLORS.modal.textPrimary,
+                    fontSize: TYPOGRAPHY.fontSize.lg,
                     fontWeight: 600,
                     cursor: 'pointer',
                     marginBottom: '12px',
-                    transition: 'all 0.2s'
+                    transition: 'all 0.2s',
+                    fontFamily: FONT_FAMILY
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#e68500'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#ff9500'}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = COLORS.modal.primaryButtonHover;
+                    e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = COLORS.modal.primaryButton;
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
                 >
                   Reconnect Microsoft Account
                 </button>
@@ -23787,12 +30368,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   style={{
                     width: '100%',
                     padding: '12px',
-                    background: 'transparent',
-                    border: '1px solid #666',
-                    borderRadius: '8px',
-                    color: '#ccc',
-                    fontSize: '14px',
-                    cursor: 'pointer'
+                    background: COLORS.modal.secondaryButton,
+                    border: `1px solid ${COLORS.modal.borderStrong}`,
+                    borderRadius: BORDERS.radius.md,
+                    color: COLORS.text.tertiary,
+                    fontSize: TYPOGRAPHY.fontSize.md,
+                    cursor: 'pointer',
+                    fontFamily: FONT_FAMILY
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
+                    e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+                    e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = COLORS.modal.secondaryButton;
+                    e.currentTarget.style.borderColor = COLORS.modal.borderStrong;
+                    e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
                   Cancel
@@ -23816,19 +30408,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   }}
                   style={{
                     width: '100%',
-                    padding: '16px',
-                    background: '#0078d4',
-                    border: 'none',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    fontSize: '16px',
+                    padding: '12px',
+                    background: COLORS.modal.primaryButton,
+                    border: `1px solid ${COLORS.modal.borderActive}`,
+                    borderRadius: BORDERS.radius.md,
+                    color: COLORS.modal.textPrimary,
+                    fontSize: TYPOGRAPHY.fontSize.lg,
                     fontWeight: 600,
                     cursor: 'pointer',
                     marginBottom: '12px',
-                    transition: 'all 0.2s'
+                    transition: 'all 0.2s',
+                    fontFamily: FONT_FAMILY
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#106ebe'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#0078d4'}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = COLORS.modal.primaryButtonHover;
+                    e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = COLORS.modal.primaryButton;
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
                 >
                   Connect Microsoft Account
                 </button>
@@ -23845,12 +30444,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   style={{
                     width: '100%',
                     padding: '12px',
-                    background: 'transparent',
-                    border: '1px solid #666',
-                    borderRadius: '8px',
-                    color: '#ccc',
-                    fontSize: '14px',
-                    cursor: 'pointer'
+                    background: COLORS.modal.secondaryButton,
+                    border: `1px solid ${COLORS.modal.borderStrong}`,
+                    borderRadius: BORDERS.radius.md,
+                    color: COLORS.text.tertiary,
+                    fontSize: TYPOGRAPHY.fontSize.md,
+                    cursor: 'pointer',
+                    fontFamily: FONT_FAMILY
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
+                    e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+                    e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = COLORS.modal.secondaryButton;
+                    e.currentTarget.style.borderColor = COLORS.modal.borderStrong;
+                    e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
                   Cancel
@@ -23977,7 +30587,6 @@ export default function App() {
   const generateTabId = () => `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   const handleDocumentSelect = (file, filePath = null) => {
-    // console.log('handleDocumentSelect called with file:', file, 'filePath:', filePath);
     if (!file) {
       console.error('No file provided to handleDocumentSelect');
       return;
@@ -23988,7 +30597,6 @@ export default function App() {
 
     // Check if this PDF is already being opened (prevents duplicate opens when app is slow)
     if (openingPdfsRef.current.has(pdfKey)) {
-      // console.log('PDF is already being opened, ignoring duplicate request:', file.name);
       return;
     }
 
@@ -24006,7 +30614,6 @@ export default function App() {
     });
 
     if (existingTab) {
-      // console.log('Switching to existing tab:', existingTab.id);
       // Clear the opening flag in case it was set (shouldn't happen, but just in case)
       openingPdfsRef.current.delete(pdfKey);
       // Switch to existing tab
@@ -24066,18 +30673,56 @@ export default function App() {
     }
   };
 
-  const handleViewStateChange = useCallback((viewState) => {
-    setTabs(prev => prev.map(tab => {
-      if (tab.id === activeTabId) {
+  const handleViewStateChange = useCallback((viewState, targetTabId) => {
+    setTabs(prev => {
+      let changed = false;
+      const floatEqual = (left, right) => Math.abs(Number(left) - Number(right)) < 0.0001;
+      const nextTabs = prev.map(tab => {
+        // Use targetTabId if provided, otherwise fallback to activeTabId (or checking against tab.id)
+        // If targetTabId is provided, we only update that specific tab.
+        const isTarget = targetTabId ? tab.id === targetTabId : tab.id === activeTabId;
+
+        if (!isTarget) {
+          return tab;
+        }
+
+        const previousViewState = tab.viewState;
+        if (!previousViewState) {
+          changed = true;
+          return { ...tab, viewState };
+        }
+
+        const unchanged =
+          Number(previousViewState.pageNum) === Number(viewState.pageNum) &&
+          floatEqual(previousViewState.scale, viewState.scale) &&
+          String(previousViewState.zoomMode) === String(viewState.zoomMode) &&
+          String(coerceScrollMode(previousViewState.scrollMode)) === String(coerceScrollMode(viewState.scrollMode)) &&
+          Number(previousViewState.scrollLeft) === Number(viewState.scrollLeft) &&
+          Number(previousViewState.scrollTop) === Number(viewState.scrollTop);
+
+        if (unchanged) {
+          return tab;
+        }
+
+        changed = true;
         return { ...tab, viewState };
-      }
-      return tab;
-    }));
+      });
+
+      return changed ? nextTabs : prev;
+    });
   }, [activeTabId]);
 
-  // Memoized callback to track unsaved annotations - uses selectedPDF to find the correct tab
-  const handleUnsavedAnnotationsChange = useCallback((hasUnsaved) => {
+  // Memoized callback to track unsaved annotations - uses targetTabId to find the correct tab
+  const handleUnsavedAnnotationsChange = useCallback((hasUnsaved, targetTabId) => {
     setTabs(prev => {
+      // If targetTabId is provided, use it directly.
+      // Fallback to finding by selectedPDF if for some reason targetTabId is missing (legacy behavior support)
+      if (targetTabId) {
+        return prev.map(tab =>
+          tab.id === targetTabId ? { ...tab, hasUnsavedAnnotations: hasUnsaved } : tab
+        );
+      }
+
       const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
       if (!pdfTab) return prev;
       return prev.map(tab =>
@@ -24087,16 +30732,25 @@ export default function App() {
   }, [selectedPDF]);
 
   // Memoized callback to update PDF file
-  const handleUpdatePDFFile = useCallback((newFile) => {
+  const handleUpdatePDFFile = useCallback((newFile, targetTabId) => {
     setTabs(prev => {
+      if (targetTabId) {
+        return prev.map(tab =>
+          tab.id === targetTabId ? { ...tab, file: newFile } : tab
+        );
+      }
+
       const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
       if (!pdfTab) return prev;
       return prev.map(tab =>
         tab.id === pdfTab.id ? { ...tab, file: newFile } : tab
       );
     });
-    setSelectedPDF(newFile);
-  }, [selectedPDF]);
+    // Only update selectedPDF if the updated tab is the active one
+    if (!targetTabId || targetTabId === activeTabId) {
+      setSelectedPDF(newFile);
+    }
+  }, [selectedPDF, activeTabId]);
 
   const handleTabClose = (tabId) => {
     // Prevent closing the home tab
@@ -24148,7 +30802,6 @@ export default function App() {
   const handlePageDrop = (sourceTabId, pageNumber, targetTabId) => {
     // This is a placeholder - actual PDF page copying would require PDF manipulation
     // For now, we'll just show a message or implement basic structure
-    // console.log(`Page ${pageNumber} from tab ${sourceTabId} dropped on tab ${targetTabId}`);
 
     // TODO: Implement actual page copying using PDF.js or a PDF manipulation library
     // This would involve:
@@ -24234,40 +30887,50 @@ export default function App() {
             ballInCourtEntities={ballInCourtEntities}
             setBallInCourtEntities={setBallInCourtEntities}
           />
-          {selectedPDF && (
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              background: '#1f1f1f',
-              zIndex: 5000,
-              display: isViewerVisible ? 'block' : 'none'
-            }}>
-              <PDFViewer
-                pdfFile={selectedPDF}
-                pdfFilePath={pdfTab?.filePath}
-                onBack={handleBack}
-                tabId={viewerTabId}
-                onPageDrop={handlePageDrop}
-                onUpdatePDFFile={handleUpdatePDFFile}
-                onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
-                onRequestCreateTemplate={handleCreateTemplateRequest}
-                initialViewState={viewerViewState}
-                onViewStateChange={handleViewStateChange}
-                templates={appTemplates}
-                onTemplatesChange={handleTemplatesChange}
-                onRefetchTemplates={refetchTemplates}
-                user={user}
-                isMSAuthenticated={isMSAuthenticated}
-                msLogin={msLogin}
-                graphClient={graphClient}
-                msAccount={msAccount}
-                msNeedsReconnect={msNeedsReconnect}
-                ensureFreshToken={ensureFreshToken}
-                ballInCourtEntities={ballInCourtEntities}
-                setBallInCourtEntities={setBallInCourtEntities}
-              />
-            </div>
-          )}
+          {tabs.map(tab => {
+            if (tab.isHome) return null;
+
+            const isVisible = tab.id === activeTabId && currentView === 'viewer';
+            const tabViewState = tab.viewState;
+
+            return (
+              <div
+                key={tab.id}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: '#1f1f1f',
+                  zIndex: isVisible ? 5000 : 4000, // Keep lower z-index when hidden
+                  display: isVisible ? 'block' : 'none'
+                }}
+              >
+                <PDFViewer
+                  pdfFile={tab.file}
+                  pdfFilePath={tab.filePath}
+                  onBack={handleBack}
+                  tabId={tab.id}
+                  onPageDrop={handlePageDrop}
+                  onUpdatePDFFile={handleUpdatePDFFile}
+                  onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
+                  onRequestCreateTemplate={handleCreateTemplateRequest}
+                  initialViewState={tabViewState}
+                  onViewStateChange={handleViewStateChange}
+                  templates={appTemplates}
+                  onTemplatesChange={handleTemplatesChange}
+                  onRefetchTemplates={refetchTemplates}
+                  user={user}
+                  isMSAuthenticated={isMSAuthenticated}
+                  msLogin={msLogin}
+                  graphClient={graphClient}
+                  msAccount={msAccount}
+                  msNeedsReconnect={msNeedsReconnect}
+                  ensureFreshToken={ensureFreshToken}
+                  ballInCourtEntities={ballInCourtEntities}
+                  setBallInCourtEntities={setBallInCourtEntities}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
 

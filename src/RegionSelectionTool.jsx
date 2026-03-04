@@ -1076,6 +1076,9 @@ const RegionSelectionTool = ({
   const handleContextMenu = useCallback((event) => {
     event.preventDefault();
     // Allow context menu in all modes (Draw or Move)
+    const constraintRect = targetElement?.getBoundingClientRect
+      ? targetElement.getBoundingClientRect()
+      : null;
 
     // Check if we clicked on a region
     const rect = targetElement.getBoundingClientRect();
@@ -1118,7 +1121,9 @@ const RegionSelectionTool = ({
 
         const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
           estimatedWidth: 200,
-          estimatedHeight: 250
+          estimatedHeight: 250,
+          preferAbove: false,
+          constraintRect
         });
         setContextMenu({
           x: safePosition.x,
@@ -1132,7 +1137,9 @@ const RegionSelectionTool = ({
         setSelectedRegionIds(new Set([clickedRegion.regionId]));
         const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
           estimatedWidth: 200,
-          estimatedHeight: 250
+          estimatedHeight: 250,
+          preferAbove: false,
+          constraintRect
         });
         setContextMenu({
           x: safePosition.x,
@@ -1145,7 +1152,9 @@ const RegionSelectionTool = ({
       // Clicked on background/canvas
       const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
         estimatedWidth: 200,
-        estimatedHeight: 250
+        estimatedHeight: 250,
+        preferAbove: false,
+        constraintRect
       });
       setContextMenu({
         x: safePosition.x,

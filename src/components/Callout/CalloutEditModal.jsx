@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { presetBorderColors, presetFillColors, fontFamilies, fontSizes, ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS, defaultCalloutStyle } from './types';
 import CompactColorPicker from '../CompactColorPicker';
+
+const CALLOUT_EDIT_MODAL_Z_INDEX = 120001;
 
 const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition }) => {
   const modalRef = useRef(null);
@@ -250,7 +253,7 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
     };
   };
 
-  return (
+  const modalContent = (
     <div
       data-callout-modal-overlay
       style={{
@@ -260,7 +263,7 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
         right: 0,
         bottom: 0,
         background: 'rgba(0, 0, 0, 0.5)',
-        zIndex: 10001,
+        zIndex: CALLOUT_EDIT_MODAL_Z_INDEX,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center'
@@ -806,7 +809,12 @@ const CalloutEditModal = ({ visible, callout, onUpdate, onClose, anchorPosition 
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return modalContent;
+  }
+
+  return createPortal(modalContent, document.body);
 };
 
 export default CalloutEditModal;
-

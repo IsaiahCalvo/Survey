@@ -19,10 +19,8 @@ BEGIN
     RETURN found_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Grant execute permission to authenticated users
 GRANT EXECUTE ON FUNCTION get_user_id_by_email(TEXT) TO authenticated;
-
 -- ============================================
 -- RPC: Check if user can be collaborator
 -- ============================================
@@ -57,10 +55,8 @@ BEGIN
     WHERE u.id = target_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Grant execute permission to authenticated users
 GRANT EXECUTE ON FUNCTION check_user_collaborator_eligibility(UUID) TO authenticated;
-
 -- ============================================
 -- RPC: Check user eligibility by email
 -- ============================================
@@ -99,10 +95,8 @@ BEGIN
     SELECT * FROM check_user_collaborator_eligibility(found_user_id);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Grant execute permission to authenticated users
 GRANT EXECUTE ON FUNCTION check_collaborator_by_email(TEXT) TO authenticated;
-
 -- ============================================
 -- PROJECT COLLABORATORS TABLE
 -- ============================================
@@ -126,14 +120,11 @@ CREATE TABLE IF NOT EXISTS project_collaborators (
 
     UNIQUE(project_id, user_id)
 );
-
 -- Index for lookups
 CREATE INDEX IF NOT EXISTS idx_project_collaborators_project ON project_collaborators(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_collaborators_user ON project_collaborators(user_id);
-
 -- Enable Row Level Security
 ALTER TABLE project_collaborators ENABLE ROW LEVEL SECURITY;
-
 -- Helper function to check project access
 CREATE OR REPLACE FUNCTION user_can_access_project(proj_id UUID, required_role TEXT DEFAULT 'viewer')
 RETURNS BOOLEAN AS $$
@@ -171,30 +162,24 @@ BEGIN
     END CASE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- RLS Policies for project_collaborators
 CREATE POLICY "Users can view collaborators on accessible projects"
     ON project_collaborators FOR SELECT
     USING (user_can_access_project(project_id, 'viewer'));
-
 CREATE POLICY "Project owners can add collaborators"
     ON project_collaborators FOR INSERT
     WITH CHECK (user_can_access_project(project_id, 'owner'));
-
 CREATE POLICY "Project owners can update collaborators"
     ON project_collaborators FOR UPDATE
     USING (user_can_access_project(project_id, 'owner'));
-
 CREATE POLICY "Project owners can remove collaborators"
     ON project_collaborators FOR DELETE
     USING (user_can_access_project(project_id, 'owner'));
-
 -- Trigger for updated_at
 CREATE TRIGGER trigger_update_project_collaborators_updated_at
     BEFORE UPDATE ON project_collaborators
     FOR EACH ROW
     EXECUTE FUNCTION update_document_tables_updated_at();
-
 -- Auto-add project owner as collaborator
 CREATE OR REPLACE FUNCTION add_project_owner_collaborator()
 RETURNS TRIGGER AS $$
@@ -206,12 +191,10 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trigger_add_project_owner
     AFTER INSERT ON projects
     FOR EACH ROW
     EXECUTE FUNCTION add_project_owner_collaborator();
-
 COMMENT ON FUNCTION get_user_id_by_email IS 'Look up user ID by email address for collaboration invites';
 COMMENT ON FUNCTION check_user_collaborator_eligibility IS 'Check if a user can be added as a collaborator (must be Pro+ tier)';
 COMMENT ON FUNCTION check_collaborator_by_email IS 'Combined email lookup and eligibility check for collaborator invites';

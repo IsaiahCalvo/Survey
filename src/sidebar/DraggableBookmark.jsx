@@ -137,8 +137,8 @@ const DraggableBookmark = ({
     if (onSelect) {
       onSelect(item.id);
     }
-    if (item.pageIds && item.pageIds.length > 0) {
-      onNavigate(item.pageIds);
+    if (onNavigate) {
+      onNavigate(item);
     }
   };
 
@@ -297,17 +297,18 @@ const DraggableBookmark = ({
           <div style={{
             flex: 1,
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
             minWidth: 0
           }}>
             <span style={{
               fontSize: '13px',
               color: '#ddd',
               userSelect: 'none',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              whiteSpace: 'normal',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+              lineHeight: 1.25,
               textAlign: 'left'
             }}>
               {item.name}
@@ -318,7 +319,7 @@ const DraggableBookmark = ({
                 fontSize: '11px',
                 fontFamily: FONT_FAMILY,
                 flexShrink: 0,
-                marginLeft: '8px'
+                marginTop: '2px'
               }}>
                 Page {item.pageIds[0]}
               </span>

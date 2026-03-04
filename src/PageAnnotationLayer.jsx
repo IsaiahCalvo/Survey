@@ -1,14 +1,28 @@
-import React, { useEffect, useRef, memo, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, memo, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import CalloutOverlay from './components/Callout';
 import Icon from './Icons';
 
-// Globally patch getContext BEFORE importing Fabric.js to prevent willReadFrequently warnings
-// This must happen before any canvas contexts are created by Fabric
+// Patch getContext BEFORE importing Fabric.js so only Fabric canvases opt into willReadFrequently.
+// A global unconditional patch can slow PDF page rendering by disabling GPU acceleration.
 if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype._willReadFrequentlyPatched) {
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function (contextType, options = {}) {
+  const shouldUseWillReadFrequently = (canvasEl, options) => {
+    if (!canvasEl) return false;
+    if (options && Object.prototype.hasOwnProperty.call(options, 'willReadFrequently')) {
+      return Boolean(options.willReadFrequently);
+    }
+    if (canvasEl.dataset?.fabricWillReadFrequently === 'true') return true;
+    const className = typeof canvasEl.className === 'string' ? canvasEl.className : '';
+    return className.includes('upper-canvas') || className.includes('lower-canvas');
+  };
+
+  HTMLCanvasElement.prototype.getContext = function (contextType, options) {
     if (contextType === '2d') {
-      return originalGetContext.call(this, contextType, { ...options, willReadFrequently: true });
+      const resolvedOptions = shouldUseWillReadFrequently(this, options)
+        ? { ...(options || {}), willReadFrequently: true }
+        : options;
+      return originalGetContext.call(this, contextType, resolvedOptions);
     }
     return originalGetContext.call(this, contextType, options);
   };
@@ -45,9 +59,89 @@ import {
   MIN_SEGMENT_LENGTH,
   MIN_TEXTBOX_TO_ARROW_DISTANCE
 } from './utils/calloutGeometry';
+import { debugLog, debugWarn, isDebugEnabled, setDebugData } from './utils/pdfDebug';
 
 // Apply custom Drawboard-style controls and selection visuals
 configureFabricOverrides();
+
+const CONTEXT_MENU_Z_INDEX = 120000;
+const EDIT_MODAL_Z_INDEX = CONTEXT_MENU_Z_INDEX + 1;
+const OVERLAY_OPEN_EVENT = 'survey:page-annotation-overlay-open';
+const OVERLAY_DISMISS_ANIMATION_MS = 100;
+
+const toDebugNumber = (value, digits = 2) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return Number(num.toFixed(digits));
+};
+
+const normalizeRectForDebug = (rect) => {
+  if (!rect) return null;
+  return {
+    left: toDebugNumber(rect.left),
+    top: toDebugNumber(rect.top),
+    right: toDebugNumber(rect.right),
+    bottom: toDebugNumber(rect.bottom),
+    width: toDebugNumber((rect.right ?? 0) - (rect.left ?? 0)),
+    height: toDebugNumber((rect.bottom ?? 0) - (rect.top ?? 0))
+  };
+};
+
+const getOverflowAgainstRect = (rect, bounds) => {
+  if (!rect || !bounds) return null;
+  return {
+    left: toDebugNumber(Math.max(0, bounds.left - rect.left)),
+    top: toDebugNumber(Math.max(0, bounds.top - rect.top)),
+    right: toDebugNumber(Math.max(0, rect.right - bounds.right)),
+    bottom: toDebugNumber(Math.max(0, rect.bottom - bounds.bottom))
+  };
+};
+
+const summarizeFabricObjectForHistoryDebug = (object) => {
+  if (!object) return null;
+  return {
+    type: object.type || null,
+    partType: object.partType || object.data?.type || null,
+    name: object.name || null,
+    highlightId: object.highlightId || null,
+    pdfAnnotationId: object.pdfAnnotationId || null,
+    moduleId: object.moduleId || null,
+    regionId: object.regionId || null,
+    left: toDebugNumber(object.left),
+    top: toDebugNumber(object.top),
+    width: toDebugNumber(object.width),
+    height: toDebugNumber(object.height),
+    scaleX: toDebugNumber(object.scaleX, 4),
+    scaleY: toDebugNumber(object.scaleY, 4),
+    angle: toDebugNumber(object.angle)
+  };
+};
+
+const summarizeFabricTransformOriginalForHistoryDebug = (original) => {
+  if (!original || typeof original !== 'object') return null;
+  return {
+    left: toDebugNumber(original.left),
+    top: toDebugNumber(original.top),
+    width: toDebugNumber(original.width),
+    height: toDebugNumber(original.height),
+    scaleX: toDebugNumber(original.scaleX, 4),
+    scaleY: toDebugNumber(original.scaleY, 4),
+    angle: toDebugNumber(original.angle)
+  };
+};
+
+const buildHistorySaveContext = (source, context = null) => {
+  const normalizedSource = typeof source === 'string' && source.trim()
+    ? source.trim()
+    : 'canvas:save';
+  if (!context || typeof context !== 'object') {
+    return { source: normalizedSource };
+  }
+  return {
+    source: normalizedSource,
+    ...context
+  };
+};
 
 /**
  * Sanitizes a single text object to prevent stylesToArray errors
@@ -119,6 +213,8 @@ export const ARROWHEAD_STYLES = {
   HORIZONTAL_LINE: 'horizontalLine'
 };
 
+const DRAWING_TOOLS = new Set(['pen', 'highlighter']);
+
 export const ARROWHEAD_STYLE_LABELS = {
   [ARROWHEAD_STYLES.NONE]: 'None',
   [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'Solid Triangle',
@@ -126,6 +222,46 @@ export const ARROWHEAD_STYLE_LABELS = {
   [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Open Circle',
   [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Open Triangle',
   [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal Line'
+};
+
+const PDF_LINE_ENDING_TO_ARROW_STYLE = {
+  None: ARROWHEAD_STYLES.NONE,
+  OpenArrow: ARROWHEAD_STYLES.OPEN_TRIANGLE,
+  ClosedArrow: ARROWHEAD_STYLES.SOLID_TRIANGLE,
+  ROpenArrow: ARROWHEAD_STYLES.OPEN_TRIANGLE,
+  RClosedArrow: ARROWHEAD_STYLES.SOLID_TRIANGLE,
+  Circle: ARROWHEAD_STYLES.OPEN_CIRCLE,
+  Butt: ARROWHEAD_STYLES.HORIZONTAL_LINE,
+  Slash: ARROWHEAD_STYLES.V_SHAPE,
+  Square: ARROWHEAD_STYLES.HORIZONTAL_LINE,
+  Diamond: ARROWHEAD_STYLES.OPEN_TRIANGLE
+};
+
+const normalizePdfLineEnding = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+};
+
+const resolveArrowConfigFromPdfLineEndings = (lineEndings) => {
+  if (!Array.isArray(lineEndings) || lineEndings.length === 0) {
+    return null;
+  }
+
+  const startEnding = normalizePdfLineEnding(lineEndings[0]) || 'None';
+  const endEnding = normalizePdfLineEnding(lineEndings[1]) || 'None';
+  const endStyle = PDF_LINE_ENDING_TO_ARROW_STYLE[endEnding] || ARROWHEAD_STYLES.NONE;
+  const startStyle = PDF_LINE_ENDING_TO_ARROW_STYLE[startEnding] || ARROWHEAD_STYLES.NONE;
+
+  if (endStyle && endStyle !== ARROWHEAD_STYLES.NONE) {
+    return { style: endStyle, anchor: 'end' };
+  }
+  if (startStyle && startStyle !== ARROWHEAD_STYLES.NONE) {
+    return { style: startStyle, anchor: 'start' };
+  }
+
+  return null;
 };
 
 /**
@@ -291,8 +427,11 @@ const isArrowObject = (obj) => {
 
 const getLocalPoint = (transform, x, y) => {
   const target = transform.target;
-  // Use Fabric's inverse transform for accurate conversion
-  const invMat = util.invertTransform(target.calcTransformMatrix());
+  // Convert screen/viewport pointer coordinates into object-local coordinates.
+  // Include viewport transform so control drag math stays stable under zoom/pan.
+  const viewportMatrix = target.canvas?.viewportTransform || [1, 0, 0, 1, 0, 0];
+  const targetMatrix = util.multiplyTransformMatrices(viewportMatrix, target.calcTransformMatrix());
+  const invMat = util.invertTransform(targetMatrix);
   return util.transformPoint({ x, y }, invMat);
 };
 
@@ -380,11 +519,17 @@ const calloutPositionHandler = (type) => {
       }
     } else if (type.startsWith('text')) {
       // Text corner handles
-      const w = text.getScaledWidth();
-      const h = text.getScaledHeight();
+      const configuredWidth = Number(group.data?.textBoxWidth);
+      const configuredHeight = Number(group.data?.textBoxHeight);
+      const w = (Number.isFinite(configuredWidth) && configuredWidth > 0
+        ? configuredWidth
+        : (text.getScaledWidth() + 4));
+      const h = (Number.isFinite(configuredHeight) && configuredHeight > 0
+        ? configuredHeight
+        : (text.getScaledHeight() + 4));
 
-      let px = text.left;
-      let py = text.top;
+      let px = text.left - 2;
+      let py = text.top - 2;
 
       if (type.includes('R')) px += w;
       if (type.includes('B')) py += h;
@@ -392,8 +537,15 @@ const calloutPositionHandler = (type) => {
       localPoint = { x: px, y: py };
     }
 
-    // Use Fabric's transform matrix for accurate positioning
-    const matrix = group.calcTransformMatrix();
+    if (!localPoint) {
+      return { x: 0, y: 0 };
+    }
+
+    // Use viewport * object transform for custom control points.
+    // Fabric's finalMatrix includes inverse zoom compensation for default dim-based controls,
+    // which can offset custom point coordinates at non-100% zoom.
+    const viewportMatrix = group.canvas?.viewportTransform || [1, 0, 0, 1, 0, 0];
+    const matrix = util.multiplyTransformMatrices(viewportMatrix, group.calcTransformMatrix());
     const canvasPoint = util.transformPoint(localPoint, matrix);
 
     return canvasPoint;
@@ -412,7 +564,32 @@ const updateCalloutGroupConnections = (group) => {
   if (!line || !head || !text) return;
 
   const pTip = { x: head.left, y: head.top };
-  const pText = { x: text.left, y: text.top + text.height / 2 };
+  const configuredWidth = Number(group.data?.textBoxWidth);
+  const configuredHeight = Number(group.data?.textBoxHeight);
+  const effectiveTextBoxWidth = Number.isFinite(configuredWidth) && configuredWidth > 0
+    ? configuredWidth
+    : (text.width + 4);
+  const effectiveTextBoxHeight = Number.isFinite(configuredHeight) && configuredHeight > 0
+    ? configuredHeight
+    : (text.height + 4);
+  const boxLeft = text.left - 2;
+  const boxTop = text.top - 2;
+  const boxRight = boxLeft + effectiveTextBoxWidth;
+  const boxBottom = boxTop + effectiveTextBoxHeight;
+  const boxCenterX = boxLeft + (effectiveTextBoxWidth / 2);
+  const boxCenterY = boxTop + (effectiveTextBoxHeight / 2);
+  const textAnchorSide = group.data?.textAnchorSide || 'left';
+
+  let pText;
+  if (textAnchorSide === 'right') {
+    pText = { x: boxRight, y: boxCenterY };
+  } else if (textAnchorSide === 'top') {
+    pText = { x: boxCenterX, y: boxTop };
+  } else if (textAnchorSide === 'bottom') {
+    pText = { x: boxCenterX, y: boxBottom };
+  } else {
+    pText = { x: boxLeft, y: boxCenterY };
+  }
 
   // Read knee from data.knee (stored in group-relative coords)
   let pKnee;
@@ -452,10 +629,10 @@ const updateCalloutGroupConnections = (group) => {
   // Update text border position and size to match text
   if (textBorder) {
     textBorder.set({
-      left: text.left - 2,
-      top: text.top - 2,
-      width: text.width + 4,
-      height: text.height + 4
+      left: boxLeft,
+      top: boxTop,
+      width: effectiveTextBoxWidth,
+      height: effectiveTextBoxHeight
     });
     textBorder.setCoords();
   }
@@ -472,7 +649,7 @@ const generateId = () => typeof crypto !== 'undefined' && crypto.randomUUID ? cr
 
 // Convert callout data to Fabric objects (Independent Objects approach)
 const createCalloutObjects = (callout, isSelected) => {
-  console.log('[ToolDebug] Creating callout objects:', callout.id);
+  debugLog('[ToolDebug] Creating callout objects:', callout.id);
   const { arrowTip, knee, textBoxPosition, textBoxWidth, textBoxHeight, text, style, id } = callout;
 
   // Calculate connection point
@@ -828,6 +1005,13 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
         text.set({ left: newLeft, width: newWidth });
       }
 
+      if (target.data) {
+        target.data.textBoxWidth = text.width + 4;
+        if (!Number.isFinite(target.data.textBoxHeight) || target.data.textBoxHeight <= 0) {
+          target.data.textBoxHeight = text.height + 4;
+        }
+      }
+
       // Update border to match text
       if (textBorder) {
         textBorder.set({
@@ -881,6 +1065,239 @@ const createCalloutGroup = (start, end, strokeColor, strokeWidth, canvas) => {
       render: renderControl
     });
   });
+
+  return group;
+};
+
+const createImportedArrowGroupFromLine = (lineObj, objData, strokeColorOverride = null) => {
+  if (!lineObj || lineObj.type !== 'line') return null;
+
+  const lineEndings = objData?.data?.pdfLineEndings;
+  const arrowConfig = resolveArrowConfigFromPdfLineEndings(lineEndings);
+  if (!arrowConfig) {
+    return null;
+  }
+
+  const stroke = strokeColorOverride || lineObj.stroke || '#000000';
+  const strokeWidth = Number.isFinite(lineObj.strokeWidth) ? lineObj.strokeWidth : 1;
+  const anchorIsStart = arrowConfig.anchor === 'start';
+  const start = anchorIsStart
+    ? { x: lineObj.x2, y: lineObj.y2 }
+    : { x: lineObj.x1, y: lineObj.y1 };
+  const end = anchorIsStart
+    ? { x: lineObj.x1, y: lineObj.y1 }
+    : { x: lineObj.x2, y: lineObj.y2 };
+  const tip = end;
+  const other = start;
+  const angle = Math.atan2(tip.y - other.y, tip.x - other.x);
+
+  const clonedLine = new Line([start.x, start.y, end.x, end.y], {
+    stroke,
+    strokeWidth,
+    strokeUniform: lineObj.strokeUniform !== false,
+    strokeDashArray: Array.isArray(lineObj.strokeDashArray) ? [...lineObj.strokeDashArray] : undefined,
+    opacity: lineObj.opacity ?? 1,
+    selectable: false,
+    evented: true,
+    fill: 'transparent'
+  });
+
+  const head = createArrowhead(
+    tip.x,
+    tip.y,
+    angle,
+    stroke,
+    strokeWidth,
+    arrowConfig.style
+  );
+
+  const groupObjects = head ? [clonedLine, head] : [clonedLine];
+  const group = new Group(groupObjects, { selectable: true, evented: true });
+  group.set({
+    data: {
+      ...(objData?.data || {}),
+      type: 'arrow',
+      arrowheadStyle: arrowConfig.style,
+      midpoint: null,
+      isCurved: false,
+      pdfLineEndingAnchor: arrowConfig.anchor
+    }
+  });
+
+  return group;
+};
+
+const normalizeCalloutPoints = (rawPoints) => {
+  if (!Array.isArray(rawPoints) || rawPoints.length < 2) return [];
+
+  return rawPoints
+    .map((point) => ({
+      x: Number(point?.x),
+      y: Number(point?.y)
+    }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+};
+
+const resolveTextAnchorSide = (anchorPoint, box) => {
+  if (!anchorPoint || !box) return 'left';
+
+  const leftDist = Math.abs(anchorPoint.x - box.left);
+  const rightDist = Math.abs(anchorPoint.x - (box.left + box.width));
+  const topDist = Math.abs(anchorPoint.y - box.top);
+  const bottomDist = Math.abs(anchorPoint.y - (box.top + box.height));
+
+  const distances = [
+    { side: 'left', value: leftDist },
+    { side: 'right', value: rightDist },
+    { side: 'top', value: topDist },
+    { side: 'bottom', value: bottomDist }
+  ];
+  distances.sort((a, b) => a.value - b.value);
+  return distances[0]?.side || 'left';
+};
+
+const createImportedCalloutFromTextbox = (textboxObj, objData, canvas) => {
+  if (!textboxObj || textboxObj.type !== 'textbox') return null;
+
+  const calloutPoints = normalizeCalloutPoints(objData?.data?.pdfCalloutPoints);
+  if (calloutPoints.length < 2) {
+    return null;
+  }
+
+  const tip = calloutPoints[0];
+  const fallbackTextAnchor = {
+    x: Number.isFinite(textboxObj.left) ? textboxObj.left : tip.x + 80,
+    y: Number.isFinite(textboxObj.top) ? textboxObj.top : tip.y + 30
+  };
+  const textAnchor = calloutPoints[calloutPoints.length - 1] || fallbackTextAnchor;
+  const knee = calloutPoints.length >= 3
+    ? calloutPoints[1]
+    : { x: (tip.x + textAnchor.x) / 2, y: (tip.y + textAnchor.y) / 2 };
+
+  const importedCalloutStyle = objData?.data?.pdfCalloutStyle || {};
+  const strokeColor = importedCalloutStyle.borderColor
+    || objData?.stroke
+    || textboxObj.stroke
+    || importedCalloutStyle.textColor
+    || objData?.fill
+    || textboxObj.fill
+    || '#000000';
+  const textColor = importedCalloutStyle.textColor
+    || objData?.fill
+    || textboxObj.fill
+    || strokeColor;
+  const strokeWidth = Number.isFinite(importedCalloutStyle.strokeWidth) && importedCalloutStyle.strokeWidth > 0
+    ? importedCalloutStyle.strokeWidth
+    : (Number.isFinite(objData?.strokeWidth) && objData.strokeWidth > 0
+      ? objData.strokeWidth
+      : (Number.isFinite(textboxObj.strokeWidth) && textboxObj.strokeWidth > 0
+        ? textboxObj.strokeWidth
+        : 1));
+  const backgroundColor = importedCalloutStyle.backgroundColor
+    ?? objData?.backgroundColor
+    ?? textboxObj.backgroundColor
+    ?? 'rgba(255,255,255,0.9)';
+  const importedText = (typeof textboxObj.text === 'string' && textboxObj.text.length > 0)
+    ? textboxObj.text
+    : (typeof objData?.text === 'string' ? objData.text : '');
+
+  const importedBoxRect = objData?.data?.pdfCalloutBoxRect || null;
+  const textBoxRect = {
+    left: Number.isFinite(importedBoxRect?.left) ? importedBoxRect.left : (Number.isFinite(textboxObj.left) ? textboxObj.left : textAnchor.x),
+    top: Number.isFinite(importedBoxRect?.top) ? importedBoxRect.top : (Number.isFinite(textboxObj.top) ? textboxObj.top : textAnchor.y),
+    width: Number.isFinite(importedBoxRect?.width) && importedBoxRect.width > 0
+      ? importedBoxRect.width
+      : Math.max(Number(textboxObj.width) || 100, 40),
+    height: Number.isFinite(importedBoxRect?.height) && importedBoxRect.height > 0
+      ? importedBoxRect.height
+      : Math.max(Number(textboxObj.height) || 24, 24)
+  };
+  const textAnchorSide = resolveTextAnchorSide(textAnchor, textBoxRect);
+
+  const effectiveStrokeWidth = Number.isFinite(strokeWidth) && strokeWidth > 0
+    ? strokeWidth
+    : 1;
+
+  const group = createCalloutGroup(
+    tip,
+    { x: textBoxRect.left, y: textBoxRect.top },
+    strokeColor,
+    effectiveStrokeWidth,
+    canvas
+  );
+  if (!group) return null;
+
+  const line = group.getObjects().find((obj) => obj.name === 'calloutLine');
+  const head = group.getObjects().find((obj) => obj.name === 'calloutHead');
+  const text = group.getObjects().find((obj) => obj.name === 'calloutText');
+  const textBorder = group.getObjects().find((obj) => obj.name === 'calloutTextBorder');
+
+  if (!text || !line || !head) {
+    return null;
+  }
+
+  const toLocalGroupPoint = (absolutePoint) => {
+    const groupMatrix = group.calcTransformMatrix();
+    const inverseGroupMatrix = util.invertTransform(groupMatrix);
+    return util.transformPoint(absolutePoint, inverseGroupMatrix);
+  };
+
+  const localTextOrigin = toLocalGroupPoint({
+    x: textBoxRect.left,
+    y: textBoxRect.top
+  });
+  const initialLocalKnee = toLocalGroupPoint(knee);
+  const initialLocalTextAnchor = toLocalGroupPoint(textAnchor);
+
+  text.set({
+    text: importedText,
+    left: localTextOrigin.x,
+    top: localTextOrigin.y,
+    width: Math.max(textBoxRect.width - 4, 20),
+    height: Math.max(textBoxRect.height - 4, text.height || 20),
+    fill: textColor || text.fill,
+    fontSize: Number.isFinite(textboxObj.fontSize) ? textboxObj.fontSize : text.fontSize,
+    fontFamily: textboxObj.fontFamily || text.fontFamily,
+    backgroundColor
+  });
+
+  line.set({
+    stroke: strokeColor,
+    strokeWidth: effectiveStrokeWidth
+  });
+  head.set({
+    fill: strokeColor,
+    stroke: strokeColor
+  });
+  if (textBorder) {
+    textBorder.set({
+      stroke: strokeColor,
+      strokeWidth: effectiveStrokeWidth
+    });
+  }
+
+  group.data = {
+    ...(objData?.data || {}),
+    type: 'callout',
+    knee: initialLocalKnee,
+    textAnchorSide,
+    textBoxWidth: textBoxRect.width,
+    textBoxHeight: textBoxRect.height,
+    textAnchorPoint: initialLocalTextAnchor
+  };
+  updateCalloutGroupConnections(group);
+  if (typeof group.addWithUpdate === 'function') {
+    group.addWithUpdate();
+  }
+  // addWithUpdate can recenter group-local child coordinates; re-sync stored local points
+  // from absolute PDF coordinates to keep knee/text-anchor stable on first render.
+  group.data = {
+    ...(group.data || {}),
+    knee: toLocalGroupPoint(knee),
+    textAnchorPoint: toLocalGroupPoint(textAnchor)
+  };
+  updateCalloutGroupConnections(group);
+  group.setCoords();
 
   return group;
 };
@@ -1307,7 +1724,7 @@ const arrowPositionHandler = (type) => {
     const invertedGroupMatrix = util.invertTransform(groupMatrix);
     const relativePoint = util.transformPoint(absolutePoint, invertedGroupMatrix);
 
-    console.log('[ToolDebug] Arrow Pos (Live Geometry Fix):', {
+    debugLog('[ToolDebug] Arrow Pos (Live Geometry Fix):', {
       type,
       abs: absolutePoint,
       rel: relativePoint
@@ -2633,6 +3050,7 @@ const PageAnnotationLayer = memo(({
   width,
   height,
   scale,
+  canvasTopPadding = 12,
   tool = 'pan', // 'pen' | 'highlighter' | 'eraser' | 'text' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'underline' | 'strikeout' | 'squiggly' | 'note' | 'highlight'
   strokeColor = '#DC3545',
   strokeWidth = 3,
@@ -2681,14 +3099,18 @@ const PageAnnotationLayer = memo(({
   onInsertBlankPage = () => { },
   pageClipboard = null, // { pageNumber, type: 'cut' | 'copy' } | null
   onPastePageHere = () => { },
+  isHidden = false,
+  onScaleApplied = null,
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
+  const scaleUpdateFrameRef = useRef(null);
   const processedHighlightsRef = useRef(new Set());
   const isInitializedRef = useRef(false);
   const drawingStateRef = useRef({ isDrawingShape: false, startX: 0, startY: 0, tempObj: null });
   const justFinishedDrawingRef = useRef(false);
   const toolRef = useRef(tool);
+  const previousToolRef = useRef(tool);
   const strokeColorRef = useRef(strokeColor);
   const arrowheadStyleRef = useRef(arrowheadStyle);
 
@@ -2783,8 +3205,10 @@ const PageAnnotationLayer = memo(({
   // Context Menu State
   const [contextMenu, setContextMenu] = useState(null); // { x, y, type: 'annotation' | 'canvas', target: object }
   const contextMenuJustOpenedRef = useRef(false); // Track if context menu was just opened to prevent immediate closing
+  const contextMenuVisibleRef = useRef(false); // Keep current visibility for event handlers created once
   const contextMenuRef = useRef(null); // Ref for the context menu element
   const contextMenuPositionAdjustedRef = useRef(false); // Track if context menu position has been adjusted
+  const contextMenuDismissTimeoutRef = useRef(null);
   // Clipboard for Cut/Copy/Paste - using Ref to persist across renders without triggering them
   const clipboardRef = useRef(null);
   // Edit Modal State
@@ -2792,11 +3216,169 @@ const PageAnnotationLayer = memo(({
   // Callout selection rect for drag selection
   const [calloutSelectionRect, setCalloutSelectionRect] = useState(null);
   const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1, arrowheadStyle: ARROWHEAD_STYLES.SOLID_TRIANGLE });
+  const editModalVisibleRef = useRef(false); // Keep current visibility for event handlers created once
+  const cancelEditRef = useRef(null); // Latest cancel handler for stable dismiss callbacks
   const editModalRef = useRef(null);
   const editModalPositionAdjustedRef = useRef(false); // Track if edit modal position has been adjusted
+  const editModalDismissTimeoutRef = useRef(null);
   // Edit Modal Drag State
   const isDraggingModalRef = useRef(false);
   const modalDragStartRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
+  const overlayInstanceIdRef = useRef(`${pageNumber}-${Math.random().toString(36).slice(2)}`);
+  const contextMenuSizeCacheRef = useRef({
+    annotation: { width: 220, height: 270 },
+    callout: { width: 220, height: 240 },
+    page: { width: 220, height: 220 }
+  });
+  const editModalSizeCacheRef = useRef({ width: 300, height: 400 });
+
+  useEffect(() => {
+    contextMenuVisibleRef.current = Boolean(contextMenu?.visible) && contextMenu?.isClosing !== true;
+  }, [contextMenu?.visible, contextMenu?.isClosing]);
+
+  useEffect(() => {
+    editModalVisibleRef.current = Boolean(editModal?.visible) && editModal?.isClosing !== true;
+  }, [editModal?.visible, editModal?.isClosing]);
+
+  useEffect(() => () => {
+    if (contextMenuDismissTimeoutRef.current) {
+      clearTimeout(contextMenuDismissTimeoutRef.current);
+      contextMenuDismissTimeoutRef.current = null;
+    }
+    if (editModalDismissTimeoutRef.current) {
+      clearTimeout(editModalDismissTimeoutRef.current);
+      editModalDismissTimeoutRef.current = null;
+    }
+  }, []);
+
+  const getMenuConstraintRect = useCallback(() => {
+    const canvasElement = canvasRef.current;
+    const layerElement = canvasElement?.parentElement;
+    const rect = (layerElement && layerElement.getBoundingClientRect)
+      ? layerElement.getBoundingClientRect()
+      : (canvasElement && canvasElement.getBoundingClientRect ? canvasElement.getBoundingClientRect() : null);
+
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    const fallbackRect = {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom
+    };
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const hasMiddleAreaBounds = Number.isFinite(middleAreaBounds?.top)
+      && Number.isFinite(middleAreaBounds?.height)
+      && middleAreaBounds.height > 0;
+    const viewportContainerRect = canvasElement?.closest?.('[data-testid="pdf-container"]')?.getBoundingClientRect?.();
+    const hasContainerRect = !!(
+      viewportContainerRect &&
+      Number.isFinite(viewportContainerRect.top) &&
+      Number.isFinite(viewportContainerRect.bottom) &&
+      viewportContainerRect.bottom > viewportContainerRect.top
+    );
+
+    // Horizontal bounds follow the canvas/page lane.
+    // Vertical bounds follow the visible PDF container when available.
+    const constrainedTop = hasContainerRect
+      ? viewportContainerRect.top
+      : (hasMiddleAreaBounds ? middleAreaBounds.top : rect.top);
+    const constrainedBottom = hasContainerRect
+      ? viewportContainerRect.bottom
+      : (hasMiddleAreaBounds ? (middleAreaBounds.top + middleAreaBounds.height) : rect.bottom);
+
+    const left = Math.max(0, Math.min(rect.left, viewportWidth));
+    const right = Math.max(left, Math.min(rect.right, viewportWidth));
+    const top = Math.max(0, Math.min(constrainedTop, viewportHeight));
+    const bottom = Math.max(top, Math.min(constrainedBottom, viewportHeight));
+
+    if (right <= left || bottom <= top) {
+      return fallbackRect;
+    }
+
+    return {
+      left,
+      top,
+      right,
+      bottom
+    };
+  }, [middleAreaBounds?.top, middleAreaBounds?.height]);
+
+  const getEstimatedContextMenuSize = useCallback((menuType) => {
+    const defaultSize = { width: 220, height: 250 };
+    const cached = contextMenuSizeCacheRef.current?.[menuType];
+    if (cached && Number.isFinite(cached.width) && Number.isFinite(cached.height)) {
+      return cached;
+    }
+    return defaultSize;
+  }, []);
+
+  const getEstimatedEditModalSize = useCallback(() => {
+    const cached = editModalSizeCacheRef.current;
+    if (cached && Number.isFinite(cached.width) && Number.isFinite(cached.height)) {
+      return cached;
+    }
+    return { width: 300, height: 400 };
+  }, []);
+
+  const logContextMenuDebug = useCallback((stage, payload = {}) => {
+    if (!isDebugEnabled()) return;
+
+    const entry = {
+      stage,
+      pageNumber,
+      at: new Date().toISOString(),
+      ...payload
+    };
+
+    debugLog('[ContextMenuDebug]', entry);
+    try {
+      console.log('[ContextMenuDebugJSON]', JSON.stringify(entry));
+    } catch (error) {
+      debugWarn('[ContextMenuDebug] Failed to serialize entry', error);
+    }
+    setDebugData({ contextMenuDebug: entry });
+
+    if (typeof window !== 'undefined') {
+      const existingHistory = Array.isArray(window.__contextMenuDebugHistory)
+        ? window.__contextMenuDebugHistory
+        : [];
+      const nextHistory = [...existingHistory, entry].slice(-40);
+      window.__contextMenuDebugHistory = nextHistory;
+    }
+  }, [pageNumber]);
+
+  const announceOverlayOpen = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent(OVERLAY_OPEN_EVENT, {
+      detail: { sourceId: overlayInstanceIdRef.current }
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handleExternalOverlayOpen = (event) => {
+      const sourceId = event?.detail?.sourceId;
+      if (!sourceId || sourceId === overlayInstanceIdRef.current) {
+        return;
+      }
+
+      setContextMenu(prev => (prev ? null : prev));
+      contextMenuPositionAdjustedRef.current = false;
+      setEditModal(prev => (prev ? null : prev));
+      editModalPositionAdjustedRef.current = false;
+    };
+
+    window.addEventListener(OVERLAY_OPEN_EVENT, handleExternalOverlayOpen);
+    return () => window.removeEventListener(OVERLAY_OPEN_EVENT, handleExternalOverlayOpen);
+  }, []);
 
 
 
@@ -2804,6 +3386,9 @@ const PageAnnotationLayer = memo(({
   const isDraggingCalloutTextRef = useRef(false);
   const dragStartPointerRef = useRef(null);
   const isMovingEntireCalloutRef = useRef(false); // Track Cmd/Ctrl+drag for moving entire callout
+  const transformInteractionSeqRef = useRef(0);
+  const transformInteractionSeedRef = useRef(`${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+  const activeTransformInteractionIdRef = useRef(null);
 
   // Helper to re-calculate callout line connections
   const updateCalloutConnections = useCallback((group) => {
@@ -2846,13 +3431,28 @@ const PageAnnotationLayer = memo(({
   }, []);
 
   // Helper to trigger save
-  const triggerSave = useCallback(() => {
+  const triggerSave = useCallback((source = 'trigger-save', context = null) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     sanitizeTextStyles(canvas);
     const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
-    onSaveAnnotations(pageNumber, canvasJSON);
+    onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
   }, [pageNumber, onSaveAnnotations]);
+
+  // Flush pending ink updates when leaving drawing tools to prevent disappearing strokes.
+  useEffect(() => {
+    const previousTool = previousToolRef.current;
+    if (previousTool !== tool && DRAWING_TOOLS.has(previousTool) && !DRAWING_TOOLS.has(tool)) {
+      requestAnimationFrame(() => {
+        triggerSave('tool:flush-drawing', {
+          previousTool,
+          nextTool: tool,
+          checkpointPolicy: 'skip'
+        });
+      });
+    }
+    previousToolRef.current = tool;
+  }, [tool, triggerSave]);
 
   // Helper to calculate distance from point to line segment
   const distanceToLineSegment = useCallback((point, lineStart, lineEnd) => {
@@ -2940,6 +3540,55 @@ const PageAnnotationLayer = memo(({
     }
     const canvas = fabricRef.current;
     if (!canvas) return;
+    const pointerX = Number.isFinite(e?.clientX)
+      ? e.clientX
+      : (Number.isFinite(e?.pageX) ? e.pageX : 0);
+    const pointerY = Number.isFinite(e?.clientY)
+      ? e.clientY
+      : (Number.isFinite(e?.pageY) ? e.pageY : 0);
+    const rawConstraintRect = getMenuConstraintRect();
+    const constraintRect = rawConstraintRect ? {
+      left: Math.min(rawConstraintRect.left, pointerX),
+      top: Math.min(rawConstraintRect.top, pointerY),
+      right: Math.max(rawConstraintRect.right, pointerX),
+      bottom: Math.max(rawConstraintRect.bottom, pointerY)
+    } : null;
+    const viewportRect = {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight
+    };
+    const activeBounds = constraintRect || viewportRect;
+    const boundsMidY = ((activeBounds.top || 0) + (activeBounds.bottom || 0)) / 2;
+    const clickZone = pointerY >= boundsMidY ? 'bottom-half' : 'top-half';
+
+    logContextMenuDebug('open-request', {
+      source: fabricTarget ? 'fabric' : 'dom',
+      rawEvent: {
+        type: e?.type || null,
+        button: e?.button ?? null,
+        which: e?.which ?? null,
+        clientX: toDebugNumber(e?.clientX),
+        clientY: toDebugNumber(e?.clientY),
+        pageX: toDebugNumber(e?.pageX),
+        pageY: toDebugNumber(e?.pageY)
+      },
+      pointer: { x: toDebugNumber(pointerX), y: toDebugNumber(pointerY) },
+      clickZone,
+      viewport: normalizeRectForDebug(viewportRect),
+      bounds: normalizeRectForDebug(activeBounds),
+      rawBounds: normalizeRectForDebug(rawConstraintRect)
+    });
+
+    if (contextMenuDismissTimeoutRef.current) {
+      clearTimeout(contextMenuDismissTimeoutRef.current);
+      contextMenuDismissTimeoutRef.current = null;
+    }
+    contextMenuPositionAdjustedRef.current = false;
+    announceOverlayOpen();
+    setEditModal(prev => (prev ? null : prev));
+    editModalPositionAdjustedRef.current = false;
 
     // Get pointer position relative to canvas
     // If fabricTarget is provided (from Fabric.js event), use it directly
@@ -2958,16 +3607,34 @@ const PageAnnotationLayer = memo(({
         canvas.requestRenderAll();
       }
 
-      const safePosition = calculateViewportSafePosition(e.clientX, e.clientY, {
-        estimatedWidth: 200,
-        estimatedHeight: 300
+      const estimatedSize = getEstimatedContextMenuSize('annotation');
+      const safePosition = calculateViewportSafePosition(pointerX, pointerY, {
+        estimatedWidth: estimatedSize.width,
+        estimatedHeight: estimatedSize.height,
+        preferAbove: false,
+        constraintRect
+      });
+      logContextMenuDebug('open-initial', {
+        menuType: 'annotation',
+        pointer: { x: toDebugNumber(pointerX), y: toDebugNumber(pointerY) },
+        estimatedSize: {
+          width: toDebugNumber(estimatedSize.width),
+          height: toDebugNumber(estimatedSize.height)
+        },
+        initialPosition: { x: toDebugNumber(safePosition.x), y: toDebugNumber(safePosition.y) },
+        bounds: normalizeRectForDebug(activeBounds)
       });
       setContextMenu({
         visible: true,
+        openId: Date.now(),
+        isReady: false,
         x: safePosition.x,
         y: safePosition.y,
+        anchorX: pointerX,
+        anchorY: pointerY,
         type: 'annotation',
-        target: target
+        target: target,
+        constraintRect
       });
       // Mark that context menu was just opened to prevent immediate closing
       contextMenuJustOpenedRef.current = true;
@@ -2982,8 +3649,8 @@ const PageAnnotationLayer = memo(({
     if (canvasElement) {
       const rect = canvasElement.getBoundingClientRect();
       const clickPos = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
+        x: pointerX - rect.left,
+        y: pointerY - rect.top
       };
 
       // Get page dimensions at current scale
@@ -2997,17 +3664,35 @@ const PageAnnotationLayer = memo(({
         if (isPointOnCallout(clickPos, callout, pageWidth, pageHeight)) {
           // Select the callout
           setSelectedCalloutId(callout.id);
-          const safePosition = calculateViewportSafePosition(e.clientX, e.clientY, {
-            estimatedWidth: 200,
-            estimatedHeight: 300
+          const estimatedSize = getEstimatedContextMenuSize('callout');
+          const safePosition = calculateViewportSafePosition(pointerX, pointerY, {
+            estimatedWidth: estimatedSize.width,
+            estimatedHeight: estimatedSize.height,
+            preferAbove: false,
+            constraintRect
+          });
+          logContextMenuDebug('open-initial', {
+            menuType: 'callout',
+            pointer: { x: toDebugNumber(pointerX), y: toDebugNumber(pointerY) },
+            estimatedSize: {
+              width: toDebugNumber(estimatedSize.width),
+              height: toDebugNumber(estimatedSize.height)
+            },
+            initialPosition: { x: toDebugNumber(safePosition.x), y: toDebugNumber(safePosition.y) },
+            bounds: normalizeRectForDebug(activeBounds)
           });
           setContextMenu({
             visible: true,
+            openId: Date.now(),
+            isReady: false,
             x: safePosition.x,
             y: safePosition.y,
+            anchorX: pointerX,
+            anchorY: pointerY,
             type: 'callout',
             target: null,
-            calloutId: callout.id
+            calloutId: callout.id,
+            constraintRect
           });
           // Mark that context menu was just opened to prevent immediate closing
           contextMenuJustOpenedRef.current = true;
@@ -3020,149 +3705,226 @@ const PageAnnotationLayer = memo(({
     }
 
     // 3. Page background click - always show page operations menu
-    const safePosition = calculateViewportSafePosition(e.clientX, e.clientY, {
-      estimatedWidth: 200,
-      estimatedHeight: 450
+    const estimatedSize = getEstimatedContextMenuSize('page');
+    const safePosition = calculateViewportSafePosition(pointerX, pointerY, {
+      estimatedWidth: estimatedSize.width,
+      estimatedHeight: estimatedSize.height,
+      preferAbove: false,
+      constraintRect
+    });
+    logContextMenuDebug('open-initial', {
+      menuType: 'page',
+      pointer: { x: toDebugNumber(pointerX), y: toDebugNumber(pointerY) },
+      estimatedSize: {
+        width: toDebugNumber(estimatedSize.width),
+        height: toDebugNumber(estimatedSize.height)
+      },
+      initialPosition: { x: toDebugNumber(safePosition.x), y: toDebugNumber(safePosition.y) },
+      bounds: normalizeRectForDebug(activeBounds)
     });
     setContextMenu({
       visible: true,
+      openId: Date.now(),
+      isReady: false,
       x: safePosition.x,
       y: safePosition.y,
+      anchorX: pointerX,
+      anchorY: pointerY,
       type: 'page',
-      target: null
+      target: null,
+      constraintRect
     });
     // Mark that context menu was just opened to prevent immediate closing
     contextMenuJustOpenedRef.current = true;
     setTimeout(() => {
       contextMenuJustOpenedRef.current = false;
     }, 100); // Allow clicks after 100ms
-  }, [pageNumber, width, height, scale, isPointOnCallout, setSelectedCalloutId]);
+  }, [pageNumber, width, height, scale, isPointOnCallout, setSelectedCalloutId, getMenuConstraintRect, announceOverlayOpen, getEstimatedContextMenuSize, logContextMenuDebug]);
 
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(null);
+  const closeContextMenu = useCallback((reason = 'manual-dismiss', event = null) => {
+    if (!contextMenuVisibleRef.current) return;
+    logContextMenuDebug('dismiss', {
+      reason,
+      eventType: event?.type || null,
+      eventButton: event?.button ?? null
+    });
     contextMenuPositionAdjustedRef.current = false;
-  }, []);
+    contextMenuJustOpenedRef.current = false;
+    setContextMenu(prev => {
+      if (!prev || prev.isClosing) return prev;
+      const closingOpenId = prev.openId;
+      if (contextMenuDismissTimeoutRef.current) {
+        clearTimeout(contextMenuDismissTimeoutRef.current);
+      }
+      contextMenuDismissTimeoutRef.current = setTimeout(() => {
+        setContextMenu(current => {
+          if (!current || current.openId !== closingOpenId || current.isClosing !== true) return current;
+          return null;
+        });
+        contextMenuDismissTimeoutRef.current = null;
+      }, OVERLAY_DISMISS_ANIMATION_MS);
+      return { ...prev, isReady: true, isClosing: true };
+    });
+  }, [logContextMenuDebug]);
 
   const closeEditModal = useCallback(() => {
-    setEditModal(null);
+    if (!editModalVisibleRef.current) return;
     editModalPositionAdjustedRef.current = false;
+    setEditModal(prev => {
+      if (!prev || prev.isClosing) return prev;
+      const closingOpenId = prev.openId;
+      if (editModalDismissTimeoutRef.current) {
+        clearTimeout(editModalDismissTimeoutRef.current);
+      }
+      editModalDismissTimeoutRef.current = setTimeout(() => {
+        setEditModal(current => {
+          if (!current || current.openId !== closingOpenId || current.isClosing !== true) return current;
+          return null;
+        });
+        editModalDismissTimeoutRef.current = null;
+      }, OVERLAY_DISMISS_ANIMATION_MS);
+      return { ...prev, isReady: true, isClosing: true };
+    });
   }, []);
 
-  // Reset position adjustment flag when context menu becomes visible
-  useEffect(() => {
-    if (contextMenu?.visible) {
-      contextMenuPositionAdjustedRef.current = false;
+  const dismissEditModal = useCallback((_reason = 'manual-dismiss', _event = null) => {
+    if (!editModalVisibleRef.current) return;
+    const cancelHandler = cancelEditRef.current;
+    if (typeof cancelHandler === 'function') {
+      cancelHandler();
     }
-  }, [contextMenu?.visible]);
+    if (editModalVisibleRef.current) {
+      closeEditModal();
+    }
+  }, [closeEditModal]);
 
-  // Reset position adjustment flag when edit modal becomes visible
+  const previousMenuToolRef = useRef(tool);
   useEffect(() => {
-    if (editModal?.visible) {
-      editModalPositionAdjustedRef.current = false;
+    if (previousMenuToolRef.current !== tool) {
+      closeContextMenu('tool-change');
     }
-  }, [editModal?.visible]);
+    previousMenuToolRef.current = tool;
+  }, [tool, closeContextMenu]);
+
+  const previousEditModalToolRef = useRef(tool);
+  useEffect(() => {
+    if (previousEditModalToolRef.current !== tool) {
+      dismissEditModal('tool-change');
+    }
+    previousEditModalToolRef.current = tool;
+  }, [tool, dismissEditModal]);
 
   // Fine-tune context menu position after render using actual dimensions
-  useEffect(() => {
-    if (!contextMenu?.visible || !contextMenuRef.current || contextMenuPositionAdjustedRef.current) return;
+  useLayoutEffect(() => {
+    if (!contextMenu?.visible || contextMenu?.isClosing === true || !contextMenuRef.current || contextMenuPositionAdjustedRef.current) return;
 
-    // Use requestAnimationFrame to ensure the element is fully rendered
-    const frameId = requestAnimationFrame(() => {
-      if (!contextMenuRef.current) return;
+    const element = contextMenuRef.current;
+    const rect = element.getBoundingClientRect();
+    contextMenuSizeCacheRef.current[contextMenu.type || 'annotation'] = {
+      width: rect.width,
+      height: rect.height
+    };
 
-      const element = contextMenuRef.current;
-      const rect = element.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const padding = 10;
-
-      let adjustedX = contextMenu.x;
-      let adjustedY = contextMenu.y;
-      let needsUpdate = false;
-
-      // Check right edge overflow
-      if (rect.right + padding > viewportWidth) {
-        adjustedX = viewportWidth - rect.width - padding;
-        needsUpdate = true;
-      }
-
-      // Check left edge overflow
-      if (rect.left < padding) {
-        adjustedX = padding;
-        needsUpdate = true;
-      }
-
-      // Check bottom edge overflow
-      if (rect.bottom + padding > viewportHeight) {
-        adjustedY = viewportHeight - rect.height - padding;
-        needsUpdate = true;
-      }
-
-      // Check top edge overflow
-      if (rect.top < padding) {
-        adjustedY = padding;
-        needsUpdate = true;
-      }
-
-      if (needsUpdate) {
-        setContextMenu(prev => prev ? { ...prev, x: adjustedX, y: adjustedY } : null);
-      }
-      contextMenuPositionAdjustedRef.current = true;
+    const anchorX = contextMenu.anchorX ?? contextMenu.x;
+    const anchorY = contextMenu.anchorY ?? contextMenu.y;
+    const safePosition = calculateViewportSafePosition(anchorX, anchorY, {
+      estimatedWidth: rect.width,
+      estimatedHeight: rect.height,
+      padding: 10,
+      preferAbove: false,
+      constraintRect: contextMenu.constraintRect || getMenuConstraintRect()
+    });
+    const activeBounds = contextMenu.constraintRect || getMenuConstraintRect() || {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight
+    };
+    const projectedRect = {
+      left: safePosition.x,
+      top: safePosition.y,
+      right: safePosition.x + rect.width,
+      bottom: safePosition.y + rect.height
+    };
+    logContextMenuDebug('position-adjust', {
+      menuType: contextMenu.type,
+      anchor: { x: toDebugNumber(anchorX), y: toDebugNumber(anchorY) },
+      measuredRectBefore: normalizeRectForDebug(rect),
+      bounds: normalizeRectForDebug(activeBounds),
+      overflowBefore: getOverflowAgainstRect(rect, activeBounds),
+      adjustedPosition: { x: toDebugNumber(safePosition.x), y: toDebugNumber(safePosition.y) },
+      projectedRectAfter: normalizeRectForDebug(projectedRect),
+      overflowAfterProjected: getOverflowAgainstRect(projectedRect, activeBounds)
     });
 
-    return () => cancelAnimationFrame(frameId);
-  }, [contextMenu?.visible]);
+    contextMenuPositionAdjustedRef.current = true;
+    setContextMenu(prev => {
+      if (!prev || !prev.visible || prev.openId !== contextMenu.openId) return prev;
+      if (prev.x === safePosition.x && prev.y === safePosition.y && prev.isReady !== false) {
+        return prev;
+      }
+      return { ...prev, x: safePosition.x, y: safePosition.y, isReady: true };
+    });
+  }, [contextMenu?.visible, contextMenu?.openId, contextMenu?.type, contextMenu?.x, contextMenu?.y, contextMenu?.anchorX, contextMenu?.anchorY, contextMenu?.constraintRect, contextMenu?.isClosing, getMenuConstraintRect, logContextMenuDebug]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu?.visible || contextMenu?.isReady !== true || contextMenu?.isClosing === true || !contextMenuRef.current) return;
+
+    const rect = contextMenuRef.current.getBoundingClientRect();
+    const activeBounds = contextMenu.constraintRect || getMenuConstraintRect() || {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight
+    };
+    const viewportRect = {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight
+    };
+
+    logContextMenuDebug('render-ready', {
+      menuType: contextMenu.type,
+      finalPositionState: { x: toDebugNumber(contextMenu.x), y: toDebugNumber(contextMenu.y) },
+      measuredRectFinal: normalizeRectForDebug(rect),
+      bounds: normalizeRectForDebug(activeBounds),
+      viewport: normalizeRectForDebug(viewportRect),
+      overflowAgainstBounds: getOverflowAgainstRect(rect, activeBounds),
+      overflowAgainstViewport: getOverflowAgainstRect(rect, viewportRect)
+    });
+  }, [contextMenu?.visible, contextMenu?.openId, contextMenu?.isReady, contextMenu?.type, contextMenu?.x, contextMenu?.y, contextMenu?.constraintRect, contextMenu?.isClosing, getMenuConstraintRect, logContextMenuDebug]);
 
   // Fine-tune edit modal position after render using actual dimensions
-  useEffect(() => {
-    if (!editModal?.visible || !editModalRef.current || editModalPositionAdjustedRef.current) return;
+  useLayoutEffect(() => {
+    if (!editModal?.visible || editModal?.isClosing === true || !editModalRef.current || editModalPositionAdjustedRef.current) return;
 
-    // Use requestAnimationFrame to ensure the element is fully rendered
-    const frameId = requestAnimationFrame(() => {
-      if (!editModalRef.current) return;
+    const element = editModalRef.current;
+    const rect = element.getBoundingClientRect();
+    editModalSizeCacheRef.current = {
+      width: rect.width,
+      height: rect.height
+    };
 
-      const element = editModalRef.current;
-      const rect = element.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const padding = 10;
-
-      let adjustedX = editModal.x;
-      let adjustedY = editModal.y;
-      let needsUpdate = false;
-
-      // Check right edge overflow
-      if (rect.right + padding > viewportWidth) {
-        adjustedX = viewportWidth - rect.width - padding;
-        needsUpdate = true;
-      }
-
-      // Check left edge overflow
-      if (rect.left < padding) {
-        adjustedX = padding;
-        needsUpdate = true;
-      }
-
-      // Check bottom edge overflow
-      if (rect.bottom + padding > viewportHeight) {
-        adjustedY = viewportHeight - rect.height - padding;
-        needsUpdate = true;
-      }
-
-      // Check top edge overflow
-      if (rect.top < padding) {
-        adjustedY = padding;
-        needsUpdate = true;
-      }
-
-      if (needsUpdate) {
-        setEditModal(prev => prev ? { ...prev, x: adjustedX, y: adjustedY } : null);
-      }
-      editModalPositionAdjustedRef.current = true;
+    const anchorX = editModal.anchorX ?? editModal.x;
+    const anchorY = editModal.anchorY ?? editModal.y;
+    const safePosition = calculateViewportSafePosition(anchorX, anchorY, {
+      estimatedWidth: rect.width,
+      estimatedHeight: rect.height,
+      padding: 10,
+      preferAbove: false,
+      constraintRect: editModal.constraintRect || getMenuConstraintRect()
     });
 
-    return () => cancelAnimationFrame(frameId);
-  }, [editModal?.visible]);
+    editModalPositionAdjustedRef.current = true;
+    setEditModal(prev => {
+      if (!prev || !prev.visible || prev.openId !== editModal.openId) return prev;
+      if (prev.x === safePosition.x && prev.y === safePosition.y && prev.isReady !== false) {
+        return prev;
+      }
+      return { ...prev, x: safePosition.x, y: safePosition.y, isReady: true };
+    });
+  }, [editModal?.visible, editModal?.openId, editModal?.x, editModal?.y, editModal?.anchorX, editModal?.anchorY, editModal?.constraintRect, editModal?.isClosing, getMenuConstraintRect]);
 
   // Action Handlers
   const handleCut = useCallback(() => {
@@ -3176,7 +3938,7 @@ const PageAnnotationLayer = memo(({
       canvas.remove(...canvas.getActiveObjects());
       canvas.discardActiveObject();
       canvas.requestRenderAll();
-      triggerSave();
+      triggerSave('annotation:cut');
     }
     closeContextMenu();
   }, [triggerSave, closeContextMenu]);
@@ -3223,7 +3985,7 @@ const PageAnnotationLayer = memo(({
       }
 
       canvas.requestRenderAll();
-      triggerSave();
+      triggerSave('annotation:paste');
     });
     closeContextMenu();
   }, [triggerSave, closeContextMenu]);
@@ -3235,7 +3997,7 @@ const PageAnnotationLayer = memo(({
     if (activeObject && activeObject.type === 'activeSelection') {
       activeObject.toGroup();
       canvas.requestRenderAll();
-      triggerSave();
+      triggerSave('annotation:group');
     }
     closeContextMenu();
   }, [triggerSave, closeContextMenu]);
@@ -3247,7 +4009,7 @@ const PageAnnotationLayer = memo(({
     if (activeObject && activeObject.type === 'group') {
       activeObject.toActiveSelection();
       canvas.requestRenderAll();
-      triggerSave();
+      triggerSave('annotation:ungroup');
     }
     closeContextMenu();
   }, [triggerSave, closeContextMenu]);
@@ -3261,7 +4023,7 @@ const PageAnnotationLayer = memo(({
       canvas.remove(...activeObjects);
       canvas.discardActiveObject();
       canvas.requestRenderAll();
-      triggerSave();
+      triggerSave('annotation:delete');
     }
     closeContextMenu();
   }, [triggerSave, closeContextMenu]);
@@ -3301,6 +4063,15 @@ const PageAnnotationLayer = memo(({
     if (contextMenu?.calloutId) {
       const callout = calloutsRef.current.find(c => c.id === contextMenu.calloutId);
       if (callout) {
+        announceOverlayOpen();
+        const constraintRect = contextMenu.constraintRect || getMenuConstraintRect();
+        const estimatedSize = getEstimatedEditModalSize();
+        const safePosition = calculateViewportSafePosition(contextMenu.x, contextMenu.y, {
+          estimatedWidth: estimatedSize.width,
+          estimatedHeight: estimatedSize.height,
+          preferAbove: false,
+          constraintRect
+        });
         setEditValues({
           stroke: callout.style?.borderColor || '#000000',
           strokeWidth: callout.style?.lineThickness || 1,
@@ -3314,16 +4085,26 @@ const PageAnnotationLayer = memo(({
           fontFamily: callout.style?.fontFamily || 'Arial',
           fillColor: callout.style?.fillColor || 'rgba(255,255,255,0.9)'
         });
+        if (editModalDismissTimeoutRef.current) {
+          clearTimeout(editModalDismissTimeoutRef.current);
+          editModalDismissTimeoutRef.current = null;
+        }
+        editModalPositionAdjustedRef.current = false;
         setEditModal({
           visible: true,
-          x: contextMenu.x,
-          y: contextMenu.y,
-          object: { data: { type: 'callout', calloutId: contextMenu.calloutId } }
+          openId: Date.now(),
+          isReady: false,
+          x: safePosition.x,
+          y: safePosition.y,
+          anchorX: contextMenu.anchorX ?? contextMenu.x,
+          anchorY: contextMenu.anchorY ?? contextMenu.y,
+          object: { data: { type: 'callout', calloutId: contextMenu.calloutId } },
+          constraintRect
         });
       }
     }
     closeContextMenu();
-  }, [contextMenu, closeContextMenu]);
+  }, [contextMenu, closeContextMenu, getMenuConstraintRect, announceOverlayOpen, getEstimatedEditModalSize]);
 
   const handleEdit = useCallback(() => {
     const canvas = fabricRef.current;
@@ -3336,6 +4117,7 @@ const PageAnnotationLayer = memo(({
     }
 
     if (activeObject) {
+      announceOverlayOpen();
       // Get initial values from first object if selection
       const target = activeObject.type === 'activeSelection' ? activeObject.getObjects()[0] : activeObject;
 
@@ -3396,20 +4178,34 @@ const PageAnnotationLayer = memo(({
         opacity: obj.opacity
       }));
 
+      const constraintRect = contextMenu?.constraintRect || getMenuConstraintRect();
+      const estimatedSize = getEstimatedEditModalSize();
       const safePosition = calculateViewportSafePosition(contextMenu.x, contextMenu.y, {
-        estimatedWidth: 300,
-        estimatedHeight: 400
+        estimatedWidth: estimatedSize.width,
+        estimatedHeight: estimatedSize.height,
+        preferAbove: false,
+        constraintRect
       });
+      if (editModalDismissTimeoutRef.current) {
+        clearTimeout(editModalDismissTimeoutRef.current);
+        editModalDismissTimeoutRef.current = null;
+      }
+      editModalPositionAdjustedRef.current = false;
       setEditModal({
         visible: true,
+        openId: Date.now(),
+        isReady: false,
         x: safePosition.x,
         y: safePosition.y,
+        anchorX: contextMenu.anchorX ?? contextMenu.x,
+        anchorY: contextMenu.anchorY ?? contextMenu.y,
         object: activeObject,
-        initialStates: initialStates
+        initialStates: initialStates,
+        constraintRect
       });
     }
     closeContextMenu();
-  }, [contextMenu, closeContextMenu, calloutsRef]);
+  }, [contextMenu, closeContextMenu, calloutsRef, getMenuConstraintRect, announceOverlayOpen, getEstimatedEditModalSize]);
 
   const saveEdit = useCallback(() => {
     const canvas = fabricRef.current;
@@ -3544,7 +4340,7 @@ const PageAnnotationLayer = memo(({
     });
 
     canvas.requestRenderAll();
-    triggerSave();
+    triggerSave('annotation:style-apply');
     closeEditModal();
   }, [editModal, editValues, triggerSave, closeEditModal]);
 
@@ -3635,8 +4431,12 @@ const PageAnnotationLayer = memo(({
 
     if (canvas) canvas.requestRenderAll();
     if (canvas) canvas.requestRenderAll();
-    setEditModal(null);
-  }, [editModal]);
+    closeEditModal();
+  }, [editModal, closeEditModal]);
+
+  useEffect(() => {
+    cancelEditRef.current = cancelEdit;
+  }, [cancelEdit]);
 
   // Click outside listener for Edit Modal
   useEffect(() => {
@@ -3759,7 +4559,7 @@ const PageAnnotationLayer = memo(({
       if (!isOnCanvasArea) {
         // If context menu is open and click is outside it, close it
         if (contextMenu && isOutsideContextMenu) {
-          closeContextMenu();
+          closeContextMenu('outside-canvas-click', event);
         }
         // If there's a selected annotation and we're clicking outside canvas, deselect
         if (hasSelectedAnnotation) {
@@ -3781,7 +4581,7 @@ const PageAnnotationLayer = memo(({
           canvas.discardActiveObject();
           canvas.requestRenderAll();
         }
-        closeContextMenu();
+        closeContextMenu('outside-menu-click', event);
       }
       // If no context menu but there's a selected annotation, deselect if clicking outside annotation
       else if (!contextMenu && hasSelectedAnnotation && activeObject) {
@@ -3807,6 +4607,44 @@ const PageAnnotationLayer = memo(({
       document.removeEventListener('mousedown', handleClickOutside, true);
     };
   }, [contextMenu, closeContextMenu]);
+
+  // Dismiss context menu when user scrolls/wheels after opening it.
+  useEffect(() => {
+    if (!contextMenu?.visible) return undefined;
+
+    const handleScrollOrWheel = (event) => {
+      if (!contextMenuVisibleRef.current) return;
+      if (contextMenuRef.current?.contains(event.target)) return;
+      closeContextMenu(event.type === 'wheel' ? 'wheel-scroll' : 'viewport-scroll', event);
+    };
+
+    window.addEventListener('wheel', handleScrollOrWheel, { capture: true, passive: true });
+    document.addEventListener('scroll', handleScrollOrWheel, true);
+
+    return () => {
+      window.removeEventListener('wheel', handleScrollOrWheel, true);
+      document.removeEventListener('scroll', handleScrollOrWheel, true);
+    };
+  }, [contextMenu?.visible, closeContextMenu]);
+
+  // Dismiss edit modal when user scrolls/wheels after opening it.
+  useEffect(() => {
+    if (!editModal?.visible) return undefined;
+
+    const handleScrollOrWheel = (event) => {
+      if (!editModalVisibleRef.current) return;
+      if (editModalRef.current?.contains(event.target)) return;
+      dismissEditModal(event.type === 'wheel' ? 'wheel-scroll' : 'viewport-scroll', event);
+    };
+
+    window.addEventListener('wheel', handleScrollOrWheel, { capture: true, passive: true });
+    document.addEventListener('scroll', handleScrollOrWheel, true);
+
+    return () => {
+      window.removeEventListener('wheel', handleScrollOrWheel, true);
+      document.removeEventListener('scroll', handleScrollOrWheel, true);
+    };
+  }, [editModal?.visible, dismissEditModal]);
 
   // Keep highlight callback refs in sync
   useEffect(() => {
@@ -3914,8 +4752,21 @@ const PageAnnotationLayer = memo(({
 
     if (annotationsData && annotationsData.objects && annotationsData.objects.length > 0) {
       util.enlivenObjects(annotationsData.objects, (enlivenedObjects) => {
-        enlivenedObjects.forEach((obj, index) => {
+        enlivenedObjects.forEach((enlivenedObj, index) => {
           const objData = annotationsData.objects[index];
+          let obj = enlivenedObj;
+
+          if (objData?.isPdfImported) {
+            const importedCallout = createImportedCalloutFromTextbox(obj, objData, canvas);
+            if (importedCallout) {
+              obj = importedCallout;
+            } else {
+              const importedArrow = createImportedArrowGroupFromLine(obj, objData);
+              if (importedArrow) {
+                obj = importedArrow;
+              }
+            }
+          }
 
           obj.set({
             strokeUniform: true,
@@ -3931,13 +4782,19 @@ const PageAnnotationLayer = memo(({
 
           // Preserve imported PDF annotation properties
           if (objData.isPdfImported) {
+            const isShxProxy = objData?.data?.isAutoCadShxText === true;
+            const isCalloutGroup = obj?.data?.type === 'callout';
             obj.isPdfImported = true;
             obj.pdfAnnotationId = objData.pdfAnnotationId;
             obj.pdfAnnotationType = objData.pdfAnnotationType;
             obj.layer = objData.layer || 'pdf-annotations';
             obj.set({
-              selectable: true, evented: true, hasControls: true, hasBorders: true,
-              perPixelTargetFind: true, targetFindTolerance: 5
+              selectable: true,
+              evented: true,
+              hasControls: isShxProxy ? false : true,
+              hasBorders: isCalloutGroup ? false : true,
+              perPixelTargetFind: (isShxProxy || isCalloutGroup) ? false : true,
+              targetFindTolerance: isShxProxy ? 8 : (isCalloutGroup ? 10 : 5)
             });
           }
 
@@ -3961,7 +4818,7 @@ const PageAnnotationLayer = memo(({
 
           // Check if this is an Arrow Group that needs custom controls
           if (obj.type === 'group' && obj.data?.type === 'arrow') {
-            const lineObj = obj.getObjects().find(o => o.type === 'line' || o.type === 'polyline');
+            const lineObj = obj.getObjects().find(o => o.type === 'line' || o.type === 'polyline' || o.type === 'path');
             if (lineObj && (!obj.data.midpoint || obj.controls && Object.keys(obj.controls).length > 3)) {
               // Old arrow with default Fabric controls - migrate to custom controls
               if (!obj.data.midpoint) obj.data.midpoint = null;
@@ -4179,12 +5036,16 @@ const PageAnnotationLayer = memo(({
             canvas.remove(...callouts);
             canvas.discardActiveObject();
             canvas.requestRenderAll();
-            triggerSave();
+            triggerSave('annotation:delete', { trigger: 'keyboard' });
             e.preventDefault();
           }
         }
       }
     };
+
+    if (canvasRef.current?.dataset) {
+      canvasRef.current.dataset.fabricWillReadFrequently = 'true';
+    }
 
     const canvas = new Canvas(canvasRef.current, {
       width: Math.floor(width * scale),
@@ -4228,7 +5089,7 @@ const PageAnnotationLayer = memo(({
     // Load initial annotations
     loadAnnotations(annotations);
 
-    const saveCanvas = () => {
+    const saveCanvas = (source = 'canvas:save', context = null) => {
       if (!fabricRef.current) return;
       try {
         // Sanitize text objects to prevent Fabric.js stylesToArray errors
@@ -4237,10 +5098,30 @@ const PageAnnotationLayer = memo(({
         // Include spaceId in the saved JSON to preserve space associations
         const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
-        onSaveAnnotations(pageNumber, canvasJSON);
+        onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
       }
+    };
+
+    const beginTransformInteraction = (opt) => {
+      const nativeEvent = opt?.e;
+      if (!nativeEvent) return;
+      const pointerButton = typeof nativeEvent.button === 'number' ? nativeEvent.button : 0;
+      const isRightClick = nativeEvent.button === 2
+        || nativeEvent.which === 3
+        || (nativeEvent.ctrlKey && nativeEvent.button === 0)
+        || (nativeEvent.metaKey && nativeEvent.button === 0);
+      if (isRightClick || pointerButton !== 0) return;
+      const target = opt?.target;
+      if (!target || target.selectable === false || target.evented === false) return;
+
+      transformInteractionSeqRef.current += 1;
+      activeTransformInteractionIdRef.current = [
+        transformInteractionSeedRef.current,
+        pageNumber,
+        transformInteractionSeqRef.current
+      ].join(':');
     };
 
     // Handle selection state changes to toggle perPixelTargetFind
@@ -4251,7 +5132,11 @@ const PageAnnotationLayer = memo(({
       objects.forEach(obj => {
         // Apply to all interactive objects (exclude utility objects like selection rects if they are not selectable)
         if (obj.selectable !== false && obj.evented !== false) {
-          obj.perPixelTargetFind = value;
+          const isShxProxy = obj?.data?.isAutoCadShxText === true;
+          obj.perPixelTargetFind = isShxProxy ? false : value;
+          if (isShxProxy) {
+            obj.targetFindTolerance = 8;
+          }
           // Ensure coordinates are updated for hit testing
           if (!value) {
             obj.setCoords();
@@ -4315,7 +5200,7 @@ const PageAnnotationLayer = memo(({
 
       // Debug Arrow Selection
       if (e.selected?.length === 1 && e.selected[0].data?.type === 'arrow') {
-        console.log('[ToolDebug] Arrow Selection Detected', {
+        debugLog('[ToolDebug] Arrow Selection Detected', {
           hasControls: e.selected[0].hasControls,
           controls: Object.keys(e.selected[0].controls || {})
         });
@@ -4403,7 +5288,10 @@ const PageAnnotationLayer = memo(({
         // NOTE: Do NOT auto-select pen strokes or highlighter paths
         // Users should manually select them if they want to resize
       }
-      saveCanvas();
+      saveCanvas('path:created', {
+        tool: toolRef.current,
+        pathType: e?.path?.type || null
+      });
     };
 
     const handleObjectModified = (e) => {
@@ -4421,7 +5309,12 @@ const PageAnnotationLayer = memo(({
         }, 0);
       }
 
-      saveCanvas();
+      saveCanvas('object:modified', {
+        action: e?.transform?.action || null,
+        interactionId: activeTransformInteractionIdRef.current,
+        target: summarizeFabricObjectForHistoryDebug(e?.target),
+        original: summarizeFabricTransformOriginalForHistoryDebug(e?.transform?.original || null)
+      });
     };
 
     // Track when Fabric.js starts transforming (scaling/rotating) an object
@@ -4579,7 +5472,7 @@ const PageAnnotationLayer = memo(({
       // Handle Independent Callout Objects
       if (target.calloutId) {
         if (target.partType === 'textBoxBg') {
-          console.log('[ToolDebug] Moving Callout Master:', target.calloutId);
+          debugLog('[ToolDebug] Moving Callout Master:', target.calloutId);
           // Master moved -> Move followers
           // Initialize last pos if undefined or if new drag started (check e.transform)
           if (typeof target._lastLeft === 'undefined' || (e.transform && target._dragSessionId !== e.transform.action)) {
@@ -4822,17 +5715,27 @@ const PageAnnotationLayer = memo(({
     // Handle mouse down for pan tool with Drawboard PDF-style behavior
     const handleMouseDownForPan = (opt) => {
       const currentTool = toolRef.current;
+      const nativeEvent = opt.e;
 
       // Only handle pan tool (select tool has its own handler)
       if (currentTool !== 'pan') {
         return;
       }
 
-      // No isTrusted check needed - we are not dispatching synthetic events anymore
+      const isRightClick = nativeEvent.button === 2 || nativeEvent.which === 3 || (nativeEvent.ctrlKey && nativeEvent.button === 0) || (nativeEvent.metaKey && nativeEvent.button === 0);
+      if (isRightClick) {
+        return;
+      }
+
+      if (contextMenuVisibleRef.current) {
+        closeContextMenu('pan-start', nativeEvent);
+      }
+      if (editModalVisibleRef.current) {
+        dismissEditModal('pan-start', nativeEvent);
+      }
 
       const pointer = canvas.getPointer(opt.e);
       const activeObject = canvas.getActiveObject();
-      const nativeEvent = opt.e;
 
       // Reset drag tracking with CLIENT coordinates for stable panning
       panDragStartRef.current = {
@@ -5146,7 +6049,11 @@ const PageAnnotationLayer = memo(({
 
       // Save canvas after rotation
       if (wasRotating) {
-        saveCanvas();
+        saveCanvas('object:modified', {
+          action: 'rotate',
+          interactionMode: 'pan',
+          interactionId: activeTransformInteractionIdRef.current
+        });
       }
     };
 
@@ -5155,8 +6062,17 @@ const PageAnnotationLayer = memo(({
       const currentStrokeColor = strokeColorRef.current;
       const currentStrokeWidth = strokeWidthRef.current;
       const currentEraserMode = eraserModeRef.current;
+      const nativeEvent = opt.e;
+      const isRightClick = nativeEvent.button === 2 || nativeEvent.which === 3 || (nativeEvent.ctrlKey && nativeEvent.button === 0) || (nativeEvent.metaKey && nativeEvent.button === 0);
       const { x, y } = canvas.getPointer(opt.e);
       const pointer = { x, y }; // Ensure pointer object exists
+
+      if (!isRightClick && contextMenuVisibleRef.current) {
+        closeContextMenu('canvas-tool-interaction', nativeEvent);
+      }
+      if (!isRightClick && editModalVisibleRef.current) {
+        dismissEditModal('canvas-tool-interaction', nativeEvent);
+      }
 
 
       // Handle Fabric callout objects when select, pan, or callout tool is active
@@ -5330,7 +6246,7 @@ const PageAnnotationLayer = memo(({
         canvas.add(tb);
         canvas.setActiveObject(tb);
         canvas.requestRenderAll();
-        saveCanvas();
+        saveCanvas('text:create', { tool: currentTool });
         return;
       }
       // Shape tools
@@ -5397,7 +6313,7 @@ const PageAnnotationLayer = memo(({
           const text = window.prompt('Note:', note.get('noteText') || '');
           if (text !== null) {
             note.set('noteText', text);
-            saveCanvas();
+            saveCanvas('note:edit');
           }
         });
         canvas.add(note);
@@ -5410,7 +6326,7 @@ const PageAnnotationLayer = memo(({
         setTimeout(() => {
           justFinishedDrawingRef.current = false;
         }, 100);
-        saveCanvas();
+        saveCanvas('note:create');
         return;
       }
       if (temp) {
@@ -5551,7 +6467,10 @@ const PageAnnotationLayer = memo(({
           group.lockMovementX = true;
           group.lockMovementY = true;
           group.setCoords();
-          triggerSave();
+          triggerSave('callout:move-end', {
+            interactionId: activeTransformInteractionIdRef.current,
+            calloutId: group.calloutId || group.data?.id || null
+          });
         }
         return;
       }
@@ -5567,7 +6486,10 @@ const PageAnnotationLayer = memo(({
           group.lockMovementX = true;
           group.lockMovementY = true;
           group.addWithUpdate();
-          triggerSave();
+          triggerSave('callout:text-drag-end', {
+            interactionId: activeTransformInteractionIdRef.current,
+            calloutId: group.calloutId || group.data?.id || null
+          });
         }
         return;
       }
@@ -5816,7 +6738,7 @@ const PageAnnotationLayer = memo(({
           }
 
           if (needsRenderAndSave) {
-            saveCanvas();
+            saveCanvas('eraser:apply', { mode: currentEraserMode });
           }
         }
 
@@ -5914,7 +6836,7 @@ const PageAnnotationLayer = memo(({
 
         // #endregion
         // Set up custom 3-handle controls for arrow
-        console.log('[ToolDebug] Setting up arrow controls');
+        debugLog('[ToolDebug] Setting up arrow controls');
         setupArrowControls(group, canvas);
         // Ensure coordinates are set for controls to render properly
         group.setCoords();
@@ -5937,7 +6859,7 @@ const PageAnnotationLayer = memo(({
           justFinishedDrawingRef.current = false;
         }, 100);
 
-        saveCanvas();
+        saveCanvas('annotation:create', { tool: currentTool });
 
         return;
       } else if (currentTool === 'callout' && ds.tempObj.type === 'line') {
@@ -6059,7 +6981,7 @@ const PageAnnotationLayer = memo(({
       }
       ds.isDrawingShape = false;
       ds.tempObj = null;
-      saveCanvas();
+      saveCanvas('annotation:create', { tool: currentTool });
     };
 
     const handleDblClick = (opt) => {
@@ -6524,7 +7446,7 @@ const PageAnnotationLayer = memo(({
                 // If geometry doesn't intersect, don't select (this is the desired behavior)
               } catch (e) {
                 // If geometry check fails, fall back to bounding box intersection
-                console.warn('Geometry check failed, using bounding box:', e.message);
+                debugWarn('Geometry check failed, using bounding box:', e.message);
 
                 objectsToSelect.push(obj);
               }
@@ -6579,29 +7501,54 @@ const PageAnnotationLayer = memo(({
     canvas.on('object:moving', handleObjectMoving);
     canvas.on('path:created', handlePathCreated);
     canvas.on('mouse:down', (opt) => {
+      beginTransformInteraction(opt);
       // Detect right-click: actual right button, or Ctrl+click (Windows/Linux), or Command+click (Mac)
       const isRightClick = opt.e.button === 2 || opt.e.which === 3 || (opt.e.ctrlKey && opt.e.button === 0) || (opt.e.metaKey && opt.e.button === 0);
 
       // Handle right-click for context menu directly from Fabric.js event
       if (isRightClick) {
         opt.e.preventDefault(); // Prevent default browser context menu
-        // Create a synthetic event object that matches what handleContextMenu expects
-        const syntheticEvent = {
-          preventDefault: () => opt.e.preventDefault(),
-          clientX: opt.e.clientX || opt.e.pageX || (opt.e.touches && opt.e.touches[0] ? opt.e.touches[0].clientX : 0),
-          clientY: opt.e.clientY || opt.e.pageY || (opt.e.touches && opt.e.touches[0] ? opt.e.touches[0].clientY : 0),
-          button: opt.e.button,
-          which: opt.e.which
-        };
-        // Pass the Fabric.js target directly to avoid needing to call findTarget again
-        handleContextMenu(syntheticEvent, opt.target);
+        const resolvedClientX = Number.isFinite(opt.e?.clientX)
+          ? opt.e.clientX
+          : (Number.isFinite(opt.e?.pageX) ? opt.e.pageX : 0);
+        const resolvedClientY = Number.isFinite(opt.e?.clientY)
+          ? opt.e.clientY
+          : (Number.isFinite(opt.e?.pageY) ? opt.e.pageY : 0);
+
+        logContextMenuDebug('fabric-right-click-capture', {
+          menuTargetType: opt.target?.type || null,
+          menuTargetDataType: opt.target?.data?.type || null,
+          rawEvent: {
+            type: opt.e?.type || null,
+            button: opt.e?.button ?? null,
+            which: opt.e?.which ?? null,
+            clientX: toDebugNumber(opt.e?.clientX),
+            clientY: toDebugNumber(opt.e?.clientY),
+            pageX: toDebugNumber(opt.e?.pageX),
+            pageY: toDebugNumber(opt.e?.pageY)
+          },
+          resolvedPointer: { x: toDebugNumber(resolvedClientX), y: toDebugNumber(resolvedClientY) },
+          fabricPointer: opt.pointer
+            ? { x: toDebugNumber(opt.pointer.x), y: toDebugNumber(opt.pointer.y) }
+            : null,
+          fabricAbsolutePointer: opt.absolutePointer
+            ? { x: toDebugNumber(opt.absolutePointer.x), y: toDebugNumber(opt.absolutePointer.y) }
+            : null
+        });
+
+        // Resolve target from the real native event for right-click paths where opt.target is null.
+        const resolvedTarget = opt.target || canvas.findTarget(opt.e, false);
+        handleContextMenu(opt.e, resolvedTarget);
         return; // Don't process as regular mouse down
       }
 
       handleMouseDown(opt);
     });
     canvas.on('mouse:move', handleMouseMove);
-    canvas.on('mouse:up', handleMouseUp);
+    canvas.on('mouse:up', (opt) => {
+      handleMouseUp(opt);
+      activeTransformInteractionIdRef.current = null;
+    });
     canvas.on('mouse:dblclick', handleDblClick);
 
     // Global cursor update handler (works for both pan and select tools)
@@ -6685,33 +7632,60 @@ const PageAnnotationLayer = memo(({
     };
   }, [pageNumber, width, height]);
 
-  // Handle scale changes with throttling to avoid excessive renders
-  const scaleUpdateTimerRef = useRef(null);
+  // Keep annotation canvas scale tightly aligned with page render scale.
   useEffect(() => {
+    if (isHidden) return;
     if (!fabricRef.current || !width || !height) return;
+    const canvas = fabricRef.current;
 
-    // Clear any pending scale update
-    if (scaleUpdateTimerRef.current) {
-      clearTimeout(scaleUpdateTimerRef.current);
+    if (scaleUpdateFrameRef.current) {
+      cancelAnimationFrame(scaleUpdateFrameRef.current);
+      scaleUpdateFrameRef.current = null;
     }
 
-    // Throttle scale updates to avoid excessive renders during zoom
-    scaleUpdateTimerRef.current = setTimeout(() => {
-      if (fabricRef.current) {
-        fabricRef.current.setWidth(width * scale);
-        fabricRef.current.setHeight(height * scale);
-        fabricRef.current.setZoom(scale);
-        fabricRef.current.renderAll();
+    scaleUpdateFrameRef.current = requestAnimationFrame(() => {
+      const targetWidth = Math.floor(width * scale);
+      const targetHeight = Math.floor(height * scale);
+      const currentZoom = canvas.getZoom();
+      const needsResize = canvas.getWidth() !== targetWidth || canvas.getHeight() !== targetHeight;
+      const needsZoom = Math.abs(currentZoom - scale) > 0.0001;
+
+      if (needsResize) {
+        canvas.setWidth(targetWidth);
+        canvas.setHeight(targetHeight);
       }
-      scaleUpdateTimerRef.current = null;
-    }, 50); // Wait 50ms after last scale change
+
+      if (needsZoom) {
+        canvas.setZoom(scale);
+      }
+
+      if (needsResize || needsZoom) {
+        // Wait for Fabric.js to actually paint before confirming.
+        // requestRenderAll() only schedules a render — the canvas hasn't
+        // painted yet, so removing CSS transforms now would cause a 1-frame flash.
+        canvas.once('after:render', () => {
+          if (typeof onScaleApplied === 'function') {
+            onScaleApplied(pageNumber, scale);
+          }
+        });
+        canvas.requestRenderAll();
+      } else {
+        // Canvas is already at the correct scale — safe to confirm immediately.
+        if (typeof onScaleApplied === 'function') {
+          onScaleApplied(pageNumber, scale);
+        }
+      }
+
+      scaleUpdateFrameRef.current = null;
+    });
 
     return () => {
-      if (scaleUpdateTimerRef.current) {
-        clearTimeout(scaleUpdateTimerRef.current);
+      if (scaleUpdateFrameRef.current) {
+        cancelAnimationFrame(scaleUpdateFrameRef.current);
+        scaleUpdateFrameRef.current = null;
       }
     };
-  }, [scale, width, height]);
+  }, [scale, width, height, isHidden, onScaleApplied, pageNumber]);
 
   // Handle drawing mode changes
   useEffect(() => {
@@ -6765,6 +7739,8 @@ const PageAnnotationLayer = memo(({
       // Callouts should only be evented when using select, pan, or callout tool to prevent blocking other annotation tools
       const isCallout = obj.data?.type === 'callout';
       const shouldBeEvented = isSelectable && (!isCallout || tool === 'select' || tool === 'pan' || tool === 'callout');
+      const isShxProxy = obj?.data?.isAutoCadShxText === true;
+      const usePerPixelTargetFind = !(isShxProxy || isCallout);
 
       // Only update interactivity properties, preserve visibility from main filter
       obj.set({
@@ -6772,8 +7748,12 @@ const PageAnnotationLayer = memo(({
         evented: obj.visible && shouldBeEvented, // Only evented if visible AND tool allows it
         // Enable pixel-perfect hit detection for selection (our findTarget override handles the logic)
         // This ensures we can detect actual annotation content, not just bounding box
-        perPixelTargetFind: true,
-        targetFindTolerance: (tool === 'pan' || tool === 'select') ? 5 : 0
+        perPixelTargetFind: usePerPixelTargetFind,
+        targetFindTolerance: isShxProxy
+          ? 8
+          : (isCallout
+            ? 10
+            : ((tool === 'pan' || tool === 'select') ? 5 : 0))
       });
     });
     // Don't call renderAll here - let the main visibility filter handle rendering
@@ -6782,6 +7762,8 @@ const PageAnnotationLayer = memo(({
 
   // Track rendered highlight objects by highlightId for updates
   const renderedHighlightsRef = useRef(new Map()); // Map<highlightId, fabric.Rect>
+  // Track regionId for each highlight to prevent mutation across re-renders
+  const highlightRegionIdsRef = useRef(new Map()); // Map<highlightId, regionId | null>
 
   // Add highlights when newHighlights prop changes
   useEffect(() => {
@@ -6949,24 +7931,50 @@ const PageAnnotationLayer = memo(({
           // Preserve existing regionId from canvas object, or assign new one if appropriate
           // This ensures highlights created outside a region don't get regionId when re-rendered
           // CRITICAL: preservedRegionId === null means "explicitly no regionId" (different from undefined)
-          if (preservedRegionId !== undefined) {
+
+          // NEW: Check persistent ref FIRST - this survives across all re-renders
+          let finalRegionId;
+          if (highlight.highlightId && highlightRegionIdsRef.current.has(highlight.highlightId)) {
+            // Use the regionId from our persistent ref - this is the source of truth
+            finalRegionId = highlightRegionIdsRef.current.get(highlight.highlightId);
+            debugLog(`[Page ${pageNumber}] Using persistent ref regionId:`, { highlightId: highlight.highlightId, finalRegionId });
+          } else if (preservedRegionId !== undefined) {
             // We captured the regionId from the existing canvas object (could be null or a real ID)
             // null means the highlight was INTENTIONALLY created without regionId - preserve that
-            rect.set({ regionId: preservedRegionId });
-          } else if (highlight.regionId) {
-            // Use regionId from highlight data if available
-            rect.set({ regionId: highlight.regionId });
+            finalRegionId = preservedRegionId;
+            debugLog(`[Page ${pageNumber}] Using preserved regionId:`, { highlightId: highlight.highlightId, preservedRegionId });
+          } else if (highlight.regionId !== undefined) {
+            // Use regionId from highlight data if available (check for undefined, not just truthy)
+            finalRegionId = highlight.regionId;
+            debugLog(`[Page ${pageNumber}] Using highlight.regionId from data:`, { highlightId: highlight.highlightId, regionId: highlight.regionId });
           } else if (shouldAssignRegionId()) {
             // Only assign new regionId if nothing was preserved and conditions are met
-            rect.set({ regionId: activeRegionIdRef.current });
+            // This should ONLY apply to brand new highlights, not existing ones
+            finalRegionId = activeRegionIdRef.current;
+            debugLog(`[Page ${pageNumber}] Assigning active regionId:`, { highlightId: highlight.highlightId, activeRegionId: activeRegionIdRef.current });
           } else {
             // Explicitly no regionId
-            rect.set({ regionId: null });
+            finalRegionId = null;
+            debugLog(`[Page ${pageNumber}] Setting regionId to null:`, { highlightId: highlight.highlightId });
+          }
+
+          // Set the regionId on the rect
+          rect.set({ regionId: finalRegionId });
+
+          // Store in persistent ref for future renders
+          if (highlight.highlightId) {
+            highlightRegionIdsRef.current.set(highlight.highlightId, finalRegionId);
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
           const isSurveyAnnotation = objModuleId !== null;
           const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
           rect.set({ visible: surveyAnnotationVisible });
+          debugLog(`[Page ${pageNumber}] Adding highlight:`, {
+            moduleId: rect.moduleId,
+            regionId: rect.regionId,
+            highlightId: rect.highlightId,
+            bounds: `${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}x${Math.round(rect.height)}`
+          });
           canvas.add(rect);
           if (highlight.highlightId) {
             renderedHighlightsRef.current.set(highlight.highlightId, rect);
@@ -7007,24 +8015,50 @@ const PageAnnotationLayer = memo(({
           // Preserve existing regionId from canvas object, or assign new one if appropriate
           // This ensures highlights created outside a region don't get regionId when re-rendered
           // CRITICAL: preservedRegionId === null means "explicitly no regionId" (different from undefined)
-          if (preservedRegionId !== undefined) {
+
+          // NEW: Check persistent ref FIRST - this survives across all re-renders
+          let finalRegionId;
+          if (highlight.highlightId && highlightRegionIdsRef.current.has(highlight.highlightId)) {
+            // Use the regionId from our persistent ref - this is the source of truth
+            finalRegionId = highlightRegionIdsRef.current.get(highlight.highlightId);
+            debugLog(`[Page ${pageNumber}] Using persistent ref regionId:`, { highlightId: highlight.highlightId, finalRegionId });
+          } else if (preservedRegionId !== undefined) {
             // We captured the regionId from the existing canvas object (could be null or a real ID)
             // null means the highlight was INTENTIONALLY created without regionId - preserve that
-            rect.set({ regionId: preservedRegionId });
-          } else if (highlight.regionId) {
-            // Use regionId from highlight data if available
-            rect.set({ regionId: highlight.regionId });
+            finalRegionId = preservedRegionId;
+            debugLog(`[Page ${pageNumber}] Using preserved regionId:`, { highlightId: highlight.highlightId, preservedRegionId });
+          } else if (highlight.regionId !== undefined) {
+            // Use regionId from highlight data if available (check for undefined, not just truthy)
+            finalRegionId = highlight.regionId;
+            debugLog(`[Page ${pageNumber}] Using highlight.regionId from data:`, { highlightId: highlight.highlightId, regionId: highlight.regionId });
           } else if (shouldAssignRegionId()) {
             // Only assign new regionId if nothing was preserved and conditions are met
-            rect.set({ regionId: activeRegionIdRef.current });
+            // This should ONLY apply to brand new highlights, not existing ones
+            finalRegionId = activeRegionIdRef.current;
+            debugLog(`[Page ${pageNumber}] Assigning active regionId:`, { highlightId: highlight.highlightId, activeRegionId: activeRegionIdRef.current });
           } else {
             // Explicitly no regionId
-            rect.set({ regionId: null });
+            finalRegionId = null;
+            debugLog(`[Page ${pageNumber}] Setting regionId to null:`, { highlightId: highlight.highlightId });
+          }
+
+          // Set the regionId on the rect
+          rect.set({ regionId: finalRegionId });
+
+          // Store in persistent ref for future renders
+          if (highlight.highlightId) {
+            highlightRegionIdsRef.current.set(highlight.highlightId, finalRegionId);
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
           const isSurveyAnnotation = objModuleId !== null;
           const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
           rect.set({ visible: surveyAnnotationVisible });
+          debugLog(`[Page ${pageNumber}] Adding highlight:`, {
+            moduleId: rect.moduleId,
+            regionId: rect.regionId,
+            highlightId: rect.highlightId,
+            bounds: `${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}x${Math.round(rect.height)}`
+          });
           canvas.add(rect);
           processedHighlightsRef.current.add(highlightKey);
           addedAny = true;
@@ -7039,7 +8073,9 @@ const PageAnnotationLayer = memo(({
       try {
         sanitizeTextStyles(canvas);
         const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
-        onSaveAnnotations(pageNumber, canvasJSON);
+        onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('highlight:apply', {
+          addedCount: newHighlights.length
+        }));
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
       }
@@ -7118,7 +8154,9 @@ const PageAnnotationLayer = memo(({
       try {
         sanitizeTextStyles(canvas);
         const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
-        onSaveAnnotations(pageNumber, canvasJSON);
+        onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('highlight:remove', {
+          removedCount: highlightsToRemove.length
+        }));
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error after removal:`, e);
       }
@@ -7149,23 +8187,65 @@ const PageAnnotationLayer = memo(({
 
     const canvas = fabricRef.current;
     const objects = canvas.getObjects();
+
+    // DEBUG: Log all highlights on canvas
+    const highlights = objects.filter(o => o.type === 'rect' && o.moduleId);
+    const highlightsWithRegionId = highlights.filter(h => h.regionId !== null && h.regionId !== undefined);
+    const highlightsWithoutRegionId = highlights.filter(h => h.regionId === null || h.regionId === undefined);
+    debugLog(`[Page ${pageNumber}] Canvas highlights at visibility check:`, {
+      totalHighlights: highlights.length,
+      withRegionId: highlightsWithRegionId.length,
+      withoutRegionId: highlightsWithoutRegionId.length,
+      activeSpaceId,
+      highlights: highlights.map(h => ({
+        moduleId: h.moduleId,
+        regionId: h.regionId,
+        highlightId: h.highlightId,
+        bounds: `${Math.round(h.left)},${Math.round(h.top)} ${Math.round(h.width)}x${Math.round(h.height)}`,
+        visible: h.visible
+      }))
+    });
     // FIX: When region selection is active, preserve regions even if activeRegions is null temporarily
     // This ensures annotations remain visible during region editing
     // Use empty array to represent "regions mode active but no regions yet" vs null = "no regions mode"
     const regions = (Array.isArray(activeRegions) && activeRegions.length > 0)
       ? activeRegions
       : (isRegionSelectionActive ? [] : null);
-    const hasActiveRegions = regions !== null; // null = no regions mode, [] or [...] = regions mode active
 
-    let visibleCount = 0;
-    let hiddenCount = 0;
+    // Check if overlay is enabled for THIS specific page (per-page toggle state)
+    // Need to find the page in spaces to pass to isRegionOverlayEnabled
+    let isOverlayEnabledForThisPage = false;
+    if (regions !== null && selectedSpaceId && isRegionOverlayEnabledRef.current) {
+      const space = spacesRef.current?.find(s => s.id === selectedSpaceId);
+      if (space) {
+        const page = space.assignedPages?.find(p => p.pageId === pageNumber);
+        if (page) {
+          isOverlayEnabledForThisPage = isRegionOverlayEnabledRef.current(selectedSpaceId, pageNumber, page);
+        }
+      }
+    }
+
+    // hasActiveRegions should be true only when regions exist AND region toggle is ON for THIS page
+    const hasActiveRegions = regions !== null && isOverlayEnabledForThisPage;
+    debugLog(`[Page ${pageNumber}] hasActiveRegions computed:`, {
+      regionsExist: regions !== null,
+      isOverlayEnabledForThisPage,
+      hasActiveRegions,
+      selectedSpaceId,
+      activeSpaceId
+    });
+
+    let didMutate = false;
     objects.forEach(obj => {
       // FIX: Check layer visibility FIRST - if layer is hidden, object is hidden regardless of other conditions
       const objLayer = obj.layer || 'native';
       const layerVisible = layerVisibilityRef.current[objLayer] !== false;
       if (!layerVisible) {
-        obj.set({ visible: false, selectable: false, evented: false });
-        hiddenCount += 1;
+        const needsUpdate = obj.visible !== false || obj.selectable !== false || obj.evented !== false;
+        if (needsUpdate) {
+          obj.set({ visible: false, selectable: false, evented: false });
+          didMutate = true;
+        }
         return; // Skip further visibility checks
       }
 
@@ -7229,16 +8309,20 @@ const PageAnnotationLayer = memo(({
         // First check: if no space is active, hide all region-scoped annotations
         if (activeSpaceId === null) {
           scopedRegionAnnotationVisible = false;
+          debugLog(`[Page ${pageNumber}] Region-scoped annotation HIDDEN: no active space`, { objRegionId, highlightId: obj.highlightId });
         } else if (hasActiveRegions) {
           // If there are active regions and a space is active, always show annotations that were created while a region was active
           // This ensures they persist even after region boundaries are modified
           scopedRegionAnnotationVisible = true;
+          debugLog(`[Page ${pageNumber}] Region-scoped annotation VISIBLE: hasActiveRegions=true`, { objRegionId, hasActiveRegions, highlightId: obj.highlightId });
         } else if (activeRegionId !== null) {
           // Fallback: if only activeRegionId is set (backward compatibility)
           scopedRegionAnnotationVisible = objRegionId === activeRegionId;
+          debugLog(`[Page ${pageNumber}] Region-scoped annotation visibility by activeRegionId`, { objRegionId, activeRegionId, visible: scopedRegionAnnotationVisible, highlightId: obj.highlightId });
         } else {
           // No active regions, hide scoped annotations
           scopedRegionAnnotationVisible = false;
+          debugLog(`[Page ${pageNumber}] Region-scoped annotation HIDDEN: region toggle OFF`, { objRegionId, hasActiveRegions, activeRegionId, highlightId: obj.highlightId });
         }
       }
 
@@ -7295,20 +8379,24 @@ const PageAnnotationLayer = memo(({
         }
       }
 
-      obj.set({
-        visible: isVisible,
-        selectable: isInteractive,
-        evented: isInteractive
-      });
-      if (isVisible) {
-        visibleCount += 1;
-      } else {
-        hiddenCount += 1;
+      if (
+        obj.visible !== isVisible ||
+        obj.selectable !== isInteractive ||
+        obj.evented !== isInteractive
+      ) {
+        obj.set({
+          visible: isVisible,
+          selectable: isInteractive,
+          evented: isInteractive
+        });
+        didMutate = true;
       }
     });
 
-    canvas.renderAll();
-  }, [selectedSpaceId, activeSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, activeRegionId, isRegionSelectionActive, layerVisibility, tool, pageNumber, spaces, getSpaceIdForRegion]);
+    if (didMutate) {
+      canvas.renderAll();
+    }
+  }, [selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegions, activeRegionId, isRegionSelectionActive, layerVisibility, pageNumber, spaces, getSpaceIdForRegion]);
 
   // Keyboard handler for deleting selected annotations
   useEffect(() => {
@@ -7379,7 +8467,9 @@ const PageAnnotationLayer = memo(({
       try {
         sanitizeTextStyles(canvas);
         const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType']);
-        onSaveAnnotations(pageNumber, canvasJSON);
+        onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('keyboard:delete', {
+          deletedObjectsCount: activeObjects.length
+        }));
       } catch (error) {
         console.error(`[Page ${pageNumber}] Error saving after deletion:`, error);
       }
@@ -7420,7 +8510,7 @@ const PageAnnotationLayer = memo(({
         const isRightClick = e.button === 2 || e.which === 3 || e.ctrlKey || e.metaKey;
         if (!isRightClick && !contextMenuJustOpenedRef.current) {
           if (contextMenu) closeContextMenu();
-          if (editModal) closeEditModal();
+          if (editModal) dismissEditModal('overlay-click', e);
         }
       }}
       style={{
@@ -7430,7 +8520,7 @@ const PageAnnotationLayer = memo(({
         width: '100%',
         height: '100%',
         marginTop: '0px',
-        paddingTop: '12px',
+        paddingTop: `${canvasTopPadding}px`,
         pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'pan' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'callout' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight') ? 'auto' : 'none',
         zIndex: 10,
       }}
@@ -7474,7 +8564,7 @@ const PageAnnotationLayer = memo(({
       />
 
       {/* Context Menu */}
-      {contextMenu && contextMenu.visible && (
+      {contextMenu && contextMenu.visible && typeof document !== 'undefined' && createPortal(
         <div
           ref={contextMenuRef}
           style={{
@@ -7485,9 +8575,15 @@ const PageAnnotationLayer = memo(({
             border: '1px solid #444',
             borderRadius: '6px',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-            zIndex: 10000,
+            zIndex: CONTEXT_MENU_Z_INDEX,
             padding: '4px',
             minWidth: '180px',
+            visibility: contextMenu.isReady === false ? 'hidden' : 'visible',
+            pointerEvents: (contextMenu.isReady === false || contextMenu.isClosing === true) ? 'none' : 'auto',
+            opacity: contextMenu.isReady === false ? 0 : (contextMenu.isClosing === true ? 0 : 1),
+            transform: contextMenu.isClosing === true ? 'translateY(4px)' : 'translateY(0px)',
+            transition: `opacity ${OVERLAY_DISMISS_ANIMATION_MS}ms ease, transform ${OVERLAY_DISMISS_ANIMATION_MS}ms ease`,
+            willChange: 'opacity, transform',
             fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif'
           }}
           onClick={(e) => e.stopPropagation()}
@@ -7913,10 +9009,10 @@ const PageAnnotationLayer = memo(({
             </>
           )}
         </div>
-      )}
+      , document.body)}
 
       {/* Edit Modal */}
-      {editModal && editModal.visible && (
+      {editModal && editModal.visible && typeof document !== 'undefined' && createPortal(
         <div
           ref={editModalRef}
           style={{
@@ -7927,11 +9023,17 @@ const PageAnnotationLayer = memo(({
             border: '1px solid #444',
             borderRadius: '8px',
             boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-            zIndex: 10001,
+            zIndex: EDIT_MODAL_Z_INDEX,
             minWidth: '200px',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
+            visibility: editModal.isReady === false ? 'hidden' : 'visible',
+            pointerEvents: (editModal.isReady === false || editModal.isClosing === true) ? 'none' : 'auto',
+            opacity: editModal.isReady === false ? 0 : (editModal.isClosing === true ? 0 : 1),
+            transform: editModal.isClosing === true ? 'translateY(6px)' : 'translateY(0px)',
+            transition: `opacity ${OVERLAY_DISMISS_ANIMATION_MS}ms ease, transform ${OVERLAY_DISMISS_ANIMATION_MS}ms ease`,
+            willChange: 'opacity, transform',
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
           }}
           onClick={(e) => e.stopPropagation()}
@@ -8263,7 +9365,7 @@ const PageAnnotationLayer = memo(({
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 }, (prevProps, nextProps) => {
@@ -8274,6 +9376,7 @@ const PageAnnotationLayer = memo(({
     prevProps.width === nextProps.width &&
     prevProps.height === nextProps.height &&
     Math.abs(prevProps.scale - nextProps.scale) < 0.01 && // Only re-render on significant scale change
+    prevProps.canvasTopPadding === nextProps.canvasTopPadding &&
     prevProps.tool === nextProps.tool &&
     prevProps.strokeColor === nextProps.strokeColor &&
     prevProps.strokeWidth === nextProps.strokeWidth &&
@@ -8293,11 +9396,12 @@ const PageAnnotationLayer = memo(({
     prevProps.showSurveyPanel === nextProps.showSurveyPanel &&
     prevProps.layerVisibility === nextProps.layerVisibility &&
     prevProps.callouts === nextProps.callouts &&
-    prevProps.selectedCalloutId === nextProps.selectedCalloutId
+    prevProps.selectedCalloutId === nextProps.selectedCalloutId &&
+    prevProps.isHidden === nextProps.isHidden &&
+    prevProps.onScaleApplied === nextProps.onScaleApplied
   );
 });
 
 PageAnnotationLayer.displayName = 'PageAnnotationLayer';
 
 export default PageAnnotationLayer;
-

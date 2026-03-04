@@ -16,32 +16,25 @@ CREATE TABLE IF NOT EXISTS survey_sessions (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- Indexes for faster lookups
 CREATE INDEX IF NOT EXISTS idx_survey_sessions_template_id ON survey_sessions(template_id);
 CREATE INDEX IF NOT EXISTS idx_survey_sessions_user_id ON survey_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_survey_sessions_active ON survey_sessions(is_active) WHERE is_active = true;
-
 -- Enable Row Level Security
 ALTER TABLE survey_sessions ENABLE ROW LEVEL SECURITY;
-
 -- Policies for survey_sessions
 CREATE POLICY "Users can view own survey sessions"
     ON survey_sessions FOR SELECT
     USING (auth.uid() = user_id);
-
 CREATE POLICY "Users can insert own survey sessions"
     ON survey_sessions FOR INSERT
     WITH CHECK (auth.uid() = user_id);
-
 CREATE POLICY "Users can update own survey sessions"
     ON survey_sessions FOR UPDATE
     USING (auth.uid() = user_id);
-
 CREATE POLICY "Users can delete own survey sessions"
     ON survey_sessions FOR DELETE
     USING (auth.uid() = user_id);
-
 -- ============================================
 -- SURVEY ITEMS TABLE
 -- ============================================
@@ -67,15 +60,12 @@ CREATE TABLE IF NOT EXISTS survey_items (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(session_id, highlight_id)
 );
-
 -- Indexes for faster lookups
 CREATE INDEX IF NOT EXISTS idx_survey_items_session_id ON survey_items(session_id);
 CREATE INDEX IF NOT EXISTS idx_survey_items_module_category ON survey_items(module_id, category_id);
 CREATE INDEX IF NOT EXISTS idx_survey_items_highlight ON survey_items(highlight_id);
-
 -- Enable Row Level Security
 ALTER TABLE survey_items ENABLE ROW LEVEL SECURITY;
-
 -- Policies for survey_items (access via session ownership)
 CREATE POLICY "Users can view survey items via session"
     ON survey_items FOR SELECT
@@ -86,7 +76,6 @@ CREATE POLICY "Users can view survey items via session"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 CREATE POLICY "Users can insert survey items via session"
     ON survey_items FOR INSERT
     WITH CHECK (
@@ -96,7 +85,6 @@ CREATE POLICY "Users can insert survey items via session"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 CREATE POLICY "Users can update survey items via session"
     ON survey_items FOR UPDATE
     USING (
@@ -106,7 +94,6 @@ CREATE POLICY "Users can update survey items via session"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 CREATE POLICY "Users can delete survey items via session"
     ON survey_items FOR DELETE
     USING (
@@ -116,7 +103,6 @@ CREATE POLICY "Users can delete survey items via session"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 -- ============================================
 -- EXCEL SCHEMA MAPPING TABLE
 -- ============================================
@@ -136,13 +122,10 @@ CREATE TABLE IF NOT EXISTS excel_schema_mapping (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(session_id, sheet_name)
 );
-
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_excel_schema_session ON excel_schema_mapping(session_id);
-
 -- Enable Row Level Security
 ALTER TABLE excel_schema_mapping ENABLE ROW LEVEL SECURITY;
-
 -- Policies for excel_schema_mapping
 CREATE POLICY "Users can view excel schema via session"
     ON excel_schema_mapping FOR SELECT
@@ -153,7 +136,6 @@ CREATE POLICY "Users can view excel schema via session"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 CREATE POLICY "Users can insert excel schema via session"
     ON excel_schema_mapping FOR INSERT
     WITH CHECK (
@@ -163,7 +145,6 @@ CREATE POLICY "Users can insert excel schema via session"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 CREATE POLICY "Users can update excel schema via session"
     ON excel_schema_mapping FOR UPDATE
     USING (
@@ -173,7 +154,6 @@ CREATE POLICY "Users can update excel schema via session"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 CREATE POLICY "Users can delete excel schema via session"
     ON excel_schema_mapping FOR DELETE
     USING (
@@ -183,7 +163,6 @@ CREATE POLICY "Users can delete excel schema via session"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 -- ============================================
 -- SURVEY PRESENCE TABLE
 -- ============================================
@@ -198,14 +177,11 @@ CREATE TABLE IF NOT EXISTS survey_presence (
     last_seen TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(session_id, user_id, client_type)
 );
-
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_survey_presence_session ON survey_presence(session_id);
 CREATE INDEX IF NOT EXISTS idx_survey_presence_last_seen ON survey_presence(last_seen);
-
 -- Enable Row Level Security
 ALTER TABLE survey_presence ENABLE ROW LEVEL SECURITY;
-
 -- Policies for survey_presence (users in same session can see each other)
 CREATE POLICY "Users can view presence in own sessions"
     ON survey_presence FOR SELECT
@@ -216,19 +192,15 @@ CREATE POLICY "Users can view presence in own sessions"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 CREATE POLICY "Users can insert own presence"
     ON survey_presence FOR INSERT
     WITH CHECK (auth.uid() = user_id);
-
 CREATE POLICY "Users can update own presence"
     ON survey_presence FOR UPDATE
     USING (auth.uid() = user_id);
-
 CREATE POLICY "Users can delete own presence"
     ON survey_presence FOR DELETE
     USING (auth.uid() = user_id);
-
 -- ============================================
 -- SYNC CHANGE LOG TABLE
 -- ============================================
@@ -244,14 +216,11 @@ CREATE TABLE IF NOT EXISTS survey_sync_log (
     new_values JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_sync_log_session ON survey_sync_log(session_id);
 CREATE INDEX IF NOT EXISTS idx_sync_log_created ON survey_sync_log(created_at);
-
 -- Enable Row Level Security
 ALTER TABLE survey_sync_log ENABLE ROW LEVEL SECURITY;
-
 -- Policy for sync_log
 CREATE POLICY "Users can view sync log via session"
     ON survey_sync_log FOR SELECT
@@ -262,7 +231,6 @@ CREATE POLICY "Users can view sync log via session"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 CREATE POLICY "Users can insert sync log via session"
     ON survey_sync_log FOR INSERT
     WITH CHECK (
@@ -272,7 +240,6 @@ CREATE POLICY "Users can insert sync log via session"
             AND survey_sessions.user_id = auth.uid()
         )
     );
-
 -- ============================================
 -- TRIGGERS FOR UPDATED_AT
 -- ============================================
@@ -284,22 +251,18 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trigger_update_survey_sessions_updated_at
     BEFORE UPDATE ON survey_sessions
     FOR EACH ROW
     EXECUTE FUNCTION update_survey_tables_updated_at();
-
 CREATE TRIGGER trigger_update_survey_items_updated_at
     BEFORE UPDATE ON survey_items
     FOR EACH ROW
     EXECUTE FUNCTION update_survey_tables_updated_at();
-
 CREATE TRIGGER trigger_update_excel_schema_updated_at
     BEFORE UPDATE ON excel_schema_mapping
     FOR EACH ROW
     EXECUTE FUNCTION update_survey_tables_updated_at();
-
 -- ============================================
 -- ENABLE REAL-TIME
 -- ============================================

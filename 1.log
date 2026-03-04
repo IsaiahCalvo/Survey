@@ -1,11 +1,422 @@
-PageAnnotationLayer.jsx:5917 [ToolDebug] Setting up arrow controls
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'start', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'midpoint', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'end', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:4318 [ToolDebug] Arrow Selection Detected {hasControls: true, controls: Array(3)}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'start', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'midpoint', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'end', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'start', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'midpoint', abs: Point, rel: Point}
-PageAnnotationLayer.jsx:1310 [ToolDebug] Arrow Pos (Live Geometry Fix): {type: 'end', abs: Point, rel: Point}
+chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_NETWORK_CHANGED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at helpers.ts:232:32
+    at helpers.ts:245:5
+    at new Promise (<anonymous>)
+    at retryable (helpers.ts:227:19)
+    at SupabaseAuthClient._refreshAccessToken (GoTrueClient.ts:2439:20)
+    at SupabaseAuthClient._callRefreshToken (GoTrueClient.ts:2653:42)
+_handleRequest3 @ fetch.ts:188
+Show 1 more frame
+cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/token?grant_type=refresh_token:1     Failed to load resource: net::ERR_NETWORK_CHANGED
+fetch.ts:188 TypeError: Failed to fetch
+    at helpers.ts:109:23
+    at _handleRequest3 (fetch.ts:184:20)
+    at _request (fetch.ts:157:22)
+    at GoTrueClient.ts:2447:24
+    at async helpers.ts:232:26
+_handleRequest3 @ fetch.ts:188
+App.jsx?t=1771982286785:22219 Uncaught ReferenceError: handlePALScaleApplied is not defined
+    at App.jsx?t=1771982286785:22219:57
+    at Array.map (<anonymous>)
+    at App.jsx?t=1771982286785:22054:48
+    at PDFViewer (App.jsx?t=1771982286785:22339:23)
+    at renderWithHooks (chunk-DSUIPI7G.js:18437:26)
+    at updateFunctionComponent (chunk-DSUIPI7G.js:21471:28)
+    at beginWork (chunk-DSUIPI7G.js:22813:22)
+    at HTMLUnknownElement.callCallback2 (chunk-DSUIPI7G.js:10563:22)
+    at Object.invokeGuardedCallbackDev (chunk-DSUIPI7G.js:10588:24)
+    at invokeGuardedCallback (chunk-DSUIPI7G.js:10622:39)
+App.jsx?t=1771982286785:22219 Uncaught ReferenceError: handlePALScaleApplied is not defined
+    at App.jsx?t=1771982286785:22219:57
+    at Array.map (<anonymous>)
+    at App.jsx?t=1771982286785:22054:48
+    at PDFViewer (App.jsx?t=1771982286785:22339:23)
+    at renderWithHooks (chunk-DSUIPI7G.js:18437:26)
+    at updateFunctionComponent (chunk-DSUIPI7G.js:21471:28)
+    at beginWork (chunk-DSUIPI7G.js:22813:22)
+    at HTMLUnknownElement.callCallback2 (chunk-DSUIPI7G.js:10563:22)
+    at Object.invokeGuardedCallbackDev (chunk-DSUIPI7G.js:10588:24)
+    at invokeGuardedCallback (chunk-DSUIPI7G.js:10622:39)
+chunk-DSUIPI7G.js:20921 The above error occurred in the <PDFViewer> component:
+
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1771982286785:10387:22)
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1771982286785:30873:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+logCapturedError @ chunk-DSUIPI7G.js:20921
+ErrorBoundary.jsx:23 ErrorBoundary caught an error: ReferenceError: handlePALScaleApplied is not defined
+    at App.jsx?t=1771982286785:22219:57
+    at Array.map (<anonymous>)
+    at App.jsx?t=1771982286785:22054:48
+    at PDFViewer (App.jsx?t=1771982286785:22339:23)
+    at renderWithHooks (chunk-DSUIPI7G.js:18437:26)
+    at updateFunctionComponent (chunk-DSUIPI7G.js:21471:28)
+    at beginWork (chunk-DSUIPI7G.js:22813:22)
+    at beginWork$1 (chunk-DSUIPI7G.js:26642:22)
+    at performUnitOfWork (chunk-DSUIPI7G.js:26087:20)
+    at workLoopSync (chunk-DSUIPI7G.js:26026:13) Object
+componentDidCatch @ ErrorBoundary.jsx:23
+pdfviewer-base.js:8422 Uncaught TypeError: Cannot read properties of null (reading 'scrollTop')
+    at PdfViewerBase2.initiatePageViewScrollChanged (pdfviewer-base.js:8422:83)
+    at pdfviewer-base.js:2380:31
+App.jsx?t=1771982841178:11357 [AnnotPerf] PAL confirmed scale=1.1732 on page 1 — removing CSS transforms
+pdfviewer-base.js:8422 Uncaught TypeError: Cannot read properties of null (reading 'scrollTop')
+    at PdfViewerBase2.initiatePageViewScrollChanged (pdfviewer-base.js:8422:83)
+    at pdfviewer-base.js:2380:31
+App.jsx?t=1771982850487:11323 [AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx?t=1771982850487:11359 [AnnotPerf] PAL confirmed scale=1.1732 on page 1 — removing CSS transforms
+pdfviewer-base.js:8422 Uncaught TypeError: Cannot read properties of null (reading 'scrollTop')
+    at PdfViewerBase2.initiatePageViewScrollChanged (pdfviewer-base.js:8422:83)
+    at pdfviewer-base.js:2380:31
+App.jsx:10008 [AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=1.1732 on page 1 — removing CSS transforms
+pdfviewer-base.js:8422 Uncaught TypeError: Cannot read properties of null (reading 'scrollTop')
+    at PdfViewerBase2.initiatePageViewScrollChanged (pdfviewer-base.js:8422:83)
+    at pdfviewer-base.js:2380:31
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=0.6667 on page 1 — removing CSS transforms
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=0.6667 on page 1 — removing CSS transforms
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=0.6667 on page 1 — removing CSS transforms
+App.jsx:10008 [AnnotPerf] finalize idle (settled) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=0.6667 on page 1 — removing CSS transforms
+App.jsx:10008 [AnnotPerf] finalize idle (settled) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=2.2255 on page 1 — removing CSS transforms
+App.jsx:10008 [AnnotPerf] finalize idle (settled) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10229 [AnnotPerf] new interaction (syncfusion-wheel-scroll) — cancelling pending scale confirmation
+App.jsx:10008 [AnnotPerf] finalize idle (settled) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=2.2247 on page 4 — removing CSS transforms
+App.jsx:10008 [AnnotPerf] finalize idle (settled) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10229 [AnnotPerf] new interaction (syncfusion-wheel-zoom) — cancelling pending scale confirmation
+App.jsx:10008 [AnnotPerf] finalize idle (settled) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=0.6422 on page 1 — removing CSS transforms
+App.jsx:10008 [AnnotPerf] finalize idle (settled) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=0.6430 on page 6 — removing CSS transforms
+App.jsx:10008 [AnnotPerf] finalize idle (settled) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=0.6430 on page 6 — removing CSS transforms
+App.jsx:10008 [AnnotPerf] finalize idle (settled) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=2.2059 on page 1 — removing CSS transforms
+App.jsx:10008 [AnnotPerf] finalize idle (settled) — deferring CSS transform removal, waiting for PAL confirmation
+App.jsx:10043 [AnnotPerf] PAL confirmed scale=2.2059 on page 6 — removing CSS transforms

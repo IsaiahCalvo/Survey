@@ -28,7 +28,6 @@ BEGIN
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- ============================================================================
 -- TRIGGERS: Auto-update storage when documents change
 -- ============================================================================
@@ -38,13 +37,11 @@ CREATE TRIGGER update_storage_on_insert
     AFTER INSERT ON documents
     FOR EACH ROW
     EXECUTE FUNCTION update_user_storage();
-
 DROP TRIGGER IF EXISTS update_storage_on_delete ON documents;
 CREATE TRIGGER update_storage_on_delete
     AFTER DELETE ON documents
     FOR EACH ROW
     EXECUTE FUNCTION update_user_storage();
-
 -- ============================================================================
 -- FUNCTION: Recalculate storage for a specific user (for fixing inconsistencies)
 -- ============================================================================
@@ -68,7 +65,6 @@ BEGIN
     RETURN v_total_storage;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- ============================================================================
 -- FUNCTION: Recalculate storage for all users (maintenance)
 -- ============================================================================
@@ -88,7 +84,6 @@ BEGIN
     RETURNING us.user_id, us.storage_used_bytes;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- ============================================================================
 -- Initial population of storage_used_bytes for existing users
 -- ============================================================================
@@ -103,7 +98,6 @@ BEGIN
         PERFORM recalculate_user_storage(v_user.user_id);
     END LOOP;
 END $$;
-
 COMMENT ON FUNCTION update_user_storage() IS 'Automatically updates storage_used_bytes when documents are inserted or deleted';
 COMMENT ON FUNCTION recalculate_user_storage(UUID) IS 'Recalculates total storage for a specific user by summing all document file sizes';
 COMMENT ON FUNCTION recalculate_all_user_storage() IS 'Recalculates storage for all users (for maintenance/fixing inconsistencies)';

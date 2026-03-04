@@ -12,7 +12,8 @@ import React, { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { perfRender } from '../utils/performanceLogger';
 
 // How long to wait after zoom before re-rendering at new resolution
-const RENDER_DEBOUNCE_MS = 150;
+// Reduced for faster response during fast scrolling
+const RENDER_DEBOUNCE_MS = 50;
 
 // Transition duration for zoom animation
 const ZOOM_TRANSITION_MS = 100;
@@ -26,17 +27,54 @@ const OptimizedPDFPageCanvas = ({
   onFinishRender
 }) => {
   const canvasRef = useRef(null);
+  const placeholderCanvasRef = useRef(null);
   const renderTaskRef = useRef(null);
   const lastRenderedScaleRef = useRef(null);
   const debounceTimerRef = useRef(null);
   const [isRendering, setIsRendering] = useState(false);
   const [cssScale, setCssScale] = useState(1);
+  const [hasPlaceholder, setHasPlaceholder] = useState(false);
+  const [hasFullRender, setHasFullRender] = useState(false);
 
   // Calculate the CSS transform scale relative to last rendered scale
   const getTransformScale = useCallback(() => {
     if (!lastRenderedScaleRef.current) return 1;
     return scale / lastRenderedScaleRef.current;
   }, [scale]);
+
+  // Render a low-resolution placeholder for instant appearance
+  const renderPlaceholder = useCallback(async () => {
+    if (!page || !placeholderCanvasRef.current || hasPlaceholder) return;
+
+    const canvas = placeholderCanvasRef.current;
+    const placeholderScale = scale * 0.25; // Render at 25% resolution for speed
+
+    try {
+      const viewport = page.getViewport({ scale: placeholderScale });
+      const outputScale = 1; // No DPI scaling for placeholder
+
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      canvas.style.width = `${Math.floor(viewport.width * 4)}px`; // Scale up via CSS
+      canvas.style.height = `${Math.floor(viewport.height * 4)}px`;
+
+      const context = canvas.getContext('2d');
+      context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+
+      const renderTask = page.render({
+        canvasContext: context,
+        viewport: viewport,
+        annotationMode: 0
+      });
+
+      await renderTask.promise;
+      setHasPlaceholder(true);
+    } catch (error) {
+      if (error.name !== 'RenderingCancelledException') {
+        console.error('Error rendering placeholder:', error);
+      }
+    }
+  }, [page, scale, hasPlaceholder]);
 
   // Perform the actual canvas render
   const performRender = useCallback(async (targetScale) => {
@@ -85,6 +123,7 @@ const OptimizedPDFPageCanvas = ({
       // Update last rendered scale and reset CSS transform
       lastRenderedScaleRef.current = targetScale;
       setCssScale(1);
+      setHasFullRender(true);
 
       perfRender.end(pageLabel);
 
@@ -136,7 +175,14 @@ const OptimizedPDFPageCanvas = ({
     };
   }, [page, scale, isVisible, priority, performRender]);
 
-  // Initial render
+  // Initial placeholder render (instant)
+  useEffect(() => {
+    if (page && isVisible && !hasPlaceholder && !hasFullRender) {
+      renderPlaceholder();
+    }
+  }, [page, isVisible, hasPlaceholder, hasFullRender, renderPlaceholder]);
+
+  // Initial full render
   useEffect(() => {
     if (page && !lastRenderedScaleRef.current && isVisible) {
       performRender(scale);
@@ -175,10 +221,27 @@ const OptimizedPDFPageCanvas = ({
         overflow: 'hidden',
       }}
     >
+      {/* Low-res placeholder for instant appearance */}
+      {hasPlaceholder && !hasFullRender && (
+        <canvas
+          ref={placeholderCanvasRef}
+          style={{
+            display: 'block',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            filter: 'blur(1px)', // Slight blur to hide low-res artifacts
+            imageRendering: 'auto',
+          }}
+        />
+      )}
+
+      {/* High-quality main canvas */}
       <canvas
         ref={canvasRef}
         style={{
           display: 'block',
+          position: 'relative',
           transformOrigin: 'top left',
           transform: cssScale !== 1 ? `scale(${cssScale})` : 'none',
           transition: cssScale !== 1 ? `transform ${ZOOM_TRANSITION_MS}ms ease-out` : 'none',
@@ -187,26 +250,10 @@ const OptimizedPDFPageCanvas = ({
           backfaceVisibility: 'hidden',
           // Smooth scaling during CSS transform
           imageRendering: cssScale > 1.2 ? 'auto' : 'auto',
+          opacity: hasFullRender ? 1 : 0,
+          transition: 'opacity 150ms ease-in',
         }}
       />
-      {/* Loading indicator during re-render */}
-      {isRendering && cssScale !== 1 && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 8,
-            right: 8,
-            background: 'rgba(0,0,0,0.6)',
-            color: '#fff',
-            padding: '4px 8px',
-            borderRadius: 4,
-            fontSize: 11,
-            pointerEvents: 'none',
-          }}
-        >
-          Rendering...
-        </div>
-      )}
     </div>
   );
 };

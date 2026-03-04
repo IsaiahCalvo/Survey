@@ -23,24 +23,24 @@ const ExcelLockedModal = ({
         left: 0,
         right: 0,
         bottom: 0,
-        background: COLORS.background.overlay,
+        background: COLORS.modal.overlay,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 10000,
-        backdropFilter: 'blur(2px)',
+        backdropFilter: 'blur(3px)',
       }}
       onClick={onCancel}
     >
       <div
         style={{
-          background: COLORS.background.quaternary,
+          background: COLORS.modal.surface,
           borderRadius: BORDERS.radius.xl,
           padding: '24px',
           maxWidth: '480px',
           width: '90%',
           boxShadow: SHADOWS.xl,
-          border: `1px solid ${COLORS.border.subtle}`,
+          border: `1px solid ${COLORS.modal.border}`,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -125,6 +125,14 @@ const ExcelLockedModal = ({
               fontFamily: TYPOGRAPHY.fontFamily.default,
               transition: 'all 0.15s ease',
             }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
+              e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = COLORS.background.elevated;
+              e.currentTarget.style.borderColor = COLORS.border.default;
+            }}
           >
             Cancel
           </button>
@@ -132,15 +140,23 @@ const ExcelLockedModal = ({
             onClick={onRetry}
             style={{
               padding: '8px 16px',
-              background: COLORS.accent.primary,
+              background: COLORS.modal.primaryButton,
               color: COLORS.text.primary,
-              border: 'none',
+              border: `1px solid ${COLORS.modal.borderActive}`,
               borderRadius: BORDERS.radius.md,
               fontSize: TYPOGRAPHY.fontSize.md,
               fontWeight: TYPOGRAPHY.fontWeight.medium,
               cursor: 'pointer',
               fontFamily: TYPOGRAPHY.fontFamily.default,
               transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = COLORS.modal.primaryButtonHover;
+              e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = COLORS.modal.primaryButton;
+              e.currentTarget.style.boxShadow = 'none';
             }}
           >
             Try Again

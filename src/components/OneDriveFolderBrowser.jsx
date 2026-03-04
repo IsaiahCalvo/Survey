@@ -327,6 +327,12 @@ const OneDriveFolderBrowser = ({
   const BackButton = ({ onClick, label }) => (
     <button
       onClick={onClick}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.color = COLORS.modal.borderActive;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = COLORS.modal.textMuted;
+      }}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -334,7 +340,7 @@ const OneDriveFolderBrowser = ({
         padding: '6px 12px',
         background: 'transparent',
         border: 'none',
-        color: COLORS.accent.primary,
+        color: COLORS.modal.textMuted,
         fontSize: TYPOGRAPHY.fontSize.sm,
         fontFamily: TYPOGRAPHY.fontFamily.default,
         cursor: 'pointer',
@@ -361,12 +367,22 @@ const OneDriveFolderBrowser = ({
       }}>
         <button
           onClick={() => setActiveSource(SOURCE_TYPES.MY_DRIVE)}
+          onMouseEnter={(e) => {
+            if (activeSource !== SOURCE_TYPES.MY_DRIVE) {
+              e.currentTarget.style.borderBottom = `2px solid ${COLORS.modal.borderActive}`;
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (activeSource !== SOURCE_TYPES.MY_DRIVE) {
+              e.currentTarget.style.borderBottom = '2px solid transparent';
+            }
+          }}
           style={{
             flex: 1,
             padding: '12px',
             background: activeSource === SOURCE_TYPES.MY_DRIVE ? COLORS.background.elevated : 'transparent',
             border: 'none',
-            borderBottom: activeSource === SOURCE_TYPES.MY_DRIVE ? `2px solid ${COLORS.accent.primary}` : '2px solid transparent',
+            borderBottom: activeSource === SOURCE_TYPES.MY_DRIVE ? `2px solid ${COLORS.modal.borderActive}` : '2px solid transparent',
             color: activeSource === SOURCE_TYPES.MY_DRIVE ? COLORS.text.secondary : COLORS.text.muted,
             fontSize: TYPOGRAPHY.fontSize.sm,
             fontWeight: TYPOGRAPHY.fontWeight.medium,
@@ -379,12 +395,22 @@ const OneDriveFolderBrowser = ({
         </button>
         <button
           onClick={() => setActiveSource(SOURCE_TYPES.SHAREPOINT)}
+          onMouseEnter={(e) => {
+            if (activeSource !== SOURCE_TYPES.SHAREPOINT) {
+              e.currentTarget.style.borderBottom = `2px solid ${COLORS.modal.borderActive}`;
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (activeSource !== SOURCE_TYPES.SHAREPOINT) {
+              e.currentTarget.style.borderBottom = '2px solid transparent';
+            }
+          }}
           style={{
             flex: 1,
             padding: '12px',
             background: activeSource === SOURCE_TYPES.SHAREPOINT ? COLORS.background.elevated : 'transparent',
             border: 'none',
-            borderBottom: activeSource === SOURCE_TYPES.SHAREPOINT ? `2px solid ${COLORS.accent.primary}` : '2px solid transparent',
+            borderBottom: activeSource === SOURCE_TYPES.SHAREPOINT ? `2px solid ${COLORS.modal.borderActive}` : '2px solid transparent',
             color: activeSource === SOURCE_TYPES.SHAREPOINT ? COLORS.text.secondary : COLORS.text.muted,
             fontSize: TYPOGRAPHY.fontSize.sm,
             fontWeight: TYPOGRAPHY.fontWeight.medium,
@@ -446,10 +472,20 @@ const OneDriveFolderBrowser = ({
                   )}
                   <button
                     onClick={() => handleBreadcrumbClick(index)}
+                    onMouseEnter={(e) => {
+                      if (index !== pathHistory.length - 1) {
+                        e.currentTarget.style.color = COLORS.modal.borderActive;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (index !== pathHistory.length - 1) {
+                        e.currentTarget.style.color = COLORS.modal.textMuted;
+                      }
+                    }}
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: index === pathHistory.length - 1 ? COLORS.text.secondary : COLORS.accent.primary,
+                      color: index === pathHistory.length - 1 ? COLORS.text.secondary : COLORS.modal.textMuted,
                       fontSize: TYPOGRAPHY.fontSize.sm,
                       fontFamily: TYPOGRAPHY.fontFamily.default,
                       cursor: 'pointer',
@@ -480,13 +516,25 @@ const OneDriveFolderBrowser = ({
                   <button
                     key={folder.id}
                     onClick={() => handleMyDriveFolderClick(folder)}
+                    onMouseEnter={(e) => {
+                      if (selectedFolder?.id !== folder.id) {
+                        e.currentTarget.style.background = COLORS.modal.panelHover;
+                        e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selectedFolder?.id !== folder.id) {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderColor = 'transparent';
+                      }
+                    }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: '12px',
                       padding: '10px 12px',
-                      background: selectedFolder?.id === folder.id ? COLORS.accent.primary + '20' : 'transparent',
-                      border: `1px solid ${selectedFolder?.id === folder.id ? COLORS.accent.primary : 'transparent'}`,
+                      background: selectedFolder?.id === folder.id ? COLORS.modal.optionSelectedBg : 'transparent',
+                      border: `1px solid ${selectedFolder?.id === folder.id ? COLORS.modal.optionSelectedBorder : 'transparent'}`,
                       borderRadius: BORDERS.radius.md,
                       cursor: 'pointer',
                       textAlign: 'left',
@@ -536,6 +584,14 @@ const OneDriveFolderBrowser = ({
                       <button
                         key={site.id}
                         onClick={() => handleSiteSelect(site)}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = COLORS.modal.panelHover;
+                          e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.borderColor = 'transparent';
+                        }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -594,6 +650,14 @@ const OneDriveFolderBrowser = ({
                       <button
                         key={library.id}
                         onClick={() => handleLibrarySelect(library)}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = COLORS.modal.panelHover;
+                          e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.borderColor = 'transparent';
+                        }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -643,10 +707,20 @@ const OneDriveFolderBrowser = ({
                       )}
                       <button
                         onClick={() => handleLibraryBreadcrumbClick(index)}
+                        onMouseEnter={(e) => {
+                          if (index !== libraryPath.length - 1) {
+                            e.currentTarget.style.color = COLORS.modal.borderActive;
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (index !== libraryPath.length - 1) {
+                            e.currentTarget.style.color = COLORS.modal.textMuted;
+                          }
+                        }}
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: index === libraryPath.length - 1 ? COLORS.text.secondary : COLORS.accent.primary,
+                          color: index === libraryPath.length - 1 ? COLORS.text.secondary : COLORS.modal.textMuted,
                           fontSize: TYPOGRAPHY.fontSize.sm,
                           fontFamily: TYPOGRAPHY.fontFamily.default,
                           cursor: 'pointer',
@@ -677,13 +751,25 @@ const OneDriveFolderBrowser = ({
                       <button
                         key={folder.id}
                         onClick={() => handleLibraryFolderClick(folder)}
+                        onMouseEnter={(e) => {
+                          if (selectedFolder?.folderId !== folder.id) {
+                            e.currentTarget.style.background = COLORS.modal.panelHover;
+                            e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedFolder?.folderId !== folder.id) {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.borderColor = 'transparent';
+                          }
+                        }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           gap: '12px',
                           padding: '10px 12px',
-                          background: selectedFolder?.folderId === folder.id ? COLORS.accent.primary + '20' : 'transparent',
-                          border: `1px solid ${selectedFolder?.folderId === folder.id ? COLORS.accent.primary : 'transparent'}`,
+                          background: selectedFolder?.folderId === folder.id ? COLORS.modal.optionSelectedBg : 'transparent',
+                          border: `1px solid ${selectedFolder?.folderId === folder.id ? COLORS.modal.optionSelectedBorder : 'transparent'}`,
                           borderRadius: BORDERS.radius.md,
                           cursor: 'pointer',
                           textAlign: 'left',

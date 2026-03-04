@@ -7,6 +7,7 @@
  * @param {number} options.estimatedHeight - Estimated height of the menu (default: 300)
  * @param {number} options.padding - Minimum padding from viewport edges (default: 10)
  * @param {boolean} options.preferAbove - Prefer positioning above cursor if it would overflow below (default: true)
+ * @param {Object} options.constraintRect - Optional bounding rect ({ left, top, right, bottom }) in viewport coordinates
  * @returns {{x: number, y: number}} Adjusted position coordinates
  */
 export function calculateViewportSafePosition(x, y, options = {}) {
@@ -14,39 +15,71 @@ export function calculateViewportSafePosition(x, y, options = {}) {
     estimatedWidth = 200,
     estimatedHeight = 300,
     padding = 10,
-    preferAbove = true
+    preferAbove = true,
+    constraintRect = null
   } = options;
 
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
 
+  const resolveBounds = () => {
+    if (!constraintRect) {
+      return {
+        left: padding,
+        top: padding,
+        right: viewportWidth - padding,
+        bottom: viewportHeight - padding
+      };
+    }
+
+    const parsedLeft = Number.isFinite(constraintRect.left) ? constraintRect.left : padding;
+    const parsedTop = Number.isFinite(constraintRect.top) ? constraintRect.top : padding;
+    const parsedRight = Number.isFinite(constraintRect.right)
+      ? constraintRect.right
+      : (Number.isFinite(constraintRect.width) ? parsedLeft + constraintRect.width : viewportWidth - padding);
+    const parsedBottom = Number.isFinite(constraintRect.bottom)
+      ? constraintRect.bottom
+      : (Number.isFinite(constraintRect.height) ? parsedTop + constraintRect.height : viewportHeight - padding);
+
+    const left = Math.max(padding, Math.min(parsedLeft, viewportWidth - padding));
+    const top = Math.max(padding, Math.min(parsedTop, viewportHeight - padding));
+    const right = Math.max(left, Math.min(parsedRight, viewportWidth - padding));
+    const bottom = Math.max(top, Math.min(parsedBottom, viewportHeight - padding));
+
+    return { left, top, right, bottom };
+  };
+
+  const bounds = resolveBounds();
   let adjustedX = x;
   let adjustedY = y;
 
-  // Adjust horizontal position to prevent overflow on right edge
-  if (adjustedX + estimatedWidth + padding > viewportWidth) {
-    adjustedX = viewportWidth - estimatedWidth - padding;
+  const minX = bounds.left;
+  const maxX = Math.max(minX, bounds.right - estimatedWidth);
+  const minY = bounds.top;
+  const maxY = Math.max(minY, bounds.bottom - estimatedHeight);
+
+  // Adjust horizontal position to stay inside bounds
+  if (adjustedX > maxX) {
+    adjustedX = maxX;
+  }
+  if (adjustedX < minX) {
+    adjustedX = minX;
   }
 
-  // Adjust horizontal position to prevent overflow on left edge
-  if (adjustedX < padding) {
-    adjustedX = padding;
-  }
-
-  // Adjust vertical position to prevent overflow on bottom edge
-  if (adjustedY + estimatedHeight + padding > viewportHeight) {
-    // If preferAbove is true and there's space above, position above cursor instead
-    if (preferAbove && adjustedY - estimatedHeight - padding >= padding) {
-      adjustedY = adjustedY - estimatedHeight;
-    } else {
-      // Otherwise, just move up to fit
-      adjustedY = viewportHeight - estimatedHeight - padding;
+  // Adjust vertical position to stay inside bounds
+  const overflowsBottom = adjustedY + estimatedHeight > bounds.bottom;
+  if (overflowsBottom && preferAbove) {
+    const aboveY = adjustedY - estimatedHeight;
+    if (aboveY >= minY) {
+      adjustedY = aboveY;
     }
   }
 
-  // Adjust vertical position to prevent overflow on top edge
-  if (adjustedY < padding) {
-    adjustedY = padding;
+  if (adjustedY > maxY) {
+    adjustedY = maxY;
+  }
+  if (adjustedY < minY) {
+    adjustedY = minY;
   }
 
   return { x: adjustedX, y: adjustedY };
@@ -59,9 +92,10 @@ export function calculateViewportSafePosition(x, y, options = {}) {
  * @param {number} initialY - Initial y coordinate (clientY)
  * @param {number} padding - Minimum padding from viewport edges (default: 10)
  * @param {boolean} preferAbove - Prefer positioning above cursor if it would overflow below (default: true)
+ * @param {Object} constraintRect - Optional bounding rect ({ left, top, right, bottom }) in viewport coordinates
  * @returns {{x: number, y: number}} Adjusted position coordinates
  */
-export function calculateViewportSafePositionFromElement(element, initialX, initialY, padding = 10, preferAbove = true) {
+export function calculateViewportSafePositionFromElement(element, initialX, initialY, padding = 10, preferAbove = true, constraintRect = null) {
   if (!element) {
     return { x: initialX, y: initialY };
   }
@@ -74,10 +108,10 @@ export function calculateViewportSafePositionFromElement(element, initialX, init
     estimatedWidth: width,
     estimatedHeight: height,
     padding,
-    preferAbove
+    preferAbove,
+    constraintRect
   });
 }
-
 
 
 

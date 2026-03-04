@@ -13,8 +13,13 @@
 import React, { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { perfRender } from '../utils/performanceLogger';
 
-// Configuration - limit concurrent renders to prevent main thread blocking
-const MAX_CONCURRENT_RENDERS = 2;
+// Configuration - dynamic concurrent render cap for faster page appearance on modern CPUs.
+const MAX_CONCURRENT_RENDERS = (() => {
+  if (typeof navigator === 'undefined' || !Number.isFinite(navigator.hardwareConcurrency)) {
+    return 3;
+  }
+  return Math.max(2, Math.min(6, Math.floor(navigator.hardwareConcurrency / 2)));
+})();
 
 // Global render queue for limiting concurrent renders
 let activeRenderCount = 0;
@@ -97,7 +102,7 @@ const PDFPageCanvas = ({
 
     try {
       const viewport = page.getViewport({ scale: targetScale });
-      const outputScale = window.devicePixelRatio || 1;
+      const outputScale = Math.min(window.devicePixelRatio || 1, 2);
       const width = Math.floor(viewport.width * outputScale);
       const height = Math.floor(viewport.height * outputScale);
 
@@ -112,8 +117,10 @@ const PDFPageCanvas = ({
 
       const context = offscreen.getContext('2d', {
         alpha: false,  // Opaque for better performance
-        willReadFrequently: false  // GPU acceleration
+        willReadFrequently: false,
+        desynchronized: true
       });
+      if (!context) return;
       context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
 
       perfRender.mark(pageLabel, 'Canvas prepared');
@@ -135,7 +142,11 @@ const PDFPageCanvas = ({
       visibleCanvas.style.width = `${Math.floor(viewport.width)}px`;
       visibleCanvas.style.height = `${Math.floor(viewport.height)}px`;
 
-      const visibleContext = visibleCanvas.getContext('2d');
+      const visibleContext = visibleCanvas.getContext('2d', {
+        alpha: false,
+        desynchronized: true
+      });
+      if (!visibleContext) return;
       visibleContext.drawImage(offscreen, 0, 0);
 
       // Update state

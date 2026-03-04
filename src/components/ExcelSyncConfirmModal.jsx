@@ -44,24 +44,24 @@ const ExcelSyncConfirmModal = ({
         left: 0,
         right: 0,
         bottom: 0,
-        background: COLORS.background.overlay,
+        background: COLORS.modal.overlay,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 10000,
-        backdropFilter: 'blur(2px)',
+        backdropFilter: 'blur(3px)',
       }}
       onClick={onClose}
     >
       <div
         style={{
-          background: COLORS.background.quaternary,
+          background: COLORS.modal.surface,
           borderRadius: BORDERS.radius.xl,
           padding: '24px',
           maxWidth: '480px',
           width: '90%',
           boxShadow: SHADOWS.xl,
-          border: `1px solid ${COLORS.border.subtle}`,
+          border: `1px solid ${COLORS.modal.border}`,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -94,10 +94,22 @@ const ExcelSyncConfirmModal = ({
             <div
               key={option.id}
               onClick={() => setSelectedOption(option.id)}
+              onMouseEnter={(e) => {
+                if (selectedOption !== option.id) {
+                  e.currentTarget.style.background = COLORS.modal.panelHover;
+                  e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (selectedOption !== option.id) {
+                  e.currentTarget.style.background = COLORS.background.tertiary;
+                  e.currentTarget.style.borderColor = COLORS.border.default;
+                }
+              }}
               style={{
                 padding: '12px',
-                background: selectedOption === option.id ? COLORS.accent.primary + '20' : COLORS.background.tertiary,
-                border: `2px solid ${selectedOption === option.id ? COLORS.accent.primary : COLORS.border.default}`,
+                background: selectedOption === option.id ? COLORS.modal.optionSelectedBg : COLORS.background.tertiary,
+                border: `2px solid ${selectedOption === option.id ? COLORS.modal.optionSelectedBorder : COLORS.border.default}`,
                 borderRadius: BORDERS.radius.md,
                 marginBottom: '8px',
                 cursor: 'pointer',
@@ -140,6 +152,14 @@ const ExcelSyncConfirmModal = ({
               fontFamily: TYPOGRAPHY.fontFamily.default,
               transition: 'all 0.15s ease',
             }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
+              e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = COLORS.background.elevated;
+              e.currentTarget.style.borderColor = COLORS.border.default;
+            }}
           >
             Cancel
           </button>
@@ -148,15 +168,25 @@ const ExcelSyncConfirmModal = ({
             disabled={!selectedOption}
             style={{
               padding: '8px 16px',
-              background: selectedOption ? COLORS.accent.primary : COLORS.border.default,
+              background: selectedOption ? COLORS.modal.primaryButton : COLORS.modal.primaryButtonDisabled,
               color: COLORS.text.primary,
-              border: 'none',
+              border: `1px solid ${selectedOption ? COLORS.modal.borderActive : COLORS.border.default}`,
               borderRadius: BORDERS.radius.md,
               fontSize: TYPOGRAPHY.fontSize.md,
               fontWeight: TYPOGRAPHY.fontWeight.medium,
               cursor: selectedOption ? 'pointer' : 'not-allowed',
               fontFamily: TYPOGRAPHY.fontFamily.default,
               transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (!selectedOption) return;
+              e.currentTarget.style.background = COLORS.modal.primaryButtonHover;
+              e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+            }}
+            onMouseLeave={(e) => {
+              if (!selectedOption) return;
+              e.currentTarget.style.background = COLORS.modal.primaryButton;
+              e.currentTarget.style.boxShadow = 'none';
             }}
           >
             Continue

@@ -2,6 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvailable, setConnectedServicesAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 
+const isSupabaseNotFoundError = (error) => {
+  if (!error) return false;
+
+  const code = String(error.code || '').toUpperCase();
+  if (code === 'PGRST116') return true;
+
+  if (error.status === 404 || error.statusCode === 404) return true;
+
+  const message = String(error.message || '').toLowerCase();
+  if (message.includes('no rows') || message.includes('not found')) return true;
+
+  return false;
+};
+
 // ============================================
 // USER SETTINGS HOOKS
 // ============================================
@@ -246,7 +260,7 @@ export const useDocuments = (projectId = null) => {
     try {
       const { error } = await supabase.from('documents').delete().eq('id', id);
 
-      if (error) throw error;
+      if (error && !isSupabaseNotFoundError(error)) throw error;
       setDocuments(documents.filter((d) => d.id !== id));
     } catch (err) {
       setError(err.message);
@@ -530,7 +544,7 @@ export const useSpaces = (documentId) => {
 export const useStorage = () => {
   const { user } = useAuth();
 
-  const uploadDocument = async (file, projectId, onProgress) => {
+  const uploadDocument = useCallback(async (file, projectId, onProgress) => {
     if (!user || !isSupabaseAvailable()) {
       throw new Error('User not authenticated or Supabase not available');
     }
@@ -547,9 +561,9 @@ export const useStorage = () => {
 
     if (error) throw error;
     return filePath;
-  };
+  }, [user]);
 
-  const uploadDataFile = async (data, filePath, onProgress) => {
+  const uploadDataFile = useCallback(async (data, filePath, onProgress) => {
     if (!user || !isSupabaseAvailable()) {
       throw new Error('User not authenticated or Supabase not available');
     }
@@ -564,9 +578,9 @@ export const useStorage = () => {
 
     if (error) throw error;
     return filePath;
-  };
+  }, [user]);
 
-  const downloadDocument = async (filePath) => {
+  const downloadDocument = useCallback(async (filePath) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase not available');
     }
@@ -577,9 +591,9 @@ export const useStorage = () => {
 
     if (error) throw error;
     return data;
-  };
+  }, []);
 
-  const deleteDocumentFile = async (filePath) => {
+  const deleteDocumentFile = useCallback(async (filePath) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase not available');
     }
@@ -589,15 +603,15 @@ export const useStorage = () => {
       .remove([filePath]);
 
     if (error) throw error;
-  };
+  }, []);
 
-  const getDocumentUrl = (filePath) => {
+  const getDocumentUrl = useCallback((filePath) => {
     if (!isSupabaseAvailable()) return null;
 
     const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
 
     return data.publicUrl;
-  };
+  }, []);
 
   return {
     uploadDocument,

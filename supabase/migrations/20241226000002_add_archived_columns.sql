@@ -7,24 +7,18 @@
 
 ALTER TABLE projects
 ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
-
 CREATE INDEX IF NOT EXISTS idx_projects_archived
 ON projects(user_id, archived, updated_at DESC);
-
 COMMENT ON COLUMN projects.archived IS 'True if project was archived due to downgrade or user action';
-
 -- ============================================================================
 -- ADD ARCHIVED COLUMN TO DOCUMENTS
 -- ============================================================================
 
 ALTER TABLE documents
 ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
-
 CREATE INDEX IF NOT EXISTS idx_documents_archived
 ON documents(user_id, archived, updated_at DESC);
-
 COMMENT ON COLUMN documents.archived IS 'True if document was archived due to downgrade or user action';
-
 -- ============================================================================
 -- FUNCTION: Archive excess projects when downgrading to Free tier
 -- ============================================================================
@@ -61,7 +55,6 @@ BEGIN
     RETURN;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- ============================================================================
 -- FUNCTION: Archive excess documents when downgrading to Free tier
 -- ============================================================================
@@ -98,7 +91,6 @@ BEGIN
     RETURN;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- ============================================================================
 -- FUNCTION: Handle complete downgrade flow
 -- ============================================================================
@@ -136,7 +128,6 @@ BEGIN
     RETURN v_result;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- ============================================================================
 -- UPDATE RLS POLICIES - Archived items are still viewable but read-only
 -- ============================================================================
@@ -159,7 +150,6 @@ CREATE POLICY "Users can create projects within limit"
             WHERE user_id = auth.uid() AND archived = FALSE
         ) < get_project_limit(auth.uid())
     );
-
 DROP POLICY IF EXISTS "Users can upload documents within limits" ON documents;
 CREATE POLICY "Users can upload documents within limits"
     ON documents FOR INSERT
@@ -177,7 +167,6 @@ CREATE POLICY "Users can upload documents within limits"
             + COALESCE(file_size, 0)
         ) <= get_storage_limit(auth.uid())
     );
-
 COMMENT ON FUNCTION archive_excess_projects(UUID, INTEGER) IS 'Archives oldest projects when user exceeds their tier limit (keeps most recently updated)';
 COMMENT ON FUNCTION archive_excess_documents(UUID, INTEGER) IS 'Archives oldest documents when user exceeds their tier limit (keeps most recently updated)';
 COMMENT ON FUNCTION handle_downgrade_to_free(UUID) IS 'Complete downgrade flow: archives excess projects and documents for Free tier';

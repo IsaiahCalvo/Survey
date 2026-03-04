@@ -7,19 +7,16 @@ CREATE POLICY "Service role can update all subscriptions"
     TO service_role
     USING (true)
     WITH CHECK (true);
-
 -- Add policy to allow service role to insert any subscription
 CREATE POLICY "Service role can insert all subscriptions"
     ON user_subscriptions FOR INSERT
     TO service_role
     WITH CHECK (true);
-
 -- Add policy to allow service role to select all subscriptions
 CREATE POLICY "Service role can select all subscriptions"
     ON user_subscriptions FOR SELECT
     TO service_role
     USING (true);
-
 -- Ensure service role can also delete if needed
 CREATE POLICY "Service role can delete all subscriptions"
     ON user_subscriptions FOR DELETE

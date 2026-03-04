@@ -20,7 +20,6 @@ WHERE NOT EXISTS (
     AND dc.user_id = p.user_id
 )
 ON CONFLICT (document_id, user_id) DO NOTHING;
-
 -- Also ensure document creators have access
 INSERT INTO document_collaborators (document_id, user_id, role, status)
 SELECT
@@ -36,7 +35,6 @@ AND NOT EXISTS (
     AND dc.user_id = d.user_id
 )
 ON CONFLICT (document_id, user_id) DO NOTHING;
-
 -- ============================================
 -- UPDATE user_can_access_document FUNCTION
 -- ============================================
@@ -89,7 +87,6 @@ BEGIN
     END CASE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- ============================================
 -- DROP AND RECREATE RLS POLICIES WITH SIMPLER CHECK
 -- ============================================
@@ -99,47 +96,37 @@ DROP POLICY IF EXISTS "Users can view annotations on accessible documents" ON do
 DROP POLICY IF EXISTS "Users can insert annotations on editable documents" ON document_annotations;
 DROP POLICY IF EXISTS "Users can update annotations on editable documents" ON document_annotations;
 DROP POLICY IF EXISTS "Users can delete annotations on editable documents" ON document_annotations;
-
 -- Recreate with simpler, more permissive policies
 CREATE POLICY "Users can view annotations on accessible documents"
     ON document_annotations FOR SELECT
     USING (user_can_access_document(document_id, 'viewer'));
-
 CREATE POLICY "Users can insert annotations on editable documents"
     ON document_annotations FOR INSERT
     WITH CHECK (user_can_access_document(document_id, 'editor'));
-
 CREATE POLICY "Users can update annotations on editable documents"
     ON document_annotations FOR UPDATE
     USING (user_can_access_document(document_id, 'editor'));
-
 CREATE POLICY "Users can delete annotations on editable documents"
     ON document_annotations FOR DELETE
     USING (user_can_access_document(document_id, 'editor'));
-
 -- Drop existing policies for document_presence
 DROP POLICY IF EXISTS "Users can view presence on accessible documents" ON document_presence;
 DROP POLICY IF EXISTS "Users can insert own presence" ON document_presence;
 DROP POLICY IF EXISTS "Users can update own presence" ON document_presence;
 DROP POLICY IF EXISTS "Users can delete own presence" ON document_presence;
-
 -- Recreate with simpler policies
 CREATE POLICY "Users can view presence on accessible documents"
     ON document_presence FOR SELECT
     USING (user_can_access_document(document_id, 'viewer'));
-
 CREATE POLICY "Users can insert own presence"
     ON document_presence FOR INSERT
     WITH CHECK (user_can_access_document(document_id, 'viewer'));
-
 CREATE POLICY "Users can update own presence"
     ON document_presence FOR UPDATE
     USING (auth.uid() = user_id);
-
 CREATE POLICY "Users can delete own presence"
     ON document_presence FOR DELETE
     USING (auth.uid() = user_id);
-
 -- ============================================
 -- COMMENT
 -- ============================================

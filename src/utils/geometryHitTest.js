@@ -620,18 +620,45 @@ export const isPointOnPolyline = (point, polylineObj, tolerance = DEFAULT_TOLERA
 export const isPointOnGroup = (point, groupObj, tolerance = DEFAULT_TOLERANCE) => {
   if (!groupObj || groupObj.type !== 'group') return false;
 
+  const objects = groupObj._objects || groupObj.getObjects?.() || [];
+  if (objects.length === 0) return false;
+
   // Get group's transform matrix
   const groupMatrix = getObjectTransformMatrix(groupObj);
 
-  // Transform point to group's local coordinate space
-  const localPoint = transformPointInverse(point, groupMatrix);
-
-  // Check each child object
-  const objects = groupObj._objects || groupObj.getObjects?.() || [];
+  // Check each child object by combining group + child transforms.
+  // This keeps point coordinates in canvas space and avoids double-inverting transforms.
   for (const child of objects) {
-    if (isPointOnObject(localPoint, child, tolerance)) {
-      return true;
+    const childWithGroupTransform = Object.create(Object.getPrototypeOf(child));
+    Object.assign(childWithGroupTransform, child);
+    childWithGroupTransform.calcTransformMatrix = function () {
+      const childMatrix = getObjectTransformMatrix(child);
+      return multiplyMatrices(groupMatrix, childMatrix);
+    };
+    if (!childWithGroupTransform.type) {
+      childWithGroupTransform.type = child.type;
     }
+
+    try {
+      if (isPointOnObject(point, childWithGroupTransform, tolerance)) {
+        return true;
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+
+  // Fallback to group bounds to keep group selection practical for sparse geometry.
+  try {
+    const bounds = groupObj.getBoundingRect ? groupObj.getBoundingRect() : null;
+    if (bounds) {
+      return point.x >= bounds.left - tolerance &&
+        point.x <= bounds.left + bounds.width + tolerance &&
+        point.y >= bounds.top - tolerance &&
+        point.y <= bounds.top + bounds.height + tolerance;
+    }
+  } catch (e) {
+    // Ignore fallback errors.
   }
 
   return false;

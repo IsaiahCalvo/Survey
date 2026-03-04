@@ -64,6 +64,27 @@ export const COLORS = {
     hoverBg: '#2a2a2a',
     dragOverlay: 'rgba(43, 43, 43, 0.9)',
   },
+
+  // Unified modal colors
+  modal: {
+    overlay: 'rgba(0, 0, 0, 0.7)',
+    surface: '#1f1f1f',
+    panel: '#2b2b2b',
+    panelHover: 'rgba(74, 144, 226, 0.14)',
+    border: '#333',
+    borderStrong: '#444',
+    borderActive: '#4A90E2',
+    textPrimary: '#eaeaea',
+    textMuted: '#999',
+    primaryButton: '#3a3a3a',
+    primaryButtonHover: 'rgba(74, 144, 226, 0.2)',
+    primaryButtonDisabled: '#2f2f2f',
+    secondaryButton: '#2a2a2a',
+    secondaryButtonHover: 'rgba(74, 144, 226, 0.14)',
+    optionSelectedBg: 'rgba(74, 144, 226, 0.16)',
+    optionSelectedBorder: '#4A90E2',
+    hoverGlow: '0 0 0 1px rgba(74, 144, 226, 0.35)',
+  },
 };
 
 export const TYPOGRAPHY = {

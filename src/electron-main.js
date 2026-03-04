@@ -1,6 +1,6 @@
 // electron-main.js
 // electron-main.js
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { exec, spawn } = require('child_process');
@@ -142,6 +142,91 @@ function createWindow() {
     const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
     win.loadFile(distPath);
   }
+}
+
+function createAppMenu() {
+  const isMac = process.platform === 'darwin';
+
+  const getTargetWindow = () => {
+    return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  };
+
+  const template = [
+    ...(isMac
+      ? [{
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' }
+        ]
+      }]
+      : []),
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Re-import PDF Bookmarks',
+          click: () => {
+            const win = getTargetWindow();
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('menu:reimport-pdf-bookmarks');
+            }
+          }
+        },
+        { type: 'separator' },
+        { role: isMac ? 'close' : 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac
+          ? [
+            { type: 'separator' },
+            { role: 'front' }
+          ]
+          : [{ role: 'close' }])
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 }
 
 // File watchers storage
@@ -501,6 +586,7 @@ let isQuitting = false;
 
 app.whenReady().then(() => {
   createWindow();
+  createAppMenu();
 });
 
 app.on('before-quit', (event) => {

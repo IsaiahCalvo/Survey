@@ -60,7 +60,7 @@ const PDFPageList = forwardRef(({
             width="100%"
             onItemsRendered={onItemsRendered}
             itemKey={itemKey}
-            overscanCount={2} // Render 2 pages above/below for smoother scrolling
+            overscanCount={20} // Render 20 pages above/below for instant appearance during fast scrolling
         >
             {Row}
         </List>

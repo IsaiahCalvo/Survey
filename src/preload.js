@@ -36,6 +36,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   notifySaveComplete: () => ipcRenderer.send('app:saveComplete'),
 
+  // Menu actions
+  onReimportPdfBookmarks: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('menu:reimport-pdf-bookmarks', subscription);
+    return () => ipcRenderer.removeListener('menu:reimport-pdf-bookmarks', subscription);
+  },
+
   // OAuth APIs - opens a separate window for authentication
   openOAuthWindow: (authUrl, redirectUri) => ipcRenderer.invoke('oauth:openWindow', { authUrl, redirectUri }),
 });

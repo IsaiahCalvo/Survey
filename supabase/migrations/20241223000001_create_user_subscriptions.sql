@@ -3,10 +3,8 @@
 
 -- Create enum for subscription tiers
 CREATE TYPE subscription_tier AS ENUM ('free', 'pro', 'enterprise', 'developer');
-
 -- Create enum for subscription status
 CREATE TYPE subscription_status AS ENUM ('active', 'trialing', 'past_due', 'canceled', 'incomplete');
-
 -- Create user_subscriptions table
 CREATE TABLE user_subscriptions (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -37,29 +35,23 @@ CREATE TABLE user_subscriptions (
     -- Constraints
     UNIQUE(user_id)
 );
-
 -- Create index for faster lookups
 CREATE INDEX idx_user_subscriptions_user_id ON user_subscriptions(user_id);
 CREATE INDEX idx_user_subscriptions_stripe_customer_id ON user_subscriptions(stripe_customer_id);
 CREATE INDEX idx_user_subscriptions_tier ON user_subscriptions(tier);
 CREATE INDEX idx_user_subscriptions_status ON user_subscriptions(status);
-
 -- Enable RLS
 ALTER TABLE user_subscriptions ENABLE ROW LEVEL SECURITY;
-
 -- RLS Policies
 CREATE POLICY "Users can view own subscription"
     ON user_subscriptions FOR SELECT
     USING (auth.uid() = user_id);
-
 CREATE POLICY "Users can insert own subscription"
     ON user_subscriptions FOR INSERT
     WITH CHECK (auth.uid() = user_id);
-
 CREATE POLICY "Users can update own subscription"
     ON user_subscriptions FOR UPDATE
     USING (auth.uid() = user_id);
-
 -- Trigger for updated_at
 CREATE OR REPLACE FUNCTION update_user_subscriptions_updated_at()
 RETURNS TRIGGER AS $$
@@ -68,12 +60,10 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trigger_update_user_subscriptions_updated_at
     BEFORE UPDATE ON user_subscriptions
     FOR EACH ROW
     EXECUTE FUNCTION update_user_subscriptions_updated_at();
-
 -- Function to create default subscription when user signs up
 CREATE OR REPLACE FUNCTION handle_new_user_subscription()
 RETURNS TRIGGER AS $$
@@ -83,13 +73,11 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Trigger to auto-create subscription for new users
 CREATE TRIGGER on_auth_user_created_subscription
     AFTER INSERT ON auth.users
     FOR EACH ROW
     EXECUTE FUNCTION handle_new_user_subscription();
-
 -- Function to get user tier (used in RLS policies)
 CREATE OR REPLACE FUNCTION get_user_tier(p_user_id UUID)
 RETURNS subscription_tier AS $$
@@ -104,7 +92,6 @@ BEGIN
     RETURN COALESCE(user_tier, 'free');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Function to check if user has access to a feature
 CREATE OR REPLACE FUNCTION has_feature_access(p_user_id UUID, p_feature TEXT)
 RETURNS BOOLEAN AS $$
@@ -150,7 +137,6 @@ BEGIN
     RETURN FALSE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Function to get storage limit based on tier
 CREATE OR REPLACE FUNCTION get_storage_limit(p_user_id UUID)
 RETURNS BIGINT AS $$
@@ -168,7 +154,6 @@ BEGIN
     END;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Function to get project limit based on tier
 CREATE OR REPLACE FUNCTION get_project_limit(p_user_id UUID)
 RETURNS INTEGER AS $$
@@ -184,7 +169,6 @@ BEGIN
     END;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Function to get document limit based on tier
 CREATE OR REPLACE FUNCTION get_document_limit(p_user_id UUID)
 RETURNS INTEGER AS $$
@@ -200,7 +184,6 @@ BEGIN
     END;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Insert developer account subscription
 -- NOTE: You'll need to replace this email with your actual developer account email
 -- This will be set up after you create your developer account

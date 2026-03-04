@@ -60,6 +60,9 @@ const KeyboardShortcutsOverlay = () => {
     );
   }
 
+  const isMac = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+  const findShortcutModifier = isMac ? '⌘' : 'Ctrl';
+
   const shortcuts = [
     { category: 'Navigation', items: [
       { keys: ['←', '→'], description: 'Previous/Next page' },
@@ -74,7 +77,7 @@ const KeyboardShortcutsOverlay = () => {
       { keys: ['Ctrl', 'W'], description: 'Close tab' },
       { keys: ['Ctrl', 'Tab'], description: 'Next tab' },
       { keys: ['Ctrl', 'Shift', 'Tab'], description: 'Previous tab' },
-      { keys: ['Ctrl', 'F'], description: 'Search text' },
+      { keys: [findShortcutModifier, 'F'], description: 'Search text' },
     ]},
     { category: 'Interface', items: [
       { keys: ['?'], description: 'Toggle shortcuts' },

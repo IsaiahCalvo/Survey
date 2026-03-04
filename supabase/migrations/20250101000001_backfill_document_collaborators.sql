@@ -21,7 +21,6 @@ WHERE NOT EXISTS (
     AND dc.user_id = p.user_id
 )
 ON CONFLICT (document_id, user_id) DO NOTHING;
-
 -- ============================================
 -- ALSO ADD DOCUMENT CREATOR AS COLLABORATOR
 -- ============================================
@@ -48,7 +47,6 @@ ON CONFLICT (document_id, user_id) DO UPDATE SET
         WHEN document_collaborators.role = 'owner' THEN 'owner'
         ELSE GREATEST(document_collaborators.role, EXCLUDED.role)
     END;
-
 -- ============================================
 -- UPDATE TRIGGER TO ALSO ADD DOCUMENT CREATOR
 -- ============================================
@@ -81,7 +79,6 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 -- ============================================
 -- ADD COMMENT
 -- ============================================

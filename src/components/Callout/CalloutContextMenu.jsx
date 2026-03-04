@@ -1,7 +1,22 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { calculateViewportSafePosition } from '../../utils/menuPositioning';
+
+const CALLOUT_CONTEXT_MENU_Z_INDEX = 120000;
 
 const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, onDelete, onEdit, hasClipboard, onDeselect }) => {
   const menuRef = useRef(null);
+  const [position, setPosition] = useState({ x, y });
+
+  useEffect(() => {
+    if (!visible) return;
+    const initialPosition = calculateViewportSafePosition(x, y, {
+      estimatedWidth: 180,
+      estimatedHeight: 300,
+      preferAbove: false
+    });
+    setPosition(initialPosition);
+  }, [visible, x, y]);
 
   useEffect(() => {
     if (!visible) return;
@@ -42,36 +57,28 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
     };
   }, [visible, onClose, onDeselect]);
 
+  useEffect(() => {
+    if (!visible || !menuRef.current) return;
+
+    const frameId = requestAnimationFrame(() => {
+      if (!menuRef.current) return;
+      const rect = menuRef.current.getBoundingClientRect();
+      const adjustedPosition = calculateViewportSafePosition(x, y, {
+        estimatedWidth: rect.width,
+        estimatedHeight: rect.height,
+        preferAbove: false
+      });
+      if (adjustedPosition.x !== position.x || adjustedPosition.y !== position.y) {
+        setPosition(adjustedPosition);
+      }
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [visible, x, y, position.x, position.y]);
+
   if (!visible) return null;
 
-  // Adjust position to stay within viewport
-  const getAdjustedPosition = () => {
-    const menuWidth = 180;
-    const menuHeight = 300; // Approximate height
-    const padding = 10;
-
-    let adjustedX = x;
-    let adjustedY = y;
-
-    if (x + menuWidth > window.innerWidth - padding) {
-      adjustedX = window.innerWidth - menuWidth - padding;
-    }
-    if (x < padding) {
-      adjustedX = padding;
-    }
-    if (y + menuHeight > window.innerHeight - padding) {
-      adjustedY = window.innerHeight - menuHeight - padding;
-    }
-    if (y < padding) {
-      adjustedY = padding;
-    }
-
-    return { x: adjustedX, y: adjustedY };
-  };
-
-  const position = getAdjustedPosition();
-
-  return (
+  const menuContent = (
     <div
       ref={menuRef}
       style={{
@@ -82,7 +89,7 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
         border: '1px solid #444',
         borderRadius: '6px',
         padding: '4px',
-        zIndex: 10000,
+        zIndex: CALLOUT_CONTEXT_MENU_Z_INDEX,
         minWidth: '180px',
         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif'
@@ -215,7 +222,12 @@ const CalloutContextMenu = ({ visible, x, y, onClose, onCut, onCopy, onPaste, on
       </button>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return menuContent;
+  }
+
+  return createPortal(menuContent, document.body);
 };
 
 export default CalloutContextMenu;
-

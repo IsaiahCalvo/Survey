@@ -11,14 +11,11 @@ CREATE TABLE project_status (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-
 -- Create indexes
 CREATE INDEX idx_project_status_is_active ON project_status(is_active);
 CREATE INDEX idx_project_status_archived_at ON project_status(archived_at);
-
 -- Enable RLS
 ALTER TABLE project_status ENABLE ROW LEVEL SECURITY;
-
 -- RLS Policies
 CREATE POLICY "Users can view status of own projects"
     ON project_status FOR SELECT
@@ -27,7 +24,6 @@ CREATE POLICY "Users can view status of own projects"
             SELECT id FROM projects WHERE user_id = auth.uid()
         )
     );
-
 CREATE POLICY "Users can update status of own projects"
     ON project_status FOR UPDATE
     USING (
@@ -35,10 +31,10 @@ CREATE POLICY "Users can update status of own projects"
             SELECT id FROM projects WHERE user_id = auth.uid()
         )
     );
-
 CREATE POLICY "System can insert project status"
     ON project_status FOR INSERT
-    WITH CHECK (true); -- Allow inserts from triggers
+    WITH CHECK (true);
+-- Allow inserts from triggers
 
 -- Trigger for updated_at
 CREATE OR REPLACE FUNCTION update_project_status_updated_at()
@@ -48,12 +44,10 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trigger_update_project_status_updated_at
     BEFORE UPDATE ON project_status
     FOR EACH ROW
     EXECUTE FUNCTION update_project_status_updated_at();
-
 -- Auto-create project_status when new project is created
 CREATE OR REPLACE FUNCTION create_project_status()
 RETURNS TRIGGER AS $$
@@ -63,12 +57,10 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 CREATE TRIGGER trigger_create_project_status
     AFTER INSERT ON projects
     FOR EACH ROW
     EXECUTE FUNCTION create_project_status();
-
 -- Function to get active projects for a user
 CREATE OR REPLACE FUNCTION get_active_projects(p_user_id UUID)
 RETURNS TABLE (
@@ -91,7 +83,6 @@ BEGIN
     ORDER BY p.updated_at DESC;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Function to archive projects when user downgrades
 CREATE OR REPLACE FUNCTION archive_excess_projects(p_user_id UUID, p_keep_project_id UUID)
 RETURNS INTEGER AS $$
@@ -121,7 +112,6 @@ BEGIN
     RETURN archived_count;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Function to swap active project (Free tier users can do this once per month)
 CREATE OR REPLACE FUNCTION swap_active_project(
     p_user_id UUID,
@@ -183,7 +173,6 @@ BEGIN
     RETURN true;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Function to check if project is accessible
 CREATE OR REPLACE FUNCTION is_project_accessible(p_project_id UUID, p_user_id UUID)
 RETURNS BOOLEAN AS $$
@@ -216,7 +205,6 @@ BEGIN
     RETURN is_active;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- View for archived projects summary
 CREATE OR REPLACE VIEW archived_projects_summary AS
 SELECT
@@ -230,7 +218,6 @@ FROM projects p
 JOIN project_status ps ON p.id = ps.project_id
 WHERE ps.is_active = false
 GROUP BY p.user_id;
-
 COMMENT ON TABLE project_status IS 'Tracks which projects are active/archived for tier limit enforcement';
 COMMENT ON FUNCTION get_active_projects IS 'Get all active (non-archived) projects for a user';
 COMMENT ON FUNCTION archive_excess_projects IS 'Archive all projects except specified one (used during downgrade)';

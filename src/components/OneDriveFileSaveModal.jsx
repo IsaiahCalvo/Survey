@@ -102,18 +102,18 @@ const OneDriveFileSaveModal = ({
         left: 0,
         right: 0,
         bottom: 0,
-        background: COLORS.background.overlay,
+        background: COLORS.modal.overlay,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 10000,
-        backdropFilter: 'blur(2px)',
+        backdropFilter: 'blur(3px)',
       }}
       onClick={onClose}
     >
       <div
         style={{
-          background: COLORS.background.quaternary,
+          background: COLORS.modal.surface,
           borderRadius: BORDERS.radius.xl,
           padding: '24px',
           maxWidth: '600px',
@@ -123,7 +123,7 @@ const OneDriveFileSaveModal = ({
           display: 'flex',
           flexDirection: 'column',
           boxShadow: SHADOWS.xl,
-          border: `1px solid ${COLORS.border.subtle}`,
+          border: `1px solid ${COLORS.modal.border}`,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -243,6 +243,14 @@ const OneDriveFileSaveModal = ({
               fontFamily: TYPOGRAPHY.fontFamily.default,
               transition: 'all 0.15s ease',
             }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
+              e.currentTarget.style.borderColor = COLORS.modal.borderActive;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = COLORS.background.elevated;
+              e.currentTarget.style.borderColor = COLORS.border.default;
+            }}
           >
             Cancel
           </button>
@@ -251,15 +259,25 @@ const OneDriveFileSaveModal = ({
             disabled={!selectedFolder || !fileName.trim() || fileNameError}
             style={{
               padding: '10px 20px',
-              background: (selectedFolder && fileName.trim() && !fileNameError) ? COLORS.accent.primary : COLORS.border.default,
+              background: (selectedFolder && fileName.trim() && !fileNameError) ? COLORS.modal.primaryButton : COLORS.modal.primaryButtonDisabled,
               color: COLORS.text.primary,
-              border: 'none',
+              border: `1px solid ${(selectedFolder && fileName.trim() && !fileNameError) ? COLORS.modal.borderActive : COLORS.border.default}`,
               borderRadius: BORDERS.radius.md,
               fontSize: TYPOGRAPHY.fontSize.md,
               fontWeight: TYPOGRAPHY.fontWeight.medium,
               cursor: (selectedFolder && fileName.trim() && !fileNameError) ? 'pointer' : 'not-allowed',
               fontFamily: TYPOGRAPHY.fontFamily.default,
               transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (!selectedFolder || !fileName.trim() || fileNameError) return;
+              e.currentTarget.style.background = COLORS.modal.primaryButtonHover;
+              e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
+            }}
+            onMouseLeave={(e) => {
+              if (!selectedFolder || !fileName.trim() || fileNameError) return;
+              e.currentTarget.style.background = COLORS.modal.primaryButton;
+              e.currentTarget.style.boxShadow = 'none';
             }}
           >
             Save

@@ -18,25 +18,22 @@ CREATE TABLE usage_metrics (
     -- For time-series tracking
     date_bucket DATE
 );
-
 -- Create indexes for faster queries
 CREATE INDEX idx_usage_metrics_user_id ON usage_metrics(user_id);
 CREATE INDEX idx_usage_metrics_metric_name ON usage_metrics(metric_name);
 CREATE INDEX idx_usage_metrics_measured_at ON usage_metrics(measured_at DESC);
 CREATE INDEX idx_usage_metrics_date_bucket ON usage_metrics(date_bucket);
 CREATE INDEX idx_usage_metrics_user_metric_date ON usage_metrics(user_id, metric_name, date_bucket);
-
 -- Enable RLS
 ALTER TABLE usage_metrics ENABLE ROW LEVEL SECURITY;
-
 -- RLS Policies
 CREATE POLICY "Users can view own usage metrics"
     ON usage_metrics FOR SELECT
     USING (auth.uid() = user_id);
-
 CREATE POLICY "System can insert usage metrics"
     ON usage_metrics FOR INSERT
-    WITH CHECK (true); -- Allow inserts from triggers/functions
+    WITH CHECK (true);
+-- Allow inserts from triggers/functions
 
 -- Trigger to auto-populate date_bucket
 CREATE OR REPLACE FUNCTION set_usage_metrics_date_bucket()
@@ -46,12 +43,10 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trigger_set_usage_metrics_date_bucket
     BEFORE INSERT ON usage_metrics
     FOR EACH ROW
     EXECUTE FUNCTION set_usage_metrics_date_bucket();
-
 -- Function to record a usage metric
 CREATE OR REPLACE FUNCTION record_usage_metric(
     p_user_id UUID,
@@ -70,7 +65,6 @@ BEGIN
     RETURN metric_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Function to get current usage count (projects, documents, etc.)
 CREATE OR REPLACE FUNCTION get_current_usage(
     p_user_id UUID,
@@ -115,7 +109,6 @@ BEGIN
     RETURN usage_count;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Function to update storage used in user_subscriptions
 CREATE OR REPLACE FUNCTION update_user_storage()
 RETURNS TRIGGER AS $$
@@ -155,13 +148,11 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Trigger to update storage when documents are added/removed
 CREATE TRIGGER trigger_update_storage_on_document_change
     AFTER INSERT OR UPDATE OR DELETE ON documents
     FOR EACH ROW
     EXECUTE FUNCTION update_user_storage();
-
 -- Function to record project creation
 CREATE OR REPLACE FUNCTION record_project_metric()
 RETURNS TRIGGER AS $$
@@ -189,13 +180,11 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Trigger to track project creation/deletion
 CREATE TRIGGER trigger_record_project_metric
     AFTER INSERT OR DELETE ON projects
     FOR EACH ROW
     EXECUTE FUNCTION record_project_metric();
-
 -- Function to record document uploads
 CREATE OR REPLACE FUNCTION record_document_metric()
 RETURNS TRIGGER AS $$
@@ -223,13 +212,11 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Trigger to track document uploads/deletions
 CREATE TRIGGER trigger_record_document_metric
     AFTER INSERT OR DELETE ON documents
     FOR EACH ROW
     EXECUTE FUNCTION record_document_metric();
-
 -- View for daily usage summary
 CREATE OR REPLACE VIEW daily_usage_summary AS
 SELECT
@@ -244,7 +231,6 @@ SELECT
 FROM usage_metrics
 GROUP BY user_id, metric_name, date_bucket
 ORDER BY date_bucket DESC, user_id;
-
 -- View for current user quotas and usage
 CREATE OR REPLACE VIEW user_quota_status AS
 SELECT
@@ -261,7 +247,6 @@ SELECT
     ROUND((s.storage_used_bytes::NUMERIC / get_storage_limit(u.id)::NUMERIC) * 100, 2) as storage_percentage
 FROM auth.users u
 LEFT JOIN user_subscriptions s ON u.id = s.user_id;
-
 COMMENT ON TABLE usage_metrics IS 'Tracks user resource usage over time for analytics and quota enforcement';
 COMMENT ON FUNCTION record_usage_metric IS 'Record a usage metric event for a user';
 COMMENT ON FUNCTION get_current_usage IS 'Get current usage count for a specific metric';

@@ -52,7 +52,6 @@ CREATE TABLE IF NOT EXISTS document_annotations (
     -- Ensure unique highlight per document
     UNIQUE(document_id, highlight_id)
 );
-
 -- Indexes for faster lookups
 CREATE INDEX IF NOT EXISTS idx_document_annotations_document ON document_annotations(document_id);
 CREATE INDEX IF NOT EXISTS idx_document_annotations_user ON document_annotations(user_id);
@@ -60,10 +59,8 @@ CREATE INDEX IF NOT EXISTS idx_document_annotations_page ON document_annotations
 CREATE INDEX IF NOT EXISTS idx_document_annotations_category ON document_annotations(document_id, category_id);
 CREATE INDEX IF NOT EXISTS idx_document_annotations_type ON document_annotations(annotation_type);
 CREATE INDEX IF NOT EXISTS idx_document_annotations_updated ON document_annotations(updated_at);
-
 -- Enable Row Level Security
 ALTER TABLE document_annotations ENABLE ROW LEVEL SECURITY;
-
 -- ============================================
 -- DOCUMENT COLLABORATORS TABLE
 -- ============================================
@@ -86,14 +83,11 @@ CREATE TABLE IF NOT EXISTS document_collaborators (
 
     UNIQUE(document_id, user_id)
 );
-
 -- Index for lookups
 CREATE INDEX IF NOT EXISTS idx_document_collaborators_document ON document_collaborators(document_id);
 CREATE INDEX IF NOT EXISTS idx_document_collaborators_user ON document_collaborators(user_id);
-
 -- Enable Row Level Security
 ALTER TABLE document_collaborators ENABLE ROW LEVEL SECURITY;
-
 -- ============================================
 -- DOCUMENT PRESENCE TABLE
 -- ============================================
@@ -116,14 +110,11 @@ CREATE TABLE IF NOT EXISTS document_presence (
 
     UNIQUE(document_id, user_id, client_type)
 );
-
 -- Index for lookups
 CREATE INDEX IF NOT EXISTS idx_document_presence_document ON document_presence(document_id);
 CREATE INDEX IF NOT EXISTS idx_document_presence_last_seen ON document_presence(last_seen);
-
 -- Enable Row Level Security
 ALTER TABLE document_presence ENABLE ROW LEVEL SECURITY;
-
 -- ============================================
 -- RLS POLICIES FOR DOCUMENT ANNOTATIONS
 -- ============================================
@@ -166,27 +157,22 @@ BEGIN
     END CASE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Policies for document_annotations
 CREATE POLICY "Users can view annotations on accessible documents"
     ON document_annotations FOR SELECT
     USING (user_can_access_document(document_id, 'viewer'));
-
 CREATE POLICY "Users can insert annotations on editable documents"
     ON document_annotations FOR INSERT
     WITH CHECK (
         auth.uid() = user_id AND
         user_can_access_document(document_id, 'editor')
     );
-
 CREATE POLICY "Users can update annotations on editable documents"
     ON document_annotations FOR UPDATE
     USING (user_can_access_document(document_id, 'editor'));
-
 CREATE POLICY "Users can delete annotations on editable documents"
     ON document_annotations FOR DELETE
     USING (user_can_access_document(document_id, 'editor'));
-
 -- ============================================
 -- RLS POLICIES FOR DOCUMENT COLLABORATORS
 -- ============================================
@@ -195,19 +181,15 @@ CREATE POLICY "Users can delete annotations on editable documents"
 CREATE POLICY "Document owners can view collaborators"
     ON document_collaborators FOR SELECT
     USING (user_can_access_document(document_id, 'viewer'));
-
 CREATE POLICY "Document owners can add collaborators"
     ON document_collaborators FOR INSERT
     WITH CHECK (user_can_access_document(document_id, 'owner'));
-
 CREATE POLICY "Document owners can update collaborators"
     ON document_collaborators FOR UPDATE
     USING (user_can_access_document(document_id, 'owner'));
-
 CREATE POLICY "Document owners can remove collaborators"
     ON document_collaborators FOR DELETE
     USING (user_can_access_document(document_id, 'owner'));
-
 -- ============================================
 -- RLS POLICIES FOR DOCUMENT PRESENCE
 -- ============================================
@@ -215,22 +197,18 @@ CREATE POLICY "Document owners can remove collaborators"
 CREATE POLICY "Users can view presence on accessible documents"
     ON document_presence FOR SELECT
     USING (user_can_access_document(document_id, 'viewer'));
-
 CREATE POLICY "Users can insert own presence"
     ON document_presence FOR INSERT
     WITH CHECK (
         auth.uid() = user_id AND
         user_can_access_document(document_id, 'viewer')
     );
-
 CREATE POLICY "Users can update own presence"
     ON document_presence FOR UPDATE
     USING (auth.uid() = user_id);
-
 CREATE POLICY "Users can delete own presence"
     ON document_presence FOR DELETE
     USING (auth.uid() = user_id);
-
 -- ============================================
 -- TRIGGERS FOR UPDATED_AT
 -- ============================================
@@ -242,24 +220,20 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trigger_update_document_annotations_updated_at
     BEFORE UPDATE ON document_annotations
     FOR EACH ROW
     EXECUTE FUNCTION update_document_tables_updated_at();
-
 CREATE TRIGGER trigger_update_document_collaborators_updated_at
     BEFORE UPDATE ON document_collaborators
     FOR EACH ROW
     EXECUTE FUNCTION update_document_tables_updated_at();
-
 -- ============================================
 -- ENABLE REAL-TIME
 -- ============================================
 -- Add tables to real-time publication for live sync
 ALTER PUBLICATION supabase_realtime ADD TABLE document_annotations;
 ALTER PUBLICATION supabase_realtime ADD TABLE document_presence;
-
 -- ============================================
 -- ADD OWNER COLLABORATOR TRIGGER
 -- ============================================
@@ -284,7 +258,6 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trigger_add_document_owner
     AFTER INSERT ON documents
     FOR EACH ROW

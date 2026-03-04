@@ -6,6 +6,46 @@
 
 import { supabase } from '../supabaseClient';
 
+const classifyAnnotationSyncError = (error) => {
+  const message = error?.message || '';
+  const code = error?.code || null;
+  const status = Number(error?.status) || null;
+  const normalizedMessage = typeof message === 'string' ? message.toLowerCase() : '';
+  const isRLSError = code === '42501' || normalizedMessage.includes('row-level security');
+  const isMissingTable = code === '42P01';
+  const isNotFound = status === 404 || normalizedMessage.includes('404') || normalizedMessage.includes('not found');
+
+  if (isRLSError) {
+    return {
+      errorClass: 'RLS',
+      nonRetryable: true,
+      isRLSError: true
+    };
+  }
+
+  if (isMissingTable) {
+    return {
+      errorClass: 'SCHEMA_MISSING',
+      nonRetryable: true,
+      isRLSError: false
+    };
+  }
+
+  if (isNotFound) {
+    return {
+      errorClass: 'NOT_FOUND',
+      nonRetryable: true,
+      isRLSError: false
+    };
+  }
+
+  return {
+    errorClass: code || 'UNKNOWN',
+    nonRetryable: false,
+    isRLSError: false
+  };
+};
+
 // ============================================
 // ANNOTATION CRUD OPERATIONS
 // ============================================
@@ -56,7 +96,13 @@ export async function upsertAnnotation(annotation) {
  */
 export async function upsertAnnotations(annotations) {
   if (!annotations || annotations.length === 0) {
-    return { data: [], error: null };
+    return {
+      data: [],
+      error: null,
+      errorClass: null,
+      nonRetryable: false,
+      isRLSError: false
+    };
   }
 
   const { data, error } = await supabase
@@ -68,14 +114,26 @@ export async function upsertAnnotations(annotations) {
     .select();
 
   if (error) {
-    // Don't log RLS errors - let caller handle them
-    if (error.code !== '42501' && !error.message?.includes('row-level security')) {
+    const classification = classifyAnnotationSyncError(error);
+    if (!classification.nonRetryable && !classification.isRLSError) {
       console.error('[AnnotationSync] Error upserting annotations:', error);
     }
-    return { data: [], error };
+    return {
+      data: [],
+      error,
+      errorClass: classification.errorClass,
+      nonRetryable: classification.nonRetryable,
+      isRLSError: classification.isRLSError
+    };
   }
 
-  return { data: data || [], error: null };
+  return {
+    data: data || [],
+    error: null,
+    errorClass: null,
+    nonRetryable: false,
+    isRLSError: false
+  };
 }
 
 /**
@@ -158,13 +216,26 @@ export async function syncAnnotationsToSupabase(documentId, userId, highlightAnn
     return { success: true, synced: 0 };
   }
 
-  const { data, error } = await upsertAnnotations(annotations);
+  const { data, error, errorClass, nonRetryable, isRLSError } = await upsertAnnotations(annotations);
 
   if (error) {
-    return { success: false, error };
+    return {
+      success: false,
+      error,
+      errorClass: errorClass || null,
+      nonRetryable: !!nonRetryable,
+      isRLSError: !!isRLSError
+    };
   }
 
-  return { success: true, synced: data.length };
+  return {
+    success: true,
+    synced: data.length,
+    error: null,
+    errorClass: null,
+    nonRetryable: false,
+    isRLSError: false
+  };
 }
 
 /**
@@ -309,6 +380,46 @@ function convertToLocalFormat(record) {
 // PRESENCE OPERATIONS
 // ============================================
 
+const classifyPresenceError = (error) => {
+  const message = error?.message || '';
+  const code = error?.code || null;
+  const status = Number(error?.status) || null;
+  const normalizedMessage = typeof message === 'string' ? message.toLowerCase() : '';
+  const isRLSError = code === '42501' || normalizedMessage.includes('row-level security');
+  const isMissingTable = code === '42P01';
+  const isNotFound = status === 404 || normalizedMessage.includes('404') || normalizedMessage.includes('not found');
+
+  if (isRLSError) {
+    return {
+      errorClass: 'RLS',
+      nonRetryable: true,
+      isRLSError: true
+    };
+  }
+
+  if (isMissingTable) {
+    return {
+      errorClass: 'SCHEMA_MISSING',
+      nonRetryable: true,
+      isRLSError: false
+    };
+  }
+
+  if (isNotFound) {
+    return {
+      errorClass: 'NOT_FOUND',
+      nonRetryable: true,
+      isRLSError: false
+    };
+  }
+
+  return {
+    errorClass: code || 'UNKNOWN',
+    nonRetryable: false,
+    isRLSError: false
+  };
+};
+
 /**
  * Update user presence for a document
  */
@@ -331,14 +442,27 @@ export async function updateDocumentPresence(documentId, userId, presenceData = 
     });
 
   if (error) {
-    // Don't log RLS errors - let caller handle them
-    if (error.code !== '42501' && !error.message?.includes('row-level security')) {
+    const classification = classifyPresenceError(error);
+    // Avoid console noise for non-retryable structural errors and RLS failures.
+    if (!classification.nonRetryable && !classification.isRLSError) {
       console.error('[AnnotationSync] Error updating presence:', error);
     }
-    return { success: false, error };
+    return {
+      success: false,
+      error,
+      errorClass: classification.errorClass,
+      nonRetryable: classification.nonRetryable,
+      isRLSError: classification.isRLSError
+    };
   }
 
-  return { success: true };
+  return {
+    success: true,
+    error: null,
+    errorClass: null,
+    nonRetryable: false,
+    isRLSError: false
+  };
 }
 
 /**

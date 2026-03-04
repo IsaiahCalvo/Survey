@@ -10,7 +10,6 @@ SELECT
 FROM auth.users u
 LEFT JOIN user_subscriptions s ON u.id = s.user_id
 WHERE s.id IS NULL;
-
 -- Verify the backfill worked
 DO $$
 DECLARE

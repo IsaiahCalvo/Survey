@@ -16,34 +16,27 @@ CREATE TABLE IF NOT EXISTS connected_services (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(user_id, service_name)       -- Each user can have one connection per service
 );
-
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_connected_services_user_id ON connected_services(user_id);
 CREATE INDEX IF NOT EXISTS idx_connected_services_service_name ON connected_services(service_name);
-
 -- Enable Row Level Security
 ALTER TABLE connected_services ENABLE ROW LEVEL SECURITY;
-
 -- Policy: Users can only see their own connected services
 CREATE POLICY "Users can view own connected services"
     ON connected_services FOR SELECT
     USING (auth.uid() = user_id);
-
 -- Policy: Users can insert their own connected services
 CREATE POLICY "Users can insert own connected services"
     ON connected_services FOR INSERT
     WITH CHECK (auth.uid() = user_id);
-
 -- Policy: Users can update their own connected services
 CREATE POLICY "Users can update own connected services"
     ON connected_services FOR UPDATE
     USING (auth.uid() = user_id);
-
 -- Policy: Users can delete their own connected services
 CREATE POLICY "Users can delete own connected services"
     ON connected_services FOR DELETE
     USING (auth.uid() = user_id);
-
 -- Create trigger for updating updated_at timestamp
 CREATE OR REPLACE FUNCTION update_connected_services_updated_at()
 RETURNS TRIGGER AS $$
@@ -52,7 +45,6 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trigger_update_connected_services_updated_at
     BEFORE UPDATE ON connected_services
     FOR EACH ROW

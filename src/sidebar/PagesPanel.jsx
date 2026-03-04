@@ -1,8 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
 import Icon from '../Icons';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
+const FAST_THUMBNAIL_SCALE = 0.15; // Ultra-fast, low-res (was 0.2)
+const CRISP_THUMBNAIL_SCALE = 0.5; // Slower, high-res
+const THUMBNAIL_DPR_CAP = 1;
+const CRISP_DPR_CAP = 2;
+const THUMBNAIL_JPEG_QUALITY = 0.72;
+const EAGER_PRELOAD_COUNT = 6;
+const CONCURRENCY_LIMIT = 4;
+
 
 const PagesPanel = ({
   pdfDoc,
@@ -21,6 +28,7 @@ const PagesPanel = ({
   onResetPage,
   onReorderPages,
   pageTransformations = {},
+  getThumbnail,
   shouldShowPage,
   activeSpacePages,
   scale,
@@ -37,13 +45,168 @@ const PagesPanel = ({
   const thumbnailRefs = useRef({});
   const observerRef = useRef(null);
   const containerRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const thumbnailsRef = useRef({});
+
+  // Queue State
+  const queueRef = useRef({
+    fast: [], // LIFO stack for fast thumbs
+    crisp: [] // LIFO stack for crisp thumbs
+  });
+  const activeTasksRef = useRef(new Map()); // Map<pageNumber, { cancel: () => void, type: 'fast'|'crisp' }>
+  const runningWorkersRef = useRef(0);
+  const pendingRequestsRef = useRef(new Set()); // Track pages currently in queue or running
+
+  useEffect(() => {
+    thumbnailsRef.current = thumbnails;
+  }, [thumbnails]);
+
+  const getRotationDelta = useCallback((pageNumber) => {
+    const transform = pageTransformations?.[pageNumber];
+    if (!transform) return 0;
+    const baseRotation = Number.isFinite(transform.baseRotation) ? transform.baseRotation : 0;
+    const rotation = Number.isFinite(transform.rotation) ? transform.rotation : baseRotation;
+    return ((rotation - baseRotation) % 360 + 360) % 360;
+  }, [pageTransformations]);
+
+  const getDisplayAspectRatio = useCallback((pageNumber, ratioPercent) => {
+    const ratio = Number.isFinite(ratioPercent) && ratioPercent > 0 ? ratioPercent : 129;
+    const rotationDelta = getRotationDelta(pageNumber);
+    if (rotationDelta % 180 !== 0) {
+      return 10000 / ratio;
+    }
+    return ratio;
+  }, [getRotationDelta]);
+
+  const normalizeThumbnailResult = useCallback((result) => {
+    if (!result) return null;
+    if (typeof result === 'string') {
+      return {
+        src: result,
+        width: null,
+        height: null,
+        containerWidth: null,
+        containerHeight: null,
+        source: null,
+        elementId: null,
+        quality: 'unknown'
+      };
+    }
+    if (typeof result === 'object') {
+      const src = typeof result.src === 'string' ? result.src : '';
+      if (!src.trim()) return null;
+      return {
+        src,
+        width: Number.isFinite(result.width) && result.width > 0 ? result.width : null,
+        height: Number.isFinite(result.height) && result.height > 0 ? result.height : null,
+        containerWidth: Number.isFinite(result.containerWidth) && result.containerWidth > 0 ? result.containerWidth : null,
+        containerHeight: Number.isFinite(result.containerHeight) && result.containerHeight > 0 ? result.containerHeight : null,
+        source: result.source || null,
+        elementId: typeof result.elementId === 'string' && result.elementId.trim() ? result.elementId : null,
+        quality: result.quality || 'unknown'
+      };
+    }
+    return null;
+  }, []);
+
+  const isLikelyBlackThumbnailSrc = useCallback((src) => (
+    new Promise((resolve) => {
+      if (typeof src !== 'string' || src.trim() === '') {
+        resolve(false);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const width = Math.max(8, Math.min(24, img.naturalWidth || img.width || 0));
+          const height = Math.max(8, Math.min(24, img.naturalHeight || img.height || 0));
+          if (width <= 0 || height <= 0) {
+            resolve(false);
+            return;
+          }
+          const probeCanvas = document.createElement('canvas');
+          probeCanvas.width = width;
+          probeCanvas.height = height;
+          const probeContext = probeCanvas.getContext('2d', { willReadFrequently: true });
+          if (!probeContext) {
+            resolve(false);
+            return;
+          }
+          probeContext.drawImage(img, 0, 0, width, height);
+          const { data } = probeContext.getImageData(0, 0, width, height);
+          if (!data || data.length === 0) {
+            resolve(false);
+            return;
+          }
+
+          const totalPixels = width * height;
+          let opaquePixels = 0;
+          let darkOpaquePixels = 0;
+          let minLuminance = 255;
+          let maxLuminance = 0;
+
+          for (let offset = 0; offset < data.length; offset += 4) {
+            const r = data[offset];
+            const g = data[offset + 1];
+            const b = data[offset + 2];
+            const a = data[offset + 3];
+            const luminance = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+            if (luminance < minLuminance) minLuminance = luminance;
+            if (luminance > maxLuminance) maxLuminance = luminance;
+            if (a >= 220) {
+              opaquePixels += 1;
+              if (luminance <= 12) {
+                darkOpaquePixels += 1;
+              }
+            }
+          }
+
+          const opaqueRatio = opaquePixels / totalPixels;
+          const darkOpaqueRatio = opaquePixels > 0 ? (darkOpaquePixels / opaquePixels) : 0;
+          const contrast = maxLuminance - minLuminance;
+          resolve(opaqueRatio >= 0.9 && darkOpaqueRatio >= 0.94 && contrast <= 10);
+        } catch {
+          resolve(false);
+        }
+      };
+      img.onerror = () => resolve(false);
+      img.src = src;
+    })
+  ), []);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      // Cancel all running tasks
+      activeTasksRef.current.forEach(task => task.cancel());
+      activeTasksRef.current.clear();
+      queueRef.current.fast = [];
+      queueRef.current.crisp = [];
+    };
+  }, []);
+
   const allowedPages = useMemo(() => {
+    const normalizePageNumbers = (pages) => {
+      if (!Array.isArray(pages)) return [];
+      const seen = new Set();
+      const normalized = [];
+      pages.forEach((value) => {
+        const pageNumber = Number.parseInt(value, 10);
+        if (!Number.isFinite(pageNumber)) return;
+        if (pageNumber < 1 || pageNumber > numPages) return;
+        if (seen.has(pageNumber)) return;
+        seen.add(pageNumber);
+        normalized.push(pageNumber);
+      });
+      return normalized;
+    };
+
     if (Array.isArray(activeSpacePages) && activeSpacePages.length > 0) {
-      return activeSpacePages;
+      return normalizePageNumbers(activeSpacePages);
     }
 
     if (typeof shouldShowPage === 'function') {
-      return Array.from({ length: numPages }, (_, i) => i + 1).filter(pageNumber => shouldShowPage(pageNumber));
+      return Array.from({ length: numPages }, (_, i) => i + 1).filter((pageNumber) => shouldShowPage(pageNumber));
     }
 
     return Array.from({ length: numPages }, (_, i) => i + 1);
@@ -62,7 +225,7 @@ const PagesPanel = ({
 
   // Generate aspect ratios for all pages (lightweight, runs once)
   useEffect(() => {
-    if (!pdfDoc) return;
+    if (!pdfDoc || typeof getThumbnail === 'function') return;
 
     const getAspectRatios = async () => {
       const ratios = {};
@@ -80,50 +243,253 @@ const PagesPanel = ({
     };
 
     getAspectRatios();
-  }, [pdfDoc, numPages]);
+  }, [pdfDoc, numPages, getThumbnail]);
 
-  // Generate thumbnail for a specific page
-  const generateThumbnail = useCallback(async (pageNumber) => {
-    if (!pdfDoc || thumbnails[pageNumber]) return;
+  useEffect(() => {
+    setThumbnails({});
+    setPageAspectRatios({});
+
+    // Reset Queue
+    activeTasksRef.current.forEach(task => task.cancel());
+    activeTasksRef.current.clear();
+    queueRef.current.fast = [];
+    queueRef.current.crisp = [];
+    pendingRequestsRef.current.clear();
+    runningWorkersRef.current = 0;
+  }, [pdfDoc, numPages, getThumbnail]);
+
+  const applyThumbnailResult = useCallback((pageNumber, normalized) => {
+    if (!isMountedRef.current || !normalized) return;
+
+    const ratioWidth = normalized.width || normalized.containerWidth;
+    const ratioHeight = normalized.height || normalized.containerHeight;
+    if (ratioWidth && ratioHeight) {
+      setPageAspectRatios((prev) => {
+        const ratioValue = (ratioHeight / ratioWidth) * 100;
+        if (prev[pageNumber] && Math.abs(prev[pageNumber] - ratioValue) < 0.5) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [pageNumber]: ratioValue
+        };
+      });
+    } else if (normalized.src) {
+      const img = new Image();
+      img.onload = () => {
+        if (!isMountedRef.current) return;
+        const width = img.naturalWidth || img.width || null;
+        const height = img.naturalHeight || img.height || null;
+        if (!width || !height) return;
+        setPageAspectRatios((prev) => {
+          const ratioValue = (height / width) * 100;
+          if (prev[pageNumber] && Math.abs(prev[pageNumber] - ratioValue) < 0.5) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [pageNumber]: ratioValue
+          };
+        });
+      };
+      img.src = normalized.src;
+    }
+
+    setThumbnails((prev) => ({
+      ...prev,
+      [pageNumber]: normalized
+    }));
+  }, []);
+
+  const renderPdfJsThumbnail = useCallback(async (pageNumber, quality = 'fast', onCancel) => {
+    if (!pdfDoc) return null;
+    const page = await pdfDoc.getPage(pageNumber);
+
+    const scale = quality === 'crisp' ? CRISP_THUMBNAIL_SCALE : FAST_THUMBNAIL_SCALE;
+    const dprCap = quality === 'crisp' ? CRISP_DPR_CAP : THUMBNAIL_DPR_CAP;
+
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) return null;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
+    canvas.width = viewport.width * dpr;
+    canvas.height = viewport.height * dpr;
+    canvas.style.width = `${viewport.width}px`;
+    canvas.style.height = `${viewport.height}px`;
+    context.scale(dpr, dpr);
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, viewport.width, viewport.height);
+
+    const renderTask = page.render({
+      canvasContext: context,
+      viewport,
+      background: 'rgb(255, 255, 255)'
+    });
+
+    if (onCancel) {
+      onCancel(() => renderTask.cancel());
+    }
 
     try {
-      const page = await pdfDoc.getPage(pageNumber);
-      const thumbnailScale = 0.4; // Higher resolution for clearer thumbnails
-      const viewport = page.getViewport({ scale: thumbnailScale });
-
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-
-      // Use device pixel ratio for sharper rendering
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = viewport.width * dpr;
-      canvas.height = viewport.height * dpr;
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
-
-      context.scale(dpr, dpr);
-
-      await page.render({
-        canvasContext: context,
-        viewport: viewport
-      }).promise;
-
-      setThumbnails(prev => ({
-        ...prev,
-        [pageNumber]: canvas.toDataURL('image/jpeg', 0.85) // Use JPEG with good quality for smaller size
-      }));
+      await renderTask.promise;
     } catch (error) {
-      console.error(`Error generating thumbnail for page ${pageNumber}:`, error);
+      if (error?.name === 'RenderingCancelledException') {
+        throw error;
+      }
+      throw error;
     }
-  }, [pdfDoc, thumbnails]);
+
+    return {
+      src: canvas.toDataURL('image/jpeg', THUMBNAIL_JPEG_QUALITY),
+      width: viewport.width,
+      height: viewport.height,
+      source: 'pdfjs',
+      quality
+    };
+  }, [pdfDoc]);
+
+  const processQueue = useCallback(async () => {
+    if (runningWorkersRef.current >= CONCURRENCY_LIMIT) return;
+
+    // LIFO Strategy: Pop from end of array
+    // Prioritize FAST (initial load) over CRISP (enhancement)
+    let job = queueRef.current.fast.pop(); // Try fast first
+    let type = 'fast';
+
+    if (!job) {
+      job = queueRef.current.crisp.pop(); // Then crisp
+      type = 'crisp';
+    }
+
+    if (!job) return; // No jobs
+
+    const { pageNumber } = job;
+    runningWorkersRef.current++;
+
+    // Register active task for cancellation
+    let cancelRender = null;
+    const cancelAuth = () => {
+      if (cancelRender) cancelRender();
+    };
+    activeTasksRef.current.set(pageNumber, { cancel: cancelAuth, type });
+
+    try {
+      let thumbnailResult = null;
+
+      // For fast thumbnails, we check if Syncfusion provided one (unlikely given previous issues, but safe optimization)
+      if (type === 'fast' && typeof getThumbnail === 'function') {
+        // ... (existing logic for external provider if needed, mostly unused now)
+      }
+
+      if (!thumbnailResult && pdfDoc) {
+        thumbnailResult = await renderPdfJsThumbnail(pageNumber, type, (cancelFn) => {
+          cancelRender = cancelFn;
+        });
+      }
+
+      if (isMountedRef.current && thumbnailResult) {
+        let normalized = normalizeThumbnailResult(thumbnailResult);
+
+        applyThumbnailResult(pageNumber, normalized);
+
+        // Schedule upgrade if fast
+        if (type === 'fast') {
+          // Add to crisp queue
+          queueRef.current.crisp.push({ pageNumber });
+          // Trigger queue check
+          processQueue();
+        }
+      }
+    } catch (error) {
+      if (error?.name === 'RenderingCancelledException') {
+        // Expected when cancelled
+      } else {
+        console.error(`Error processing thumbnail ${pageNumber} (${type}):`, error);
+      }
+    } finally {
+      runningWorkersRef.current--;
+      activeTasksRef.current.delete(pageNumber);
+      pendingRequestsRef.current.delete(pageNumber); // Only remove from pending once fully done or cancelled
+      if (isMountedRef.current) {
+        processQueue(); // Loop
+      }
+    }
+  }, [pdfDoc, getThumbnail, applyThumbnailResult, renderPdfJsThumbnail, normalizeThumbnailResult]);
+
+  const scheduleThumbnail = useCallback((pageNumber, priority = 'fast') => {
+    if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
+
+    // Check if already has a better or equal thumbnail
+    const existing = thumbnailsRef.current[pageNumber];
+    if (existing?.quality === 'crisp') return;
+    if (priority === 'fast' && existing?.quality === 'fast') {
+      if (queueRef.current.crisp.find(j => j.pageNumber === pageNumber)) return;
+      queueRef.current.crisp.push({ pageNumber });
+      processQueue();
+      return;
+    }
+
+    // Check if already in queue or processing
+    if (activeTasksRef.current.has(pageNumber)) return;
+
+    // Add to appropriate queue
+    // Remove if already exists to move to end (LIFO behavior for re-requests)
+    const targetQueue = priority === 'fast' ? queueRef.current.fast : queueRef.current.crisp;
+    const existingIndex = targetQueue.findIndex(j => j.pageNumber === pageNumber);
+    if (existingIndex !== -1) {
+      targetQueue.splice(existingIndex, 1);
+    }
+
+    targetQueue.push({ pageNumber });
+    pendingRequestsRef.current.add(pageNumber);
+    processQueue();
+  }, [processQueue]);
+
+  // Public entry point (replacing generateThumbnail)
+  const generateThumbnail = useCallback((pageNumber, { force = false } = {}) => {
+    scheduleThumbnail(pageNumber, 'fast');
+  }, [scheduleThumbnail]);
+
+  // Cancel thumbnail (when scrolling away)
+  const cancelThumbnail = useCallback((pageNumber) => {
+    // Remove from queues
+    const fastIdx = queueRef.current.fast.findIndex(j => j.pageNumber === pageNumber);
+    if (fastIdx !== -1) queueRef.current.fast.splice(fastIdx, 1);
+
+    const crispIdx = queueRef.current.crisp.findIndex(j => j.pageNumber === pageNumber);
+    if (crispIdx !== -1) queueRef.current.crisp.splice(crispIdx, 1);
+
+    // Cancel active task
+    const active = activeTasksRef.current.get(pageNumber);
+    if (active) {
+      active.cancel();
+    }
+
+    pendingRequestsRef.current.delete(pageNumber);
+  }, []);
 
   // Set up Intersection Observer for lazy loading thumbnails
   useEffect(() => {
-    if (!pdfDoc || Object.keys(pageAspectRatios).length === 0) return;
+    const hasProvider = typeof getThumbnail === 'function';
+    if (!hasProvider && !pdfDoc) return;
+    if (!hasProvider && Object.keys(pageAspectRatios).length === 0) return;
+    if (allowedPages.length === 0) return;
 
     // Clean up existing observer
     if (observerRef.current) {
       observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+
+    // Proactively render initial pages so the panel doesn't stay in a loading state.
+    allowedPages.slice(0, EAGER_PRELOAD_COUNT).forEach((pageNumber) => {
+      generateThumbnail(pageNumber);
+    });
+
+    if (typeof IntersectionObserver !== 'function') {
+      return;
     }
 
     // Create new observer
@@ -131,20 +497,25 @@ const PagesPanel = ({
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            const pageNumber = parseInt(entry.target.dataset.pageNumber);
+            const pageNumber = Number.parseInt(entry.target.dataset.pageNumber, 10);
             generateThumbnail(pageNumber);
+          } else {
+            // Cancel if scrolled out
+            const pageNumber = Number.parseInt(entry.target.dataset.pageNumber, 10);
+            cancelThumbnail(pageNumber);
           }
         });
       },
       {
-        root: null,
-        rootMargin: '200px', // Start loading 200px before entering viewport
+        root: containerRef.current,
+        rootMargin: '240px 0px',
         threshold: 0.01
       }
     );
 
-    // Observe all thumbnail containers
-    Object.values(thumbnailRefs.current).forEach((ref) => {
+    // Observe currently mounted thumbnail containers.
+    allowedPages.forEach((pageNumber) => {
+      const ref = thumbnailRefs.current[pageNumber];
       if (ref) {
         observerRef.current.observe(ref);
       }
@@ -153,9 +524,30 @@ const PagesPanel = ({
     return () => {
       if (observerRef.current) {
         observerRef.current.disconnect();
+        observerRef.current = null;
       }
     };
-  }, [pdfDoc, pageAspectRatios, generateThumbnail]);
+  }, [allowedPages, generateThumbnail, cancelThumbnail, getThumbnail, pageAspectRatios, pdfDoc]);
+
+  useEffect(() => {
+    if (allowedPages.length === 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const preloadMargin = 260;
+
+    allowedPages.forEach((pageNumber) => {
+      const ref = thumbnailRefs.current[pageNumber];
+      if (!ref) return;
+      const rect = ref.getBoundingClientRect();
+      const isNearViewport = rect.bottom >= (containerRect.top - preloadMargin)
+        && rect.top <= (containerRect.bottom + preloadMargin);
+      if (isNearViewport) {
+        generateThumbnail(pageNumber);
+      }
+    });
+  }, [allowedPages, generateThumbnail, pageNum]);
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -273,7 +665,7 @@ const PagesPanel = ({
     setDraggedPage(pageNumber);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('application/pdf-page-internal', pageNumber.toString());
-    
+
     // Also set data for external drag (to tabs)
     if (onPageDragStart && tabId) {
       e.dataTransfer.setData('application/pdf-page', JSON.stringify({
@@ -288,7 +680,7 @@ const PagesPanel = ({
   const handleDragOver = useCallback((e, targetPageNumber) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     // Check if this is an internal drag
     const types = Array.from(e.dataTransfer.types || []);
     if (types.includes('application/pdf-page-internal')) {
@@ -314,9 +706,9 @@ const PagesPanel = ({
   const handleDrop = useCallback((e, targetPageNumber) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     const types = Array.from(e.dataTransfer.types || []);
-    
+
     // Check if this is an internal reorder
     if (types.includes('application/pdf-page-internal')) {
       const sourcePageNumber = parseInt(e.dataTransfer.getData('application/pdf-page-internal'));
@@ -324,7 +716,7 @@ const PagesPanel = ({
         onReorderPages(sourcePageNumber, targetPageNumber);
       }
     }
-    
+
     setDraggedPage(null);
     setDragOverPage(null);
   }, [onReorderPages]);
@@ -357,6 +749,23 @@ const PagesPanel = ({
       >
         {allowedPages.map(pageNumber => {
           const isSelected = pageNumber === selectedPage;
+          const thumbnailMeta = thumbnails[pageNumber];
+          const thumbnailSrc = typeof thumbnailMeta === 'string' ? thumbnailMeta : thumbnailMeta?.src;
+          const rawRatio = pageAspectRatios[pageNumber] || 129;
+          const displayRatio = getDisplayAspectRatio(pageNumber, rawRatio);
+          const transformState = pageTransformations[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
+          const rotationDelta = getRotationDelta(pageNumber);
+          const transforms = [];
+          if (rotationDelta) {
+            transforms.push(`rotate(${rotationDelta}deg)`);
+          }
+          if (transformState.mirrorH) {
+            transforms.push('scaleX(-1)');
+          }
+          if (transformState.mirrorV) {
+            transforms.push('scaleY(-1)');
+          }
+          const thumbnailTransform = transforms.length > 0 ? transforms.join(' ') : 'none';
 
           return (
             <div
@@ -424,14 +833,14 @@ const PagesPanel = ({
               <div style={{
                 position: 'relative',
                 width: '100%',
-                paddingBottom: `${pageAspectRatios[pageNumber] || 129}%`,
+                paddingBottom: `${displayRatio}%`,
                 background: '#ffffff',
                 borderRadius: '2px',
                 overflow: 'hidden'
               }}>
-                {thumbnails[pageNumber] ? (
+                {thumbnailSrc ? (
                   <img
-                    src={thumbnails[pageNumber]}
+                    src={thumbnailSrc}
                     alt={`Page ${pageNumber}`}
                     style={{
                       position: 'absolute',
@@ -441,20 +850,7 @@ const PagesPanel = ({
                       height: '100%',
                       objectFit: 'contain',
                       display: 'block',
-                      transform: (() => {
-                        const transform = pageTransformations[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
-                        const transforms = [];
-                        if (transform.rotation) {
-                          transforms.push(`rotate(${transform.rotation}deg)`);
-                        }
-                        if (transform.mirrorH) {
-                          transforms.push('scaleX(-1)');
-                        }
-                        if (transform.mirrorV) {
-                          transforms.push('scaleY(-1)');
-                        }
-                        return transforms.length > 0 ? transforms.join(' ') : 'none';
-                      })(),
+                      transform: thumbnailTransform,
                       transformOrigin: 'center center'
                     }}
                   />
