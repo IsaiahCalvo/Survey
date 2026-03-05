@@ -27,11 +27,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User zooms in/out and annotations never disappear at any point during the zoom operation
   2. Annotations visually grow/shrink in sync with the page as zoom changes (CSS transform-based, GPU-accelerated)
   3. PageAnnotationLayer only re-renders when renderedScale changes (after zoom settles), not on every live scale change
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md -- Wire zoom visibility: show lightweight overlay during zoom, hide Fabric.js layer, CSS transform scaling
+- [ ] 01-02-PLAN.md -- Enhance lightweight overlay with SVG path/line/arrow rendering for zoom preview fidelity
 
 ### Phase 2: Positional Accuracy
 **Goal**: Annotations maintain pixel-perfect alignment with underlying page content during zoom, anchored from the cursor position
@@ -79,7 +79,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. CSS Transform Scaling | 0/? | Not started | - |
+| 1. CSS Transform Scaling | 0/2 | Planning complete | - |
 | 2. Positional Accuracy | 0/? | Not started | - |
 | 3. Flicker-Free Transitions | 0/? | Not started | - |
 | 4. Scale Caching | 0/? | Not started | - |
