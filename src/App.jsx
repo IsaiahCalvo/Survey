@@ -154,6 +154,9 @@ const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
 const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
 const SYNCFUSION_WHEEL_ZOOM_SENSITIVITY = 0.3;
 const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
+const ZOOM_ONLY_INTERACTION_REASONS = new Set([
+  'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
+]);
 const SYNCFUSION_SCROLL_DELAY_MS = 180;
 const SYNCFUSION_INITIAL_RENDER_PAGES = 4;
 const SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
@@ -9133,6 +9136,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const syncfusionInteractionUntilRef = useRef(0);
   const syncfusionInteractionTimerRef = useRef(null);
   const syncfusionInteractionReasonRef = useRef(null);
+  const syncfusionInteractionIsZoomOnlyRef = useRef(false);
   const syncfusionInteractionTransitionsRef = useRef({ on: 0, off: 0 });
   const syncfusionInteractionPhaseRef = useRef('idle');
   const [syncfusionInteractionSessionId, setSyncfusionInteractionSessionId] = useState(0);
@@ -9582,9 +9586,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, []);
 
   const determineSyncfusionPageMode = useCallback((pageNumber, previousMode = 'full') => {
+    // For zoom-only interactions, keep all pages in 'full' mode — the CSS transform
+    // handles visual scaling and the Fabric.js canvas stays visible (no proxy swap needed).
     if (
       SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES &&
-      syncfusionInteractionPhaseRef.current === 'interacting'
+      syncfusionInteractionPhaseRef.current === 'interacting' &&
+      !syncfusionInteractionIsZoomOnlyRef.current
     ) {
       return 'proxy';
     }
@@ -9981,6 +9988,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setSyncfusionCommitQueueDepth(0);
     syncfusionInteractionUntilRef.current = 0;
     syncfusionInteractionReasonRef.current = null;
+    syncfusionInteractionIsZoomOnlyRef.current = false;
     syncfusionInteractionPhaseRef.current = 'idle';
     setSyncfusionInteractionPhase('idle');
     setSyncfusionCommittingProxyPages(new Set());
@@ -10013,11 +10021,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
       syncfusionScaleConfirmTimerRef.current = null;
       if (syncfusionScaleConfirmPendingRef.current) {
-        console.warn('[AnnotPerf] 400ms safety timeout — PAL never confirmed, forcing CSS transform removal');
+        console.warn('[AnnotPerf] 800ms safety timeout — PAL never confirmed, forcing CSS transform removal');
         syncfusionScaleConfirmPendingRef.current = false;
         resetSyncfusionOverlayTransformStyles();
       }
-    }, 400);
+    }, 800);
     if (wasActive) {
       syncfusionInteractionTransitionsRef.current.off += 1;
       setDebugData({
@@ -10040,13 +10048,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const handlePALScaleApplied = useCallback((pageNumber, appliedScale) => {
     if (!syncfusionScaleConfirmPendingRef.current) return;
-    console.log(`[AnnotPerf] PAL confirmed scale=${appliedScale.toFixed(4)} on page ${pageNumber} — removing CSS transforms`);
-    syncfusionScaleConfirmPendingRef.current = false;
-    if (syncfusionScaleConfirmTimerRef.current) {
-      clearTimeout(syncfusionScaleConfirmTimerRef.current);
-      syncfusionScaleConfirmTimerRef.current = null;
+    // Remove CSS transform for this specific page immediately — its Fabric canvas is painted.
+    const node = syncfusionOverlayContentRefs.current?.[pageNumber];
+    if (node && node.isConnected && node.style) {
+      node.style.transform = '';
+      node.style.transformOrigin = '';
+      node.style.willChange = '';
+      node.style.backfaceVisibility = '';
     }
-    resetSyncfusionOverlayTransformStyles();
+    const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
+    delete ratioByPage[pageNumber];
+    syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+
+    // Check if all visible pages have confirmed — if so, finalize.
+    const overlayContentRefs = syncfusionOverlayContentRefs.current || {};
+    const allConfirmed = Object.keys(overlayContentRefs).every((pageKey) => {
+      const ref = overlayContentRefs[pageKey];
+      if (!ref || !ref.isConnected) return true;
+      const ratio = ratioByPage[pageKey];
+      return !ratio || Math.abs(ratio - 1) <= 0.001;
+    });
+    if (allConfirmed) {
+      console.log(`[AnnotPerf] All pages confirmed scale — removing remaining CSS transforms`);
+      syncfusionScaleConfirmPendingRef.current = false;
+      if (syncfusionScaleConfirmTimerRef.current) {
+        clearTimeout(syncfusionScaleConfirmTimerRef.current);
+        syncfusionScaleConfirmTimerRef.current = null;
+      }
+      resetSyncfusionOverlayTransformStyles();
+    }
   }, [resetSyncfusionOverlayTransformStyles]);
 
   const runSyncfusionCommitQueue = useCallback(() => {
@@ -10214,6 +10244,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionInteractionModeFlipCountRef.current = 0;
     setSyncfusionInteractionModeFlipCount(0);
     syncfusionInteractionReasonRef.current = reason;
+    syncfusionInteractionIsZoomOnlyRef.current = ZOOM_ONLY_INTERACTION_REASONS.has(reason);
     syncfusionInteractionUntilRef.current = Date.now() + holdMs;
     syncfusionInteractionStartViewerZoomRef.current = viewerScale;
     syncfusionInteractionPhaseRef.current = 'interacting';
@@ -10326,6 +10357,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       Date.now() + safeHoldMs
     );
     syncfusionInteractionReasonRef.current = reason;
+    // If a non-zoom reason arrives during an existing zoom-only session, escalate
+    if (syncfusionInteractionIsZoomOnlyRef.current && !ZOOM_ONLY_INTERACTION_REASONS.has(reason)) {
+      syncfusionInteractionIsZoomOnlyRef.current = false;
+    }
 
     if (syncfusionInteractionPhaseRef.current === 'committing') {
       clearSyncfusionCommitRaf();
@@ -23139,6 +23174,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     ) / 100
                   );
                   const useLiveStableOverlay = syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled;
+                  const isZoomOnlyInteraction = syncfusionInteractionIsZoomOnlyRef.current;
                   const shouldFreezeOverlayScale = useLiveStableOverlay && syncfusionInteractionPhase !== 'idle';
                   const shouldFreezePortalHost = useLiveStableOverlay && syncfusionInteractionPhase !== 'idle';
                   const useInteractionWindow = shouldFreezeOverlayScale;
@@ -23223,9 +23259,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       const interactionPageMode = syncfusionInteractionPageModes[pageNumber] || 'full';
                       const isProxyPageWhileInteracting = interactionPageMode === 'proxy';
                       const isProxyPageWhileCommitting = syncfusionCommittingProxyPages.has(pageNumber);
+                      // Show lightweight overlay during zoom-only interactions so annotations
+                      // remain visible while Syncfusion destroys/recreates page DOM.
+                      // applySyncfusionOverlayTransformSync already applies CSS transform:scale()
+                      // to the overlay content, providing GPU-accelerated smooth scaling.
+                      const shouldRenderLightweightForZoom = isZoomOnlyInteraction &&
+                        syncfusionInteractionPhase === 'interacting';
+
                       const shouldRenderLightweightAnnotations = useLiveStableOverlay && (
-                        (syncfusionInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
-                        (syncfusionInteractionPhase === 'committing' && isProxyPageWhileCommitting)
+                        shouldRenderLightweightForZoom ||
+                        (!isZoomOnlyInteraction && (
+                          (syncfusionInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
+                          (syncfusionInteractionPhase === 'committing' && isProxyPageWhileCommitting)
+                        ))
                       );
                       const pageAnnotationObjects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
                       const firstObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[0] : null;
@@ -23244,9 +23290,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       );
                       const isProxyReady = syncfusionProxyReadyPages.has(pageNumber);
                       const shouldHideFullLayer = (
-                        shouldRenderLightweightAnnotations &&
-                        proxyHasRenderablePayload &&
-                        isProxyReady
+                        shouldRenderLightweightForZoom ||
+                        (shouldRenderLightweightAnnotations &&
+                          proxyHasRenderablePayload &&
+                          isProxyReady)
                       );
 
                       return createPortal(
@@ -23360,6 +23407,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 pageClipboard={pageClipboardPayload}
                                 onPastePageHere={handlePastePageHere}
                                 isHidden={shouldHideFullLayer}
+                                isInteracting={syncfusionInteractionPhase === 'interacting'}
                                 onScaleApplied={handlePALScaleApplied}
                               />
                             </div>
