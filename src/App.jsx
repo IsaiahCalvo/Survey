@@ -286,26 +286,26 @@ const writeDocumentSyncStructuralDisabled = (disabled) => {
 };
 
 const readSyncfusionLiveStableOverlayEnabled = () => {
-  if (typeof window === 'undefined') return true;
+  if (typeof window === 'undefined') return false;
   try {
     const raw = window.localStorage.getItem('syncfusion_live_stable_overlay');
-    if (raw === null || raw === undefined) return true;
+    if (raw === null || raw === undefined) return false;
     const normalized = String(raw).trim().toLowerCase();
     return normalized !== '0' && normalized !== 'false' && normalized !== 'off';
   } catch {
-    return true;
+    return false;
   }
 };
 
 const readSyncfusionDualLayerEnabled = () => {
-  if (typeof window === 'undefined') return true;
+  if (typeof window === 'undefined') return false;
   try {
     const raw = window.localStorage.getItem(SYNCFUSION_DUAL_LAYER_ENABLED_KEY);
-    if (raw === null || raw === undefined) return true;
+    if (raw === null || raw === undefined) return false;
     const normalized = String(raw).trim().toLowerCase();
     return normalized !== '0' && normalized !== 'false' && normalized !== 'off';
   } catch {
-    return true;
+    return false;
   }
 };
 
