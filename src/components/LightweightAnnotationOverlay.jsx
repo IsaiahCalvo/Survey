@@ -80,6 +80,30 @@ const LightweightAnnotationOverlay = memo(({
         : (!isTransparentColor(object.fill) ? object.fill : 'rgba(255, 255, 255, 0.55)');
       const fill = !isTransparentColor(object.fill) ? object.fill : 'transparent';
 
+      // Detect object type for SVG rendering
+      const isPath = objectType === 'path' && Array.isArray(object.path) && object.path.length > 0;
+      const isLine = objectType === 'line';
+      const isGroup = objectType === 'group' && Array.isArray(object.objects) && object.objects.length > 0;
+      const lineChild = isGroup ? object.objects.find(o => o && (o.type === 'line' || o.type === 'polyline' || o.type === 'path')) : null;
+      const arrowHeadChild = isGroup ? object.objects.find(o => o && (o.name === 'arrowHead' || o.type === 'triangle')) : null;
+      const isArrow = isGroup && lineChild;
+
+      // Determine render type
+      let renderType = 'shape';
+      if (isPath) renderType = 'path';
+      else if (isLine) renderType = 'line';
+      else if (isArrow) renderType = 'arrow';
+
+      // Build type-specific data
+      let pathData = null;
+      if (isPath) {
+        pathData = object.path.map(seg => seg.join(' ')).join(' ');
+      }
+
+      // For path objects, capture object scaleX/scaleY for SVG transform
+      const objScaleX = toNumber(object.scaleX, 1);
+      const objScaleY = toNumber(object.scaleY, 1);
+
       previews.push({
         key: object.id || object.highlightId || object.pdfAnnotationId || `obj-${index}`,
         left: bounds.left,
@@ -96,7 +120,23 @@ const LightweightAnnotationOverlay = memo(({
         text: objectType === 'textbox' || objectType === 'i-text' || objectType === 'text'
           ? String(object.text || '')
           : '',
-        fontSizeBase: Math.max(9, toNumber(object.fontSize, 12))
+        fontSizeBase: Math.max(9, toNumber(object.fontSize, 12)),
+        // SVG rendering fields
+        renderType,
+        pathData,
+        objScaleX,
+        objScaleY,
+        // Line coordinates (for line objects)
+        x1: isLine ? toNumber(object.x1, 0) : 0,
+        y1: isLine ? toNumber(object.y1, 0) : 0,
+        x2: isLine ? toNumber(object.x2, 0) : 0,
+        y2: isLine ? toNumber(object.y2, 0) : 0,
+        // Arrow coordinates (from group's line child)
+        lineX1: isArrow ? toNumber(lineChild.x1, 0) : 0,
+        lineY1: isArrow ? toNumber(lineChild.y1, 0) : 0,
+        lineX2: isArrow ? toNumber(lineChild.x2, 0) : 0,
+        lineY2: isArrow ? toNumber(lineChild.y2, 0) : 0,
+        hasArrowHead: isArrow && !!arrowHeadChild
       });
     }
 
@@ -111,14 +151,35 @@ const LightweightAnnotationOverlay = memo(({
     showSurveyPanel
   ]);
 
-  const objectPreviews = useMemo(() => objectPreviewBase.map((preview) => ({
-    ...preview,
-    left: preview.left * safeScale,
-    top: preview.top * safeScale,
-    width: preview.width * safeScale,
-    height: preview.height * safeScale,
-    fontSize: Math.max(9, preview.fontSizeBase * safeScale * 0.92)
-  })), [objectPreviewBase, safeScale]);
+  const objectPreviews = useMemo(() => objectPreviewBase.map((preview) => {
+    const scaled = {
+      ...preview,
+      left: preview.left * safeScale,
+      top: preview.top * safeScale,
+      width: preview.width * safeScale,
+      height: preview.height * safeScale,
+      fontSize: Math.max(9, preview.fontSizeBase * safeScale * 0.92)
+    };
+
+    // Scale line coordinates (absolute endpoints)
+    if (preview.renderType === 'line') {
+      scaled.x1 = (preview.left + preview.x1) * safeScale;
+      scaled.y1 = (preview.top + preview.y1) * safeScale;
+      scaled.x2 = (preview.left + preview.x2) * safeScale;
+      scaled.y2 = (preview.top + preview.y2) * safeScale;
+    }
+
+    // Scale arrow line coordinates (group left/top + child coords)
+    if (preview.renderType === 'arrow') {
+      scaled.lineX1 = (preview.left + preview.lineX1) * safeScale;
+      scaled.lineY1 = (preview.top + preview.lineY1) * safeScale;
+      scaled.lineX2 = (preview.left + preview.lineX2) * safeScale;
+      scaled.lineY2 = (preview.top + preview.lineY2) * safeScale;
+    }
+
+    // Path coordinates are NOT scaled here -- SVG transform handles it
+    return scaled;
+  }), [objectPreviewBase, safeScale]);
 
   const calloutPreviewBase = useMemo(() => {
     const useProxyPayload = Array.isArray(proxyCallouts);
@@ -236,44 +297,146 @@ const LightweightAnnotationOverlay = memo(({
         contain: 'layout style paint'
       }}
     >
-      {objectPreviews.map((preview) => (
-        <div
-          key={preview.key}
-          style={{
-            position: 'absolute',
-            left: `${preview.left}px`,
-            top: `${preview.top}px`,
-            width: `${preview.width}px`,
-            height: `${preview.height}px`,
-            border: `${preview.strokeWidth}px solid ${preview.stroke}`,
-            borderRadius: preview.borderRadius,
-            background: preview.fill,
-            opacity: preview.opacity,
-            boxSizing: 'border-box',
-            transform: preview.angle ? `rotate(${preview.angle}deg)` : undefined,
-            transformOrigin: 'top left',
-            mixBlendMode: preview.blendMode
-          }}
-        >
-          {preview.text ? (
-            <span
+      {objectPreviews.map((preview) => {
+        // SVG path rendering for freehand/ink annotations
+        if (preview.renderType === 'path' && preview.pathData) {
+          return (
+            <svg
+              key={preview.key}
               style={{
-                display: 'inline-block',
-                maxWidth: '100%',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                fontSize: `${preview.fontSize}px`,
-                lineHeight: 1.2,
-                color: preview.stroke,
-                opacity: 0.92
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: overlayWidth,
+                height: overlayHeight,
+                pointerEvents: 'none',
+                overflow: 'visible'
               }}
             >
-              {preview.text}
-            </span>
-          ) : null}
-        </div>
-      ))}
+              <path
+                d={preview.pathData}
+                stroke={preview.stroke}
+                strokeWidth={preview.strokeWidth}
+                fill="none"
+                opacity={preview.opacity}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                transform={`translate(${preview.left}, ${preview.top}) scale(${preview.objScaleX * safeScale}, ${preview.objScaleY * safeScale})`}
+              />
+            </svg>
+          );
+        }
+
+        // SVG line rendering for line annotations
+        if (preview.renderType === 'line') {
+          return (
+            <svg
+              key={preview.key}
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: overlayWidth,
+                height: overlayHeight,
+                pointerEvents: 'none',
+                overflow: 'visible'
+              }}
+            >
+              <line
+                x1={preview.x1}
+                y1={preview.y1}
+                x2={preview.x2}
+                y2={preview.y2}
+                stroke={preview.stroke}
+                strokeWidth={preview.strokeWidth}
+                opacity={preview.opacity}
+                strokeLinecap="round"
+              />
+            </svg>
+          );
+        }
+
+        // SVG arrow rendering for arrow (group) annotations
+        if (preview.renderType === 'arrow') {
+          const dx = preview.lineX2 - preview.lineX1;
+          const dy = preview.lineY2 - preview.lineY1;
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+          const headSize = Math.max(6, preview.strokeWidth * 3);
+          return (
+            <svg
+              key={preview.key}
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: overlayWidth,
+                height: overlayHeight,
+                pointerEvents: 'none',
+                overflow: 'visible'
+              }}
+            >
+              <line
+                x1={preview.lineX1}
+                y1={preview.lineY1}
+                x2={preview.lineX2}
+                y2={preview.lineY2}
+                stroke={preview.stroke}
+                strokeWidth={preview.strokeWidth}
+                opacity={preview.opacity}
+                strokeLinecap="round"
+              />
+              {preview.hasArrowHead && (
+                <polygon
+                  points={`0,${-headSize / 2} ${headSize},0 0,${headSize / 2}`}
+                  fill={preview.stroke}
+                  opacity={preview.opacity}
+                  transform={`translate(${preview.lineX2},${preview.lineY2}) rotate(${angle})`}
+                />
+              )}
+            </svg>
+          );
+        }
+
+        // Default: div-based rendering for shapes, text, and other types
+        return (
+          <div
+            key={preview.key}
+            style={{
+              position: 'absolute',
+              left: `${preview.left}px`,
+              top: `${preview.top}px`,
+              width: `${preview.width}px`,
+              height: `${preview.height}px`,
+              border: `${preview.strokeWidth}px solid ${preview.stroke}`,
+              borderRadius: preview.borderRadius,
+              background: preview.fill,
+              opacity: preview.opacity,
+              boxSizing: 'border-box',
+              transform: preview.angle ? `rotate(${preview.angle}deg)` : undefined,
+              transformOrigin: 'top left',
+              mixBlendMode: preview.blendMode
+            }}
+          >
+            {preview.text ? (
+              <span
+                style={{
+                  display: 'inline-block',
+                  maxWidth: '100%',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  fontSize: `${preview.fontSize}px`,
+                  lineHeight: 1.2,
+                  color: preview.stroke,
+                  opacity: 0.92
+                }}
+              >
+                {preview.text}
+              </span>
+            ) : null}
+          </div>
+        );
+      })}
 
       {calloutPreviews.length > 0 ? (
         <svg
