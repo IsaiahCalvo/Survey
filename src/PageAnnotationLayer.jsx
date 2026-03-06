@@ -3100,11 +3100,18 @@ const PageAnnotationLayer = memo(({
   pageClipboard = null, // { pageNumber, type: 'cut' | 'copy' } | null
   onPastePageHere = () => { },
   isHidden = false,
+  isInteracting = false,
+  isZooming = false,
   onScaleApplied = null,
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
   const scaleUpdateFrameRef = useRef(null);
+  const zoomSettleTimerRef = useRef(null);
+  const inZoomModeRef = useRef(false);
+  const isInteractingRef = useRef(isInteracting);
+  isInteractingRef.current = isInteracting;
+  const pendingScaleRef = useRef(null);
   const processedHighlightsRef = useRef(new Set());
   const isInitializedRef = useRef(false);
   const drawingStateRef = useRef({ isDrawingShape: false, startX: 0, startY: 0, tempObj: null });
@@ -7620,6 +7627,14 @@ const PageAnnotationLayer = memo(({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       isInitializedRef.current = false;
+      if (zoomSettleTimerRef.current) {
+        clearTimeout(zoomSettleTimerRef.current);
+        zoomSettleTimerRef.current = null;
+      }
+      if (scaleUpdateFrameRef.current) {
+        cancelAnimationFrame(scaleUpdateFrameRef.current);
+        scaleUpdateFrameRef.current = null;
+      }
       if (fabricRef.current) {
         fabricRef.current.off();
         try {
@@ -7633,10 +7648,123 @@ const PageAnnotationLayer = memo(({
   }, [pageNumber, width, height]);
 
   // Keep annotation canvas scale tightly aligned with page render scale.
+  // During active zoom interaction, defer the expensive Fabric.js resize/re-render
+  // and let the parent CSS transform handle visual scaling (like Adobe Acrobat).
+  //
+  // Architecture:
+  //   inZoomModeRef is a latch: once zoom starts, we NEVER do an expensive
+  //   canvas resize until the settle timer fires AND completes. This prevents
+  //   the 500ms+ renderAll from blanking the canvas mid-zoom, even when
+  //   isZooming briefly flickers false between scroll-wheel events.
   useEffect(() => {
     if (isHidden) return;
     if (!fabricRef.current || !width || !height) return;
+
+    if (isInteracting) {
+      pendingScaleRef.current = scale;
+      return;
+    }
+
     const canvas = fabricRef.current;
+    const currentZoom = canvas.getZoom();
+    const scaleJump = Math.abs(scale - currentZoom);
+
+    // Enter zoom mode on any zoom signal or large scale jump.
+    // Once latched, only the settle timer callback clears it.
+    if (isZooming || scaleJump > 0.01) {
+      inZoomModeRef.current = true;
+    }
+
+    // ── CSS transform path (zoom mode active) ──
+    if (inZoomModeRef.current) {
+      pendingScaleRef.current = scale;
+
+      // GPU-accelerated visual scaling via CSS transform
+      const fabricContainer = canvas.wrapperEl;
+      if (fabricContainer && scaleJump > 0.001) {
+        const ratio = scale / currentZoom;
+        fabricContainer.style.transform = `scale(${ratio})`;
+        fabricContainer.style.transformOrigin = 'top left';
+        fabricContainer.style.outline = '2px solid red'; // DEBUG: visible when CSS transform active
+      }
+
+      // Cancel any pending resize rAF (zoom resumed before it fired)
+      if (scaleUpdateFrameRef.current) {
+        cancelAnimationFrame(scaleUpdateFrameRef.current);
+        scaleUpdateFrameRef.current = null;
+      }
+
+      // (Re)start settle timer. Fires only after 500ms of no scale changes.
+      if (zoomSettleTimerRef.current) {
+        clearTimeout(zoomSettleTimerRef.current);
+      }
+      zoomSettleTimerRef.current = setTimeout(() => {
+        zoomSettleTimerRef.current = null;
+        const c = fabricRef.current;
+        if (!c) return;
+        const finalScale = pendingScaleRef.current ?? scale;
+        pendingScaleRef.current = null;
+        const tw = Math.floor(width * finalScale);
+        const th = Math.floor(height * finalScale);
+
+        scaleUpdateFrameRef.current = requestAnimationFrame(() => {
+          // Snapshot the current canvas into a temp overlay so the user
+          // never sees a blank frame while setWidth/setHeight clears the
+          // pixel buffer and renderAll repaints.
+          const lowerCanvas = c.lowerCanvasEl;
+          let snapshot = null;
+          if (lowerCanvas && lowerCanvas.width > 0 && lowerCanvas.height > 0 && c.wrapperEl) {
+            snapshot = document.createElement('canvas');
+            snapshot.width = lowerCanvas.width;
+            snapshot.height = lowerCanvas.height;
+            const ctx = snapshot.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(lowerCanvas, 0, 0);
+              snapshot.style.cssText = [
+                'position:absolute;top:0;left:0;pointer-events:none;z-index:9999',
+                `width:${lowerCanvas.style.width}`,
+                `height:${lowerCanvas.style.height}`,
+                c.wrapperEl.style.transform ? `transform:${c.wrapperEl.style.transform}` : '',
+                c.wrapperEl.style.transformOrigin ? `transform-origin:${c.wrapperEl.style.transformOrigin}` : '',
+              ].filter(Boolean).join(';');
+              c.wrapperEl.appendChild(snapshot);
+            } else {
+              snapshot = null;
+            }
+          }
+
+          // Now resize — canvas blanks but snapshot covers it
+          if (c.wrapperEl) c.wrapperEl.style.transform = '';
+          c.setWidth(tw);
+          c.setHeight(th);
+          c.setZoom(finalScale);
+          c.renderAll();
+
+          // Remove snapshot — new content is painted underneath
+          if (snapshot && snapshot.parentNode) {
+            snapshot.parentNode.removeChild(snapshot);
+          }
+          if (c.wrapperEl) c.wrapperEl.style.outline = ''; // DEBUG: clear
+
+          inZoomModeRef.current = false;
+
+          if (typeof onScaleApplied === 'function') {
+            onScaleApplied(pageNumber, finalScale);
+          }
+          scaleUpdateFrameRef.current = null;
+        });
+      }, 500);
+
+      return;
+    }
+
+    // ── Direct resize path (no zoom in progress) ──
+    pendingScaleRef.current = null;
+
+    if (zoomSettleTimerRef.current) {
+      clearTimeout(zoomSettleTimerRef.current);
+      zoomSettleTimerRef.current = null;
+    }
 
     if (scaleUpdateFrameRef.current) {
       cancelAnimationFrame(scaleUpdateFrameRef.current);
@@ -7646,9 +7774,13 @@ const PageAnnotationLayer = memo(({
     scaleUpdateFrameRef.current = requestAnimationFrame(() => {
       const targetWidth = Math.floor(width * scale);
       const targetHeight = Math.floor(height * scale);
-      const currentZoom = canvas.getZoom();
+      const canvasZoom = canvas.getZoom();
       const needsResize = canvas.getWidth() !== targetWidth || canvas.getHeight() !== targetHeight;
-      const needsZoom = Math.abs(currentZoom - scale) > 0.0001;
+      const needsZoom = Math.abs(canvasZoom - scale) > 0.0001;
+
+      if (canvas.wrapperEl) {
+        canvas.wrapperEl.style.transform = '';
+      }
 
       if (needsResize) {
         canvas.setWidth(targetWidth);
@@ -7660,17 +7792,13 @@ const PageAnnotationLayer = memo(({
       }
 
       if (needsResize || needsZoom) {
-        // Wait for Fabric.js to actually paint before confirming.
-        // requestRenderAll() only schedules a render — the canvas hasn't
-        // painted yet, so removing CSS transforms now would cause a 1-frame flash.
         canvas.once('after:render', () => {
           if (typeof onScaleApplied === 'function') {
             onScaleApplied(pageNumber, scale);
           }
         });
-        canvas.requestRenderAll();
+        canvas.renderAll();
       } else {
-        // Canvas is already at the correct scale — safe to confirm immediately.
         if (typeof onScaleApplied === 'function') {
           onScaleApplied(pageNumber, scale);
         }
@@ -7685,7 +7813,7 @@ const PageAnnotationLayer = memo(({
         scaleUpdateFrameRef.current = null;
       }
     };
-  }, [scale, width, height, isHidden, onScaleApplied, pageNumber]);
+  }, [scale, width, height, isHidden, isInteracting, isZooming, onScaleApplied, pageNumber]);
 
   // Handle drawing mode changes
   useEffect(() => {
@@ -9375,7 +9503,7 @@ const PageAnnotationLayer = memo(({
     prevProps.pageNumber === nextProps.pageNumber &&
     prevProps.width === nextProps.width &&
     prevProps.height === nextProps.height &&
-    Math.abs(prevProps.scale - nextProps.scale) < 0.01 && // Only re-render on significant scale change
+    (nextProps.isInteracting || Math.abs(prevProps.scale - nextProps.scale) < 0.01) && // Skip scale re-render during interaction; otherwise only on significant change
     prevProps.canvasTopPadding === nextProps.canvasTopPadding &&
     prevProps.tool === nextProps.tool &&
     prevProps.strokeColor === nextProps.strokeColor &&
@@ -9398,6 +9526,8 @@ const PageAnnotationLayer = memo(({
     prevProps.callouts === nextProps.callouts &&
     prevProps.selectedCalloutId === nextProps.selectedCalloutId &&
     prevProps.isHidden === nextProps.isHidden &&
+    prevProps.isInteracting === nextProps.isInteracting &&
+    prevProps.isZooming === nextProps.isZooming &&
     prevProps.onScaleApplied === nextProps.onScaleApplied
   );
 });
