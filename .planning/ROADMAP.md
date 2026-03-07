@@ -41,11 +41,11 @@ Plans:
   1. User zooms on a specific annotation and it stays aligned with the PDF content beneath it throughout the zoom -- no drift or positional glitch
   2. Zoom expands/contracts from cursor position (cursor-centered zoom), matching Adobe Acrobat behavior
   3. Transform-origin of the annotation layer matches Syncfusion's page zoom anchor across all zoom methods (pinch, toolbar, Ctrl+scroll)
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md -- Replace hardcoded transform-origin with per-page cursor-relative origin in overlay transform functions
+- [ ] 02-02-PLAN.md -- Cursor-centered zoom polish: viewport-center toolbar anchor, scroll verification, debug alignment crosshairs
 
 ### Phase 3: Flicker-Free Transitions
 **Goal**: The transition from CSS-transformed preview to crisp canvas re-render happens with zero visible artifacts
@@ -80,6 +80,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. CSS Transform Scaling | 0/2 | Planning complete | - |
-| 2. Positional Accuracy | 0/? | Not started | - |
+| 2. Positional Accuracy | 0/2 | Planning complete | - |
 | 3. Flicker-Free Transitions | 0/? | Not started | - |
 | 4. Scale Caching | 0/? | Not started | - |
