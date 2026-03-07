@@ -8999,6 +8999,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const deferredExcelCheckTimerRef = useRef(null);
   const syncfusionOverlayLayerRefs = useRef({});
   const syncfusionOverlayContentRefs = useRef({});
+  // Lightweight zoom CSS transform state (bypasses React for perf)
+  const zoomOverlayTransformActiveRef = useRef(false);
+  const zoomOverlayBaseScaleRef = useRef(1);
+  const zoomOverlaySettleTimerRef = useRef(null);
   const overlayLagRecorderRef = useRef({
     active: false,
     mode: null,
@@ -9114,7 +9118,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Zoom state for coordinated CSS transform zoom (keeps canvas and annotations in sync)
   // Using technique from Mozilla pdf.js and Adobe Acrobat for smooth cursor-centered zoom
-  const { renderedScale, zoomStyle, setAnchor } = useZoomState(scale);
+  const { renderedScale, cssScale, isZooming, zoomStyle, setAnchor } = useZoomState(scale);
   const [scrollMode, setScrollMode] = useState('continuous');
   const useSyncfusionRenderer = true;
   const [isPanning, setIsPanning] = useState(false);
@@ -10047,6 +10051,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   ]);
 
   const handlePALScaleApplied = useCallback((pageNumber, appliedScale) => {
+    // Remove lightweight zoom CSS transform for this page — canvas is now painted at final scale
+    if (zoomOverlayTransformActiveRef.current) {
+      const node = syncfusionOverlayContentRefs.current?.[pageNumber];
+      if (node && node.isConnected && node.style) {
+        node.style.transform = '';
+        node.style.transformOrigin = '';
+      }
+    }
+
     if (!syncfusionScaleConfirmPendingRef.current) return;
     // Remove CSS transform for this specific page immediately — its Fabric canvas is painted.
     const node = syncfusionOverlayContentRefs.current?.[pageNumber];
@@ -11376,9 +11389,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     const freezeContainerIdentity =
-      syncfusionLiveStableOverlayEnabled &&
-      syncfusionDualLayerEnabled &&
-      syncfusionInteractionPhaseRef.current !== 'idle';
+      (syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled &&
+        syncfusionInteractionPhaseRef.current !== 'idle') ||
+      (syncfusionInteractionIsZoomOnlyRef.current &&
+        syncfusionInteractionPhaseRef.current !== 'idle');
     if (freezeContainerIdentity) {
       const stableMap = syncfusionPageContainersStateRef.current || {};
       const residentPages = Array.from(syncfusionInteractionResidentPagesRef.current || []);
@@ -11595,6 +11609,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       100
     );
     const nextScale = clampScale(rawZoomValue / 100);
+    const prevScale = scaleRef.current;
     scaleRef.current = nextScale;
     const shouldDeferScaleCommit =
       useSyncfusionRenderer &&
@@ -11619,6 +11634,53 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     markInteractionPerfActive('syncfusion-zoom-change', INTERACTION_PERF_SCROLL_HOLD_MS);
     markSyncfusionInteractionActive('syncfusion-zoom-change');
     queueSyncfusionOverlayTransformSync(true);
+
+    // ── Lightweight synchronous CSS transform for overlay during zoom ──
+    // Apply CSS transform to overlay content divs immediately (no React cycle).
+    // This keeps annotations visually aligned with the page during zoom,
+    // even when Syncfusion's re-render blocks the main thread.
+    if (!zoomOverlayTransformActiveRef.current) {
+      // First zoom event: capture the PRE-zoom scale (what canvas is rendered at)
+      zoomOverlayBaseScaleRef.current = prevScale;
+      zoomOverlayTransformActiveRef.current = true;
+    }
+    const baseScale = zoomOverlayBaseScaleRef.current;
+    if (baseScale > 0) {
+      const ratio = nextScale / baseScale;
+      const overlayRefs = syncfusionOverlayContentRefs.current;
+      if (overlayRefs) {
+        const keys = Object.keys(overlayRefs);
+        for (let i = 0; i < keys.length; i++) {
+          const node = overlayRefs[keys[i]];
+          if (node && node.isConnected) {
+            node.style.transform = `scale(${ratio})`;
+            node.style.transformOrigin = 'top left';
+          }
+        }
+      }
+    }
+    // (Re)start safety settle timer — PAL's onScaleApplied is the primary cleanup,
+    // this is a fallback if PAL never confirms (e.g., error, hidden page).
+    if (zoomOverlaySettleTimerRef.current) {
+      clearTimeout(zoomOverlaySettleTimerRef.current);
+    }
+    zoomOverlaySettleTimerRef.current = setTimeout(() => {
+      zoomOverlaySettleTimerRef.current = null;
+      zoomOverlayTransformActiveRef.current = false;
+      zoomOverlayBaseScaleRef.current = 1;
+      // Safety: remove CSS transforms from overlay content divs
+      const overlayRefs = syncfusionOverlayContentRefs.current;
+      if (overlayRefs) {
+        const keys = Object.keys(overlayRefs);
+        for (let i = 0; i < keys.length; i++) {
+          const node = overlayRefs[keys[i]];
+          if (node && node.isConnected) {
+            node.style.transform = '';
+            node.style.transformOrigin = '';
+          }
+        }
+      }
+    }, 1000);
   }, [
     bumpOverlayLagEventTotal,
     markInteractionPerfActive,
@@ -23175,8 +23237,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   );
                   const useLiveStableOverlay = syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled;
                   const isZoomOnlyInteraction = syncfusionInteractionIsZoomOnlyRef.current;
-                  const shouldFreezeOverlayScale = useLiveStableOverlay && syncfusionInteractionPhase !== 'idle';
-                  const shouldFreezePortalHost = useLiveStableOverlay && syncfusionInteractionPhase !== 'idle';
+                  const isInInteraction = syncfusionInteractionPhase !== 'idle';
+                  const shouldFreezeOverlayScale = useLiveStableOverlay && isInInteraction;
+                  // Freeze portal hosts during zoom-only interactions even without liveStableOverlay.
+                  // Prevents PAL unmount/remount when Syncfusion replaces page DOM nodes during zoom.
+                  const shouldFreezePortalHost = (useLiveStableOverlay || isZoomOnlyInteraction) && isInInteraction;
                   const useInteractionWindow = shouldFreezeOverlayScale;
                   const interactionWindowSet = new Set();
                   if (useInteractionWindow) {
@@ -23259,19 +23324,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       const interactionPageMode = syncfusionInteractionPageModes[pageNumber] || 'full';
                       const isProxyPageWhileInteracting = interactionPageMode === 'proxy';
                       const isProxyPageWhileCommitting = syncfusionCommittingProxyPages.has(pageNumber);
-                      // Show lightweight overlay during zoom-only interactions so annotations
-                      // remain visible while Syncfusion destroys/recreates page DOM.
-                      // applySyncfusionOverlayTransformSync already applies CSS transform:scale()
-                      // to the overlay content, providing GPU-accelerated smooth scaling.
-                      const shouldRenderLightweightForZoom = isZoomOnlyInteraction &&
-                        syncfusionInteractionPhase === 'interacting';
-
-                      const shouldRenderLightweightAnnotations = useLiveStableOverlay && (
-                        shouldRenderLightweightForZoom ||
-                        (!isZoomOnlyInteraction && (
-                          (syncfusionInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
-                          (syncfusionInteractionPhase === 'committing' && isProxyPageWhileCommitting)
-                        ))
+                      const shouldRenderLightweightAnnotations = useLiveStableOverlay && !isZoomOnlyInteraction && (
+                        (syncfusionInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
+                        (syncfusionInteractionPhase === 'committing' && isProxyPageWhileCommitting)
                       );
                       const pageAnnotationObjects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
                       const firstObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[0] : null;
@@ -23290,10 +23345,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       );
                       const isProxyReady = syncfusionProxyReadyPages.has(pageNumber);
                       const shouldHideFullLayer = (
-                        shouldRenderLightweightForZoom ||
-                        (shouldRenderLightweightAnnotations &&
+                        shouldRenderLightweightAnnotations &&
                           proxyHasRenderablePayload &&
-                          isProxyReady)
+                          isProxyReady
                       );
 
                       return createPortal(
@@ -23408,6 +23462,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onPastePageHere={handlePastePageHere}
                                 isHidden={shouldHideFullLayer}
                                 isInteracting={syncfusionInteractionPhase === 'interacting'}
+                                isZooming={isZooming}
                                 onScaleApplied={handlePALScaleApplied}
                               />
                             </div>

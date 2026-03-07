@@ -3045,6 +3045,38 @@ const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIG
   return trimmed;
 };
 
+// ── Staggered zoom resize queue ──
+// Shared across all PAL instances. When zoom settles, each PAL enqueues its
+// resize. The queue drains one resize per double-rAF (two animation frames),
+// ensuring the browser paints the CSS-scaled state before each expensive
+// Fabric.js renderAll blocks the main thread.
+const _zoomResizeQueue = [];
+let _zoomResizeProcessing = false;
+
+function enqueueZoomResize(callback) {
+  _zoomResizeQueue.push(callback);
+  if (!_zoomResizeProcessing) {
+    _zoomResizeProcessing = true;
+    _drainZoomResizeQueue();
+  }
+}
+
+function _drainZoomResizeQueue() {
+  if (_zoomResizeQueue.length === 0) {
+    _zoomResizeProcessing = false;
+    return;
+  }
+  // Double-rAF: first rAF lets browser composite CSS-scaled state,
+  // second rAF runs the heavy Fabric.js render.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const next = _zoomResizeQueue.shift();
+      if (next) next();
+      _drainZoomResizeQueue();
+    });
+  });
+}
+
 const PageAnnotationLayer = memo(({
   pageNumber,
   width,
@@ -3109,9 +3141,13 @@ const PageAnnotationLayer = memo(({
   const scaleUpdateFrameRef = useRef(null);
   const zoomSettleTimerRef = useRef(null);
   const inZoomModeRef = useRef(false);
+  const isZoomingRef = useRef(isZooming);
+  isZoomingRef.current = isZooming;
   const isInteractingRef = useRef(isInteracting);
   isInteractingRef.current = isInteracting;
   const pendingScaleRef = useRef(null);
+  const deferredZoomScaleRef = useRef(null);
+  const viewportObserverRef = useRef(null);
   const processedHighlightsRef = useRef(new Set());
   const isInitializedRef = useRef(false);
   const drawingStateRef = useRef({ isDrawingShape: false, startX: 0, startY: 0, tempObj: null });
@@ -7660,14 +7696,16 @@ const PageAnnotationLayer = memo(({
     if (isHidden) return;
     if (!fabricRef.current || !width || !height) return;
 
+    const canvas = fabricRef.current;
+    const currentZoom = canvas.getZoom();
+    const scaleJump = Math.abs(scale - currentZoom);
+
+    // During interactions (scroll, zoom, drag), defer expensive canvas operations.
+    // App-level CSS transform on overlay content div handles visual scaling.
     if (isInteracting) {
       pendingScaleRef.current = scale;
       return;
     }
-
-    const canvas = fabricRef.current;
-    const currentZoom = canvas.getZoom();
-    const scaleJump = Math.abs(scale - currentZoom);
 
     // Enter zoom mode on any zoom signal or large scale jump.
     // Once latched, only the settle timer callback clears it.
@@ -7675,18 +7713,17 @@ const PageAnnotationLayer = memo(({
       inZoomModeRef.current = true;
     }
 
-    // ── CSS transform path (zoom mode active) ──
+    // ── Deferred resize path (zoom mode active) ──
+    // App-level CSS transform handles visual scaling during zoom.
+    // PAL only defers the expensive canvas resize until zoom settles.
     if (inZoomModeRef.current) {
+      const prevPending = pendingScaleRef.current;
       pendingScaleRef.current = scale;
 
-      // GPU-accelerated visual scaling via CSS transform
-      const fabricContainer = canvas.wrapperEl;
-      if (fabricContainer && scaleJump > 0.001) {
-        const ratio = scale / currentZoom;
-        fabricContainer.style.transform = `scale(${ratio})`;
-        fabricContainer.style.transformOrigin = 'top left';
-        fabricContainer.style.outline = '2px solid red'; // DEBUG: visible when CSS transform active
-      }
+      // Only reset settle timer if scale actually changed (avoids spurious
+      // resets from isZooming prop transitions that don't change scale).
+      const scaleActuallyChanged = prevPending === null || Math.abs(scale - prevPending) > 0.001;
+      if (!scaleActuallyChanged) return;
 
       // Cancel any pending resize rAF (zoom resumed before it fired)
       if (scaleUpdateFrameRef.current) {
@@ -7694,11 +7731,27 @@ const PageAnnotationLayer = memo(({
         scaleUpdateFrameRef.current = null;
       }
 
-      // (Re)start settle timer. Fires only after 500ms of no scale changes.
+      // Cancel any pending viewport observer or deferred timer (new zoom invalidates them)
+      if (viewportObserverRef.current) {
+        viewportObserverRef.current.disconnect();
+        viewportObserverRef.current = null;
+      }
+      if (deferredZoomScaleRef.current?._timerId) {
+        clearTimeout(deferredZoomScaleRef.current._timerId);
+      }
+      deferredZoomScaleRef.current = null;
+
+      // (Re)start settle timer. Fires only after 300ms of no scale changes.
       if (zoomSettleTimerRef.current) {
         clearTimeout(zoomSettleTimerRef.current);
       }
-      zoomSettleTimerRef.current = setTimeout(() => {
+      const settleCallback = () => {
+        // If zoom is still active (e.g. slow scroll-out with >300ms gaps),
+        // defer the expensive resize — restart the timer instead.
+        if (isZoomingRef.current) {
+          zoomSettleTimerRef.current = setTimeout(settleCallback, 300);
+          return;
+        }
         zoomSettleTimerRef.current = null;
         const c = fabricRef.current;
         if (!c) return;
@@ -7707,59 +7760,107 @@ const PageAnnotationLayer = memo(({
         const tw = Math.floor(width * finalScale);
         const th = Math.floor(height * finalScale);
 
-        scaleUpdateFrameRef.current = requestAnimationFrame(() => {
-          // Snapshot the current canvas into a temp overlay so the user
-          // never sees a blank frame while setWidth/setHeight clears the
-          // pixel buffer and renderAll repaints.
-          const lowerCanvas = c.lowerCanvasEl;
-          let snapshot = null;
-          if (lowerCanvas && lowerCanvas.width > 0 && lowerCanvas.height > 0 && c.wrapperEl) {
-            snapshot = document.createElement('canvas');
-            snapshot.width = lowerCanvas.width;
-            snapshot.height = lowerCanvas.height;
-            const ctx = snapshot.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(lowerCanvas, 0, 0);
-              snapshot.style.cssText = [
-                'position:absolute;top:0;left:0;pointer-events:none;z-index:9999',
-                `width:${lowerCanvas.style.width}`,
-                `height:${lowerCanvas.style.height}`,
-                c.wrapperEl.style.transform ? `transform:${c.wrapperEl.style.transform}` : '',
-                c.wrapperEl.style.transformOrigin ? `transform-origin:${c.wrapperEl.style.transformOrigin}` : '',
-              ].filter(Boolean).join(';');
-              c.wrapperEl.appendChild(snapshot);
-            } else {
-              snapshot = null;
-            }
+        // Clear zoom latch before enqueueing. If a new zoom starts before
+        // the queued callback runs, it will re-latch inZoomModeRef.
+        inZoomModeRef.current = false;
+
+        const wrapperEl = c.wrapperEl;
+
+        // Classify page priority:
+        // - Center page (contains viewport center): immediate Fabric render
+        // - Visible but not center: CSS-scale now, delayed Fabric render
+        // - Off-screen: CSS-scale now, render when scrolled into view
+        let isCenterPage = false;
+        let isVisible = false;
+        if (wrapperEl) {
+          const rect = wrapperEl.getBoundingClientRect();
+          isVisible = rect.bottom > 0 && rect.top < window.innerHeight;
+          if (isVisible) {
+            const vcY = window.innerHeight / 2;
+            isCenterPage = rect.top <= vcY && rect.bottom >= vcY;
           }
+        }
 
-          // Now resize — canvas blanks but snapshot covers it
-          if (c.wrapperEl) c.wrapperEl.style.transform = '';
-          c.setWidth(tw);
-          c.setHeight(th);
-          c.setZoom(finalScale);
-          c.renderAll();
+        // Apply CSS scale to canvas wrapper for all pages.
+        // This provides instant visual feedback while Fabric renders are deferred.
+        const currentZoom = c.getZoom();
+        if (wrapperEl && currentZoom > 0) {
+          const ratio = finalScale / currentZoom;
+          wrapperEl.style.transform = `scale(${ratio})`;
+          wrapperEl.style.transformOrigin = 'top left';
+        }
 
-          // Remove snapshot — new content is painted underneath
-          if (snapshot && snapshot.parentNode) {
-            snapshot.parentNode.removeChild(snapshot);
+        // Helper: perform the expensive Fabric.js resize + render
+        const doFabricRender = () => {
+          if (inZoomModeRef.current) return;
+          const fc = fabricRef.current;
+          if (!fc) return;
+          deferredZoomScaleRef.current = null;
+          if (fc.wrapperEl) {
+            fc.wrapperEl.style.transform = '';
+            fc.wrapperEl.style.transformOrigin = '';
           }
-          if (c.wrapperEl) c.wrapperEl.style.outline = ''; // DEBUG: clear
-
-          inZoomModeRef.current = false;
-
+          fc.setWidth(tw);
+          fc.setHeight(th);
+          fc.setZoom(finalScale);
+          fc.renderAll();
           if (typeof onScaleApplied === 'function') {
             onScaleApplied(pageNumber, finalScale);
           }
-          scaleUpdateFrameRef.current = null;
-        });
-      }, 500);
+        };
+
+        if (isCenterPage) {
+          // ── Tier 1: Center page — immediate render via stagger queue ──
+          enqueueZoomResize(doFabricRender);
+        } else if (isVisible) {
+          // ── Tier 2: Visible non-center — delayed render ──
+          // Let center page finish first, then render during idle.
+          deferredZoomScaleRef.current = { tw, th, finalScale };
+          if (typeof onScaleApplied === 'function') {
+            onScaleApplied(pageNumber, finalScale);
+          }
+          const deferTimerId = setTimeout(() => {
+            if (inZoomModeRef.current) return;
+            if (!deferredZoomScaleRef.current) return;
+            enqueueZoomResize(doFabricRender);
+          }, 800);
+          // Store timer so it can be cleaned up if new zoom starts
+          if (!deferredZoomScaleRef.current) deferredZoomScaleRef.current = { tw, th, finalScale };
+          deferredZoomScaleRef.current._timerId = deferTimerId;
+        } else {
+          // ── Tier 3: Off-screen — render when scrolled into view ──
+          deferredZoomScaleRef.current = { tw, th, finalScale };
+          if (typeof onScaleApplied === 'function') {
+            onScaleApplied(pageNumber, finalScale);
+          }
+          if (viewportObserverRef.current) viewportObserverRef.current.disconnect();
+          viewportObserverRef.current = new IntersectionObserver((entries) => {
+            if (!entries[0]?.isIntersecting) return;
+            viewportObserverRef.current.disconnect();
+            viewportObserverRef.current = null;
+            if (!deferredZoomScaleRef.current) return;
+            enqueueZoomResize(doFabricRender);
+          }, { threshold: 0 });
+          viewportObserverRef.current.observe(wrapperEl);
+        }
+      };
+      zoomSettleTimerRef.current = setTimeout(settleCallback, 300);
 
       return;
     }
 
     // ── Direct resize path (no zoom in progress) ──
     pendingScaleRef.current = null;
+
+    // Clear any deferred viewport rendering from a previous zoom
+    if (viewportObserverRef.current) {
+      viewportObserverRef.current.disconnect();
+      viewportObserverRef.current = null;
+    }
+    if (deferredZoomScaleRef.current?._timerId) {
+      clearTimeout(deferredZoomScaleRef.current._timerId);
+    }
+    deferredZoomScaleRef.current = null;
 
     if (zoomSettleTimerRef.current) {
       clearTimeout(zoomSettleTimerRef.current);
@@ -8609,6 +8710,13 @@ const PageAnnotationLayer = memo(({
     // Cleanup on unmount
     return () => {
       document.removeEventListener('keydown', handleKeyDown, { capture: true });
+      if (viewportObserverRef.current) {
+        viewportObserverRef.current.disconnect();
+        viewportObserverRef.current = null;
+      }
+      if (deferredZoomScaleRef.current?._timerId) {
+        clearTimeout(deferredZoomScaleRef.current._timerId);
+      }
     };
   }, [pageNumber, onSaveAnnotations]);
 
