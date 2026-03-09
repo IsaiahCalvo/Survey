@@ -9003,6 +9003,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const zoomOverlayTransformActiveRef = useRef(false);
   const zoomOverlayBaseScaleRef = useRef(1);
   const zoomOverlaySettleTimerRef = useRef(null);
+  const zoomOverlayMethodRef = useRef(null);       // 'ctrl-wheel' | 'toolbar' | null
+  const zoomOverlayGestureIdRef = useRef(0);
   const overlayLagRecorderRef = useRef({
     active: false,
     mode: null,
@@ -10029,6 +10031,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         syncfusionScaleConfirmPendingRef.current = false;
         zoomOverlayTransformActiveRef.current = false;
         zoomOverlayBaseScaleRef.current = 1;
+        zoomOverlayMethodRef.current = null;
         resetSyncfusionOverlayTransformStyles();
       }
     }, 800);
@@ -10088,6 +10091,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       syncfusionScaleConfirmPendingRef.current = false;
       zoomOverlayTransformActiveRef.current = false;
       zoomOverlayBaseScaleRef.current = 1;
+      zoomOverlayMethodRef.current = null;
       if (syncfusionScaleConfirmTimerRef.current) {
         clearTimeout(syncfusionScaleConfirmTimerRef.current);
         syncfusionScaleConfirmTimerRef.current = null;
@@ -11027,6 +11031,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Intercept pinch-to-zoom (which sends Ctrl+Wheel events on many browsers)
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
+        zoomOverlayMethodRef.current = 'ctrl-wheel';
         queueInteractionMark('wheel-zoom', 'syncfusion-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
 
         const containerRect = viewerContainer.getBoundingClientRect();
@@ -11647,6 +11652,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // First zoom event: capture the PRE-zoom scale (what canvas is rendered at)
       zoomOverlayBaseScaleRef.current = prevScale;
       zoomOverlayTransformActiveRef.current = true;
+      zoomOverlayGestureIdRef.current += 1;
+      // If no method was set by a specific initiator (e.g. wheel handler), default to toolbar
+      if (!zoomOverlayMethodRef.current) {
+        zoomOverlayMethodRef.current = 'toolbar';
+      }
     }
     const baseScale = zoomOverlayBaseScaleRef.current;
     if (baseScale > 0) {
@@ -11679,6 +11689,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       zoomOverlayTransformActiveRef.current = false;
       zoomOverlayBaseScaleRef.current = 1;
+      zoomOverlayMethodRef.current = null;
       // Safety: remove CSS transforms from overlay content divs
       const overlayRefs = syncfusionOverlayContentRefs.current;
       if (overlayRefs) {
@@ -12371,7 +12382,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const longTaskCounts = samples.map((sample) => sample.longTaskCount).filter((value) => Number.isFinite(value) && value >= 0);
     const longTaskTotals = samples.map((sample) => sample.longTaskTotalMs).filter((value) => Number.isFinite(value) && value >= 0);
     const eventTimingTotals = samples.map((sample) => sample.eventTimingTotalMs).filter((value) => Number.isFinite(value) && value >= 0);
+    const hiddenOverlayCounts = samples.map((sample) => sample.hiddenOverlayCount).filter((value) => Number.isFinite(value) && value >= 0);
+    const untransformedDuringZoomCounts = samples.map((sample) => sample.untransformedDuringZoomCount).filter((value) => Number.isFinite(value) && value >= 0);
     const samplesWithMissingOverlay = missingOverlayCounts.filter((count) => count > 0).length;
+    const samplesWithHiddenOverlay = hiddenOverlayCounts.filter((count) => count > 0).length;
+    const samplesWithUntransformedDuringZoom = untransformedDuringZoomCounts.filter((count) => count > 0).length;
+    const zoomActiveSamples = samples.filter((sample) => sample.zoomOverlayTransformActive === true);
     const jankThresholdMs = 32;
     const jankFrames = frameDurations.filter((frameMs) => frameMs > jankThresholdMs).length;
     const samplesWithLongTasks = longTaskCounts.filter((count) => count > 0).length;
@@ -12435,6 +12451,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       samplesWithMissingOverlayPct: missingOverlayCounts.length > 0
         ? roundOverlayRecorderValue((samplesWithMissingOverlay / missingOverlayCounts.length) * 100, 2)
         : null,
+      hiddenOverlayCountMax: roundOverlayRecorderValue(hiddenOverlayCounts.length ? Math.max(...hiddenOverlayCounts) : null, 3),
+      samplesWithHiddenOverlay,
+      samplesWithHiddenOverlayPct: hiddenOverlayCounts.length > 0
+        ? roundOverlayRecorderValue((samplesWithHiddenOverlay / hiddenOverlayCounts.length) * 100, 2)
+        : null,
+      untransformedDuringZoomCountMax: roundOverlayRecorderValue(untransformedDuringZoomCounts.length ? Math.max(...untransformedDuringZoomCounts) : null, 3),
+      samplesWithUntransformedDuringZoom,
+      samplesWithUntransformedDuringZoomPct: untransformedDuringZoomCounts.length > 0
+        ? roundOverlayRecorderValue((samplesWithUntransformedDuringZoom / untransformedDuringZoomCounts.length) * 100, 2)
+        : null,
+      zoomActiveSampleCount: zoomActiveSamples.length,
+      zoomMethodBreakdown: (() => {
+        const gestureMap = {};
+        samples.forEach((sample) => {
+          const gid = sample.zoomGestureId;
+          if (!gid || !sample.zoomOverlayTransformActive) return;
+          if (!gestureMap[gid]) {
+            gestureMap[gid] = { method: sample.zoomMethod || 'unknown', direction: null, samples: 0, jankSamples: 0, untransformedSamples: 0 };
+          }
+          gestureMap[gid].samples += 1;
+          if (sample.zoomDirection === 'in' || sample.zoomDirection === 'out') {
+            gestureMap[gid].direction = sample.zoomDirection;
+          }
+          if (Number(sample.frameMs) > jankThresholdMs) gestureMap[gid].jankSamples += 1;
+          if ((sample.untransformedDuringZoomCount || 0) > 0) gestureMap[gid].untransformedSamples += 1;
+        });
+        const byKey = {};
+        Object.values(gestureMap).forEach((g) => {
+          const key = g.method + ':' + (g.direction || 'unknown');
+          if (!byKey[key]) {
+            byKey[key] = { method: g.method, direction: g.direction || 'unknown', gestures: 0, samples: 0, jankSamples: 0, untransformedSamples: 0 };
+          }
+          byKey[key].gestures += 1;
+          byKey[key].samples += g.samples;
+          byKey[key].jankSamples += g.jankSamples;
+          byKey[key].untransformedSamples += g.untransformedSamples;
+        });
+        return Object.values(byKey).map((stats) => ({
+          method: stats.method,
+          direction: stats.direction,
+          gestures: stats.gestures,
+          samples: stats.samples,
+          jankPct: stats.samples > 0 ? roundOverlayRecorderValue((stats.jankSamples / stats.samples) * 100, 2) : 0,
+          untransformedPct: stats.samples > 0 ? roundOverlayRecorderValue((stats.untransformedSamples / stats.samples) * 100, 2) : 0
+        }));
+      })(),
       sampleCaptureCostMsAvg: roundOverlayRecorderValue(avg(sampleCaptureCosts), 3),
       sampleCaptureCostMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(sampleCaptureCosts, 0.95), 3),
       longTaskCountTotal: longTaskCounts.length ? longTaskCounts.reduce((sum, value) => sum + value, 0) : 0,
@@ -12537,7 +12599,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       ) / 100
     );
 
-    const shouldCapturePageMetrics = syncfusionInteractionActiveRef.current || recorder.options?.captureIdlePageMetrics === true;
+    const isZoomActive = zoomOverlayTransformActiveRef.current;
+    const shouldCapturePageMetrics = syncfusionInteractionActiveRef.current || isZoomActive || recorder.options?.captureIdlePageMetrics === true;
     const candidatePages = shouldCapturePageMetrics
       ? (residentPages && residentPages.size > 0
         ? Array.from(residentPages)
@@ -12616,6 +12679,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         worstScalePage = pageNumber;
       }
 
+      const hasTransform = innerLayer && typeof innerLayer.style?.transform === 'string' && innerLayer.style.transform.length > 0;
+      const overlayVisible = overlayLayer.offsetWidth > 0 && overlayLayer.offsetHeight > 0;
+      const overlayHidden = !overlayVisible ||
+        (typeof window !== 'undefined' && window.getComputedStyle && (
+          window.getComputedStyle(overlayLayer).visibility === 'hidden' ||
+          window.getComputedStyle(overlayLayer).display === 'none' ||
+          Number(window.getComputedStyle(overlayLayer).opacity) === 0
+        ));
+
       pageDetails.push({
         pageNumber,
         driftX: roundOverlayRecorderValue(driftX, 3),
@@ -12626,7 +12698,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         liveScale: roundOverlayRecorderValue(liveScale, 5),
         observedScale: roundOverlayRecorderValue(observedScale, 5),
         expectedScale: roundOverlayRecorderValue(expectedScale, 5),
-        scaleMismatch: roundOverlayRecorderValue(scaleMismatch, 5)
+        scaleMismatch: roundOverlayRecorderValue(scaleMismatch, 5),
+        hasTransform,
+        overlayHidden
       });
     });
 
@@ -12670,12 +12744,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       eventTimingMaxMs: roundOverlayRecorderValue(perfAttribution.eventTimingMaxMs, 3),
       eventTimingTopTypes: perfAttribution.eventTimingTopTypes || [],
       perfQueueDepth: perfAttribution.perfQueueDepth || { longTaskEntries: 0, eventEntries: 0 },
+      zoomOverlayTransformActive: isZoomActive,
+      zoomOverlayBaseScale: roundOverlayRecorderValue(zoomOverlayBaseScaleRef.current, 5),
+      zoomDirection: isZoomActive
+        ? ((scaleRef.current || scale) > zoomOverlayBaseScaleRef.current ? 'in' : (scaleRef.current || scale) < zoomOverlayBaseScaleRef.current ? 'out' : 'none')
+        : null,
+      zoomMethod: zoomOverlayMethodRef.current,
+      zoomGestureId: zoomOverlayGestureIdRef.current,
       expectedSampledPageCount: sampledPages.length,
       sampledPageCount: pageDetails.length,
       missingOverlayCount: missingOverlayPages.length,
       missingHostCount: missingHostPages.length,
       missingOverlayPages: missingOverlayPages.slice(0, 8),
       missingHostPages: missingHostPages.slice(0, 8),
+      hiddenOverlayCount: pageDetails.filter((p) => p.overlayHidden).length,
+      untransformedDuringZoomCount: isZoomActive ? pageDetails.filter((p) => !p.hasTransform).length : 0,
       worstDriftPage,
       worstDriftPx: roundOverlayRecorderValue(worstDriftPx, 3),
       worstScalePage,

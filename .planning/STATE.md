@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Flicker fix applied (uncommitted) — safety timer guard prevents premature CSS transform removal. Needs testing.
-last_updated: "2026-03-09T20:27:54.204Z"
-last_activity: 2026-03-09 -- Phase 2 abandoned, flicker-free fix applied (untested)
+stopped_at: Profiler fixed to detect annotation disappearance. Flicker fix confirmed still broken — safety timer guard ineffective. Ready to fix root cause.
+last_updated: "2026-03-09T21:52:58.130Z"
+last_activity: 2026-03-09 -- Fixed profiler (was blind to disappearance), confirmed flicker fix broken
 progress:
   total_phases: 4
   completed_phases: 0
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** Annotations must remain visible and smoothly scale with the page during zoom at all times
-**Current focus:** Phase 1 complete for MVP, ready to move to Phase 2
+**Current focus:** Fix annotation disappearance during zoom (flicker-free handoff)
 
 ## Current Position
 
-Phase: 1 of 4 (CSS Transform Scaling) — paused for MVP
-Plan: 0 of 2 formally complete (extensive iterative work done outside formal plan execution)
-Status: Paused — stable at 2.09 baseline, moving to Phase 2
-Last activity: 2026-03-09 -- Optimization experiments tested and reverted
+Phase: 2 of 4 (Positional Accuracy) — ABANDONED, pivoted to flicker fix
+Plan: N/A (working outside formal plans on cross-cutting zoom fix)
+Status: Profiler fixed, disappearance bug confirmed, ready to fix root cause
+Last activity: 2026-03-09 -- Profiler fixes + flicker verification
 
-Progress: [██........] ~20% (Phase 1 stable, ready for Phase 2)
+Progress: [██........] ~20%
 
 ## Accumulated Context
 
@@ -41,15 +41,26 @@ Progress: [██........] ~20% (Phase 1 stable, ready for Phase 2)
 - 3-tier page priority: center (immediate), visible (800ms delay), off-screen (IntersectionObserver)
 - Removed broken scroll correction (13K+ px drift) — Syncfusion default scroll used
 - ALL experimental optimizations tested and reverted (throttle, rIC, settle timer changes, center-page threshold)
-- Post-zoom settle jank requires fundamentally different approach (chunked render, OffscreenCanvas, or tech swap)
-- Phase 1 is "good enough for MVP" — moving on
+- Phase 2 cursor-centric zoom ABANDONED — Syncfusion handles natively
+- Profiler must sample pages independently of interaction system feature flags
+- `zoomOverlayTransformActiveRef` is the correct zoom-active signal
 
-### Performance at Pause Point
+### Profiler Status
 
-- Overall: ~2.09 jank/gesture (down from 5-7 original)
-- Active zoom: ~1.33/gesture (CSS transforms working well)
-- Settle: ~2.58/gesture (Fabric.js renderAll bottleneck — deferred)
-- Professional zoom estimate: ~70%
+Profiler now tracks:
+- Annotation disappearance (`untransformedDuringZoomCount`)
+- Zoom method (`ctrl-wheel` / `toolbar`)
+- Zoom direction (`in` / `out`)
+- Per-gesture grouping (`zoomGestureId`)
+- Per-method+direction summary (`zoomMethodBreakdown`)
+
+### Latest Metrics (this session)
+
+- Jank: 7.31% overall
+- Disappearance: 28/60 zoom samples (47%) have annotations vanishing
+- Toolbar zoom: 56-60% disappearance rate
+- Ctrl-wheel zoom: 29-33% disappearance rate
+- Root cause: safety timer at line ~11677 always strips CSS transforms (guard checks disabled interaction system)
 
 ### Pending Todos
 
@@ -57,11 +68,12 @@ None.
 
 ### Blockers/Concerns
 
+- Safety timer guard relies on disabled interaction system — always fires, always strips transforms
+- `handlePALScaleApplied` may also strip per-page transforms during active zoom
 - Fabric.js renderAll() is synchronous 200-800ms per page — fundamental limitation, not blocking MVP
-- Syncfusion zoomTo() amplifies each call into ~2.2 zoomChange callbacks
 
 ## Session Continuity
 
-Last session: 2026-03-09T04:00:56.722Z
-Stopped at: Phase 1 paused for MVP, ready for Phase 2
-Resume file: .planning/phases/01-css-transform-scaling/.continue-here.md
+Last session: 2026-03-09T21:52:58.130Z
+Stopped at: Profiler working, disappearance confirmed, ready to fix root cause
+Resume file: .planning/phases/02-positional-accuracy/.continue-here.md
