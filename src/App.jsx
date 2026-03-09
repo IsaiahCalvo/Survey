@@ -49,6 +49,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { PageRenderCache } from './utils/pdfCache';
 import { regionContainsPoint } from './utils/regionMath';
 import { createZoomController, ZOOM_MODES, loadZoomPreferences, saveZoomPreferences, clampScale, DEFAULT_ZOOM_PREFERENCES } from './utils/zoomController';
+import { computePageLocalAnchor } from './utils/zoomAnchorProjection';
 import { useAuth } from './contexts/AuthContext';
 import { AuthModal } from './components/AuthModal';
 import { UserMenu } from './components/UserMenu';
@@ -9893,7 +9894,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       ratioByPage[pageNumber] = ratio;
       node.style.transform = `scale(${ratio})`;
-      node.style.transformOrigin = 'top left';
+      const localAnchor = computePageLocalAnchor(
+        pageNumber,
+        pageContainers,
+        containerRef.current,
+        syncfusionWheelZoomAnchorRef.current
+      );
+      if (localAnchor) {
+        node.style.transformOrigin = `${localAnchor.x}px ${localAnchor.y}px`;
+      } else {
+        node.style.transformOrigin = 'top left';
+      }
       node.style.willChange = 'transform';
       node.style.backfaceVisibility = 'hidden';
       transformStats.writes += 1;
@@ -11651,10 +11662,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (overlayRefs) {
         const keys = Object.keys(overlayRefs);
         for (let i = 0; i < keys.length; i++) {
+          const pageNumber = Number(keys[i]);
           const node = overlayRefs[keys[i]];
           if (node && node.isConnected) {
             node.style.transform = `scale(${ratio})`;
-            node.style.transformOrigin = 'top left';
+            const localAnchor = computePageLocalAnchor(
+              pageNumber,
+              syncfusionPageContainersStateRef.current,
+              containerRef.current,
+              syncfusionWheelZoomAnchorRef.current
+            );
+            if (localAnchor) {
+              node.style.transformOrigin = `${localAnchor.x}px ${localAnchor.y}px`;
+            } else {
+              node.style.transformOrigin = 'top left';
+            }
           }
         }
       }
@@ -20226,10 +20248,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const anchor = options.anchor || {};
         const cursorX = typeof anchor.x === 'number' ? anchor.x : rect.width / 2;
         const cursorY = typeof anchor.y === 'number' ? anchor.y : rect.height / 2;
-        setAnchor({
+        const globalAnchor = {
           x: cursorX + container.scrollLeft,
           y: cursorY + container.scrollTop
-        });
+        };
+        setAnchor(globalAnchor);
+        syncfusionWheelZoomAnchorRef.current = globalAnchor;
       }
       scaleRef.current = safeScale;
       setScale(safeScale);
