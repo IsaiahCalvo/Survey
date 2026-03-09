@@ -10027,6 +10027,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (syncfusionScaleConfirmPendingRef.current) {
         console.warn('[AnnotPerf] 800ms safety timeout — PAL never confirmed, forcing CSS transform removal');
         syncfusionScaleConfirmPendingRef.current = false;
+        zoomOverlayTransformActiveRef.current = false;
+        zoomOverlayBaseScaleRef.current = 1;
         resetSyncfusionOverlayTransformStyles();
       }
     }, 800);
@@ -10084,6 +10086,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (allConfirmed) {
       console.log(`[AnnotPerf] All pages confirmed scale — removing remaining CSS transforms`);
       syncfusionScaleConfirmPendingRef.current = false;
+      zoomOverlayTransformActiveRef.current = false;
+      zoomOverlayBaseScaleRef.current = 1;
       if (syncfusionScaleConfirmTimerRef.current) {
         clearTimeout(syncfusionScaleConfirmTimerRef.current);
         syncfusionScaleConfirmTimerRef.current = null;
@@ -11666,6 +11670,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     zoomOverlaySettleTimerRef.current = setTimeout(() => {
       zoomOverlaySettleTimerRef.current = null;
+      // Don't strip CSS transforms if interaction is still active or PAL
+      // hasn't confirmed the new scale yet — the confirmation handler or
+      // the 800ms safety timer in finalizeSyncfusionInteractionIdle will
+      // clean up instead.
+      if (syncfusionInteractionPhaseRef.current !== 'idle' || syncfusionScaleConfirmPendingRef.current) {
+        return;
+      }
       zoomOverlayTransformActiveRef.current = false;
       zoomOverlayBaseScaleRef.current = 1;
       // Safety: remove CSS transforms from overlay content divs

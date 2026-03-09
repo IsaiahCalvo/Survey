@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Phase 1 paused for MVP — all optimizations tested/reverted, stable at 2.09 baseline
-last_updated: "2026-03-09T04:00:56.722Z"
-last_activity: 2026-03-09 -- Phase 1 optimization experiments all reverted, code restored to 2.09 baseline
+stopped_at: Flicker fix applied (uncommitted) — safety timer guard prevents premature CSS transform removal. Needs testing.
+last_updated: "2026-03-09T20:27:54.204Z"
+last_activity: 2026-03-09 -- Phase 2 abandoned, flicker-free fix applied (untested)
 progress:
   total_phases: 4
   completed_phases: 0
