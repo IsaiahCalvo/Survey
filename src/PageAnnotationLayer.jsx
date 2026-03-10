@@ -3134,6 +3134,7 @@ const PageAnnotationLayer = memo(({
   isHidden = false,
   isInteracting = false,
   isZooming = false,
+  zoomOverlayActiveRef = null,
   onScaleApplied = null,
 }) => {
   const canvasRef = useRef(null);
@@ -7748,7 +7749,10 @@ const PageAnnotationLayer = memo(({
       const settleCallback = () => {
         // If zoom is still active (e.g. slow scroll-out with >300ms gaps),
         // defer the expensive resize — restart the timer instead.
-        if (isZoomingRef.current) {
+        // Check both the React prop ref (isZooming) and the App-level overlay
+        // transform ref (zoomOverlayActiveRef) which reflects the true zoom state
+        // even when isZooming is false due to deferred React state updates.
+        if (isZoomingRef.current || zoomOverlayActiveRef?.current) {
           zoomSettleTimerRef.current = setTimeout(settleCallback, 300);
           return;
         }
@@ -9636,6 +9640,7 @@ const PageAnnotationLayer = memo(({
     prevProps.isHidden === nextProps.isHidden &&
     prevProps.isInteracting === nextProps.isInteracting &&
     prevProps.isZooming === nextProps.isZooming &&
+    prevProps.zoomOverlayActiveRef === nextProps.zoomOverlayActiveRef &&
     prevProps.onScaleApplied === nextProps.onScaleApplied
   );
 });
