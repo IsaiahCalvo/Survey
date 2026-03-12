@@ -30,3 +30,6 @@ scripts/backup-stdout.log
 scripts/backup-stderr.log
 scripts/backup-cron.log
 scripts/backup-daemon.pid
+
+# Debug session output
+debug/debug-sessions/

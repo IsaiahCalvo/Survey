@@ -1,11 +1,33 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/** Dev-only Vite plugin: serves files from debug/fixtures/ at /debug-fixtures/ */
+function debugFixturesPlugin() {
+  return {
+    name: 'serve-debug-fixtures',
+    configureServer(server) {
+      server.middlewares.use('/debug-fixtures', (req, res, next) => {
+        const filePath = path.join(__dirname, 'debug', 'fixtures', decodeURIComponent(req.url));
+        if (!fs.existsSync(filePath)) {
+          res.statusCode = 404;
+          res.end('Not found');
+          return;
+        }
+        const stat = fs.statSync(filePath);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Length', stat.size);
+        fs.createReadStream(filePath).pipe(res);
+      });
+    }
+  };
+}
 
 export default defineConfig({
   base: './', // Use relative paths for Electron file:// protocol
@@ -14,7 +36,8 @@ export default defineConfig({
     nodePolyfills({
       // Whether to polyfill `node:` protocol imports.
       protocolImports: true,
-    })
+    }),
+    debugFixturesPlugin()
   ],
   server: {
     port: 5173,
