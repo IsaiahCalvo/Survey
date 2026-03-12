@@ -1,74 +1,136 @@
-# Requirements: Live Zoom Annotation Rendering
+# Requirements: Debug Annotations v2.0
 
-**Defined:** 2026-03-04
-**Core Value:** Annotations must remain visible and smoothly scale with the page during zoom at all times
+**Defined:** 2026-03-12
+**Core Value:** Automated, deterministic capture of synchronized debugging artifacts for LLM-assisted annotation rendering diagnosis
 
-## v1 Requirements
+## v2.0 Requirements
 
-Requirements for initial release. Each maps to roadmap phases.
+Requirements for Debug Annotations milestone. Each maps to roadmap phases.
 
-### Zoom Visibility
+### Foundation
 
-- [ ] **ZVIS-01**: Annotations stay visible throughout the entire zoom operation -- no disappearing at any point
-- [ ] **ZVIS-02**: Annotations scale smoothly with the page during zoom via CSS transform (GPU-accelerated)
+- [ ] **FOUN-01**: Dev-only test route loads a bundled test PDF at `localhost:5173?testPdf=<name>` without requiring Supabase authentication
+- [ ] **FOUN-02**: Dev-only test route is compile-time guarded (`import.meta.env.DEV`) and produces zero code in production builds
+- [ ] **FOUN-03**: Playwright test harness launches Chromium against the Vite dev server with `channel: 'chromium'` for consistent canvas rendering
+- [ ] **FOUN-04**: Playwright harness auto-starts the Vite dev server via `webServer` config if not already running
+- [ ] **FOUN-05**: Each test run creates a session folder at `debug-sessions/<timestamp>_<scenario>/` containing all artifacts
+- [ ] **FOUN-06**: Each session folder contains a `manifest.json` with scenario name, git SHA, start/end time, pass/fail result, and artifact file paths
+- [ ] **FOUN-07**: Scenario scripts are parameterizable — same scenario can run with different zoom ranges, speeds, and starting pages
+- [ ] **FOUN-08**: CLI entry point (`npm run debug:scenario <name>`) runs a named scenario and produces a session folder
 
-### Zoom Correctness
+### Capture
 
-- [ ] **ZCOR-01**: Annotations maintain correct position relative to page content during zoom -- no positional glitching or drift
-- [ ] **ZCOR-02**: Annotations do not flicker at wrong scale or wrong position during or after zoom transitions
-- [ ] **ZCOR-03**: Transform-origin of annotation layer matches Syncfusion page zoom anchor for all zoom methods
+- [ ] **CAPT-01**: Screenshots captured at every deterministic step boundary (before/after each scripted action) with descriptive filenames
+- [ ] **CAPT-02**: Video recorded for the entire session duration via Playwright's built-in recording (WebM, 720p)
+- [ ] **CAPT-03**: Console messages (log, warn, error) captured with timestamps and persisted as `console.jsonl`
+- [ ] **CAPT-04**: App state snapshots captured at each step via `window.__debugBridge.snapshot()` and persisted as `state.jsonl`
+- [ ] **CAPT-05**: Pass/fail determination runs automatically at scenario end based on scenario-defined criteria (e.g., canvas container count >= 1, no console errors)
+- [ ] **CAPT-06**: All artifacts share a synchronized timeline — browser `performance.timeOrigin` mapped to Node.js epoch at session start, all timestamps stored as `sessionMs` offset
+- [ ] **CAPT-07**: Performance metrics collected via CDP (`Performance.getMetrics`) including Layout Shift, Long Tasks, and paint timing, stored as `performance.jsonl`
+- [ ] **CAPT-08**: Screenshots wait for `window.__debugReady` readiness signal before capture to avoid race conditions with Syncfusion page rebuilds
 
-### Zoom Polish
+### Instrumentation
 
-- [ ] **ZPOL-01**: Zoom expands from cursor position (cursor-centered zoom) matching Adobe Acrobat behavior
-- [ ] **ZPOL-02**: Multi-scale annotation cache avoids re-render when returning to previously visited zoom levels
+- [ ] **INST-01**: `window.__debugBridge` API exposes current zoom level, rendered scale, target scale, portal host count, freeze state, and canvas container count
+- [ ] **INST-02**: `window.__debugBridge.snapshot()` returns a flat, JSON-serializable object (no Fabric.js objects, no circular references)
+- [ ] **INST-03**: `window.__debugReady` exposes readiness signals: annotations rendered, zoom settled, page navigation complete
+- [ ] **INST-04**: Debug bridge is compile-time guarded (`import.meta.env.DEV`) — zero overhead in production
+- [ ] **INST-05**: DOM mutation monitoring tracks Syncfusion `e-pv-page-div` container destroy/recreate events with timestamps, stored in state snapshots
+- [ ] **INST-06**: Instrumentation uses `performance.mark()` (0.01ms) not `console.log` in hot paths to avoid altering timing-sensitive race conditions
 
-## v2 Requirements
+### Processing
 
-Deferred to future release. Tracked but not in current roadmap.
+- [ ] **PROC-01**: Anomaly detector scans `state.jsonl` and flags suspicious transitions: canvas container count drops to 0, portal host disconnects, console error bursts, rendered scale diverging from target scale
+- [ ] **PROC-02**: Anomaly detector produces `anomalies.json` with timestamp, type, severity, and references to related screenshots/state entries
+- [ ] **PROC-03**: Visual diff via pixelmatch compares before/after screenshots at each step, producing diff images and mismatch percentages stored in `diffs/`
+- [ ] **PROC-04**: Timeline merger sorts all JSONL streams by `sessionMs` into a unified `timeline.json`
+- [ ] **PROC-05**: Timeline summary generates a human/LLM-readable `timeline.md` narrative of the session (chronological events with key state changes highlighted)
+- [ ] **PROC-06**: LLM chunker splits session artifacts into context-window-sized chunks keyed to semantic units (per zoom operation, per anomaly) with source code references
+- [ ] **PROC-07**: Analysis prompt template (`analysis-prompt.md`) provides structured instructions for LLM analysis including manifest, timeline, key snapshots, and what to look for
 
-### Performance & Methods
+## Previous Milestone (v1.0 — Zoom Fix)
 
-- **PERF-01**: Crisp high-fidelity re-render after zoom settles (canvas re-draw at final zoom level)
-- **PERF-02**: 60fps smooth performance with no jank or dropped frames during zoom
-- **PERF-03**: All zoom methods supported -- trackpad pinch, toolbar buttons, Ctrl/Cmd+scroll
-- **PERF-04**: Progressive quality during zoom (CSS-scaled immediately, sharpens as zoom stabilizes)
+Carried forward for reference. These are partially validated.
 
-### Interaction
+### Zoom Visibility (Partially Validated)
 
-- **INTR-01**: Annotation interaction (select, edit) during active zoom gesture
+- ✓ **ZVIS-01**: Annotations stay visible during zoom — v1.0 (CSS transform overlay)
+- ✓ **ZVIS-02**: Annotations scale smoothly during zoom — v1.0 (GPU-accelerated transforms)
+
+### Zoom Correctness (Partially Validated)
+
+- **ZCOR-01**: Positional accuracy during zoom — partially working, post-zoom flicker remains
+- **ZCOR-02**: No flicker during/after zoom — NOT MET, this is the first debug target
+- **ZCOR-03**: Transform-origin alignment — partially working
+
+## Future Requirements
+
+Deferred to later milestones.
+
+### Retrieval & Indexing (v3+)
+
+- **RETR-01**: Gemini Embedding 2 indexes screenshots, video segments, and log summaries for semantic search
+- **RETR-02**: Semantic search retrieves relevant artifact chunks by natural language query
+
+### Infrastructure (v3+)
+
+- **INFR-01**: CI pipeline runs scenarios on every PR and reports pass/fail
+- **INFR-02**: Session retention policy auto-deletes sessions older than N days
+- **INFR-03**: Network request logging captures Supabase API calls and failed requests
+- **INFR-04**: Playwright trace recording produces .zip viewable in Trace Viewer
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Real-time Fabric.js re-render during zoom | Defeats the optimization -- CSS transform is the correct approach |
-| WebGL rendering migration | Massive scope creep -- zoom problem is eliminating renders, not rendering speed |
-| CSS transition animations on scale | Creates input lag and fights user gesture input |
-| OffscreenCanvas for annotation rendering | Unnecessary complexity -- CSS transform eliminates main-thread work during zoom |
-| SVG proxy swap during zoom | CSS transform on existing canvas bitmap is more faithful and simpler |
-| Modifying Syncfusion internal PDF rendering | Out of our control -- observe and match, don't modify |
-| New annotation types | This project is about zoom behavior only |
+| AI-generated test scenarios | Non-deterministic, defeats core philosophy of scripted evidence collection |
+| Automated fix generation | Premature — LLM analyzes evidence, human decides fixes |
+| Real-time monitoring dashboard | Over-engineered for single-developer local tool |
+| CI/CD pipeline integration | Premature until local pipeline is proven |
+| Database storage for sessions | Folder-per-run is sufficient; database only when file-based becomes painful |
+| Electron-specific automation | Same rendering engine as Chromium; targeting Vite dev server is more stable |
+| Cross-browser testing | App only runs in Chromium (Electron); other browsers add zero value |
+| Golden baseline screenshot diffing | Annotation content varies; within-session self-comparison is the right pattern |
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ZVIS-01 | Phase 1 | Pending |
-| ZVIS-02 | Phase 1 | Pending |
-| ZCOR-01 | Phase 2 | Pending |
-| ZCOR-02 | Phase 3 | Pending |
-| ZCOR-03 | Phase 2 | Pending |
-| ZPOL-01 | Phase 2 | Pending |
-| ZPOL-02 | Phase 4 | Pending |
+| FOUN-01 | TBD | Pending |
+| FOUN-02 | TBD | Pending |
+| FOUN-03 | TBD | Pending |
+| FOUN-04 | TBD | Pending |
+| FOUN-05 | TBD | Pending |
+| FOUN-06 | TBD | Pending |
+| FOUN-07 | TBD | Pending |
+| FOUN-08 | TBD | Pending |
+| CAPT-01 | TBD | Pending |
+| CAPT-02 | TBD | Pending |
+| CAPT-03 | TBD | Pending |
+| CAPT-04 | TBD | Pending |
+| CAPT-05 | TBD | Pending |
+| CAPT-06 | TBD | Pending |
+| CAPT-07 | TBD | Pending |
+| CAPT-08 | TBD | Pending |
+| INST-01 | TBD | Pending |
+| INST-02 | TBD | Pending |
+| INST-03 | TBD | Pending |
+| INST-04 | TBD | Pending |
+| INST-05 | TBD | Pending |
+| INST-06 | TBD | Pending |
+| PROC-01 | TBD | Pending |
+| PROC-02 | TBD | Pending |
+| PROC-03 | TBD | Pending |
+| PROC-04 | TBD | Pending |
+| PROC-05 | TBD | Pending |
+| PROC-06 | TBD | Pending |
+| PROC-07 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 7 total
-- Mapped to phases: 7
-- Unmapped: 0
+- v2.0 requirements: 29 total
+- Mapped to phases: 0
+- Unmapped: 29
 
 ---
-*Requirements defined: 2026-03-04*
-*Last updated: 2026-03-04 after roadmap creation*
+*Requirements defined: 2026-03-12*
+*Last updated: 2026-03-12 after initial definition*
