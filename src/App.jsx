@@ -31092,6 +31092,15 @@ export default function App() {
     }, 100);
   };
 
+  // DEV-ONLY: Auto-open test PDF when loaded via dev test route
+  useEffect(() => {
+    if (import.meta.env.DEV && window.__devTestPdf) {
+      const file = window.__devTestPdf;
+      window.__devTestPdf = null; // consume so it only fires once
+      handleDocumentSelect(file);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleTabClick = (tabId) => {
     const tab = tabs.find(t => t.id === tabId);
     if (tab) {

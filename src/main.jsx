@@ -38,13 +38,30 @@ console.warn = (...args) => {
   originalWarn(...args);
 };
 
-createRoot(document.getElementById('root')).render(
-  <ErrorBoundary>
-    <AuthProvider>
-      <MSGraphProvider>
-        <App />
-        <KeyboardShortcutsOverlay />
-      </MSGraphProvider>
-    </AuthProvider>
-  </ErrorBoundary>
-);
+// DEV-ONLY: Test route bypass — skips auth, dashboard, and all Supabase services
+let devRouteActive = false;
+if (import.meta.env.DEV) {
+  const params = new URLSearchParams(window.location.search);
+  const testPdf = params.get('testPdf');
+  if (testPdf) {
+    devRouteActive = true;
+    import('./DevTestRoute').then(({ DevTestRoute }) => {
+      createRoot(document.getElementById('root')).render(
+        <DevTestRoute pdfName={testPdf} />
+      );
+    });
+  }
+}
+
+if (!devRouteActive) {
+  createRoot(document.getElementById('root')).render(
+    <ErrorBoundary>
+      <AuthProvider>
+        <MSGraphProvider>
+          <App />
+          <KeyboardShortcutsOverlay />
+        </MSGraphProvider>
+      </AuthProvider>
+    </ErrorBoundary>
+  );
+}

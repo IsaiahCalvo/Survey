@@ -3,7 +3,7 @@ import { Client } from '@microsoft/microsoft-graph-client';
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
 
-const MSGraphContext = createContext({});
+export const MSGraphContext = createContext({});
 
 // Microsoft Graph API scopes needed for OneDrive
 const GRAPH_SCOPES = ['User.Read', 'Files.ReadWrite.All', 'Sites.ReadWrite.All'];
