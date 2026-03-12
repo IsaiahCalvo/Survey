@@ -1,179 +1,282 @@
-# Technology Stack: Smooth Zoom Annotation Rendering
+# Technology Stack: Automated Debug & Testing Pipeline
 
-**Project:** Live Zoom Annotation Rendering
-**Researched:** 2026-03-04
-**Mode:** Brownfield enhancement -- adding to existing Syncfusion React PDF Viewer with Fabric.js annotation layer
+**Project:** BetaSafe Survey Tool -- v2.0 Debug Annotations
+**Researched:** 2026-03-12
+**Mode:** Brownfield enhancement -- adding automated debugging infrastructure to existing Electron/React PDF annotation app
 
 ## Executive Summary
 
-The project already has the right foundation. The existing `useZoomState` hook implements the correct "CSS transform during zoom, canvas re-render after" pattern used by Mozilla pdf.js and Adobe Acrobat. The core problem is not a missing technology -- it is that the current implementation does not fully integrate this pattern into the annotation layer lifecycle. The annotation layer (Fabric.js canvases in `PageAnnotationLayer.jsx`) currently re-renders from scratch during zoom, causing annotations to disappear. The fix is architectural, not stack-based: wire the CSS transform scaling through to the annotation layer containers so they scale visually during zoom, then trigger a high-fidelity Fabric.js re-render only after zoom settles.
+The automated debugging pipeline requires additions in five categories: (1) browser automation, (2) artifact capture, (3) post-processing, and (4) LLM-friendly output formatting. The existing app stack (Syncfusion PDF Viewer, Fabric.js, React 18, Vite, Electron) is untouched -- all new dependencies are dev-only.
 
-No new libraries are needed. The solution uses CSS transforms (already partially implemented), existing Fabric.js rendering, and browser-native GPU compositing.
+Playwright is the clear choice for browser automation, providing built-in video recording (WebM), tracing (DOM snapshots + network + actions), screenshots, and CDP access for low-level performance metrics -- all from a single dependency. Post-processing uses sharp (already installed as a devDependency), pixelmatch for screenshot diff/anomaly detection, and ffmpeg-static for keyframe extraction from video. No database -- NDJSON (newline-delimited JSON) files in folder-per-run for all structured data, directly readable by LLMs and `grep` alike.
+
+Total new devDependencies: 5 packages. No production dependencies added.
 
 ## Recommended Stack
 
-### Core Technique: CSS Transform Scale-During, Re-Render-After
+### Browser Automation
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| CSS `transform: scale()` | Native | Instant visual scaling during zoom | GPU-composited, zero JS cost, sub-frame latency. Already used in `useZoomState.js` but not fully wired to annotation containers. |
-| CSS `will-change: transform` | Native | GPU layer promotion during zoom | Tells browser to create dedicated compositor layer. Already in `layerPerformance.js`. Must be toggled on during zoom, off after settle. |
-| CSS `contain: layout style paint` | Native | Isolation of annotation layer repaints | Prevents annotation scaling from triggering reflows in Syncfusion's page containers. Already in `ANNOTATION_LAYER_STYLES`. |
-| `requestAnimationFrame` | Native | Coordinated transform application | Batch CSS transform updates to align with browser paint cycle. Avoids intermediate frames showing wrong scale. |
-| Debounced re-render | Pattern (140ms) | Trigger canvas re-render after zoom settles | Already implemented in `useZoomState.js` at 140ms. This is the right window -- matches pdf.js and Acrobat debounce ranges (100-200ms). |
+| `@playwright/test` | ^1.58.0 | Test runner + browser automation + built-in assertions | Single dependency provides Chromium automation, video recording, tracing, screenshot capture, CDP sessions, and a test runner with retries and parallelism. The project targets Chromium via Vite dev server -- Playwright's primary use case. Version 1.58.2 is current as of March 2026. |
+| Playwright Chromium (bundled) | Auto-managed | Browser binary for automation | Playwright downloads and manages its own Chromium builds. As of 1.57+, uses "Chrome for Testing" builds matching real Chrome behavior. No separate browser install needed. |
 
-**Confidence: HIGH** -- This is the standard pattern used by pdf.js (verified via PR #19128), Adobe Acrobat, Bluebeam, and DrawboardPDF. The project already partially implements it.
+**Confidence: HIGH** -- Playwright is the standard for this exact use case (automating web apps in Chromium). Verified via official docs and npm registry.
 
-### Canvas Rendering (Existing -- No Changes Needed)
+**Why not Cypress:** Cypress runs inside the browser, cannot open CDP sessions for performance metrics, has no built-in video of the quality needed, and does not support programmatic tracing. Playwright runs outside the browser with full control.
+
+**Why not Puppeteer:** Puppeteer provides raw CDP access but no test runner, no built-in assertions, no parallel test execution, and no trace viewer. Playwright is the evolution of Puppeteer by the same team, with all those features added.
+
+### Artifact Capture (Built Into Playwright)
+
+These are not separate dependencies -- they are Playwright APIs configured per browser context.
+
+| Capability | Playwright API | Format | Notes |
+|------------|---------------|--------|-------|
+| Video recording | `browser.newContext({ recordVideo: { dir, size } })` | WebM | Records full session. Default 800x800 max, configurable to viewport size. Available after context closes. |
+| Screenshots | `page.screenshot({ path, fullPage })` | PNG | On-demand at any point during test. Full-page or clipped region. |
+| Tracing | `context.tracing.start({ screenshots, snapshots, sources })` | ZIP (contains JSON + PNGs) | Captures DOM snapshots, network activity, action timeline. Viewable in Trace Viewer or parseable as ZIP. |
+| Console logs | `page.on('console', msg => ...)` | Captured in-memory, write to NDJSON | All console.log/warn/error/debug messages with timestamps. Types: log, debug, info, error, warning, dir, trace, etc. |
+| Page errors | `page.on('pageerror', error => ...)` | Captured in-memory, write to NDJSON | Uncaught exceptions and unhandled promise rejections. |
+| Network | `context.tracing` or `page.on('request'/'response')` | Included in trace ZIP, or captured manually | HAR recording also available via `context.routeFromHAR()`. |
+| Performance metrics | CDP session: `Performance.getMetrics` | JSON | LayoutDuration, RecalcStyleDuration, ScriptDuration, TaskDuration, JSHeapUsedSize, Nodes, LayoutCount. Requires `page.context().newCDPSession(page)`. |
+| Custom app events | `page.evaluate()` to read `window.pdfPerf`, `window.__pdfHistoryDebug` | JSON | Bridge existing debug APIs into the capture pipeline. Poll or subscribe via `page.exposeFunction()`. |
+
+**Confidence: HIGH** -- All verified via official Playwright documentation (playwright.dev/docs/api/).
+
+### Image Processing & Anomaly Detection
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| Fabric.js | 5.5.2 | Annotation canvas rendering | Already in use. Handles all annotation types (shapes, freehand, text, callouts). |
-| Canvas 2D API | Native | Underlying rendering context | Used by Fabric.js. No reason to switch to WebGL for this use case. |
+| `sharp` | ^0.34.5 | Image manipulation, resizing, format conversion | **Already installed** as a devDependency. High-performance libvips-based. Use for resizing screenshots to consistent dimensions before comparison, extracting regions of interest, and generating thumbnails for timeline views. |
+| `pixelmatch` | ^7.1.0 | Pixel-level screenshot comparison / anomaly detection | 150 lines, zero dependencies, works on raw RGBA typed arrays. ~15M monthly downloads. Detects anti-aliased pixel differences. Use to compare consecutive screenshots and flag frames where annotation positions shifted (the "flicker" signal). Returns mismatch count + diff image. |
+| `pngjs` | ^7.0.0 | PNG decode/encode for pixelmatch input | pixelmatch requires raw RGBA buffers. pngjs decodes PNGs to `{ data, width, height }` format that pixelmatch consumes. Zero dependencies, synchronous API via `PNG.sync.read()`. |
 
-**Confidence: HIGH** -- The annotation rendering stack is correct. The problem is zoom lifecycle, not rendering technology.
+**Confidence: HIGH** -- pixelmatch is the de facto standard for screenshot comparison in Node.js (used by Playwright internally for visual comparison). sharp is already in the project.
 
-### GPU Acceleration (Existing -- Needs Tuning)
+**Why not `looks-same`:** Heavier dependency, designed for visual regression testing with "tolerance" thresholds. We need precise pixel diffs to detect subtle annotation position shifts (1-2px flicker), not fuzzy "close enough" matching.
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| `translateZ(0)` / `translate3d(0,0,0)` | CSS | Force GPU layer creation | Already applied via `layerPerformance.js`. Creates compositor layer so `scale()` transform runs entirely on GPU. |
-| `backfaceVisibility: hidden` | CSS | GPU optimization hint | Already applied. Reduces compositor work by telling browser the back face is never visible. |
-| `isolation: isolate` | CSS | Stacking context isolation | Already applied. Prevents annotation layer compositing from affecting Syncfusion layers. |
+**Why not `odiff`:** Rust-based, faster than pixelmatch for large images, but adds a native binary dependency. The screenshots are viewport-sized (~1280x800), not megapixel images. pixelmatch handles this in <10ms.
 
-**Confidence: HIGH** -- These are standard, well-understood browser optimizations already present in the codebase.
-
-### Zoom Event Integration (Syncfusion-Specific)
+### Video Post-Processing (Keyframe Extraction)
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| Syncfusion `onZoomChanged` | 32.1.19 | Detect zoom start/end from Syncfusion viewer | Already wired via `handleSyncfusionZoomChange`. Provides `zoomValue` payload. |
-| Syncfusion `magnificationModule.zoomTo()` | 32.1.19 | Programmatic zoom control | Already in use. Needed for toolbar zoom buttons and keyboard shortcuts. |
-| Wheel event interception | Native | Detect pinch-zoom and Ctrl+scroll | Already implemented via `handleSyncfusionWrapperWheel`. Must coordinate with CSS transform application. |
+| `ffmpeg-static` | ^5.3.0 | Static FFmpeg binary (no system install required) | Bundles FFmpeg 6.1.1 for macOS/Linux/Windows. Dev-only. No system PATH dependency. Works on any machine without FFmpeg installed. |
+| `fluent-ffmpeg` | ^2.1.3 | Node.js API for FFmpeg commands | Fluent API for constructing FFmpeg pipelines. Use for: extracting keyframes (I-frames) from WebM recordings, extracting frames at specific timestamps (aligned to anomaly events), generating thumbnails at regular intervals for timeline strip. |
 
-**Confidence: HIGH** -- Syncfusion integration points are already established and working.
+**Confidence: MEDIUM** -- ffmpeg-static and fluent-ffmpeg are mature and widely used. The MEDIUM rating is because Playwright's WebM format and ffmpeg's keyframe extraction from WebM specifically has not been verified end-to-end. WebM uses VP8/VP9 codec which ffmpeg fully supports, so this should work, but needs integration testing.
 
-## The Pattern in Detail
+**Why not `extract-keyframes` npm package:** Last updated 2019, depends on an older fluent-ffmpeg version, writes to /tmp by default. Better to use fluent-ffmpeg directly with a few lines of code.
 
-### Phase 1: Zoom Starts (CSS Transform)
+**Why not skip video processing entirely:** The post-zoom flicker is a 50-200ms visual artifact. Video at 30fps gives ~2-6 frames of evidence. Extracting those frames as PNGs and running pixelmatch on consecutive pairs is the most reliable way to detect and document the flicker automatically.
 
+### Session Storage & Structured Data
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| NDJSON (built-in) | N/A (JSON.stringify per line) | Structured event logs, timeline data, analysis output | No library needed -- `fs.appendFileSync(path, JSON.stringify(event) + '\n')`. Each line is a self-contained JSON object. Streamable, greppable, appendable, LLM-parseable. One event per line means partial file reads work (unlike JSON arrays). |
+| Node.js `fs` (built-in) | N/A | File I/O for session bundles | mkdir, writeFile, copyFile, readdir. No external dependency needed for folder-per-run storage. |
+| Node.js `path` (built-in) | N/A | Cross-platform path construction | Session bundle paths: `debug-sessions/{timestamp}-{scenario-name}/` |
+| `adm-zip` or Node.js `zlib` | Built-in | Extract Playwright trace ZIP for analysis | Playwright traces are ZIP files containing JSON action logs and PNG screenshots. Use Node.js built-in zlib + tar-stream, or the lightweight adm-zip if needed. Prefer built-in to avoid another dependency. |
+
+**Confidence: HIGH** -- NDJSON is a well-established pattern for structured logging. No external dependency needed. The folder-per-run approach is explicitly specified in PROJECT.md as the design decision.
+
+### LLM-Friendly Output
+
+No additional libraries needed. The pipeline produces artifacts in formats that LLMs consume natively:
+
+| Artifact | Format | LLM Consumption Strategy |
+|----------|--------|--------------------------|
+| Event timeline | NDJSON | Each line is a JSON event with timestamp, type, data. LLM reads N lines at a time. |
+| Console logs | NDJSON | Filtered by severity (error/warn) for focused analysis. Full log available for deep dives. |
+| Performance metrics | JSON snapshots | Taken at key moments (before zoom, during zoom, after zoom). Small, self-contained. |
+| Screenshot diffs | PNG + JSON summary | Diff image for visual inspection. JSON summary has mismatch percentage, bounding box of changed region, timestamp. |
+| Anomaly report | JSON | Post-processing output: detected anomalies with timestamps, severity, evidence file references. |
+| Session manifest | JSON | Index file listing all artifacts in the session bundle with metadata. LLM reads this first to understand what is available. |
+| Keyframes | PNG files + NDJSON index | Extracted frames with timestamps. Index file maps frame number to timestamp and event context. |
+
+**Confidence: HIGH** -- JSON and NDJSON are the formats LLMs handle best. No novel format needed.
+
+## Complete New Dependency List
+
+### devDependencies Only (zero production impact)
+
+```bash
+# Browser automation (includes Chromium download)
+npm install -D @playwright/test
+
+# Screenshot comparison
+npm install -D pixelmatch pngjs
+
+# Video post-processing
+npm install -D ffmpeg-static fluent-ffmpeg
 ```
-User pinch/scroll/click-zoom
-    |
-    v
-Scale state changes (targetScale)
-    |
-    v
-useZoomState computes cssScale = targetScale / renderedScale
-    |
-    v
-CSS transform: scale(cssScale) applied to annotation layer wrapper
-    |
-    v
-GPU composites the scaled layer instantly (< 1ms)
-    |
-    v
-Annotations appear scaled (slightly blurry at extreme zoom, acceptable)
+
+### Already Installed (no action needed)
+
+| Package | Version | Used For |
+|---------|---------|----------|
+| `sharp` | ^0.34.5 | Image resize/crop for region extraction, thumbnail generation |
+| `vite` | ^5.2.0 | Dev server (automation target) |
+
+### One-Time Setup
+
+```bash
+# After npm install, download Playwright's Chromium
+npx playwright install chromium
 ```
 
-### Phase 2: Zoom Settles (Canvas Re-render)
+## Integration Points With Existing Stack
 
+### Vite Dev Server (Target)
+
+Playwright launches Chromium and navigates to `http://localhost:5173`. The dev server must be running. Use Playwright's `webServer` config to auto-start it:
+
+```javascript
+// playwright.config.js
+export default {
+  webServer: {
+    command: 'npm run dev:ui',
+    port: 5173,
+    reuseExistingServer: true,
+    timeout: 30000,
+  },
+  use: {
+    baseURL: 'http://localhost:5173',
+  },
+};
 ```
-No zoom input for 140ms (debounce)
-    |
-    v
-renderedScale updates to match targetScale
-    |
-    v
-cssScale returns to 1.0, CSS transform removed
-    |
-    v
-Fabric.js re-renders at new zoom level (crisp, high-fidelity)
-    |
-    v
-Annotation layer dimensions resize to match new page dimensions
+
+### Existing Debug APIs (Bridge)
+
+The app already exposes `window.pdfPerf`, `window.__pdfHistoryDebug`, and `pdfDebug.js` counters. Playwright captures these via:
+
+```javascript
+// Read debug state at any point
+const perfData = await page.evaluate(() => window.pdfPerf?.getMetrics());
+const historyState = await page.evaluate(() => window.__pdfHistoryDebug?.getState());
 ```
 
-### Critical Implementation Details
+### Syncfusion PDF Viewer (Automation Target)
 
-**Transform Origin:** Must match the zoom anchor point (cursor position). Already computed in `useZoomState.getTransformOrigin()`. If the annotation layer wrapper's transform-origin does not match the Syncfusion page's zoom anchor, annotations will appear to "slide" during zoom.
+Playwright automates the viewer via DOM selectors (Syncfusion renders standard HTML elements with `e-pv-*` class prefixes). Zoom is triggered via:
+- Keyboard shortcuts (Ctrl+Plus/Minus)
+- Mouse wheel with Ctrl
+- Toolbar button clicks
+- Programmatic: `page.evaluate(() => viewer.magnificationModule.zoomTo(200))`
 
-**Layer Sizing:** During CSS transform scaling, the annotation layer wrapper's pixel dimensions stay at the `renderedScale` size. The CSS transform visually scales it. After zoom settles, the wrapper must resize to `targetScale` dimensions simultaneously with removing the CSS transform. If these are not atomic (same frame), there will be a visible "pop."
+### Fabric.js Canvas (Observation Target)
 
-**Fabric.js Re-render:** After zoom settles, call `canvas.setDimensions()` then `canvas.renderAll()`. Do NOT call `canvas.setZoom()` during the CSS transform phase -- this triggers a full Fabric.js re-render which defeats the purpose.
+Annotation flicker is detected by screenshot comparison, not by reading Fabric.js internals. However, canvas state can be queried:
+
+```javascript
+const canvasState = await page.evaluate(() => {
+  const canvas = window.__fabricCanvases?.[pageNumber];
+  return canvas?.getObjects().map(o => ({ type: o.type, left: o.left, top: o.top, scaleX: o.scaleX }));
+});
+```
+
+### Dev-Only Test Route (New)
+
+A new route (e.g., `/dev-test?pdf=package2&page=6`) bypasses Supabase auth and loads a specific PDF directly. This route is:
+- Stripped from production builds via Vite's `import.meta.env.DEV` guards
+- Required for deterministic automation (no login flow, no file picker)
 
 ## Alternatives Considered
 
 | Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Mid-zoom visual | CSS `transform: scale()` | Fabric.js `setZoom()` | `setZoom()` triggers full `renderAll()` -- loops all objects, calls render() on each. O(n) per frame. CSS scale is O(1) GPU compositing. |
-| Mid-zoom visual | CSS `transform: scale()` | Canvas context `setTransform()` | Still requires clearing and redrawing all objects. CSS scale operates on the already-rendered bitmap. |
-| Mid-zoom visual | CSS `transform: scale()` | SVG proxy (LightweightAnnotationOverlay) | SVG proxy already exists but is a simplified representation. CSS scale preserves exact visual fidelity of the full Fabric.js render. |
-| Rendering engine | Fabric.js (Canvas 2D) | WebGL (via PixiJS or raw) | WebGL has faster redraw for large object counts, but the zoom problem is not redraw speed -- it is eliminating redraws entirely during zoom. CSS transform solves this regardless of rendering engine. Migration cost vastly outweighs benefit. |
-| Rendering engine | Fabric.js (Canvas 2D) | OffscreenCanvas + Worker | OffscreenCanvas moves rendering off main thread, but CSS transform already eliminates main-thread rendering during zoom. OffscreenCanvas would only help with the post-zoom re-render, which is already fast enough (single frame). Not worth the complexity. |
-| Post-zoom render | Debounced re-render (140ms) | Immediate re-render | Would cause jank during rapid zoom changes. Users zoom in multiple quick gestures. Debounce absorbs rapid input. |
-| Post-zoom render | Debounced re-render (140ms) | `requestIdleCallback` re-render | Too unpredictable timing. User expects crisp annotations within ~200ms of stopping zoom. `requestIdleCallback` can delay up to 50ms+ on busy main threads. |
-| Zoom detection | Syncfusion `onZoomChanged` + wheel events | MutationObserver on Syncfusion DOM | Fragile -- depends on Syncfusion's internal DOM structure which changes across versions. Event-based detection is stable. |
+| Browser automation | Playwright | Cypress | No CDP access, runs in-browser (can't capture external metrics), limited video control, no trace viewer |
+| Browser automation | Playwright | Puppeteer | No test runner, no assertions, no parallel execution, no trace viewer. Same team made Playwright as the successor. |
+| Screenshot diff | pixelmatch | looks-same | Too fuzzy for 1-2px annotation position detection. We need exact pixel diffs, not "visually similar." |
+| Screenshot diff | pixelmatch | Playwright built-in `toHaveScreenshot()` | Designed for visual regression (pass/fail). We need diff images, mismatch counts, and bounding boxes -- not just assertions. |
+| Video processing | ffmpeg-static + fluent-ffmpeg | No video processing | Post-zoom flicker is 50-200ms. Without frame extraction, evidence is locked inside WebM files that LLMs cannot analyze. |
+| Video processing | ffmpeg-static | System ffmpeg | System dependency makes setup fragile. ffmpeg-static bundles the binary as an npm package -- works on any machine. |
+| Structured data | NDJSON (no library) | SQLite | PROJECT.md explicitly rules out database storage. NDJSON is greppable, appendable, and LLM-readable. |
+| Structured data | NDJSON (no library) | ndjson npm package | The npm package adds streaming parse/serialize. We only need `JSON.stringify(obj) + '\n'` -- one line of code. No dependency justified. |
+| Trace parsing | Node.js built-in zlib | adm-zip | Playwright traces are standard ZIP files. Node.js built-in `zlib` handles this. Only add adm-zip if the ZIP structure proves complex. |
+| LLM output format | JSON/NDJSON | TOON (tabular) | TOON is newer (late 2025) and shows 4% accuracy improvement over JSON in benchmarks, but JSON has universal tooling support and LLMs handle it natively. Not worth the novelty risk for a debugging pipeline. |
 
-## What NOT to Do
+## What NOT to Use
 
-### Do NOT call Fabric.js `setZoom()` during active zooming
-**Why:** `setZoom()` triggers `renderAll()` which iterates all canvas objects and calls each object's `render()` method. With 50+ annotations per page, this takes 5-15ms per call. At 60fps zoom events, this causes 100% main thread saturation and visible jank.
+### Do NOT use Playwright MCP Server for this
 
-### Do NOT use CSS `zoom` property instead of `transform: scale()`
-**Why:** CSS `zoom` triggers layout recalculation. `transform: scale()` does not affect layout -- it operates purely at the compositing stage. The `zoom` property would cause Syncfusion's scroll containers to recalculate dimensions on every zoom step. (Source: Jake Archibald, "Animating zooming using CSS", 2025)
+The Playwright MCP server (playwright-mcp) is designed for LLM agents to interactively browse the web. This project needs deterministic scripts, not agent improvisation. PROJECT.md explicitly states: "Deterministic scripts, not AI agent improvisation. LLM analyzes evidence, doesn't generate it."
 
-### Do NOT use CSS `transition` on the scale transform
-**Why:** CSS transitions interpolate the scale smoothly over time, which fights with real-time user input. Pinch-zoom and scroll-zoom provide continuous input -- the visual must track input exactly, not animate toward it. Any transition delay creates perceived input lag. The `useZoomState.js` correctly omits transitions.
+### Do NOT use Playwright's `toHaveScreenshot()` for anomaly detection
 
-### Do NOT set `willReadFrequently: true` on annotation canvases during zoom
-**Why:** `willReadFrequently: true` disables GPU acceleration for that canvas context. The existing code correctly patches `getContext()` to set this only for Fabric.js upper/lower canvases (which need `getImageData()` for eraser operations), but during zoom the CSS transform handles the visual -- no pixel reads occur. If GPU acceleration is disabled, the CSS transform compositing will be slower. (Source: Kevin Schiener, "Slow HTML Canvas Performance?", 2024 -- `willReadFrequently: true` increased commit time from 0.1ms to 47ms)
+`toHaveScreenshot()` is a pass/fail assertion for visual regression testing. It tells you "different" or "same" but does not produce the diff image, mismatch percentage, or bounding box data needed for LLM analysis. Use pixelmatch directly for rich diff output.
 
-### Do NOT re-render the Fabric.js canvas at every intermediate zoom level
-**Why:** This is the current broken behavior. Each intermediate zoom level triggers a full tear-down and rebuild of the canvas at the new scale. This is the root cause of annotations disappearing during zoom.
+### Do NOT use `playwright-core` instead of `@playwright/test`
 
-### Do NOT use transform order `scale(n) translate(x, y)` for cursor-centered zoom
-**Why:** Scale acts as a multiplier for translate values, creating non-linear motion. Use `translate(x, y) scale(n)` or pre-multiply translate values by the scale factor. (Source: Jake Archibald, "Animating zooming using CSS: transform order is important", 2025)
+`playwright-core` is the library-only package without a test runner. `@playwright/test` includes the test runner, assertions, fixtures, retries, parallelism, and HTML reporter -- all needed for structured scenario execution. The test runner overhead is negligible and the features are essential.
 
-## Supporting Libraries (Already Installed -- No New Dependencies)
+### Do NOT add a real-time monitoring dashboard
 
-| Library | Version | Role in Zoom | Notes |
-|---------|---------|-------------|-------|
-| `fabric` | 5.5.2 | Post-zoom re-render | Call `setDimensions()` + `renderAll()` after zoom settles. Disable `objectCaching` during dimension changes to avoid stale cache. |
-| `react` | 18.2 | State management for zoom lifecycle | `useZoomState` hook manages `renderedScale` / `cssScale` split. `useSyncExternalStore` used by AnnotationStore for page-level subscriptions. |
-| `react-window` | 2.2.1 | Virtualized page list | May need coordination -- CSS transform on annotation layer must not interfere with react-window's scroll position calculations. |
+PROJECT.md: "files and folders are sufficient." Folder-per-run with NDJSON files. A dashboard adds complexity without value at this stage.
 
-## Browser Compatibility
+### Do NOT use Canvas screenshot via `canvas.toDataURL()`
 
-| Feature | Chrome | Firefox | Safari | Electron |
-|---------|--------|---------|--------|----------|
-| `transform: scale()` | All | All | All | All |
-| `will-change` | All | All | All | All |
-| `contain` | 52+ | 69+ | 15.4+ | All (Chromium) |
-| `contentVisibility` | 85+ | 125+ | 18+ | All (Chromium) |
-| `OffscreenCanvas` | 69+ | 105+ | 16.4+ | All (Chromium) |
-| `requestAnimationFrame` | All | All | All | All |
+While Fabric.js exposes `canvas.toDataURL()`, this only captures the canvas element -- not the full page context (Syncfusion chrome, scroll position, overlapping elements). Playwright's `page.screenshot()` captures exactly what the user sees, which is what matters for flicker detection.
 
-The app targets Electron (Chromium-based), so all features have full support. Browser compatibility is not a concern.
+## Performance Considerations
 
-## Performance Budget
+| Operation | Expected Time | Notes |
+|-----------|---------------|-------|
+| Playwright launch + navigate | 2-4s | First test. Subsequent tests reuse browser if configured. |
+| Screenshot capture | 50-100ms | Full viewport PNG. |
+| pixelmatch comparison (1280x800) | 5-10ms | Pure JS, operates on raw RGBA buffers. Negligible. |
+| Video frame extraction (single frame) | 200-500ms | ffmpeg seek + decode. Batch extraction is faster per-frame. |
+| CDP Performance.getMetrics | <5ms | Single CDP round-trip. |
+| Console log capture | 0ms (event-driven) | Asynchronous listener, no polling cost. |
+| Session bundle write | 50-200ms | Depends on artifact count. Mostly I/O bound. |
+| Trace ZIP save | 100-500ms | Depends on trace length. Includes compression. |
 
-| Phase | Target | Measurement |
-|-------|--------|-------------|
-| CSS transform application | < 1ms | GPU compositing only, no JS cost |
-| Zoom input to visual update | < 16ms (1 frame) | CSS transform applied in same rAF as input |
-| Post-zoom debounce | 140ms after last input | Matches existing `RENDER_DEBOUNCE_MS` |
-| Post-zoom Fabric.js re-render | < 50ms | `setDimensions()` + `renderAll()` for typical page (~50 objects) |
-| Total zoom-to-crisp latency | < 200ms after zoom stops | 140ms debounce + < 50ms render |
+## Folder Structure
+
+```
+debug-sessions/
+  2026-03-12T14-30-00-zoom-flicker/
+    manifest.json              # Session index: scenario, timestamps, artifact list
+    events.ndjson              # All captured events (console, performance, custom)
+    console.ndjson             # Browser console output
+    performance.ndjson         # CDP metrics snapshots
+    screenshots/
+      001-baseline.png         # Before action
+      002-zoom-start.png       # During zoom
+      003-zoom-end.png         # After zoom settles
+      ...
+    diffs/
+      002-vs-003-diff.png      # pixelmatch output
+      diff-summary.ndjson      # Mismatch percentages per pair
+    video/
+      session.webm             # Full session recording
+    keyframes/
+      frame-0042.png           # Extracted at anomaly timestamp
+      frame-0043.png
+      keyframes.ndjson          # Frame index with timestamps
+    trace/
+      trace.zip                # Playwright trace (viewable in trace.playwright.dev)
+    analysis/
+      anomalies.json           # Detected anomalies with evidence references
+      timeline-summary.json    # Human/LLM-readable session summary
+```
 
 ## Sources
 
-- [pdf.js PR #19128: CSS zoom fallback with high-res partial views](https://github.com/mozilla/pdf.js/pull/19128) -- HIGH confidence
-- [Jake Archibald: Animating zooming using CSS (2025)](https://jakearchibald.com/2025/animating-zooming/) -- HIGH confidence
-- [MDN: Optimizing Canvas](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas) -- HIGH confidence
-- [Kevin Schiener: Canvas willReadFrequently (2024)](https://www.schiener.io/2024-08-02/canvas-willreadfrequently) -- MEDIUM confidence
-- [web.dev: OffscreenCanvas](https://web.dev/articles/offscreen-canvas) -- HIGH confidence
-- [Fabric.js Zoom Performance Discussion #10392](https://github.com/fabricjs/fabric.js/discussions/10392) -- MEDIUM confidence
-- [HackerNoon: Optimizing Performance in Fabric.js 5](https://hackernoon.com/optimizing-performance-in-fabricjs-5-14-best-practices-and-tips) -- MEDIUM confidence
-- [Chrome DevBlog: GPU acceleration in 2D canvas](https://developer.chrome.com/blog/taking-advantage-of-gpu-acceleration-in-the-2d-canvas) -- HIGH confidence (older but fundamentals unchanged)
-- [MDN: CSS contain property](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Using_CSS_containment) -- HIGH confidence
+- [Playwright Official Documentation -- Tracing API](https://playwright.dev/docs/api/class-tracing) -- HIGH confidence
+- [Playwright Official Documentation -- Videos](https://playwright.dev/docs/videos) -- HIGH confidence
+- [Playwright Official Documentation -- CDPSession](https://playwright.dev/docs/api/class-cdpsession) -- HIGH confidence
+- [Playwright Official Documentation -- ConsoleMessage](https://playwright.dev/docs/api/class-consolemessage) -- HIGH confidence
+- [Playwright Release Notes](https://playwright.dev/docs/release-notes) -- HIGH confidence
+- [@playwright/test on npm (v1.58.2)](https://www.npmjs.com/package/@playwright/test) -- HIGH confidence
+- [pixelmatch on GitHub (mapbox/pixelmatch)](https://github.com/mapbox/pixelmatch) -- HIGH confidence
+- [pixelmatch on npm (v7.1.0)](https://www.npmjs.com/package/pixelmatch) -- HIGH confidence
+- [sharp Official Documentation](https://sharp.pixelplumbing.com/) -- HIGH confidence
+- [ffmpeg-static on npm (v5.3.0)](https://www.npmjs.com/package/ffmpeg-static) -- HIGH confidence
+- [fluent-ffmpeg on GitHub](https://github.com/fluent-ffmpeg/node-fluent-ffmpeg) -- HIGH confidence
+- [pngjs on GitHub](https://github.com/pngjs/pngjs) -- HIGH confidence
+- [Playwright CDP Performance Testing (Medium)](https://medium.com/@aishahsofea/automated-performance-testing-with-playwright-and-chrome-devtools-a-deep-dive-52e8b240b00d) -- MEDIUM confidence
+- [BrowserStack: Playwright Performance Testing](https://www.browserstack.com/guide/playwright-performance-testing) -- MEDIUM confidence
+- [Checkly: Playwright Performance Best Practices](https://www.checklyhq.com/docs/learn/playwright/performance/) -- MEDIUM confidence
