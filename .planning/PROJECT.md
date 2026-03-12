@@ -1,12 +1,27 @@
-# Live Zoom Annotation Rendering
+# BetaSafe Survey Tool
 
 ## What This Is
 
-A professional-grade zoom experience for a PDF survey annotation tool built on Syncfusion React PDF Viewer. The custom canvas-based annotation layer currently re-renders from scratch during zoom operations, causing annotations to disappear, flicker, and lag. This project replaces that behavior with seamless, real-time annotation scaling during zoom — matching the polish of Adobe Acrobat, Bluebeam, and DrawboardPDF.
+A PDF survey annotation tool built on Syncfusion React PDF Viewer with a custom Fabric.js canvas annotation layer. The Electron desktop app supports 16 annotation types (pen, highlighter, shapes, arrows, text, callouts, etc.), project management, and cloud sync via Supabase. Used for professional survey/inspection workflows.
 
 ## Core Value
 
-Annotations must remain visible and smoothly scale with the page during zoom at all times — no disappearing, no flickering, no positional glitches.
+Annotations must render correctly and reliably across all user interactions — zoom, pan, page navigation, creation, editing, and deletion.
+
+## Current Milestone: v2.0 Debug Annotations
+
+**Goal:** Build an automated debugging and analysis pipeline that can drive the app, capture synchronized evidence of rendering problems, and produce structured artifacts for LLM-assisted diagnosis.
+
+**Target features:**
+- Dev-only test route for Playwright automation (bypass auth)
+- Playwright harness with deterministic scenario scripts
+- Synchronized artifact capture (video, screenshots, events, console, performance)
+- Session bundle storage (folder-per-run)
+- Extended debug API exposing internal app state
+- Post-processing pipeline (anomaly detection, keyframe extraction, timeline summaries)
+- LLM-friendly analysis output (chunked, structured)
+
+**First target bug:** Post-zoom annotation flicker — annotations flash to wrong position/size after zoom ends, then snap back to correct position. Race condition between CSS transform removal and Fabric.js canvas repaint.
 
 ## Requirements
 
@@ -14,42 +29,47 @@ Annotations must remain visible and smoothly scale with the page during zoom at 
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+- ✓ Annotations stay visible during zoom operation (CSS transform overlay) — v1.0
+- ✓ Annotations scale smoothly with page during zoom (GPU-accelerated transforms) — v1.0
+- ✓ Three-ref freeze prevents portal host disconnection during Syncfusion page rebuilds — v1.0
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Annotations stay visible throughout the entire zoom operation (no disappearing)
-- [ ] Annotations scale smoothly with the page during zoom (CSS transform-based)
-- [ ] High-fidelity re-render occurs after zoom settles (crisp at final zoom level)
-- [ ] All annotation types supported: shapes, freehand/ink, text
-- [ ] All zoom methods supported: trackpad pinch, toolbar buttons, Ctrl/Cmd+scroll
-- [ ] No positional or scale glitching during zoom transitions
-- [ ] No flickering of annotations at wrong positions/scales during or after zoom
-- [ ] Performance remains smooth — no jank or dropped frames during zoom
+- [ ] Post-zoom flicker eliminated — no wrong-position/size flash after zoom ends
+- [ ] Automated test harness can drive the app through deterministic scenarios
+- [ ] Debugging artifacts captured with synchronized timeline
+- [ ] Session bundles stored in structured folders for analysis
+- [ ] LLM can analyze chunked artifacts alongside source code
 
 ### Out of Scope
 
-- Modifying Syncfusion's internal PDF page rendering — we only control the custom annotation layer
-- Adding new annotation types — this project is about zoom behavior only
-- Changing how annotations render at a static zoom level — end-state rendering is already correct
+- Gemini Embedding 2 / semantic retrieval — v3, after artifact quality is proven
+- CI pipeline integration — v3, local-only for now
+- Electron-specific automation — targeting Vite dev server in Chromium instead
+- Real-time monitoring dashboard — files and folders are sufficient
+- Automated fix generation — LLM analyzes, human decides
+- Database storage — folder-per-run until file-based retrieval becomes painful
 
 ## Context
 
-- The app uses Syncfusion React PDF Viewer as the base PDF rendering engine
-- Annotations are rendered on a fully custom canvas layer (`PageAnnotationLayer.jsx`) overlaid on top of Syncfusion's pages
-- Syncfusion confirmed their viewer uses lazy-loading with zoom-dependent re-rendering: "During zooming, the viewer must re-render the annotation canvas because the annotation geometry depends on the active zoom level"
-- The final rendered state after zoom is already correct — annotations position and scale properly once settled
-- Professional PDF tools (Acrobat, Bluebeam, DrawboardPDF) solve this with a "scale during, render after" pattern: CSS transforms provide instant GPU-accelerated scaling during zoom, followed by a high-fidelity canvas re-render once zoom stabilizes
-- The existing annotation layer is built with HTML Canvas 2D context
+- Electron app (electron 25.2.1) with React UI served by Vite on port 5173
+- Syncfusion React PDF Viewer renders PDF pages; custom Fabric.js 5.5.2 canvas overlay renders annotations
+- App.jsx is a 1.3MB monolith containing zoom logic, portal host resolution, render loop
+- PageAnnotationLayer.jsx (384KB) handles per-page canvas annotation rendering
+- Existing debug APIs: `window.pdfPerf` (performance metrics), `window.__pdfHistoryDebug` (undo/redo history), `pdfDebug.js` (counters, event rates)
+- PDFs stored in Supabase Storage (`documents` bucket), downloaded as blobs, passed as Uint8Array to Syncfusion
+- 16 annotation tools: pen, highlighter, eraser, text, rect, ellipse, line, arrow, underline, strikeout, squiggly, callout, note, highlight, select, pan
+- Post-zoom flicker: CSS transforms removed before Fabric.js finishes repainting at new scale — ~50-200ms gap where annotations show at wrong position/size
 
 ## Constraints
 
-- **Tech stack**: Must work within Syncfusion React PDF Viewer ecosystem — cannot replace the base viewer
-- **Rendering tech**: Custom annotation layer uses Canvas 2D — solution must work with canvas-based rendering
-- **Quality bar**: Must match Adobe Acrobat-level polish — no visible transition artifacts acceptable
-- **Backwards compatibility**: Must not break existing annotation creation, editing, or positioning logic
+- **Tech stack**: Syncfusion React PDF Viewer + Fabric.js 5.5.2 — cannot replace either
+- **Automation target**: Vite dev server (localhost:5173) in Chromium via Playwright — not Electron directly
+- **Artifact format**: Folder-per-run, no database — must be manually inspectable
+- **Philosophy**: Deterministic scripts, not AI agent improvisation. LLM analyzes evidence, doesn't generate it
+- **Backwards compatibility**: Debug infrastructure must not affect production builds or existing functionality
 
 ## Key Decisions
 
@@ -57,9 +77,14 @@ Annotations must remain visible and smoothly scale with the page during zoom at 
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| CSS transform scaling during zoom | GPU-accelerated, instant, no re-render needed during transition | — Pending |
-| Debounced re-render after zoom settles | Avoids expensive canvas re-draws during active zooming | — Pending |
-| Willing to sacrifice fidelity during zoom if needed | User stated preference for smooth over perfect mid-zoom, but prefers highest quality | — Pending |
+| CSS transform scaling during zoom | GPU-accelerated, instant, no re-render needed during transition | ✓ Good |
+| Debounced re-render after zoom settles | Avoids expensive canvas re-draws during active zooming | ✓ Good |
+| Three-ref freeze for portal host stability | Prevents Syncfusion page rebuilds from disconnecting annotation canvases | ✓ Good |
+| Playwright targeting Vite dev server (not Electron) | More stable automation, same rendering behavior, built-in video/trace | — Pending |
+| Dev-only test route bypassing auth | Clean automation without fragile login flows | — Pending |
+| Folder-per-run storage (no database) | Simple, inspectable, diffable — database only when file-based becomes painful | — Pending |
+| Embeddings deferred to v3 | Capture quality must be proven before indexing makes sense | — Pending |
+| Headless by default with --headed flag | Faster runs, video captures everything, headed for debugging | — Pending |
 
 ---
-*Last updated: 2026-03-04 after initialization*
+*Last updated: 2026-03-11 after v2.0 milestone initialization*
