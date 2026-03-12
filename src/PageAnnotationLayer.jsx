@@ -3152,6 +3152,7 @@ const PageAnnotationLayer = memo(({
   const isInitializedRef = useRef(false);
   const drawingStateRef = useRef({ isDrawingShape: false, startX: 0, startY: 0, tempObj: null });
   const justFinishedDrawingRef = useRef(false);
+
   const toolRef = useRef(tool);
   const previousToolRef = useRef(tool);
   const strokeColorRef = useRef(strokeColor);
@@ -7781,10 +7782,13 @@ const PageAnnotationLayer = memo(({
           }
         }
 
-        // Apply CSS scale to canvas wrapper for all pages.
+        // Apply CSS scale to canvas wrapper for non-center pages only.
         // This provides instant visual feedback while Fabric renders are deferred.
+        // Center page skips this — App-level overlay CSS already scales it, and
+        // adding a second CSS transform here would double-scale for ~32ms until
+        // the stagger queue runs doFabricRender.
         const currentZoom = c.getZoom();
-        if (wrapperEl && currentZoom > 0) {
+        if (wrapperEl && currentZoom > 0 && !isCenterPage) {
           const ratio = finalScale / currentZoom;
           wrapperEl.style.transform = `scale(${ratio})`;
           wrapperEl.style.transformOrigin = 'top left';

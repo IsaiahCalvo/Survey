@@ -9003,6 +9003,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const zoomOverlayTransformActiveRef = useRef(false);
   const zoomOverlayBaseScaleRef = useRef(1);
   const zoomOverlaySettleTimerRef = useRef(null);
+  // Fallback portal hosts: when Syncfusion destroys page containers during zoom,
+  // these keep the React portal tree alive so Fabric canvases aren't destroyed.
+  const syncfusionFallbackHostsRef = useRef({});
+  // Stable portal hosts: persistent divs used as createPortal() targets.
+  // Same JS object is reused across renders so React never unmounts/remounts
+  // portal children when Syncfusion recreates page containers during zoom.
+  const syncfusionStablePortalHostsRef = useRef({});
+  const syncfusionLastNonEmptyOverlayPagesRef = useRef([]);
+  const syncfusionCachedPageRectsRef = useRef({});
   const overlayLagRecorderRef = useRef({
     active: false,
     mode: null,
@@ -9581,6 +9590,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
     syncfusionOverlayTransformRatioByPageRef.current = {};
     syncfusionOverlayTransformNodeByPageRef.current = {};
+    // Clean up any fallback portal hosts created during zoom
+    const fallbacks = syncfusionFallbackHostsRef.current;
+    Object.keys(fallbacks).forEach((pageKey) => {
+      const fb = fallbacks[pageKey];
+      if (fb?.isConnected) fb.remove();
+      delete fallbacks[pageKey];
+    });
   }, []);
 
   const clearSyncfusionInteractionTimer = useCallback(() => {
@@ -10013,7 +10029,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionInteractionPageModesRef.current = {};
     setSyncfusionInteractionProxyPayloads({});
     syncfusionInteractionProxyPayloadsRef.current = {};
-    syncfusionInteractionPortalHostsRef.current = {};
+    // DON'T clear portal hosts cache here — we're about to set
+    // syncfusionScaleConfirmPendingRef=true, and the render loop needs the
+    // cached hosts to create fallback portals during Syncfusion post-zoom
+    // DOM reconstruction. The cache gets overwritten when the next
+    // interaction starts (markSyncfusionInteractionActive).
     syncSyncfusionLightweightPages('idle');
     // Defer CSS transform removal until Fabric.js confirms it rendered at the new scale.
     // This prevents the visual flicker between CSS transform removal and canvas re-render.
@@ -10025,13 +10045,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
       syncfusionScaleConfirmTimerRef.current = null;
       if (syncfusionScaleConfirmPendingRef.current) {
-        console.warn('[AnnotPerf] 800ms safety timeout — PAL never confirmed, forcing CSS transform removal');
+        console.warn('[AnnotPerf] 3000ms safety timeout — PAL never confirmed, forcing CSS transform removal');
         syncfusionScaleConfirmPendingRef.current = false;
         zoomOverlayTransformActiveRef.current = false;
         zoomOverlayBaseScaleRef.current = 1;
         resetSyncfusionOverlayTransformStyles();
       }
-    }, 800);
+    }, 3000);
     if (wasActive) {
       syncfusionInteractionTransitionsRef.current.off += 1;
       setDebugData({
@@ -11031,8 +11051,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
 
     const onWheel = (event) => {
-      // Intercept pinch-to-zoom (which sends Ctrl+Wheel events on many browsers)
+      // NOTE: Custom Ctrl+Wheel zoom is DISABLED — letting Syncfusion handle it natively.
+      // To re-enable, remove the early return below and uncomment the zoom logic.
+      // The custom handler was working (tested 2026-03-11) but disabled to reduce complexity.
       if (event.ctrlKey || event.metaKey) {
+        return; // DISABLED — Syncfusion handles Ctrl+Wheel zoom natively
         event.preventDefault();
         queueInteractionMark('wheel-zoom', 'syncfusion-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
 
@@ -11077,11 +11100,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             return;
           }
 
+          // Pre-activate zoom overlay protection BEFORE zoomTo() — Syncfusion
+          // may synchronously destroy/recreate page DOM inside zoomTo(), racing
+          // handleSyncfusionZoomChange which sets the ref AFTER zoomTo returns.
+          if (!zoomOverlayTransformActiveRef.current) {
+            zoomOverlayBaseScaleRef.current = currentZoom / 100;
+            zoomOverlayTransformActiveRef.current = true;
+            const pcMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+            const cachedRects = {};
+            const portalHostSnapshot = {};
+            Object.entries(pcMap).forEach(([pn, el]) => {
+              if (el?.isConnected) {
+                cachedRects[pn] = { top: el.offsetTop, left: el.offsetLeft, width: el.offsetWidth, height: el.offsetHeight };
+                portalHostSnapshot[Number(pn)] = el;
+              }
+            });
+            syncfusionCachedPageRectsRef.current = cachedRects;
+            const existingHosts = syncfusionInteractionPortalHostsRef.current || {};
+            if (Object.keys(existingHosts).length === 0) {
+              syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+            }
+          }
           if (viewer.magnificationModule && typeof viewer.magnificationModule.zoomTo === 'function') {
             viewer.magnificationModule.zoomTo(nextZoom);
           }
         });
-
       } else {
         queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
       }
@@ -11359,11 +11402,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     if (freezeDuringInteraction) {
       if (resolvedHost?.isConnected) {
+        // Clean up any fallback host for this page since we have a real one
+        const fb = syncfusionFallbackHostsRef.current[safePageNumber];
+        if (fb?.isConnected) {
+          fb.remove();
+          delete syncfusionFallbackHostsRef.current[safePageNumber];
+        }
         return resolvedHost;
       }
-      if (existingHost) {
+      // All hosts disconnected — Syncfusion destroyed page containers during zoom.
+      // Return the disconnected host directly so React keeps the same portal
+      // container reference. This prevents unmount/remount cycles that cause
+      // transient cc=0 drops. The annotations won't be visible during the
+      // brief transition, but the React tree stays intact.
+      if (existingHost && !existingHost.isConnected) {
         return existingHost;
       }
+    }
+    // Even outside freeze, if the live host is missing/disconnected but we have
+    // a cached host, return it to prevent React portal unmount during Syncfusion's
+    // late page re-renders (which can happen seconds after zoom settles).
+    if (!resolvedHost?.isConnected && existingHost) {
+      return existingHost;
     }
     return resolvedHost || null;
   }, [resolveSyncfusionLivePageHost]);
@@ -11623,6 +11683,39 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const nextScale = clampScale(rawZoomValue / 100);
     const prevScale = scaleRef.current;
     scaleRef.current = nextScale;
+
+    // ── Activate zoom overlay transform on first zoom event ──
+    // MUST happen BEFORE shouldDeferScaleCommit check so that
+    // the first zoom event also defers setScale() and prevents
+    // PAL unmount/remount churn from React re-renders.
+    if (!zoomOverlayTransformActiveRef.current) {
+      zoomOverlayBaseScaleRef.current = prevScale;
+      zoomOverlayTransformActiveRef.current = true;
+      // Cache page positions AND portal hosts for fallback containers during zoom.
+      // When Syncfusion destroys page containers, we use these rects to
+      // position fallback hosts so annotations stay visually in place.
+      const pageContainersMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+      const cachedRects = {};
+      const portalHostSnapshot = {};
+      Object.entries(pageContainersMap).forEach(([pageNum, el]) => {
+        if (el?.isConnected) {
+          cachedRects[pageNum] = {
+            top: el.offsetTop,
+            left: el.offsetLeft,
+            width: el.offsetWidth,
+            height: el.offsetHeight
+          };
+          portalHostSnapshot[Number(pageNum)] = el;
+        }
+      });
+      syncfusionCachedPageRectsRef.current = cachedRects;
+      // Populate portal hosts if cache is empty (idle state cleared it)
+      const existingHosts = syncfusionInteractionPortalHostsRef.current || {};
+      if (Object.keys(existingHosts).length === 0) {
+        syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+      }
+    }
+    // Now that zoomOverlayTransformActiveRef is set, check whether to defer scale
     const shouldDeferScaleCommit =
       useSyncfusionRenderer && (
         zoomOverlayTransformActiveRef.current ||
@@ -11650,14 +11743,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     queueSyncfusionOverlayTransformSync(true);
 
     // ── Lightweight synchronous CSS transform for overlay during zoom ──
-    // Apply CSS transform to overlay content divs immediately (no React cycle).
-    // This keeps annotations visually aligned with the page during zoom,
-    // even when Syncfusion's re-render blocks the main thread.
-    if (!zoomOverlayTransformActiveRef.current) {
-      // First zoom event: capture the PRE-zoom scale (what canvas is rendered at)
-      zoomOverlayBaseScaleRef.current = prevScale;
-      zoomOverlayTransformActiveRef.current = true;
-    }
     const baseScale = zoomOverlayBaseScaleRef.current;
     if (baseScale > 0) {
       const ratio = nextScale / baseScale;
@@ -11717,7 +11802,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }
           }
         }
-      }, 800);
+      }, 3000);
     }, 1000);
   }, [
     bumpOverlayLagEventTotal,
@@ -20269,6 +20354,77 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           y: cursorY + container.scrollTop
         });
       }
+      // Pre-activate zoom overlay protection so portal hosts stay frozen when
+      // Syncfusion destroys/recreates page DOM during zoomTo(). Without this,
+      // keyboard/toolbar zoom race: zoomTo() fires before
+      // handleSyncfusionZoomChange sets the ref, leaving a gap where
+      // shouldFreezePortalHost is false and canvas containers drop to 0.
+      if (Math.abs(safeScale - previousScale) > 0.0005) {
+        if (!zoomOverlayTransformActiveRef.current) {
+          zoomOverlayBaseScaleRef.current = previousScale;
+          zoomOverlayTransformActiveRef.current = true;
+          // Cache page rects AND portal hosts before Syncfusion destroys DOM.
+          // The portal hosts cache is cleared when interaction goes idle, so it
+          // may be empty when pre-activation fires. We must populate it here so
+          // the render loop can create fallback hosts for disconnected pages.
+          const pageContainersMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+          const cachedRects = {};
+          const portalHostSnapshot = {};
+          Object.entries(pageContainersMap).forEach(([pageNum, el]) => {
+            if (el?.isConnected) {
+              cachedRects[pageNum] = {
+                top: el.offsetTop, left: el.offsetLeft,
+                width: el.offsetWidth, height: el.offsetHeight
+              };
+              portalHostSnapshot[Number(pageNum)] = el;
+            }
+          });
+          syncfusionCachedPageRectsRef.current = cachedRects;
+          // Only populate portal hosts if cache is empty (don't overwrite active interaction cache)
+          const existingHosts = syncfusionInteractionPortalHostsRef.current || {};
+          if (Object.keys(existingHosts).length === 0) {
+            syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+          }
+        }
+        // Restart settle timer on every zoom step so rapid keyboard/toolbar
+        // presses don't leave a stale timer that releases the ref mid-sequence.
+        if (zoomOverlaySettleTimerRef.current) {
+          clearTimeout(zoomOverlaySettleTimerRef.current);
+        }
+        zoomOverlaySettleTimerRef.current = setTimeout(() => {
+          zoomOverlaySettleTimerRef.current = null;
+          zoomOverlayTransformActiveRef.current = false;
+          const pendingScale = syncfusionPendingZoomScaleRef.current;
+          if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
+            syncfusionPendingZoomScaleRef.current = null;
+            const finalScale = clampScale(pendingScale);
+            setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
+            setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
+          }
+          syncfusionScaleConfirmPendingRef.current = true;
+          if (syncfusionScaleConfirmTimerRef.current) {
+            clearTimeout(syncfusionScaleConfirmTimerRef.current);
+          }
+          syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
+            syncfusionScaleConfirmTimerRef.current = null;
+            if (syncfusionScaleConfirmPendingRef.current) {
+              syncfusionScaleConfirmPendingRef.current = false;
+              zoomOverlayBaseScaleRef.current = 1;
+              const overlayRefs = syncfusionOverlayContentRefs.current;
+              if (overlayRefs) {
+                const keys = Object.keys(overlayRefs);
+                for (let i = 0; i < keys.length; i++) {
+                  const node = overlayRefs[keys[i]];
+                  if (node && node.isConnected) {
+                    node.style.transform = '';
+                    node.style.transformOrigin = '';
+                  }
+                }
+              }
+            }
+          }, 3000);
+        }, 1000);
+      }
       scaleRef.current = safeScale;
       setScale(safeScale);
 
@@ -20700,6 +20856,87 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       document.removeEventListener('wheel', wheelHandler, { capture: true });
     };
   }, [handleWheel, useSyncfusionRenderer]);
+
+  // Pre-activate zoom overlay protection for Ctrl+=/- keyboard zoom.
+  // Syncfusion handles these keys internally and may destroy/recreate page
+  // DOM before our handleSyncfusionZoomChange fires. This capture-phase
+  // handler ensures portal host freeze is active before Syncfusion touches DOM.
+  useEffect(() => {
+    if (!useSyncfusionRenderer) return;
+
+    const handleZoomKeyDown = (e) => {
+      const isZoomIn = (e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+');
+      const isZoomOut = (e.ctrlKey || e.metaKey) && e.key === '-';
+      if (!isZoomIn && !isZoomOut) return;
+
+      const prevScale = scaleRef.current || 1.0;
+      if (!zoomOverlayTransformActiveRef.current) {
+        zoomOverlayBaseScaleRef.current = prevScale;
+        zoomOverlayTransformActiveRef.current = true;
+        // Cache page rects and portal hosts before Syncfusion destroys DOM
+        const pageContainersMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+        const cachedRects = {};
+        const portalHostSnapshot = {};
+        Object.entries(pageContainersMap).forEach(([pageNum, el]) => {
+          if (el?.isConnected) {
+            cachedRects[pageNum] = {
+              top: el.offsetTop, left: el.offsetLeft,
+              width: el.offsetWidth, height: el.offsetHeight
+            };
+            portalHostSnapshot[Number(pageNum)] = el;
+          }
+        });
+        syncfusionCachedPageRectsRef.current = cachedRects;
+        const existingHosts = syncfusionInteractionPortalHostsRef.current || {};
+        if (Object.keys(existingHosts).length === 0) {
+          syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+        }
+      }
+      // Restart settle timer (same as setScaleWithViewportPreservation)
+      if (zoomOverlaySettleTimerRef.current) {
+        clearTimeout(zoomOverlaySettleTimerRef.current);
+      }
+      zoomOverlaySettleTimerRef.current = setTimeout(() => {
+        zoomOverlaySettleTimerRef.current = null;
+        zoomOverlayTransformActiveRef.current = false;
+        const pendingScale = syncfusionPendingZoomScaleRef.current;
+        if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
+          syncfusionPendingZoomScaleRef.current = null;
+          const finalScale = clampScale(pendingScale);
+          setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
+          setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
+        }
+        syncfusionScaleConfirmPendingRef.current = true;
+        if (syncfusionScaleConfirmTimerRef.current) {
+          clearTimeout(syncfusionScaleConfirmTimerRef.current);
+        }
+        syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
+          syncfusionScaleConfirmTimerRef.current = null;
+          if (syncfusionScaleConfirmPendingRef.current) {
+            syncfusionScaleConfirmPendingRef.current = false;
+            zoomOverlayBaseScaleRef.current = 1;
+            const overlayRefs = syncfusionOverlayContentRefs.current;
+            if (overlayRefs) {
+              const keys = Object.keys(overlayRefs);
+              for (let i = 0; i < keys.length; i++) {
+                const node = overlayRefs[keys[i]];
+                if (node && node.isConnected) {
+                  node.style.transform = '';
+                  node.style.transformOrigin = '';
+                }
+              }
+            }
+          }
+        }, 3000);
+      }, 1000);
+    };
+
+    // Capture phase: runs before Syncfusion's own handler
+    document.addEventListener('keydown', handleZoomKeyDown, { capture: true });
+    return () => {
+      document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
+    };
+  }, [useSyncfusionRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
@@ -23293,6 +23530,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       interactionWindowSet.add(currentPage);
                     }
                   }
+                  // When portal hosts are frozen (zoom active or confirm-pending),
+                  // Syncfusion may have destroyed page containers so syncfusionPageContainers
+                  // can be empty. Merge in pages from the cached portal hosts so we still
+                  // attempt to render portals (fallback host creation handles disconnected hosts).
+                  const containerPageNumbers = Object.keys(syncfusionPageContainers).map((pageKey) => Number(pageKey));
+                  const frozenPageNumbers = shouldFreezePortalHost
+                    ? (() => {
+                        const cachedHosts = syncfusionInteractionPortalHostsRef.current || {};
+                        const cachedPages = Object.keys(cachedHosts).map(Number);
+                        const merged = new Set([...containerPageNumbers, ...cachedPages]);
+                        return Array.from(merged);
+                      })()
+                    : containerPageNumbers;
                   const overlayWindowPageNumbers = useInteractionWindow
                     ? Array.from(
                       interactionWindowSet.size > 0
@@ -23303,12 +23553,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             : syncfusionInteractionResidentPages
                         )
                     )
-                    : Object.keys(syncfusionPageContainers).map((pageKey) => Number(pageKey));
+                    : frozenPageNumbers;
 
-                  return overlayWindowPageNumbers
+                  const effectiveOverlayPages = overlayWindowPageNumbers.length > 0
+                    ? overlayWindowPageNumbers
+                    : syncfusionLastNonEmptyOverlayPagesRef.current;
+                  if (effectiveOverlayPages.length > 0) {
+                    syncfusionLastNonEmptyOverlayPagesRef.current = effectiveOverlayPages;
+                  }
+                  return effectiveOverlayPages
                     .filter((pageNumber) => {
                       if (!Number.isFinite(pageNumber) || !shouldShowPage(pageNumber)) {
                         return false;
+                      }
+                      // When portal hosts are frozen (zoom active), skip the overlay
+                      // window filter — it would remove pages that Syncfusion hasn't
+                      // re-rendered yet, causing PAL unmount/remount churn.
+                      if (shouldFreezePortalHost) {
+                        return true;
                       }
                       if (useInteractionWindow) {
                         return interactionWindowSet.size === 0 || interactionWindowSet.has(pageNumber);
@@ -23330,17 +23592,37 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         : 1;
                       const fallbackWidth = Number(pageHost?.clientWidth || pageHost?.getBoundingClientRect?.()?.width || 0);
                       const fallbackHeight = Number(pageHost?.clientHeight || pageHost?.getBoundingClientRect?.()?.height || 0);
-                      const derivedPageSize = (!pageSize && fallbackWidth > 0 && fallbackHeight > 0)
+                      // When host is disconnected (clientWidth=0), use cached page rects
+                      // from zoom start as fallback dimensions to prevent bail-out
+                      const cachedRect = syncfusionCachedPageRectsRef.current?.[pageNumber];
+                      const effectiveWidth = fallbackWidth > 0 ? fallbackWidth : (cachedRect?.width || 0);
+                      const effectiveHeight = fallbackHeight > 0 ? fallbackHeight : (cachedRect?.height || 0);
+                      const derivedPageSize = (!pageSize && effectiveWidth > 0 && effectiveHeight > 0)
                         ? {
-                          width: fallbackWidth / fallbackLayerScale,
-                          height: fallbackHeight / fallbackLayerScale
+                          width: effectiveWidth / fallbackLayerScale,
+                          height: effectiveHeight / fallbackLayerScale
                         }
                         : null;
                       const resolvedPageSize = pageSize || derivedPageSize;
-                      if (!resolvedPageSize || !pageHost || !pageHost.isConnected) {
+                      if (!resolvedPageSize || !pageHost) {
                         delete syncfusionOverlayLayerRefs.current[pageNumber];
                         delete syncfusionOverlayContentRefs.current[pageNumber];
                         return null;
+                      }
+                      // Stable portal host: use a persistent div as createPortal() target
+                      // so React never unmounts/remounts when Syncfusion swaps page containers.
+                      // We physically move this div into the current page host.
+                      const stableHosts = syncfusionStablePortalHostsRef.current;
+                      if (!stableHosts[pageNumber]) {
+                        const div = document.createElement('div');
+                        div.setAttribute('data-stable-portal', String(pageNumber));
+                        div.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+                        stableHosts[pageNumber] = div;
+                      }
+                      const stablePortalHost = stableHosts[pageNumber];
+                      // Attach stable host to current page container if needed
+                      if (pageHost.isConnected && stablePortalHost.parentElement !== pageHost) {
+                        pageHost.appendChild(stablePortalHost);
                       }
 
                       const committedPageScale = syncfusionCommittedPageScales[pageNumber];
@@ -23587,7 +23869,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             )}
                           </div>
                         </div>,
-                        pageHost
+                        stablePortalHost
                       );
                     });
                 })()}
