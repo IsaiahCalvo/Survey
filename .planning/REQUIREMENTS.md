@@ -15,8 +15,8 @@ Requirements for Debug Annotations milestone. Each maps to roadmap phases.
 - [x] **FOUN-04**: Playwright harness auto-starts the Vite dev server via `webServer` config if not already running
 - [x] **FOUN-05**: Each test run creates a session folder at `debug-sessions/<timestamp>_<scenario>/` containing all artifacts
 - [x] **FOUN-06**: Each session folder contains a `manifest.json` with scenario name, git SHA, start/end time, pass/fail result, and artifact file paths
-- [ ] **FOUN-07**: Scenario scripts are parameterizable — same scenario can run with different zoom ranges, speeds, and starting pages
-- [ ] **FOUN-08**: CLI entry point (`npm run debug:scenario <name>`) runs a named scenario and produces a session folder
+- [x] **FOUN-07**: Scenario scripts are parameterizable — same scenario can run with different zoom ranges, speeds, and starting pages
+- [x] **FOUN-08**: CLI entry point (`npm run debug:scenario <name>`) runs a named scenario and produces a session folder
 
 ### Capture
 
@@ -24,7 +24,7 @@ Requirements for Debug Annotations milestone. Each maps to roadmap phases.
 - [x] **CAPT-02**: Video recorded for the entire session duration via Playwright's built-in recording (WebM, 720p)
 - [x] **CAPT-03**: Console messages (log, warn, error) captured with timestamps and persisted as `console.jsonl`
 - [x] **CAPT-04**: App state snapshots captured at each step via `window.__debugBridge.snapshot()` and persisted as `state.jsonl`
-- [ ] **CAPT-05**: Pass/fail determination runs automatically at scenario end based on scenario-defined criteria (e.g., canvas container count >= 1, no console errors)
+- [x] **CAPT-05**: Pass/fail determination runs automatically at scenario end based on scenario-defined criteria (e.g., canvas container count >= 1, no console errors)
 - [x] **CAPT-06**: All artifacts share a synchronized timeline — browser `performance.timeOrigin` mapped to Node.js epoch at session start, all timestamps stored as `sessionMs` offset
 - [x] **CAPT-07**: Performance metrics collected via CDP (`Performance.getMetrics`) including Layout Shift, Long Tasks, and paint timing, stored as `performance.jsonl`
 - [x] **CAPT-08**: Screenshots wait for `window.__debugReady` readiness signal before capture to avoid race conditions with Syncfusion page rebuilds
@@ -102,13 +102,13 @@ Deferred to later milestones.
 | FOUN-04 | Phase 5 | Complete |
 | FOUN-05 | Phase 5 | Complete |
 | FOUN-06 | Phase 5 | Complete |
-| FOUN-07 | Phase 7 | Pending |
-| FOUN-08 | Phase 7 | Pending |
+| FOUN-07 | Phase 7 | Complete |
+| FOUN-08 | Phase 7 | Complete |
 | CAPT-01 | Phase 7 | Complete |
 | CAPT-02 | Phase 7 | Complete |
 | CAPT-03 | Phase 7 | Complete |
 | CAPT-04 | Phase 7 | Complete |
-| CAPT-05 | Phase 7 | Pending |
+| CAPT-05 | Phase 7 | Complete |
 | CAPT-06 | Phase 7 | Complete |
 | CAPT-07 | Phase 7 | Complete |
 | CAPT-08 | Phase 7 | Complete |
