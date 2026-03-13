@@ -11,7 +11,8 @@
     "dist": "npm run build && electron-builder",
     "test": "node --experimental-default-type=module --test tests/*.test.mjs",
     "test:debug": "npx playwright test --config debug/playwright.config.mjs",
-    "debug:scenario": "npx playwright test --config debug/playwright.config.mjs --grep"
+    "debug:scenario": "npx playwright test --config debug/playwright.config.mjs --grep",
+    "debug:process": "node debug/lib/post-process.mjs"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.26.2",
