@@ -1,0 +1,2 @@
+{"sessionMs":1500,"level":"warn","text":"Syncfusion PDF viewer warning: page virtualization active","location":{"url":"http://localhost:5173/","lineNumber":100},"stackTrace":null}
+{"sessionMs":2500,"level":"error","text":"Canvas rendering error on page 6","location":{"url":"http://localhost:5173/","lineNumber":200},"stackTrace":"Error: Canvas rendering error\n    at renderCanvas (app.js:200)"}

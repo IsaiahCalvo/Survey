@@ -1,0 +1,8 @@
+{"sessionMs":900,"type":"cdp","metrics":{"LayoutCount":2,"RecalcStyleCount":10,"TaskDuration":0.1}}
+{"sessionMs":1100,"type":"mark","name":"pal_mount","detail":{"page":6}}
+{"sessionMs":1500,"type":"mark","name":"fabric_renderStart","detail":{"page":6,"source":"mount"}}
+{"sessionMs":1800,"type":"mark","name":"fabric_renderEnd","detail":{"page":6,"source":"mount"}}
+{"sessionMs":2100,"type":"mark","name":"zoom_start","detail":{"scale":0.5,"targetScale":1,"source":"toolbar"}}
+{"sessionMs":2200,"type":"mark","name":"pal_mount","detail":{"page":6}}
+{"sessionMs":2500,"type":"mark","name":"zoom_end","detail":{"source":"toolbar"}}
+{"sessionMs":2800,"type":"cdp","metrics":{"LayoutCount":15,"RecalcStyleCount":42,"TaskDuration":0.35}}
