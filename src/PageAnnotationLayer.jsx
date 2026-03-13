@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, memo, useState, useCallback } from 'react';
+import { debugMark } from './utils/debugBridge';
 import { createPortal } from 'react-dom';
 import CalloutOverlay from './components/Callout';
 import Icon from './Icons';
@@ -4942,7 +4943,9 @@ const PageAnnotationLayer = memo(({
           canvas.add(obj);
           obj.setCoords();
         });
+        debugMark('fabric_renderStart', { page: pageNumber, source: 'loadAnnotations' });
         canvas.renderAll();
+        debugMark('fabric_renderEnd', { page: pageNumber, source: 'loadAnnotations' });
       });
     }
   };
@@ -5130,6 +5133,7 @@ const PageAnnotationLayer = memo(({
     canvas.freeDrawingBrush = brush;
 
     fabricRef.current = canvas;
+    debugMark('pal_mount', { page: pageNumber });
     // Load initial annotations
     loadAnnotations(annotations);
 
@@ -7662,6 +7666,7 @@ const PageAnnotationLayer = memo(({
     canvas.on('mouse:move', handleMouseMoveForCursor);
 
     return () => {
+      debugMark('pal_unmount', { page: pageNumber });
       window.removeEventListener('keydown', handleKeyDown);
       isInitializedRef.current = false;
       if (zoomSettleTimerRef.current) {
@@ -7807,7 +7812,9 @@ const PageAnnotationLayer = memo(({
           fc.setWidth(tw);
           fc.setHeight(th);
           fc.setZoom(finalScale);
+          debugMark('fabric_renderStart', { page: pageNumber, scale: finalScale });
           fc.renderAll();
+          debugMark('fabric_renderEnd', { page: pageNumber, scale: finalScale });
           if (typeof onScaleApplied === 'function') {
             onScaleApplied(pageNumber, finalScale);
           }

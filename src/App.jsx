@@ -88,6 +88,7 @@ import {
   clearDebugState
 } from './utils/pdfDebug';
 import { useZoomState } from './hooks/useZoomState';
+import { debugMark } from './utils/debugBridge';
 import {
   computeExcelSyncFingerprint,
   computeHasPendingExcelSyncChanges
@@ -10039,6 +10040,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // This prevents the visual flicker between CSS transform removal and canvas re-render.
     console.log(`[AnnotPerf] finalize idle (${reason}) — deferring CSS transform removal, waiting for PAL confirmation`);
     syncfusionScaleConfirmPendingRef.current = true;
+    debugMark('portal_freeze', { reason: 'confirm_pending_start', source: 'finalize_idle' });
     if (syncfusionScaleConfirmTimerRef.current) {
       clearTimeout(syncfusionScaleConfirmTimerRef.current);
     }
@@ -10048,6 +10050,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         console.warn('[AnnotPerf] 3000ms safety timeout — PAL never confirmed, forcing CSS transform removal');
         syncfusionScaleConfirmPendingRef.current = false;
         zoomOverlayTransformActiveRef.current = false;
+        debugMark('zoom_end', { source: 'safety_timeout_3000ms' });
         zoomOverlayBaseScaleRef.current = 1;
         resetSyncfusionOverlayTransformStyles();
       }
@@ -10114,6 +10117,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (allConfirmed) {
       console.log(`[AnnotPerf] All pages confirmed scale — removing remaining CSS transforms`);
       syncfusionScaleConfirmPendingRef.current = false;
+      debugMark('portal_unfreeze', { reason: 'all_pages_confirmed' });
       zoomOverlayBaseScaleRef.current = 1;
       if (syncfusionScaleConfirmTimerRef.current) {
         clearTimeout(syncfusionScaleConfirmTimerRef.current);
@@ -11106,6 +11110,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (!zoomOverlayTransformActiveRef.current) {
             zoomOverlayBaseScaleRef.current = currentZoom / 100;
             zoomOverlayTransformActiveRef.current = true;
+            debugMark('zoom_start', { scale: currentZoom / 100, source: 'zoomTo_pre' });
             const pcMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
             const cachedRects = {};
             const portalHostSnapshot = {};
@@ -11691,6 +11696,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (!zoomOverlayTransformActiveRef.current) {
       zoomOverlayBaseScaleRef.current = prevScale;
       zoomOverlayTransformActiveRef.current = true;
+      debugMark('zoom_start', { scale: prevScale, targetScale: nextScale, source: 'zoomChange' });
       // Cache page positions AND portal hosts for fallback containers during zoom.
       // When Syncfusion destroys page containers, we use these rects to
       // position fallback hosts so annotations stay visually in place.
@@ -11770,6 +11776,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // CSS transforms remain — handlePALScaleApplied removes them per-page
       // as each canvas rebuilds, preventing a visible gap.
       zoomOverlayTransformActiveRef.current = false;
+      debugMark('zoom_end', { source: 'zoomChange_settle' });
       // Flush deferred scale so PAL starts rebuilding at final zoom level.
       const pendingScale = syncfusionPendingZoomScaleRef.current;
       if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
@@ -13739,6 +13746,44 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     };
   }, [getHistoryDebugRows]);
+
+  // ── Debug Bridge Registration ──
+  // Mirror current render state into a ref so the debug bridge can always
+  // read fresh values via getState() without re-registering every render.
+  const debugBridgeStateRef = useRef({});
+  debugBridgeStateRef.current = {
+    renderedScale,
+    cssScale,
+    isZooming,
+    scale,
+    pageNum,
+    visiblePages: Array.from(visiblePagesSet || []),
+    syncfusionPageContainers
+  };
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+
+    let cleanup = null;
+    import('./utils/debugBridge').then(({ register, unregister }) => {
+      register({
+        refs: {
+          zoomOverlayTransformActive: zoomOverlayTransformActiveRef,
+          scaleConfirmPending: syncfusionScaleConfirmPendingRef,
+          portalHosts: syncfusionInteractionPortalHostsRef,
+          lastNonEmptyOverlayPages: syncfusionLastNonEmptyOverlayPagesRef,
+          scale: scaleRef
+        },
+        getState: () => debugBridgeStateRef.current,
+        getPageLayerContainer: () => syncfusionViewerRef.current?.getPageLayerContainer?.() ?? null
+      });
+      cleanup = unregister;
+    });
+
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getHistorySnapshot = useCallback(() => ({
     annotationsByPage: JSON.parse(JSON.stringify(annotationsByPageRef.current || {})),
@@ -20363,6 +20408,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         if (!zoomOverlayTransformActiveRef.current) {
           zoomOverlayBaseScaleRef.current = previousScale;
           zoomOverlayTransformActiveRef.current = true;
+          debugMark('zoom_start', { scale: previousScale, targetScale: safeScale, source: 'keyboard_toolbar' });
           // Cache page rects AND portal hosts before Syncfusion destroys DOM.
           // The portal hosts cache is cleared when interaction goes idle, so it
           // may be empty when pre-activation fires. We must populate it here so
@@ -20394,6 +20440,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         zoomOverlaySettleTimerRef.current = setTimeout(() => {
           zoomOverlaySettleTimerRef.current = null;
           zoomOverlayTransformActiveRef.current = false;
+          debugMark('zoom_end', { source: 'keyboard_toolbar_settle' });
           const pendingScale = syncfusionPendingZoomScaleRef.current;
           if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
             syncfusionPendingZoomScaleRef.current = null;
@@ -20873,6 +20920,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (!zoomOverlayTransformActiveRef.current) {
         zoomOverlayBaseScaleRef.current = prevScale;
         zoomOverlayTransformActiveRef.current = true;
+        debugMark('zoom_start', { scale: prevScale, source: 'ctrl_key' });
         // Cache page rects and portal hosts before Syncfusion destroys DOM
         const pageContainersMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
         const cachedRects = {};
@@ -20899,6 +20947,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       zoomOverlaySettleTimerRef.current = setTimeout(() => {
         zoomOverlaySettleTimerRef.current = null;
         zoomOverlayTransformActiveRef.current = false;
+        debugMark('zoom_end', { source: 'ctrl_key_settle' });
         const pendingScale = syncfusionPendingZoomScaleRef.current;
         if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
           syncfusionPendingZoomScaleRef.current = null;
