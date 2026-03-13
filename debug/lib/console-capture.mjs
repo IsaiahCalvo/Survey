@@ -6,7 +6,7 @@
  * timestamp for timeline correlation with other capture modules (CAPT-03).
  */
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 /** @type {Function|null} */
@@ -20,6 +20,9 @@ let handler = null;
  */
 export function startConsoleCapture(page, sessionDir) {
   const filePath = path.join(sessionDir, 'console.jsonl');
+
+  // Ensure file exists even if no console messages fire (complete artifact set)
+  writeFileSync(filePath, '', { flag: 'a' });
 
   handler = async (msg) => {
     let sessionMs = -1;
