@@ -9,7 +9,7 @@ export default defineConfig({
     channel: 'chromium',    // New headless mode -- real Chrome rendering engine
     viewport: { width: 1400, height: 900 },
     headless: true,
-    video: 'off',           // Phase 5 doesn't need video yet
+    video: { mode: 'on', size: { width: 1400, height: 900 } }, // 1:1 pixel mapping with viewport
     screenshot: 'off',      // We take manual screenshots at specific points
   },
   webServer: {
