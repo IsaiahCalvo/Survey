@@ -85,11 +85,11 @@ Plans:
   1. Running post-processing on a session folder produces `timeline.json` (all JSONL streams merged and sorted by `sessionMs`) and `timeline.md` (human-readable narrative of session events with key state changes highlighted)
   2. `anomalies.json` flags suspicious transitions -- canvas container count dropping to 0, portal host disconnects, console error bursts, rendered scale diverging from target scale -- with timestamps and references to related screenshots/state entries
   3. `diffs/` folder contains before/after screenshot comparisons with diff images and mismatch percentages for every step boundary
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+- [ ] 08-01-PLAN.md -- Test fixtures, timeline merger, and anomaly detector (PROC-01, PROC-02, PROC-04)
+- [ ] 08-02-PLAN.md -- Visual diff generation, timeline narrative, and CLI orchestrator (PROC-03, PROC-05)
 
 ### Phase 9: LLM Integration
 **Goal**: Session artifacts are chunked into context-window-sized pieces with source code references so an LLM can analyze a debugging session and identify root causes
@@ -117,5 +117,5 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 | 5. Pipeline Foundation | v2.0 | 2/2 | Complete | 2026-03-12 |
 | 6. Debug Bridge + Readiness Signals | v2.0 | 2/2 | Complete | 2026-03-13 |
 | 7. Capture Modules + Scenario Execution | v2.0 | 0/2 | Not started | - |
-| 8. Post-Processing + Analysis | v2.0 | 0/? | Not started | - |
+| 8. Post-Processing + Analysis | v2.0 | 0/2 | Not started | - |
 | 9. LLM Integration | v2.0 | 0/? | Not started | - |
