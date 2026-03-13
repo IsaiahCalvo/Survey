@@ -43,7 +43,7 @@
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- Dev test route and fixture infrastructure (FOUN-01, FOUN-02)
+- [x] 05-01-PLAN.md -- Dev test route and fixture infrastructure (FOUN-01, FOUN-02)
 - [ ] 05-02-PLAN.md -- Playwright harness, session folders, and canvas capture validation (FOUN-03, FOUN-04, FOUN-05, FOUN-06)
 
 ### Phase 6: Debug Bridge + Readiness Signals
@@ -115,7 +115,7 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 | 2. Positional Accuracy | v1.0 | 2/2 | Complete | 2026-03-11 |
 | 3. Flicker-Free Transitions | v1.0 | 1/1 | Complete | 2026-03-11 |
 | 4. Scale Caching | v1.0 | 0/0 | Deferred | - |
-| 5. Pipeline Foundation | v2.0 | 0/2 | Planning | - |
+| 5. Pipeline Foundation | v2.0 | 1/2 | In Progress | - |
 | 6. Debug Bridge + Readiness Signals | v2.0 | 0/? | Not started | - |
 | 7. Capture Modules + Scenario Execution | v2.0 | 0/? | Not started | - |
 | 8. Post-Processing + Analysis | v2.0 | 0/? | Not started | - |

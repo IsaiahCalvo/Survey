@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Debug Annotations
-status: planning
-stopped_at: Phase 5 context gathered
-last_updated: "2026-03-12T04:58:18.046Z"
-last_activity: 2026-03-12 — Roadmap created, 29 requirements mapped across 5 phases
+status: executing
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-13T00:06:07.547Z"
+last_activity: 2026-03-12 — Completed Plan 05-01 (dev test route and fixture infrastructure)
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
+  percent: 17
 ---
 
 # Project State
@@ -26,24 +26,24 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 5 of 9 (Pipeline Foundation)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-12 — Roadmap created, 29 requirements mapped across 5 phases
+Plan: 2 of 2
+Status: Plan 01 complete, Plan 02 next
+Last activity: 2026-03-12 — Completed Plan 05-01 (dev test route and fixture infrastructure)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 17%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 25min
+- Total execution time: ~0.4 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| Phase 05 P01 | 1 | 25min | 25min |
 
 ## Accumulated Context
 
@@ -56,6 +56,9 @@ Progress: [░░░░░░░░░░] 0%
 - Headless by default with --headed flag
 - First target bug: post-zoom flicker (CSS transform removal race condition)
 - Phase 5 MUST validate Fabric.js canvas appears in Playwright screenshots before proceeding
+- [Phase 05]: Export raw AuthContext/MSGraphContext for mock provider usage in dev test route
+- [Phase 05]: window.__devTestPdf flag for IPC between DevTestRoute and App (avoids modifying monolith prop interface)
+- [Phase 05]: Dynamic import() for DevTestRoute ensures zero production bundle impact
 
 ### From v1.0 (Zoom Fix)
 
@@ -74,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-12T04:58:18.043Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-pipeline-foundation/05-CONTEXT.md
+Last session: 2026-03-13T00:06:07Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: .planning/phases/05-pipeline-foundation/05-02-PLAN.md

@@ -9,8 +9,8 @@ Requirements for Debug Annotations milestone. Each maps to roadmap phases.
 
 ### Foundation
 
-- [ ] **FOUN-01**: Dev-only test route loads a bundled test PDF at `localhost:5173?testPdf=<name>` without requiring Supabase authentication
-- [ ] **FOUN-02**: Dev-only test route is compile-time guarded (`import.meta.env.DEV`) and produces zero code in production builds
+- [x] **FOUN-01**: Dev-only test route loads a bundled test PDF at `localhost:5173?testPdf=<name>` without requiring Supabase authentication
+- [x] **FOUN-02**: Dev-only test route is compile-time guarded (`import.meta.env.DEV`) and produces zero code in production builds
 - [ ] **FOUN-03**: Playwright test harness launches Chromium against the Vite dev server with `channel: 'chromium'` for consistent canvas rendering
 - [ ] **FOUN-04**: Playwright harness auto-starts the Vite dev server via `webServer` config if not already running
 - [ ] **FOUN-05**: Each test run creates a session folder at `debug-sessions/<timestamp>_<scenario>/` containing all artifacts
@@ -96,8 +96,8 @@ Deferred to later milestones.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUN-01 | Phase 5 | Pending |
-| FOUN-02 | Phase 5 | Pending |
+| FOUN-01 | Phase 5 | Complete |
+| FOUN-02 | Phase 5 | Complete |
 | FOUN-03 | Phase 5 | Pending |
 | FOUN-04 | Phase 5 | Pending |
 | FOUN-05 | Phase 5 | Pending |
