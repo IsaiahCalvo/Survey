@@ -11629,6 +11629,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       currentPage: restoredPage
     });
 
+    debugMark('pdf_loaded', { pageCount: resolvedPageCount || 0, currentPage: restoredPage });
+
     bindSyncfusionViewerRefs();
     queueSyncfusionPageContainerRefresh();
   }, [bindSyncfusionViewerRefs, queueSyncfusionPageContainerRefresh]);

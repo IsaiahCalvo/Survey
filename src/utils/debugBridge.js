@@ -4,6 +4,11 @@
  * Exposes `window.__debugBridge` with `snapshot()`, DOM mutation tracking via
  * ring buffer, and `debugMark()` for hot-path instrumentation.
  *
+ * Also exposes `window.__debugReady` with `waitFor()` promise-based readiness
+ * signal system. Four signals: pdfLoaded, zoomSettled, domSettled,
+ * annotationsMounted. Cascading invalidation ensures Playwright waits for
+ * full DOM settle + React/Fabric.js remount before proceeding.
+ *
  * Everything is compile-time guarded via `import.meta.env.DEV`.
  * Vite dead-code-eliminates all function bodies in production builds,
  * leaving zero overhead.
@@ -55,14 +60,254 @@ let registered = null;
 let mutationObserver = null;
 const mutationBuffer = new RingBuffer(100);
 
+// ── Readiness Signal State ──────────────────────────────────────────────
+// Four signals tracked for the waitFor() system. zoomSettled and domSettled
+// start true because no zoom/mutation is in progress at init.
+
+const signals = {
+  pdfLoaded: false,
+  zoomSettled: true,
+  domSettled: true,
+  annotationsMounted: false,
+};
+
+const perPageAnnotationStatus = {};
+const debounceTimers = {};
+const DEBOUNCE_MS = 75;
+const DEFAULT_TIMEOUT_MS = 10000;
+
+// Pending waitFor() promises: array of { condition, page, resolve, reject, startMs, timeoutId }
+const pendingWaiters = [];
+
+// ── Signal Management ───────────────────────────────────────────────────
+
+function getVisiblePages() {
+  if (!registered?.getState) return [];
+  const state = registered.getState();
+  return state?.visiblePages || [];
+}
+
+function isConditionMet(condition, page) {
+  if (condition === 'ready') {
+    if (!signals.pdfLoaded || !signals.zoomSettled || !signals.domSettled || !signals.annotationsMounted) {
+      return false;
+    }
+    if (page != null) {
+      return perPageAnnotationStatus[page] === true;
+    }
+    // All visible pages must have annotations
+    const visible = getVisiblePages();
+    if (visible.length === 0) return false;
+    return visible.every(p => perPageAnnotationStatus[p] === true);
+  }
+
+  if (condition === 'annotationsMounted') {
+    if (page != null) {
+      return perPageAnnotationStatus[page] === true;
+    }
+    // All visible pages
+    const visible = getVisiblePages();
+    if (visible.length === 0) return false;
+    return visible.every(p => perPageAnnotationStatus[p] === true);
+  }
+
+  // Single signal check: pdfLoaded, zoomSettled, domSettled
+  return signals[condition] === true;
+}
+
+function checkPendingWaiters() {
+  for (let i = pendingWaiters.length - 1; i >= 0; i--) {
+    const waiter = pendingWaiters[i];
+    if (isConditionMet(waiter.condition, waiter.page)) {
+      const waitMs = performance.now() - waiter.startMs;
+      clearTimeout(waiter.timeoutId);
+      pendingWaiters.splice(i, 1);
+      waiter.resolve({
+        condition: waiter.condition,
+        signals: { ...signals },
+        perPageAnnotationStatus: { ...perPageAnnotationStatus },
+        waitMs,
+      });
+    }
+  }
+}
+
+function invalidateSignal(name, pageNumber) {
+  signals[name] = false;
+  clearTimeout(debounceTimers[name]);
+
+  // Cascading invalidation: domSettled invalidation also invalidates
+  // annotationsMounted for the affected page
+  if (name === 'domSettled' && pageNumber != null) {
+    perPageAnnotationStatus[pageNumber] = false;
+    signals.annotationsMounted = false;
+    clearTimeout(debounceTimers.annotationsMounted);
+  }
+
+  checkPendingWaiters();
+}
+
+function settleSignal(name, debounceMs) {
+  const delay = debounceMs != null ? debounceMs : DEBOUNCE_MS;
+  clearTimeout(debounceTimers[name]);
+
+  if (delay === 0) {
+    signals[name] = true;
+    checkPendingWaiters();
+    return;
+  }
+
+  debounceTimers[name] = setTimeout(() => {
+    signals[name] = true;
+    checkPendingWaiters();
+  }, delay);
+}
+
+function checkPageAnnotationComplete(pageNumber) {
+  // Check if the page has both PAL and Fabric.js canvas
+  const pageDiv = document.querySelector(
+    `.e-pv-page-div[data-page-number="${pageNumber}"]`
+  );
+  if (!pageDiv) return false;
+
+  const hasPal = !!(
+    pageDiv.querySelector('.annotation-layer') ||
+    pageDiv.querySelector('[data-annotation-layer]')
+  );
+  const hasFabric = !!pageDiv.querySelector('.canvas-container');
+
+  return hasPal && hasFabric;
+}
+
+function markPageAnnotationMounted(pageNumber) {
+  if (!checkPageAnnotationComplete(pageNumber)) return;
+
+  perPageAnnotationStatus[pageNumber] = true;
+
+  // Check if ALL visible pages have annotations mounted
+  const visible = getVisiblePages();
+  if (visible.length > 0 && visible.every(p => perPageAnnotationStatus[p] === true)) {
+    settleSignal('annotationsMounted');
+  }
+}
+
 // ── debugMark ───────────────────────────────────────────────────────────
 // Centralized performance.mark() wrapper. Vite strips the function body
 // in production via dead-code elimination on the import.meta.env.DEV guard.
+// Also triggers readiness signal updates based on mark name.
 
 export function debugMark(name, detail) {
   if (import.meta.env.DEV) {
     performance.mark(name, detail != null ? { detail } : undefined);
+
+    // Wire marks into readiness signals
+    switch (name) {
+      case 'pdf_loaded':
+        settleSignal('pdfLoaded', 0);
+        break;
+
+      case 'zoom_start':
+        invalidateSignal('zoomSettled');
+        break;
+
+      case 'zoom_end':
+        settleSignal('zoomSettled');
+        break;
+
+      case 'pal_mount':
+        if (detail?.page != null) {
+          // Defer check slightly so DOM is fully settled
+          setTimeout(() => markPageAnnotationMounted(detail.page), 10);
+        }
+        break;
+
+      case 'fabric_renderEnd':
+        if (detail?.page != null) {
+          // Defer check slightly so DOM is fully settled
+          setTimeout(() => markPageAnnotationMounted(detail.page), 10);
+        }
+        break;
+
+      case 'pal_unmount':
+        if (detail?.page != null) {
+          perPageAnnotationStatus[detail.page] = false;
+          signals.annotationsMounted = false;
+          clearTimeout(debounceTimers.annotationsMounted);
+        }
+        break;
+
+      default:
+        break;
+    }
   }
+}
+
+// ── waitFor ─────────────────────────────────────────────────────────────
+// Promise-based readiness signal system. Resolves when condition is met.
+// Rejects on timeout with descriptive error including current signal state.
+
+export function waitFor(condition, options) {
+  if (import.meta.env.DEV) {
+    const opts = options || {};
+    const timeout = opts.timeout ?? DEFAULT_TIMEOUT_MS;
+    const page = opts.page ?? null;
+
+    // Validate condition
+    const validConditions = ['ready', 'pdfLoaded', 'zoomSettled', 'domSettled', 'annotationsMounted'];
+    if (!validConditions.includes(condition)) {
+      return Promise.reject(new Error(`Invalid condition: ${condition}. Valid: ${validConditions.join(', ')}`));
+    }
+
+    // Check if already satisfied
+    if (isConditionMet(condition, page)) {
+      return Promise.resolve({
+        condition,
+        signals: { ...signals },
+        perPageAnnotationStatus: { ...perPageAnnotationStatus },
+        waitMs: 0,
+      });
+    }
+
+    // Create pending waiter
+    return new Promise((resolve, reject) => {
+      const startMs = performance.now();
+
+      // Supersede existing waiter for same condition+page
+      for (let i = pendingWaiters.length - 1; i >= 0; i--) {
+        const existing = pendingWaiters[i];
+        if (existing.condition === condition && existing.page === page) {
+          clearTimeout(existing.timeoutId);
+          pendingWaiters.splice(i, 1);
+          existing.reject(new Error('superseded'));
+        }
+      }
+
+      const timeoutId = setTimeout(() => {
+        // Remove this waiter
+        const idx = pendingWaiters.findIndex(w => w.timeoutId === timeoutId);
+        if (idx !== -1) pendingWaiters.splice(idx, 1);
+
+        const elapsed = performance.now() - startMs;
+        reject(new Error(
+          `Timeout waiting for ${condition}. Current state: ${JSON.stringify({
+            signals,
+            perPageAnnotationStatus,
+            elapsed: Math.round(elapsed),
+          })}`
+        ));
+      }, timeout);
+
+      pendingWaiters.push({
+        condition,
+        page,
+        resolve,
+        reject,
+        startMs,
+        timeoutId,
+      });
+    });
+  }
+  return Promise.resolve(null);
 }
 
 // ── MutationObserver setup ──────────────────────────────────────────────
@@ -80,6 +325,9 @@ function extractPageNumber(node) {
 }
 
 function handleMutations(mutations) {
+  let hadPageDivChanges = false;
+  const affectedPages = new Set();
+
   for (const mutation of mutations) {
     if (mutation.type !== 'childList') continue;
 
@@ -89,6 +337,9 @@ function handleMutations(mutations) {
 
         const pageNumber = extractPageNumber(node);
         if (pageNumber == null) continue;
+
+        hadPageDivChanges = true;
+        affectedPages.add(pageNumber);
 
         const hasAnnotationLayer = !!(
           node.querySelector('.annotation-layer') ||
@@ -124,6 +375,15 @@ function handleMutations(mutations) {
 
     processNodes(mutation.addedNodes, 'added');
     processNodes(mutation.removedNodes, 'removed');
+  }
+
+  // Wire mutations into readiness signals
+  if (hadPageDivChanges) {
+    for (const pageNumber of affectedPages) {
+      invalidateSignal('domSettled', pageNumber);
+    }
+    // After processing all mutations in this batch, start settle timer
+    settleSignal('domSettled');
   }
 }
 
@@ -161,8 +421,23 @@ export function unregister() {
   if (import.meta.env.DEV) {
     detachObserver();
     registered = null;
-    if (typeof window !== 'undefined' && window.__debugBridge) {
-      delete window.__debugBridge;
+
+    // Clear all pending waiters
+    for (const waiter of pendingWaiters) {
+      clearTimeout(waiter.timeoutId);
+      waiter.reject(new Error('unregistered'));
+    }
+    pendingWaiters.length = 0;
+
+    // Clear debounce timers
+    for (const key of Object.keys(debounceTimers)) {
+      clearTimeout(debounceTimers[key]);
+      delete debounceTimers[key];
+    }
+
+    if (typeof window !== 'undefined') {
+      if (window.__debugBridge) delete window.__debugBridge;
+      if (window.__debugReady) delete window.__debugReady;
     }
   }
 }
@@ -198,7 +473,9 @@ export function snapshot(options) {
         canvasContainerCount: document.querySelectorAll('.canvas-container').length,
         isZooming: state.isZooming ?? false,
         currentPage: state.pageNum ?? null,
-        visiblePages: state.visiblePages ?? []
+        visiblePages: state.visiblePages ?? [],
+        signals: { ...signals },
+        perPageAnnotationStatus: { ...perPageAnnotationStatus },
       };
 
       // Per-visible-page 4-layer status
@@ -263,6 +540,7 @@ export function snapshot(options) {
 
 if (import.meta.env.DEV) {
   if (typeof window !== 'undefined') {
-    window.__debugBridge = { snapshot, debugMark };
+    window.__debugBridge = { snapshot, debugMark, waitFor };
+    window.__debugReady = { waitFor };
   }
 }
