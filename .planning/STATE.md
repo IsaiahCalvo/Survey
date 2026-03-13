@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Debug Annotations
-status: Timeline merger and anomaly detector implemented with 15 passing tests. Ready for Plan 02.
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-03-13T05:13:25.424Z"
-last_activity: 2026-03-13 -- Completed Plan 08-01 (Timeline merger + anomaly detector)
+status: Phase 8 complete. Full post-processing pipeline operational with 32 passing tests.
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-03-13T05:20:06.082Z"
+last_activity: 2026-03-13 -- Completed Plan 08-02 (Visual diff, narrative writer, pipeline orchestrator)
 progress:
   total_phases: 5
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 7
-  percent: 58
+  completed_phases: 4
+  total_plans: 12
+  completed_plans: 8
+  percent: 67
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Automated, deterministic capture of synchronized debugging artifacts for LLM-assisted annotation rendering diagnosis
-**Current focus:** Phase 8 in progress (Post-Processing + Analysis). Plan 01 complete, Plan 02 remaining.
+**Current focus:** Phase 8 complete. Ready for Phase 9 (LLM Integration).
 
 ## Current Position
 
-Phase: 8 of 9 (Post-Processing + Analysis) -- IN PROGRESS
-Plan: 1 of 2 (Core data processing pipeline complete)
-Status: Timeline merger and anomaly detector implemented with 15 passing tests. Ready for Plan 02.
-Last activity: 2026-03-13 -- Completed Plan 08-01 (Timeline merger + anomaly detector)
+Phase: 8 of 9 (Post-Processing + Analysis) -- COMPLETE
+Plan: 2 of 2 (All plans complete)
+Status: Phase 8 complete. Full post-processing pipeline operational with 32 passing tests.
+Last activity: 2026-03-13 -- Completed Plan 08-02 (Visual diff, narrative writer, pipeline orchestrator)
 
-Progress: [██████░░░░] 58%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Progress: [██████░░░░] 58%
 | Phase 07 P01 | 3min | 2 tasks | 6 files |
 | Phase 07 P02 | 15min | 2 tasks | 3 files |
 | Phase 08 P01 | 4min | 2 tasks | 11 files |
+| Phase 08 P02 | 4min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,10 @@ Progress: [██████░░░░] 58%
 - [Phase 08]: Source priority tie-breaking: performance > state > console (most-precise-timing first)
 - [Phase 08]: JSONL parsing: readFileSync + trim + split + JSON.parse with existsSync guard (no streaming needed for session-sized files)
 - [Phase 08]: Per-page event chains correlate performance marks with DOM mutations from state.jsonl for race condition detection
+- [Phase 08]: pixelmatch threshold 0.1 with anti-aliasing excluded for cleaner visual diffs
+- [Phase 08]: Visual diff mismatch below 1% treated as noise (not referenced in narrative)
+- [Phase 08]: CDP metric deltas shown only when LayoutCount delta > 20 or TaskDuration delta > 100ms
+- [Phase 08]: DOM mutations noise-collapsed when > 3 same-page mutations per step
 
 ### From v1.0 (Zoom Fix)
 
@@ -105,6 +110,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T05:13:25.422Z
-Stopped at: Completed 08-01-PLAN.md
-Resume file: .planning/phases/08-post-processing-analysis/08-02-PLAN.md
+Last session: 2026-03-13T05:19:06Z
+Stopped at: Completed 08-02-PLAN.md
+Resume file: Phase 9 planning required
