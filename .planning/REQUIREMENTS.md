@@ -11,10 +11,10 @@ Requirements for Debug Annotations milestone. Each maps to roadmap phases.
 
 - [x] **FOUN-01**: Dev-only test route loads a bundled test PDF at `localhost:5173?testPdf=<name>` without requiring Supabase authentication
 - [x] **FOUN-02**: Dev-only test route is compile-time guarded (`import.meta.env.DEV`) and produces zero code in production builds
-- [ ] **FOUN-03**: Playwright test harness launches Chromium against the Vite dev server with `channel: 'chromium'` for consistent canvas rendering
-- [ ] **FOUN-04**: Playwright harness auto-starts the Vite dev server via `webServer` config if not already running
-- [ ] **FOUN-05**: Each test run creates a session folder at `debug-sessions/<timestamp>_<scenario>/` containing all artifacts
-- [ ] **FOUN-06**: Each session folder contains a `manifest.json` with scenario name, git SHA, start/end time, pass/fail result, and artifact file paths
+- [x] **FOUN-03**: Playwright test harness launches Chromium against the Vite dev server with `channel: 'chromium'` for consistent canvas rendering
+- [x] **FOUN-04**: Playwright harness auto-starts the Vite dev server via `webServer` config if not already running
+- [x] **FOUN-05**: Each test run creates a session folder at `debug-sessions/<timestamp>_<scenario>/` containing all artifacts
+- [x] **FOUN-06**: Each session folder contains a `manifest.json` with scenario name, git SHA, start/end time, pass/fail result, and artifact file paths
 - [ ] **FOUN-07**: Scenario scripts are parameterizable — same scenario can run with different zoom ranges, speeds, and starting pages
 - [ ] **FOUN-08**: CLI entry point (`npm run debug:scenario <name>`) runs a named scenario and produces a session folder
 
@@ -98,10 +98,10 @@ Deferred to later milestones.
 |-------------|-------|--------|
 | FOUN-01 | Phase 5 | Complete |
 | FOUN-02 | Phase 5 | Complete |
-| FOUN-03 | Phase 5 | Pending |
-| FOUN-04 | Phase 5 | Pending |
-| FOUN-05 | Phase 5 | Pending |
-| FOUN-06 | Phase 5 | Pending |
+| FOUN-03 | Phase 5 | Complete |
+| FOUN-04 | Phase 5 | Complete |
+| FOUN-05 | Phase 5 | Complete |
+| FOUN-06 | Phase 5 | Complete |
 | FOUN-07 | Phase 7 | Pending |
 | FOUN-08 | Phase 7 | Pending |
 | CAPT-01 | Phase 7 | Pending |

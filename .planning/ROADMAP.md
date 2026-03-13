@@ -23,7 +23,7 @@
 - Integer phases (5, 6, 7, 8, 9): Planned milestone work
 - Decimal phases (e.g., 5.1): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 5: Pipeline Foundation** - Dev test route, Playwright harness, session folder infrastructure, and canvas capture validation
+- [x] **Phase 5: Pipeline Foundation** - Dev test route, Playwright harness, session folder infrastructure, and canvas capture validation (completed 2026-03-12)
 - [ ] **Phase 6: Debug Bridge + Readiness Signals** - App instrumentation exposing internal state for external capture
 - [ ] **Phase 7: Capture Modules + Scenario Execution** - Full artifact capture with deterministic scenario scripts and CLI entry point
 - [ ] **Phase 8: Post-Processing + Analysis** - Anomaly detection, visual diffs, and unified timeline from raw session artifacts
@@ -44,7 +44,7 @@
 
 Plans:
 - [x] 05-01-PLAN.md -- Dev test route and fixture infrastructure (FOUN-01, FOUN-02)
-- [ ] 05-02-PLAN.md -- Playwright harness, session folders, and canvas capture validation (FOUN-03, FOUN-04, FOUN-05, FOUN-06)
+- [x] 05-02-PLAN.md -- Playwright harness, session folders, and canvas capture validation (FOUN-03, FOUN-04, FOUN-05, FOUN-06)
 
 ### Phase 6: Debug Bridge + Readiness Signals
 **Goal**: The app exposes its internal rendering state through window globals that external tools can query without altering timing-sensitive behavior
@@ -115,7 +115,7 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 | 2. Positional Accuracy | v1.0 | 2/2 | Complete | 2026-03-11 |
 | 3. Flicker-Free Transitions | v1.0 | 1/1 | Complete | 2026-03-11 |
 | 4. Scale Caching | v1.0 | 0/0 | Deferred | - |
-| 5. Pipeline Foundation | v2.0 | 1/2 | In Progress | - |
+| 5. Pipeline Foundation | v2.0 | 2/2 | Complete | 2026-03-12 |
 | 6. Debug Bridge + Readiness Signals | v2.0 | 0/? | Not started | - |
 | 7. Capture Modules + Scenario Execution | v2.0 | 0/? | Not started | - |
 | 8. Post-Processing + Analysis | v2.0 | 0/? | Not started | - |
