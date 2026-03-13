@@ -24,7 +24,7 @@
 - Decimal phases (e.g., 5.1): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 5: Pipeline Foundation** - Dev test route, Playwright harness, session folder infrastructure, and canvas capture validation (completed 2026-03-12)
-- [ ] **Phase 6: Debug Bridge + Readiness Signals** - App instrumentation exposing internal state for external capture
+- [x] **Phase 6: Debug Bridge + Readiness Signals** - App instrumentation exposing internal state for external capture (completed 2026-03-13)
 - [ ] **Phase 7: Capture Modules + Scenario Execution** - Full artifact capture with deterministic scenario scripts and CLI entry point
 - [ ] **Phase 8: Post-Processing + Analysis** - Anomaly detection, visual diffs, and unified timeline from raw session artifacts
 - [ ] **Phase 9: LLM Integration** - Chunked artifacts and prompt templates for LLM-assisted diagnosis
@@ -58,8 +58,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 06-01-PLAN.md -- Core debug bridge module with snapshot(), mutation tracking, and hot-path instrumentation (INST-01, INST-02, INST-04, INST-05, INST-06)
-- [ ] 06-02-PLAN.md -- Readiness signal system (waitFor) and Playwright integration tests (INST-03)
+- [x] 06-01-PLAN.md -- Core debug bridge module with snapshot(), mutation tracking, and hot-path instrumentation (INST-01, INST-02, INST-04, INST-05, INST-06)
+- [x] 06-02-PLAN.md -- Readiness signal system (waitFor) and Playwright integration tests (INST-03)
 
 ### Phase 7: Capture Modules + Scenario Execution
 **Goal**: A deterministic scenario script drives the app through a zoom sequence, captures synchronized artifacts (video, screenshots, console, state, performance), determines pass/fail, and is runnable from a single CLI command
@@ -116,7 +116,7 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 | 3. Flicker-Free Transitions | v1.0 | 1/1 | Complete | 2026-03-11 |
 | 4. Scale Caching | v1.0 | 0/0 | Deferred | - |
 | 5. Pipeline Foundation | v2.0 | 2/2 | Complete | 2026-03-12 |
-| 6. Debug Bridge + Readiness Signals | v2.0 | 0/2 | Planning complete | - |
+| 6. Debug Bridge + Readiness Signals | v2.0 | 2/2 | Complete | 2026-03-13 |
 | 7. Capture Modules + Scenario Execution | v2.0 | 0/? | Not started | - |
 | 8. Post-Processing + Analysis | v2.0 | 0/? | Not started | - |
 | 9. LLM Integration | v2.0 | 0/? | Not started | - |
