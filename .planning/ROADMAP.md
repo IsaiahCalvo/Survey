@@ -71,12 +71,11 @@ Plans:
   3. Screenshots are captured only after `window.__debugReady` signals readiness, avoiding race conditions with Syncfusion page rebuilds
   4. The scenario determines pass/fail automatically based on defined criteria (canvas container count, console error absence) and records the result in the manifest
   5. The same scenario can run with different parameters (zoom range, speed, starting page) without code changes
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
-- [ ] 07-03: TBD
+- [ ] 07-01-PLAN.md -- Capture module library: screenshot, console, state, performance modules + CaptureContext coordinator (CAPT-01, CAPT-02, CAPT-03, CAPT-04, CAPT-06, CAPT-07, CAPT-08)
+- [ ] 07-02-PLAN.md -- Zoom-flicker scenario with parameterization, pass/fail criteria, and CLI entry point (CAPT-05, FOUN-07, FOUN-08)
 
 ### Phase 8: Post-Processing + Analysis
 **Goal**: Raw session artifacts are automatically processed into a unified timeline, anomaly reports, and visual diffs that highlight exactly when and where rendering problems occurred
@@ -117,6 +116,6 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 | 4. Scale Caching | v1.0 | 0/0 | Deferred | - |
 | 5. Pipeline Foundation | v2.0 | 2/2 | Complete | 2026-03-12 |
 | 6. Debug Bridge + Readiness Signals | v2.0 | 2/2 | Complete | 2026-03-13 |
-| 7. Capture Modules + Scenario Execution | v2.0 | 0/? | Not started | - |
+| 7. Capture Modules + Scenario Execution | v2.0 | 0/2 | Not started | - |
 | 8. Post-Processing + Analysis | v2.0 | 0/? | Not started | - |
 | 9. LLM Integration | v2.0 | 0/? | Not started | - |
