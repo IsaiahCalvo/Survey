@@ -20,14 +20,14 @@ Requirements for Debug Annotations milestone. Each maps to roadmap phases.
 
 ### Capture
 
-- [ ] **CAPT-01**: Screenshots captured at every deterministic step boundary (before/after each scripted action) with descriptive filenames
-- [ ] **CAPT-02**: Video recorded for the entire session duration via Playwright's built-in recording (WebM, 720p)
-- [ ] **CAPT-03**: Console messages (log, warn, error) captured with timestamps and persisted as `console.jsonl`
-- [ ] **CAPT-04**: App state snapshots captured at each step via `window.__debugBridge.snapshot()` and persisted as `state.jsonl`
+- [x] **CAPT-01**: Screenshots captured at every deterministic step boundary (before/after each scripted action) with descriptive filenames
+- [x] **CAPT-02**: Video recorded for the entire session duration via Playwright's built-in recording (WebM, 720p)
+- [x] **CAPT-03**: Console messages (log, warn, error) captured with timestamps and persisted as `console.jsonl`
+- [x] **CAPT-04**: App state snapshots captured at each step via `window.__debugBridge.snapshot()` and persisted as `state.jsonl`
 - [ ] **CAPT-05**: Pass/fail determination runs automatically at scenario end based on scenario-defined criteria (e.g., canvas container count >= 1, no console errors)
-- [ ] **CAPT-06**: All artifacts share a synchronized timeline — browser `performance.timeOrigin` mapped to Node.js epoch at session start, all timestamps stored as `sessionMs` offset
-- [ ] **CAPT-07**: Performance metrics collected via CDP (`Performance.getMetrics`) including Layout Shift, Long Tasks, and paint timing, stored as `performance.jsonl`
-- [ ] **CAPT-08**: Screenshots wait for `window.__debugReady` readiness signal before capture to avoid race conditions with Syncfusion page rebuilds
+- [x] **CAPT-06**: All artifacts share a synchronized timeline — browser `performance.timeOrigin` mapped to Node.js epoch at session start, all timestamps stored as `sessionMs` offset
+- [x] **CAPT-07**: Performance metrics collected via CDP (`Performance.getMetrics`) including Layout Shift, Long Tasks, and paint timing, stored as `performance.jsonl`
+- [x] **CAPT-08**: Screenshots wait for `window.__debugReady` readiness signal before capture to avoid race conditions with Syncfusion page rebuilds
 
 ### Instrumentation
 
@@ -104,14 +104,14 @@ Deferred to later milestones.
 | FOUN-06 | Phase 5 | Complete |
 | FOUN-07 | Phase 7 | Pending |
 | FOUN-08 | Phase 7 | Pending |
-| CAPT-01 | Phase 7 | Pending |
-| CAPT-02 | Phase 7 | Pending |
-| CAPT-03 | Phase 7 | Pending |
-| CAPT-04 | Phase 7 | Pending |
+| CAPT-01 | Phase 7 | Complete |
+| CAPT-02 | Phase 7 | Complete |
+| CAPT-03 | Phase 7 | Complete |
+| CAPT-04 | Phase 7 | Complete |
 | CAPT-05 | Phase 7 | Pending |
-| CAPT-06 | Phase 7 | Pending |
-| CAPT-07 | Phase 7 | Pending |
-| CAPT-08 | Phase 7 | Pending |
+| CAPT-06 | Phase 7 | Complete |
+| CAPT-07 | Phase 7 | Complete |
+| CAPT-08 | Phase 7 | Complete |
 | INST-01 | Phase 6 | Complete |
 | INST-02 | Phase 6 | Complete |
 | INST-03 | Phase 6 | Complete |
