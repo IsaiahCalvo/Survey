@@ -31,12 +31,12 @@ Requirements for Debug Annotations milestone. Each maps to roadmap phases.
 
 ### Instrumentation
 
-- [ ] **INST-01**: `window.__debugBridge` API exposes current zoom level, rendered scale, target scale, portal host count, freeze state, and canvas container count
-- [ ] **INST-02**: `window.__debugBridge.snapshot()` returns a flat, JSON-serializable object (no Fabric.js objects, no circular references)
+- [x] **INST-01**: `window.__debugBridge` API exposes current zoom level, rendered scale, target scale, portal host count, freeze state, and canvas container count
+- [x] **INST-02**: `window.__debugBridge.snapshot()` returns a flat, JSON-serializable object (no Fabric.js objects, no circular references)
 - [ ] **INST-03**: `window.__debugReady` exposes readiness signals: annotations rendered, zoom settled, page navigation complete
-- [ ] **INST-04**: Debug bridge is compile-time guarded (`import.meta.env.DEV`) — zero overhead in production
-- [ ] **INST-05**: DOM mutation monitoring tracks Syncfusion `e-pv-page-div` container destroy/recreate events with timestamps, stored in state snapshots
-- [ ] **INST-06**: Instrumentation uses `performance.mark()` (0.01ms) not `console.log` in hot paths to avoid altering timing-sensitive race conditions
+- [x] **INST-04**: Debug bridge is compile-time guarded (`import.meta.env.DEV`) — zero overhead in production
+- [x] **INST-05**: DOM mutation monitoring tracks Syncfusion `e-pv-page-div` container destroy/recreate events with timestamps, stored in state snapshots
+- [x] **INST-06**: Instrumentation uses `performance.mark()` (0.01ms) not `console.log` in hot paths to avoid altering timing-sensitive race conditions
 
 ### Processing
 
@@ -112,12 +112,12 @@ Deferred to later milestones.
 | CAPT-06 | Phase 7 | Pending |
 | CAPT-07 | Phase 7 | Pending |
 | CAPT-08 | Phase 7 | Pending |
-| INST-01 | Phase 6 | Pending |
-| INST-02 | Phase 6 | Pending |
+| INST-01 | Phase 6 | Complete |
+| INST-02 | Phase 6 | Complete |
 | INST-03 | Phase 6 | Pending |
-| INST-04 | Phase 6 | Pending |
-| INST-05 | Phase 6 | Pending |
-| INST-06 | Phase 6 | Pending |
+| INST-04 | Phase 6 | Complete |
+| INST-05 | Phase 6 | Complete |
+| INST-06 | Phase 6 | Complete |
 | PROC-01 | Phase 8 | Pending |
 | PROC-02 | Phase 8 | Pending |
 | PROC-03 | Phase 8 | Pending |

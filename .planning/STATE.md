@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Debug Annotations
-status: planning
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-13T01:45:58.295Z"
-last_activity: 2026-03-12 -- Completed Plan 05-02 (Playwright harness and canvas capture validation)
+status: executing
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-13T02:14:30.218Z"
+last_activity: 2026-03-13 -- Completed Plan 06-01 (Debug bridge core module)
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 3
   percent: 33
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Automated, deterministic capture of synchronized debugging artifacts for LLM-assisted annotation rendering diagnosis
-**Current focus:** Phase 5 complete, Phase 6 next (Debug Bridge + Readiness Signals)
+**Current focus:** Phase 6 in progress (Debug Bridge + Readiness Signals)
 
 ## Current Position
 
-Phase: 5 of 9 (Pipeline Foundation) -- COMPLETE
-Plan: 2 of 2 (all plans complete)
-Status: Phase 5 complete. Phase 6 planning needed.
-Last activity: 2026-03-12 -- Completed Plan 05-02 (Playwright harness and canvas capture validation)
+Phase: 6 of 9 (Debug Bridge + Readiness Signals) -- IN PROGRESS
+Plan: 1 of 2 (Plan 06-01 complete, Plan 06-02 next)
+Status: Plan 06-01 complete. Debug bridge core module created and wired.
+Last activity: 2026-03-13 -- Completed Plan 06-01 (Debug bridge core module)
 
-Progress: [███░░░░░░░] 33%
+Progress: [████░░░░░░] 38%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: ~22min
-- Total execution time: ~0.75 hours
+- Total plans completed: 3
+- Average duration: ~18min
+- Total execution time: ~0.9 hours
 
 **By Phase:**
 
@@ -45,6 +45,7 @@ Progress: [███░░░░░░░] 33%
 |-------|-------|-------|----------|
 | Phase 05 P01 | 1 | 25min | 25min |
 | Phase 05 P02 | 20min | 3 tasks | 5 files |
+| Phase 06 P01 | 8min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,10 @@ Progress: [███░░░░░░░] 33%
 - [Phase 05]: Phase 5 gate passed: Fabric.js canvas content captured in automated Playwright screenshots
 - [Phase 05]: Conservative 5s waitForTimeout delays used for Syncfusion/Fabric.js settling -- to be replaced by readiness signals in Phase 6
 - [Phase 05]: Canvas pixel sampling (every 100th pixel) validates non-blank content in smoke test
+- [Phase 06]: Registration pattern with debugBridgeStateRef: register once, ref always holds current state
+- [Phase 06]: Dynamic import in registration useEffect ensures zero production bundle impact
+- [Phase 06]: debugMark() calls at state-transition points only (not render loop) to keep marks meaningful
+- [Phase 06]: MutationObserver attached lazily with retry on first snapshot() call
 
 ### From v1.0 (Zoom Fix)
 
@@ -82,6 +87,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T01:45:58.291Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-debug-bridge-readiness-signals/06-CONTEXT.md
+Last session: 2026-03-13T02:14:00Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: .planning/phases/06-debug-bridge-readiness-signals/06-02-PLAN.md
