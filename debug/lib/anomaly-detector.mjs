@@ -252,11 +252,14 @@ function detectRaceConditions(pageChains, screenshots) {
  */
 export function detectAnomalies(timeline, manifest) {
   // Parse screenshot filenames from manifest artifacts
+  // Support both 'filename' (test fixtures) and 'path' (real session data) fields
   const screenshots = (manifest.artifacts || [])
     .filter(a => a.type === 'screenshot')
     .map(a => {
-      const parsed = parseScreenshotName(a.filename);
-      return parsed ? { filename: a.filename, ...parsed } : null;
+      const fname = a.filename || a.path;
+      if (!fname) return null;
+      const parsed = parseScreenshotName(fname);
+      return parsed ? { filename: fname, ...parsed } : null;
     })
     .filter(Boolean);
 
