@@ -55,11 +55,11 @@ Plans:
   2. `window.__debugReady` accurately reports when annotations are rendered, zoom has settled, and page navigation is complete -- Playwright can wait on these signals before taking action
   3. DOM mutation events for Syncfusion `e-pv-page-div` container destroy/recreate appear in state snapshots with timestamps
   4. Debug instrumentation uses `performance.mark()` in hot paths and produces zero overhead in production builds
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md -- Core debug bridge module with snapshot(), mutation tracking, and hot-path instrumentation (INST-01, INST-02, INST-04, INST-05, INST-06)
+- [ ] 06-02-PLAN.md -- Readiness signal system (waitFor) and Playwright integration tests (INST-03)
 
 ### Phase 7: Capture Modules + Scenario Execution
 **Goal**: A deterministic scenario script drives the app through a zoom sequence, captures synchronized artifacts (video, screenshots, console, state, performance), determines pass/fail, and is runnable from a single CLI command
@@ -116,7 +116,7 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 | 3. Flicker-Free Transitions | v1.0 | 1/1 | Complete | 2026-03-11 |
 | 4. Scale Caching | v1.0 | 0/0 | Deferred | - |
 | 5. Pipeline Foundation | v2.0 | 2/2 | Complete | 2026-03-12 |
-| 6. Debug Bridge + Readiness Signals | v2.0 | 0/? | Not started | - |
+| 6. Debug Bridge + Readiness Signals | v2.0 | 0/2 | Planning complete | - |
 | 7. Capture Modules + Scenario Execution | v2.0 | 0/? | Not started | - |
 | 8. Post-Processing + Analysis | v2.0 | 0/? | Not started | - |
 | 9. LLM Integration | v2.0 | 0/? | Not started | - |
