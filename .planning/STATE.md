@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Debug Annotations
-status: completed
-stopped_at: Phase 8 context gathered
-last_updated: "2026-03-13T04:46:31.009Z"
-last_activity: 2026-03-13 -- Completed Plan 07-02 (Zoom-flicker scenario)
+status: Timeline merger and anomaly detector implemented with 15 passing tests. Ready for Plan 02.
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-13T05:13:25.424Z"
+last_activity: 2026-03-13 -- Completed Plan 08-01 (Timeline merger + anomaly detector)
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 60
+  total_plans: 8
+  completed_plans: 7
+  percent: 58
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Automated, deterministic capture of synchronized debugging artifacts for LLM-assisted annotation rendering diagnosis
-**Current focus:** Phase 7 complete (Capture Modules + Scenario Execution). Ready for Phase 8.
+**Current focus:** Phase 8 in progress (Post-Processing + Analysis). Plan 01 complete, Plan 02 remaining.
 
 ## Current Position
 
-Phase: 7 of 9 (Capture Modules + Scenario Execution) -- COMPLETE
-Plan: 2 of 2 (All plans complete)
-Status: Phase 7 complete. Full capture pipeline validated end-to-end.
-Last activity: 2026-03-13 -- Completed Plan 07-02 (Zoom-flicker scenario)
+Phase: 8 of 9 (Post-Processing + Analysis) -- IN PROGRESS
+Plan: 1 of 2 (Core data processing pipeline complete)
+Status: Timeline merger and anomaly detector implemented with 15 passing tests. Ready for Plan 02.
+Last activity: 2026-03-13 -- Completed Plan 08-01 (Timeline merger + anomaly detector)
 
-Progress: [██████░░░░] 60%
+Progress: [██████░░░░] 58%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: ~14min
-- Total execution time: ~1.45 hours
+- Total plans completed: 7
+- Average duration: ~13min
+- Total execution time: ~1.52 hours
 
 **By Phase:**
 
@@ -49,6 +49,7 @@ Progress: [██████░░░░] 60%
 | Phase 06 P02 | 11min | 2 tasks | 4 files |
 | Phase 07 P01 | 3min | 2 tasks | 6 files |
 | Phase 07 P02 | 15min | 2 tasks | 3 files |
+| Phase 08 P01 | 4min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,10 @@ Progress: [██████░░░░] 60%
 - [Phase 07]: Navigate and wait for readiness BEFORE CaptureContext.start() (takeScreenshot calls waitFor internally)
 - [Phase 07]: page.close() in afterEach before video.saveAs() to trigger Playwright video finalization
 - [Phase 07]: Ensure console.jsonl file creation on capture start even if no console messages fire
+- [Phase 08]: Support both filename and path fields in manifest artifacts for real vs test data compatibility
+- [Phase 08]: Source priority tie-breaking: performance > state > console (most-precise-timing first)
+- [Phase 08]: JSONL parsing: readFileSync + trim + split + JSON.parse with existsSync guard (no streaming needed for session-sized files)
+- [Phase 08]: Per-page event chains correlate performance marks with DOM mutations from state.jsonl for race condition detection
 
 ### From v1.0 (Zoom Fix)
 
@@ -100,6 +105,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T04:46:31.005Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-post-processing-analysis/08-CONTEXT.md
+Last session: 2026-03-13T05:13:25.422Z
+Stopped at: Completed 08-01-PLAN.md
+Resume file: .planning/phases/08-post-processing-analysis/08-02-PLAN.md

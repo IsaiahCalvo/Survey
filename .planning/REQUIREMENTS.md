@@ -40,10 +40,10 @@ Requirements for Debug Annotations milestone. Each maps to roadmap phases.
 
 ### Processing
 
-- [ ] **PROC-01**: Anomaly detector scans `state.jsonl` and flags suspicious transitions: canvas container count drops to 0, portal host disconnects, console error bursts, rendered scale diverging from target scale
-- [ ] **PROC-02**: Anomaly detector produces `anomalies.json` with timestamp, type, severity, and references to related screenshots/state entries
+- [x] **PROC-01**: Anomaly detector scans `state.jsonl` and flags suspicious transitions: canvas container count drops to 0, portal host disconnects, console error bursts, rendered scale diverging from target scale
+- [x] **PROC-02**: Anomaly detector produces `anomalies.json` with timestamp, type, severity, and references to related screenshots/state entries
 - [ ] **PROC-03**: Visual diff via pixelmatch compares before/after screenshots at each step, producing diff images and mismatch percentages stored in `diffs/`
-- [ ] **PROC-04**: Timeline merger sorts all JSONL streams by `sessionMs` into a unified `timeline.json`
+- [x] **PROC-04**: Timeline merger sorts all JSONL streams by `sessionMs` into a unified `timeline.json`
 - [ ] **PROC-05**: Timeline summary generates a human/LLM-readable `timeline.md` narrative of the session (chronological events with key state changes highlighted)
 - [ ] **PROC-06**: LLM chunker splits session artifacts into context-window-sized chunks keyed to semantic units (per zoom operation, per anomaly) with source code references
 - [ ] **PROC-07**: Analysis prompt template (`analysis-prompt.md`) provides structured instructions for LLM analysis including manifest, timeline, key snapshots, and what to look for
@@ -118,10 +118,10 @@ Deferred to later milestones.
 | INST-04 | Phase 6 | Complete |
 | INST-05 | Phase 6 | Complete |
 | INST-06 | Phase 6 | Complete |
-| PROC-01 | Phase 8 | Pending |
-| PROC-02 | Phase 8 | Pending |
+| PROC-01 | Phase 8 | Complete |
+| PROC-02 | Phase 8 | Complete |
 | PROC-03 | Phase 8 | Pending |
-| PROC-04 | Phase 8 | Pending |
+| PROC-04 | Phase 8 | Complete |
 | PROC-05 | Phase 8 | Pending |
 | PROC-06 | Phase 9 | Pending |
 | PROC-07 | Phase 9 | Pending |
