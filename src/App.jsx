@@ -9161,6 +9161,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [syncfusionInteractionResidentPages, setSyncfusionInteractionResidentPages] = useState(new Set());
   const [syncfusionInteractionPageModes, setSyncfusionInteractionPageModes] = useState({});
   const syncfusionScaleConfirmPendingRef = useRef(false);
+  const syncfusionScaleConfirmPendingPagesRef = useRef(new Set());
   const syncfusionScaleConfirmTimerRef = useRef(null);
   const [syncfusionInteractionProxyPayloads, setSyncfusionInteractionProxyPayloads] = useState({});
   const [syncfusionCommittingProxyPages, setSyncfusionCommittingProxyPages] = useState(new Set());
@@ -9591,6 +9592,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
     syncfusionOverlayTransformRatioByPageRef.current = {};
     syncfusionOverlayTransformNodeByPageRef.current = {};
+    syncfusionScaleConfirmPendingPagesRef.current = new Set();
     // Clean up any fallback portal hosts created during zoom
     const fallbacks = syncfusionFallbackHostsRef.current;
     Object.keys(fallbacks).forEach((pageKey) => {
@@ -9599,6 +9601,114 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       delete fallbacks[pageKey];
     });
   }, []);
+
+  const applySyncfusionPendingOverlayTransformToNode = useCallback((pageNumber, node) => {
+    if (!node || !node.isConnected || !node.style) {
+      return false;
+    }
+
+    const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
+    let ratio = Number(ratioByPage[pageNumber]);
+
+    if (!(Number.isFinite(ratio) && ratio > 0)) {
+      const baseScale = zoomOverlayBaseScaleRef.current;
+      if (baseScale > 0) {
+        const fallbackRatio = scaleRef.current / baseScale;
+        if (Number.isFinite(fallbackRatio) && fallbackRatio > 0) {
+          ratio = fallbackRatio;
+          ratioByPage[pageNumber] = fallbackRatio;
+          syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+        }
+      }
+    }
+
+    if (!(Number.isFinite(ratio) && ratio > 0)) {
+      return false;
+    }
+
+    if (Math.abs(ratio - 1) <= 0.001) {
+      node.style.transform = '';
+      node.style.transformOrigin = '';
+      node.style.willChange = '';
+      node.style.backfaceVisibility = '';
+      return false;
+    }
+
+    node.style.transform = `scale(${ratio})`;
+    node.style.transformOrigin = 'top left';
+    node.style.willChange = 'transform';
+    node.style.backfaceVisibility = 'hidden';
+    return true;
+  }, []);
+
+  const beginSyncfusionScaleConfirmPending = useCallback((source = 'unknown') => {
+    const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
+    const overlayContentRefs = syncfusionOverlayContentRefs.current || {};
+    const pendingPages = new Set();
+
+    Object.keys(ratioByPage).forEach((pageKey) => {
+      const pageNumber = Number(pageKey);
+      const ratio = Number(ratioByPage[pageKey]);
+      if (
+        Number.isFinite(pageNumber) &&
+        pageNumber > 0 &&
+        Number.isFinite(ratio) &&
+        Math.abs(ratio - 1) > 0.001
+      ) {
+        pendingPages.add(pageNumber);
+      }
+    });
+
+    Object.keys(overlayContentRefs).forEach((pageKey) => {
+      const pageNumber = Number(pageKey);
+      const node = overlayContentRefs[pageKey];
+      if (!Number.isFinite(pageNumber) || pageNumber <= 0) {
+        return;
+      }
+      if (applySyncfusionPendingOverlayTransformToNode(pageNumber, node)) {
+        pendingPages.add(pageNumber);
+      }
+    });
+
+    if (pendingPages.size === 0) {
+      Object.keys(syncfusionInteractionPortalHostsRef.current || {}).forEach((pageKey) => {
+        const pageNumber = Number(pageKey);
+        if (Number.isFinite(pageNumber) && pageNumber > 0) {
+          pendingPages.add(pageNumber);
+        }
+      });
+    }
+
+    syncfusionScaleConfirmPendingPagesRef.current = pendingPages;
+    syncfusionScaleConfirmPendingRef.current = pendingPages.size > 0;
+
+    if (syncfusionScaleConfirmTimerRef.current) {
+      clearTimeout(syncfusionScaleConfirmTimerRef.current);
+      syncfusionScaleConfirmTimerRef.current = null;
+    }
+
+    if (pendingPages.size === 0) {
+      zoomOverlayBaseScaleRef.current = 1;
+      resetSyncfusionOverlayTransformStyles();
+      return false;
+    }
+
+    debugMark('portal_freeze', { reason: 'confirm_pending_start', source });
+    syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
+      syncfusionScaleConfirmTimerRef.current = null;
+      if (syncfusionScaleConfirmPendingRef.current) {
+        console.warn('[AnnotPerf] 3000ms safety timeout — PAL never confirmed, forcing CSS transform removal');
+        syncfusionScaleConfirmPendingRef.current = false;
+        syncfusionScaleConfirmPendingPagesRef.current = new Set();
+        zoomOverlayTransformActiveRef.current = false;
+        debugMark('zoom_end', { source: 'safety_timeout_3000ms' });
+        zoomOverlayBaseScaleRef.current = 1;
+        resetSyncfusionOverlayTransformStyles();
+      }
+    }, 3000);
+
+    return true;
+  }, [applySyncfusionPendingOverlayTransformToNode, resetSyncfusionOverlayTransformStyles]);
 
   const clearSyncfusionInteractionTimer = useCallback(() => {
     if (!syncfusionInteractionTimerRef.current) return;
@@ -10039,22 +10149,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Defer CSS transform removal until Fabric.js confirms it rendered at the new scale.
     // This prevents the visual flicker between CSS transform removal and canvas re-render.
     console.log(`[AnnotPerf] finalize idle (${reason}) — deferring CSS transform removal, waiting for PAL confirmation`);
-    syncfusionScaleConfirmPendingRef.current = true;
-    debugMark('portal_freeze', { reason: 'confirm_pending_start', source: 'finalize_idle' });
-    if (syncfusionScaleConfirmTimerRef.current) {
-      clearTimeout(syncfusionScaleConfirmTimerRef.current);
-    }
-    syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
-      syncfusionScaleConfirmTimerRef.current = null;
-      if (syncfusionScaleConfirmPendingRef.current) {
-        console.warn('[AnnotPerf] 3000ms safety timeout — PAL never confirmed, forcing CSS transform removal');
-        syncfusionScaleConfirmPendingRef.current = false;
-        zoomOverlayTransformActiveRef.current = false;
-        debugMark('zoom_end', { source: 'safety_timeout_3000ms' });
-        zoomOverlayBaseScaleRef.current = 1;
-        resetSyncfusionOverlayTransformStyles();
-      }
-    }, 3000);
+    beginSyncfusionScaleConfirmPending('finalize_idle');
     if (wasActive) {
       syncfusionInteractionTransitionsRef.current.off += 1;
       setDebugData({
@@ -10068,6 +10163,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       });
     }
   }, [
+    beginSyncfusionScaleConfirmPending,
     clearSyncfusionCommitRaf,
     clearSyncfusionInteractionTimer,
     clearSyncfusionOverlayTransformSyncRaf,
@@ -10075,9 +10171,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncSyncfusionLightweightPages
   ]);
 
-  const handlePALScaleApplied = useCallback((pageNumber, appliedScale) => {
-    // Canvas just painted at appliedScale. Update the CSS transform so the
-    // overlay stays aligned with the current app scale during active zoom.
+  const handlePALScaleApplied = useCallback((pageNumber, appliedScale, _meta = null) => {
+    // PAL reports that this page can safely release the outer overlay CSS transform.
+    // For delayed/off-screen pages this can happen once wrapper CSS compensation is
+    // in place, before the expensive Fabric render completes.
     if (zoomOverlayTransformActiveRef.current && appliedScale > 0) {
       const currentAppScale = scaleRef.current;
       const ratio = currentAppScale / appliedScale;
@@ -10105,16 +10202,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
     delete ratioByPage[pageNumber];
     syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+    const pendingPages = new Set(syncfusionScaleConfirmPendingPagesRef.current || []);
+    pendingPages.delete(Number(pageNumber));
+    syncfusionScaleConfirmPendingPagesRef.current = pendingPages;
 
-    // Check if all visible pages have confirmed — if so, finalize.
-    const overlayContentRefs = syncfusionOverlayContentRefs.current || {};
-    const allConfirmed = Object.keys(overlayContentRefs).every((pageKey) => {
-      const ref = overlayContentRefs[pageKey];
-      if (!ref || !ref.isConnected) return true;
-      const ratio = ratioByPage[pageKey];
-      return !ratio || Math.abs(ratio - 1) <= 0.001;
-    });
-    if (allConfirmed) {
+    if (pendingPages.size === 0) {
       console.log(`[AnnotPerf] All pages confirmed scale — removing remaining CSS transforms`);
       syncfusionScaleConfirmPendingRef.current = false;
       debugMark('portal_unfreeze', { reason: 'all_pages_confirmed' });
@@ -10303,6 +10395,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setSyncfusionProxyReadyPages(new Set());
     syncfusionProxyReadyPagesRef.current = new Set();
     syncfusionOverlayTransformRatioByPageRef.current = {};
+    syncfusionScaleConfirmPendingPagesRef.current = new Set();
     syncfusionInteractionPortalHostsRef.current = {};
     if (syncfusionScaleConfirmPendingRef.current) {
       console.log(`[AnnotPerf] new interaction (${reason}) — cancelling pending scale confirmation`);
@@ -11775,8 +11868,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       zoomOverlaySettleTimerRef.current = null;
       // Populate ratioByPage for all pages that currently have CSS transforms.
       // The inline CSS transforms applied during zoom don't update ratioByPage,
-      // so allConfirmed incorrectly fires after just 1 page. This ensures
-      // allConfirmed waits for ALL pages to rebuild via handlePALScaleApplied.
+      // so seed the per-page ratios before entering confirm-pending. The
+      // explicit pending page set uses these ratios when portal nodes remount.
       const baseScale = zoomOverlayBaseScaleRef.current;
       if (baseScale > 0) {
         const currentScale = scaleRef.current;
@@ -11809,31 +11902,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       // Use confirm-pending so handlePALScaleApplied removes CSS transforms
       // per-page as each canvas rebuilds (prevents flash at wrong scale).
-      syncfusionScaleConfirmPendingRef.current = true;
-      if (syncfusionScaleConfirmTimerRef.current) {
-        clearTimeout(syncfusionScaleConfirmTimerRef.current);
-      }
-      // Safety: if PAL never confirms within 800ms, force cleanup
-      syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
-        syncfusionScaleConfirmTimerRef.current = null;
-        if (syncfusionScaleConfirmPendingRef.current) {
-          syncfusionScaleConfirmPendingRef.current = false;
-          zoomOverlayBaseScaleRef.current = 1;
-          const overlayRefs = syncfusionOverlayContentRefs.current;
-          if (overlayRefs) {
-            const keys = Object.keys(overlayRefs);
-            for (let i = 0; i < keys.length; i++) {
-              const node = overlayRefs[keys[i]];
-              if (node && node.isConnected) {
-                node.style.transform = '';
-                node.style.transformOrigin = '';
-              }
-            }
-          }
-        }
-      }, 3000);
+      beginSyncfusionScaleConfirmPending('zoomChange_settle');
     }, 1000);
   }, [
+    beginSyncfusionScaleConfirmPending,
     bumpOverlayLagEventTotal,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
@@ -20470,28 +20542,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
             setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
           }
-          syncfusionScaleConfirmPendingRef.current = true;
-          if (syncfusionScaleConfirmTimerRef.current) {
-            clearTimeout(syncfusionScaleConfirmTimerRef.current);
-          }
-          syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
-            syncfusionScaleConfirmTimerRef.current = null;
-            if (syncfusionScaleConfirmPendingRef.current) {
-              syncfusionScaleConfirmPendingRef.current = false;
-              zoomOverlayBaseScaleRef.current = 1;
-              const overlayRefs = syncfusionOverlayContentRefs.current;
-              if (overlayRefs) {
-                const keys = Object.keys(overlayRefs);
-                for (let i = 0; i < keys.length; i++) {
-                  const node = overlayRefs[keys[i]];
-                  if (node && node.isConnected) {
-                    node.style.transform = '';
-                    node.style.transformOrigin = '';
-                  }
-                }
-              }
-            }
-          }, 3000);
+          beginSyncfusionScaleConfirmPending('keyboard_toolbar_settle');
         }, 1000);
       }
       scaleRef.current = safeScale;
@@ -20571,7 +20622,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       isZoomingRef.current = false;
       perfZoom.end(safeScale);
     });
-  }, [markSyncfusionInteractionActive, setScale, setAnchor, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, markSyncfusionInteractionActive, setScale, setAnchor, useSyncfusionRenderer]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index) => {
@@ -20977,28 +21028,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
           setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
         }
-        syncfusionScaleConfirmPendingRef.current = true;
-        if (syncfusionScaleConfirmTimerRef.current) {
-          clearTimeout(syncfusionScaleConfirmTimerRef.current);
-        }
-        syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
-          syncfusionScaleConfirmTimerRef.current = null;
-          if (syncfusionScaleConfirmPendingRef.current) {
-            syncfusionScaleConfirmPendingRef.current = false;
-            zoomOverlayBaseScaleRef.current = 1;
-            const overlayRefs = syncfusionOverlayContentRefs.current;
-            if (overlayRefs) {
-              const keys = Object.keys(overlayRefs);
-              for (let i = 0; i < keys.length; i++) {
-                const node = overlayRefs[keys[i]];
-                if (node && node.isConnected) {
-                  node.style.transform = '';
-                  node.style.transformOrigin = '';
-                }
-              }
-            }
-          }
-        }, 3000);
+        beginSyncfusionScaleConfirmPending('ctrl_key_settle');
       }, 1000);
     };
 
@@ -21007,7 +21037,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => {
       document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
     };
-  }, [useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, useSyncfusionRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
@@ -23781,7 +23811,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               if (node) {
                                 syncfusionOverlayContentRefs.current[pageNumber] = node;
                                 if (node !== previousNode) {
-                                  if (syncfusionInteractionPhaseRef.current === 'interacting') {
+                                  if (syncfusionScaleConfirmPendingRef.current) {
+                                    const pendingPages = new Set(syncfusionScaleConfirmPendingPagesRef.current || []);
+                                    pendingPages.add(pageNumber);
+                                    syncfusionScaleConfirmPendingPagesRef.current = pendingPages;
+                                    nodeByPage[pageNumber] = node;
+                                    syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
+                                    applySyncfusionPendingOverlayTransformToNode(pageNumber, node);
+                                  } else if (syncfusionInteractionPhaseRef.current === 'interacting') {
                                     delete ratioByPage[pageNumber];
                                     syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
                                     nodeByPage[pageNumber] = node;

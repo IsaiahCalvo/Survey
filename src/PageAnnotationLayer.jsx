@@ -7787,11 +7787,9 @@ const PageAnnotationLayer = memo(({
           }
         }
 
-        // Apply CSS scale to canvas wrapper for non-center pages only.
-        // This provides instant visual feedback while Fabric renders are deferred.
-        // Center page skips this — App-level overlay CSS already scales it, and
-        // adding a second CSS transform here would double-scale for ~32ms until
-        // the stagger queue runs doFabricRender.
+        // Apply CSS scale to the canvas wrapper for non-center pages only.
+        // This lets App release the outer overlay transform per-page without
+        // exposing stale Fabric pixels while delayed pages wait their turn.
         const currentZoom = c.getZoom();
         if (wrapperEl && currentZoom > 0 && !isCenterPage) {
           const ratio = finalScale / currentZoom;
@@ -7816,7 +7814,7 @@ const PageAnnotationLayer = memo(({
           fc.renderAll();
           debugMark('fabric_renderEnd', { page: pageNumber, scale: finalScale });
           if (typeof onScaleApplied === 'function') {
-            onScaleApplied(pageNumber, finalScale);
+            onScaleApplied(pageNumber, finalScale, { phase: 'fabric_rendered' });
           }
         };
 
@@ -7828,7 +7826,7 @@ const PageAnnotationLayer = memo(({
           // Let center page finish first, then render during idle.
           deferredZoomScaleRef.current = { tw, th, finalScale };
           if (typeof onScaleApplied === 'function') {
-            onScaleApplied(pageNumber, finalScale);
+            onScaleApplied(pageNumber, finalScale, { phase: 'wrapper_css_ready' });
           }
           const deferTimerId = setTimeout(() => {
             if (inZoomModeRef.current) return;
@@ -7842,7 +7840,7 @@ const PageAnnotationLayer = memo(({
           // ── Tier 3: Off-screen — render when scrolled into view ──
           deferredZoomScaleRef.current = { tw, th, finalScale };
           if (typeof onScaleApplied === 'function') {
-            onScaleApplied(pageNumber, finalScale);
+            onScaleApplied(pageNumber, finalScale, { phase: 'wrapper_css_ready' });
           }
           if (viewportObserverRef.current) viewportObserverRef.current.disconnect();
           viewportObserverRef.current = new IntersectionObserver((entries) => {
@@ -7906,13 +7904,13 @@ const PageAnnotationLayer = memo(({
       if (needsResize || needsZoom) {
         canvas.once('after:render', () => {
           if (typeof onScaleApplied === 'function') {
-            onScaleApplied(pageNumber, scale);
+            onScaleApplied(pageNumber, scale, { phase: 'fabric_rendered' });
           }
         });
         canvas.renderAll();
       } else {
         if (typeof onScaleApplied === 'function') {
-          onScaleApplied(pageNumber, scale);
+          onScaleApplied(pageNumber, scale, { phase: 'already_current' });
         }
       }
 
