@@ -11773,6 +11773,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     zoomOverlaySettleTimerRef.current = setTimeout(() => {
       zoomOverlaySettleTimerRef.current = null;
+      // Populate ratioByPage for all pages that currently have CSS transforms.
+      // The inline CSS transforms applied during zoom don't update ratioByPage,
+      // so allConfirmed incorrectly fires after just 1 page. This ensures
+      // allConfirmed waits for ALL pages to rebuild via handlePALScaleApplied.
+      const baseScale = zoomOverlayBaseScaleRef.current;
+      if (baseScale > 0) {
+        const currentScale = scaleRef.current;
+        const ratio = currentScale / baseScale;
+        if (Math.abs(ratio - 1) > 0.001) {
+          const overlayRefs = syncfusionOverlayContentRefs.current || {};
+          const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
+          Object.keys(overlayRefs).forEach((pageKey) => {
+            const ref = overlayRefs[pageKey];
+            if (ref && ref.isConnected) {
+              ratioByPage[pageKey] = ratio;
+            }
+          });
+          syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+        }
+      }
       // Zoom has settled. Release the layerScale freeze so the next render
       // passes the final scale to PAL, triggering a crisp canvas rebuild.
       // CSS transforms remain — handlePALScaleApplied removes them per-page

@@ -1,0 +1,18 @@
+[   19507ms] [WARNING] [AnnotPerf] 800ms safety timeout — PAL never confirmed, forcing CSS transform removal @ http://localhost:5173/src/main.jsx?t=1773189225680:35
+[   87296ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ http://localhost:5173/node_modules/.vite/deps/fabric.js?v=5646d406:1292
+[  140936ms] TypeError: Cannot read properties of undefined (reading 'push')
+    at PerformanceObserver.eval (eval at evaluate (:301:30), <anonymous>:17:44)
+[  142829ms] TypeError: Cannot read properties of undefined (reading 'push')
+    at PerformanceObserver.eval (eval at evaluate (:301:30), <anonymous>:17:44)
+[  145060ms] TypeError: Cannot read properties of undefined (reading 'push')
+    at PerformanceObserver.eval (eval at evaluate (:301:30), <anonymous>:17:44)
+[  145765ms] TypeError: Cannot read properties of undefined (reading 'push')
+    at PerformanceObserver.eval (eval at evaluate (:301:30), <anonymous>:17:44)
+[  146024ms] TypeError: Cannot read properties of undefined (reading 'push')
+    at PerformanceObserver.eval (eval at evaluate (:301:30), <anonymous>:17:44)
+[  146353ms] TypeError: Cannot read properties of undefined (reading 'push')
+    at PerformanceObserver.eval (eval at evaluate (:301:30), <anonymous>:17:44)
+[  950117ms] TypeError: Cannot read properties of undefined (reading 'push')
+    at PerformanceObserver.eval (eval at evaluate (:301:30), <anonymous>:17:44)
+[  950418ms] TypeError: Cannot read properties of undefined (reading 'push')
+    at PerformanceObserver.eval (eval at evaluate (:301:30), <anonymous>:17:44)

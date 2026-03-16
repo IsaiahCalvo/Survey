@@ -1,0 +1,540 @@
+[   15261ms] [WARNING] [RALPH-DEBUG] shouldFreezePortalHost=true but frozenPageNumbers is EMPTY! containers= 0 zoomActive= false confirmPending= true @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15292ms] [WARNING] [RALPH-DEBUG] shouldFreezePortalHost=true but frozenPageNumbers is EMPTY! containers= 0 zoomActive= false confirmPending= true @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15296ms] [WARNING] [RALPH-DEBUG] shouldFreezePortalHost=true but frozenPageNumbers is EMPTY! containers= 0 zoomActive= false confirmPending= true @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15480ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=1 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15516ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=2 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15520ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15528ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15534ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15549ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15606ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15648ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15702ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=9 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   15870ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=10 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16653ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16653ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16655ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16655ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16656ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16656ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16657ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16657ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16658ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16658ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16659ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=9 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16659ms] [WARNING] [RALPH-DEBUG] PAL dispose page=9 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16659ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=10 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16660ms] [WARNING] [RALPH-DEBUG] PAL dispose page=10 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   16714ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31314ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31322ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31361ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31410ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31840ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=1 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31840ms] [WARNING] [RALPH-DEBUG] PAL dispose page=1 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31841ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=2 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31841ms] [WARNING] [RALPH-DEBUG] PAL dispose page=2 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31842ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31842ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31843ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31843ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31843ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31843ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31844ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31844ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31844ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31844ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31845ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31845ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31845ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31851ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31858ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31865ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31941ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   31971ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   32021ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=9 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   61144ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=9 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   61144ms] [WARNING] [RALPH-DEBUG] PAL dispose page=9 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68833ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68833ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68833ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68834ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68834ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68834ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68835ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68835ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68835ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68835ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68835ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68835ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68836ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68846ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68860ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   68936ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   86835ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87153ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87153ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87155ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87155ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87155ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87156ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87156ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87156ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87157ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87157ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87158ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87187ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87230ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87270ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87353ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87410ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[   87511ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=9 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120724ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120724ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120728ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120728ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120730ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120730ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120731ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120731ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120731ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120731ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120732ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120732ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120732ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=9 w=1224 h=792 scale=2.4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120732ms] [WARNING] [RALPH-DEBUG] PAL dispose page=9 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120734ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=2 w=612 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120736ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120741ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120746ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120750ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120837ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120863ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  120911ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=9 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  121074ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=10 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202736ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=10 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202736ms] [WARNING] [RALPH-DEBUG] PAL dispose page=10 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202813ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=2 w=612 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202813ms] [WARNING] [RALPH-DEBUG] PAL dispose page=2 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202814ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202814ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202815ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202816ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202816ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202816ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202817ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202817ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202817ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202817ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202817ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202817ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202818ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=9 w=1224 h=792 scale=0.8333333333333334 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  202818ms] [WARNING] [RALPH-DEBUG] PAL dispose page=9 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204373ms] [WARNING] [RALPH-DEBUG] overlayWindowPageNumbers EMPTY — using cached fallback: 9 pages. useInteractionWindow= false frozenLen= 0 containerLen= 0 freeze= false @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204384ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204385ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204387ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204401ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204407ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204470ms] [WARNING] [RALPH-DEBUG] overlayWindowPageNumbers EMPTY — using cached fallback: 9 pages. useInteractionWindow= false frozenLen= 0 containerLen= 0 freeze= false @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204474ms] [WARNING] [RALPH-DEBUG] overlayWindowPageNumbers EMPTY — using cached fallback: 9 pages. useInteractionWindow= false frozenLen= 0 containerLen= 0 freeze= false @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204662ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204662ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204663ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204663ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204664ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204664ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204664ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204664ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204665ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204665ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204665ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=1 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204669ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=2 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204673ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204682ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204713ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  204739ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  205014ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  205108ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  205529ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  205529ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  205530ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  205530ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  205531ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  205531ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  205532ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  205532ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  220096ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=1 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  220096ms] [WARNING] [RALPH-DEBUG] PAL dispose page=1 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  220099ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=2 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  220099ms] [WARNING] [RALPH-DEBUG] PAL dispose page=2 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  220100ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  220100ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  220101ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  220101ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  220691ms] TypeError: Cannot read properties of null (reading 'scrollTop')
+    at PdfViewerBase2.initiatePageViewScrollChanged (http://localhost:5173/node_modules/.vite/deps/@syncfusion_ej2-react-pdfviewer.js?v=5646d406:388766:79)
+    at http://localhost:5173/node_modules/.vite/deps/@syncfusion_ej2-react-pdfviewer.js?v=5646d406:383450:21
+[  221737ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=1 w=612 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  221739ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=2 w=612 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  221740ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  221954ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244622ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244630ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244729ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244796ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244965ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=1 w=612 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244965ms] [WARNING] [RALPH-DEBUG] PAL dispose page=1 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244966ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=2 w=612 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244966ms] [WARNING] [RALPH-DEBUG] PAL dispose page=2 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244966ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244966ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244966ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244966ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244967ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244967ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244968ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244968ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244969ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244969ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244969ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244969ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244970ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244975ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244992ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  244997ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  245058ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  245100ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  245163ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=9 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261762ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261762ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261764ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261764ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261765ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261765ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261765ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261765ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261767ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261767ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261767ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261768ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261769ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=9 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261769ms] [WARNING] [RALPH-DEBUG] PAL dispose page=9 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261772ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261775ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261777ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  261803ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287261ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287576ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287576ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287578ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287578ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287578ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287578ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287579ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=0.5 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287579ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287579ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287579ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287580ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287694ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287722ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287745ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287853ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  287921ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  288038ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=9 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364257ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364257ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364260ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364260ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364262ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364262ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364264ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364264ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364265ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364265ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364266ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364266ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364266ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=9 w=1224 h=792 scale=2 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  364266ms] [WARNING] [RALPH-DEBUG] PAL dispose page=9 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  366289ms] [WARNING] [RALPH-DEBUG] overlayWindowPageNumbers EMPTY — using cached fallback: 9 pages. useInteractionWindow= false frozenLen= 0 containerLen= 0 freeze= false @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  366302ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  366309ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  366316ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  366417ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  366474ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  366715ms] [WARNING] [RALPH-DEBUG] overlayWindowPageNumbers EMPTY — using cached fallback: 9 pages. useInteractionWindow= false frozenLen= 0 containerLen= 0 freeze= false @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  366720ms] [WARNING] [RALPH-DEBUG] overlayWindowPageNumbers EMPTY — using cached fallback: 9 pages. useInteractionWindow= false frozenLen= 0 containerLen= 0 freeze= false @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367007ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367007ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367009ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367009ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367010ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367011ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367012ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367012ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367012ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367013ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367014ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=1 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367018ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=2 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367022ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367029ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367038ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367045ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367152ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367222ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367483ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367483ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367484ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367484ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367484ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367484ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367485ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  367485ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  374417ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=1 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  374417ms] [WARNING] [RALPH-DEBUG] PAL dispose page=1 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  374418ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=2 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  374418ms] [WARNING] [RALPH-DEBUG] PAL dispose page=2 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  374419ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  374419ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  374420ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  374420ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  374809ms] TypeError: Cannot read properties of null (reading 'scrollTop')
+    at PdfViewerBase2.initiatePageViewScrollChanged (http://localhost:5173/node_modules/.vite/deps/@syncfusion_ej2-react-pdfviewer.js?v=5646d406:388766:79)
+    at http://localhost:5173/node_modules/.vite/deps/@syncfusion_ej2-react-pdfviewer.js?v=5646d406:383450:21
+[  376007ms] ReferenceError: Cannot access 'containerPageNumbers' before initialization
+    at http://localhost:5173/src/App.jsx?t=1773208128469:22368:224
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1773208128469:22724:23)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:18426:26)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:21460:28)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:22802:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:10552:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:10577:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:10611:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:26643:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:26076:20)
+[  376016ms] ReferenceError: Cannot access 'containerPageNumbers' before initialization
+    at http://localhost:5173/src/App.jsx?t=1773208128469:22368:224
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1773208128469:22724:23)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:18426:26)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:21460:28)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:22802:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:10552:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:10577:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:10611:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:26643:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:26076:20)
+[  376017ms] [ERROR] The above error occurred in the <PDFViewer> component:
+
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1773208128469:10395:22)
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1773208128469:31258:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:20909
+[  376017ms] [ERROR] ErrorBoundary caught an error: ReferenceError: Cannot access 'containerPageNumbers' before initialization
+    at http://localhost:5173/src/App.jsx?t=1773208128469:22368:224
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1773208128469:22724:23)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:18426:26)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:21460:28)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:22802:22)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:26631:22)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:26076:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:26015:13)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:25994:15)
+    at recoverFromConcurrentError (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=5646d406:25614:28) {componentStack: 
+    at PDFViewer (http://localhost:5173/src/App.j…lhost:5173/src/components/ErrorBoundary.jsx:16:5)} @ http://localhost:5173/src/components/ErrorBoundary.jsx:26
+[  415342ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 0 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415342ms] [WARNING] [RALPH-DEBUG] shouldFreezePortalHost=true but frozenPageNumbers is EMPTY! containers= 0 zoomActive= false confirmPending= true @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415368ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 0 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415368ms] [WARNING] [RALPH-DEBUG] shouldFreezePortalHost=true but frozenPageNumbers is EMPTY! containers= 0 zoomActive= false confirmPending= true @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415371ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 0 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415371ms] [WARNING] [RALPH-DEBUG] shouldFreezePortalHost=true but frozenPageNumbers is EMPTY! containers= 0 zoomActive= false confirmPending= true @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415549ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415555ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=1 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415559ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=2 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415562ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415570ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415581ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415592ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415675ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415738ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  415804ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=9 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416061ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=10 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416257ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416260ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416260ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416265ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416266ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416267ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416267ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416268ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416268ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416268ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416268ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416268ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=9 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416268ms] [WARNING] [RALPH-DEBUG] PAL dispose page=9 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416269ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=10 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416269ms] [WARNING] [RALPH-DEBUG] PAL dispose page=10 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  416279ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  491979ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=1 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  491979ms] [WARNING] [RALPH-DEBUG] PAL dispose page=1 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  491980ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=2 w=612 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  491981ms] [WARNING] [RALPH-DEBUG] PAL dispose page=2 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  491982ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  491982ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  491984ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  491984ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  492310ms] TypeError: Cannot read properties of null (reading 'scrollTop')
+    at PdfViewerBase2.initiatePageViewScrollChanged (http://localhost:5173/node_modules/.vite/deps/@syncfusion_ej2-react-pdfviewer.js?v=5646d406:388766:79)
+    at http://localhost:5173/node_modules/.vite/deps/@syncfusion_ej2-react-pdfviewer.js?v=5646d406:383450:21
+[  493815ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 0 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493816ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 4 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493816ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493816ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493816ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493816ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493816ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493817ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493829ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=1 w=612 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493833ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=2 w=612 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493837ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493883ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 0 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493884ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 4 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493884ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493884ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493884ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493884ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493884ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493885ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493890ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 0 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493890ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 4 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493890ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493890ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493890ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493891ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493891ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  493891ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494086ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494086ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 4 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494086ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494087ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494087ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494087ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494087ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494087ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494091ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494091ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 4 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494091ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494091ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494091ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494092ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494092ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494092ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494109ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494109ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 4 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494110ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494110ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494110ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494110ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494110ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494110ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 3 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494113ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494113ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494113ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494113ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494114ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494114ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494114ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494117ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494138ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494138ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494138ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494139ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494139ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494139ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494139ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494248ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494248ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494248ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494248ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494248ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494249ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494249ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494255ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494255ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494255ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494255ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494255ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494255ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494255ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494262ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494263ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494263ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494263ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494263ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494263ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494263ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494266ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494266ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494266ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494266ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494266ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494266ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494267ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494312ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494312ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494312ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494312ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494312ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494313ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494313ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494316ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 10 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494316ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 5 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494317ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 6 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494317ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 7 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494317ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 8 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494317ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 9 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  494317ms] [WARNING] [RALPH-DEBUG] FILTER-OUT page= 10 reason=overlayWindow size= 4 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  512785ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=1 w=612 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  512785ms] [WARNING] [RALPH-DEBUG] PAL dispose page=1 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  512787ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=2 w=612 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  512787ms] [WARNING] [RALPH-DEBUG] PAL dispose page=2 w=612 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  512788ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=3 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  512788ms] [WARNING] [RALPH-DEBUG] PAL dispose page=3 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  512789ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  512789ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  513583ms] TypeError: Cannot read properties of null (reading 'scrollTop')
+    at PdfViewerBase2.initiatePageViewScrollChanged (http://localhost:5173/node_modules/.vite/deps/@syncfusion_ej2-react-pdfviewer.js?v=5646d406:388766:79)
+    at http://localhost:5173/node_modules/.vite/deps/@syncfusion_ej2-react-pdfviewer.js?v=5646d406:383450:21
+[  514663ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 0 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  514678ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=1 w=612 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  514681ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=2 w=612 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  514684ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=3 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  514702ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  514723ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=5 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  514736ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=6 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  514819ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=7 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  514848ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=8 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  514930ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=9 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515158ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=10 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515289ms] [WARNING] [RALPH-DEBUG] RENDER freeze= true zoomActive= false confirmPending= true containers= 0 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515297ms] [WARNING] [RALPH-DEBUG] overlayWindowPageNumbers EMPTY — using cached fallback: 10 pages. useInteractionWindow= false frozenLen= 0 containerLen= 0 freeze= false @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515476ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=4 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515476ms] [WARNING] [RALPH-DEBUG] PAL dispose page=4 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515478ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=5 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515478ms] [WARNING] [RALPH-DEBUG] PAL dispose page=5 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515479ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=6 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515479ms] [WARNING] [RALPH-DEBUG] PAL dispose page=6 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515479ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=7 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515479ms] [WARNING] [RALPH-DEBUG] PAL dispose page=7 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515479ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=8 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515479ms] [WARNING] [RALPH-DEBUG] PAL dispose page=8 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515480ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=9 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515480ms] [WARNING] [RALPH-DEBUG] PAL dispose page=9 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515480ms] [WARNING] [RALPH-DEBUG] PAL UNMOUNT page=10 w=1224 h=792 scale=1.25 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515480ms] [WARNING] [RALPH-DEBUG] PAL dispose page=10 w=1224 h=792 @ http://localhost:5173/src/main.jsx?t=1773207499085:35
+[  515501ms] [WARNING] [RALPH-DEBUG] PAL MOUNT page=4 w=1224 h=792 scale=1.1732 @ http://localhost:5173/src/main.jsx?t=1773207499085:35

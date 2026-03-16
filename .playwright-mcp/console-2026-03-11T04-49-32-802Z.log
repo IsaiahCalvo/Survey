@@ -1,0 +1,2 @@
+[   20019ms] [WARNING] [RALPH-DEBUG] shouldFreezePortalHost=true but frozenPageNumbers is EMPTY! containers= 0 zoomActive= false confirmPending= true @ http://localhost:5173/src/main.jsx?t=1773204515414:35
+[   20020ms] [WARNING] [RALPH-DEBUG] overlayWindowPageNumbers EMPTY! useInteractionWindow= false frozenLen= 0 containerLen= 0 freeze= true @ http://localhost:5173/src/main.jsx?t=1773204515414:35

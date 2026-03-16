@@ -1,0 +1,7 @@
+[  102387ms] [WARNING] [AnnotPerf] 800ms safety timeout — PAL never confirmed, forcing CSS transform removal @ http://localhost:5173/src/main.jsx:35
+[  255152ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ http://localhost:5173/node_modules/.vite/deps/fabric.js?v=5646d406:1292
+[  255153ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ http://localhost:5173/node_modules/.vite/deps/fabric.js?v=5646d406:1292
+[  923917ms] [WARNING] [AnnotPerf] 800ms safety timeout — PAL never confirmed, forcing CSS transform removal @ http://localhost:5173/src/main.jsx:35
+[  936181ms] TypeError: Cannot read properties of null (reading 'scrollTop')
+    at PdfViewerBase2.initiatePageViewScrollChanged (http://localhost:5173/node_modules/.vite/deps/@syncfusion_ej2-react-pdfviewer.js?v=5646d406:388766:79)
+    at http://localhost:5173/node_modules/.vite/deps/@syncfusion_ej2-react-pdfviewer.js?v=5646d406:383450:21
