@@ -163,7 +163,7 @@ const SYNCFUSION_INITIAL_RENDER_PAGES = 4;
 const SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
 const SYNCFUSION_DUAL_LAYER_ENABLED_KEY = 'syncfusion_interaction_dual_layer_enabled';
 const OVERLAY_LAG_RECORDER_AUTO_KEY = 'syncfusion_overlay_lag_auto';
-const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT = 3;
+const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT = 6;
 const OVERLAY_LAG_RECORDER_AUTO_MAX_SAMPLES = 12000;
 const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS = 180;
 const OVERLAY_LAG_RECORDER_PERF_ENTRY_LIMIT = 6000;
@@ -9011,7 +9011,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Same JS object is reused across renders so React never unmounts/remounts
   // portal children when Syncfusion recreates page containers during zoom.
   const syncfusionStablePortalHostsRef = useRef({});
+  const syncfusionStablePortalLiveRootsRef = useRef({});
+  const syncfusionStablePortalSnapshotHostsRef = useRef({});
+  // Overlay divs: persistent direct-child divs inside Syncfusion page divs.
+  // Phase 1: created and attached but inert (not used for rendering).
+  // Phase 2+: zoom handler applies CSS transforms; render loop creates portals into these.
+  const overlayDivsRef = useRef({});
+  const syncfusionPagePresentationApisRef = useRef({});
   const syncfusionLastNonEmptyOverlayPagesRef = useRef([]);
+  const syncfusionFrozenOverlayPagesRef = useRef([]);
+  const syncfusionScaleConfirmHiddenPagesRef = useRef(new Set());
+  const syncfusionScaleConfirmVisibleSwapPagesRef = useRef(new Set());
+  const syncfusionScaleConfirmSwapGroupIdRef = useRef(0);
+  const syncfusionZoomPresentationByPageRef = useRef({});
+  const syncfusionScaleConfirmRevealRafByPageRef = useRef({});
+  const syncfusionScaleConfirmRevealPendingPagesRef = useRef(new Set());
+  const syncfusionLastPALScaleAppliedPhaseByPageRef = useRef({});
+  const syncfusionLastPALRevealPhaseByPageRef = useRef({});
   const syncfusionCachedPageRectsRef = useRef({});
   const overlayLagRecorderRef = useRef({
     active: false,
@@ -9580,6 +9596,361 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionCommitRafRef.current = null;
   }, []);
 
+  const ensureSyncfusionZoomPresentationState = useCallback((pageNumber) => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return null;
+    }
+    const existingState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber];
+    if (existingState) {
+      return existingState;
+    }
+    const nextState = {
+      snapshotUrl: null,
+      snapshotVisible: false,
+      snapshotStatus: 'idle',
+      snapshotFailureReason: null,
+      liveHidden: false,
+      paintReady: false,
+      swapGroupId: 0
+    };
+    syncfusionZoomPresentationByPageRef.current = {
+      ...(syncfusionZoomPresentationByPageRef.current || {}),
+      [safePageNumber]: nextState
+    };
+    return nextState;
+  }, []);
+
+  const ensureSyncfusionStablePortalChildren = useCallback((pageNumber, stablePortalHost = null) => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return { stablePortalHost: null, liveRoot: null, snapshotHost: null };
+    }
+    const resolvedHost = stablePortalHost || syncfusionStablePortalHostsRef.current?.[safePageNumber] || null;
+    if (!resolvedHost) {
+      return {
+        stablePortalHost: null,
+        liveRoot: syncfusionStablePortalLiveRootsRef.current?.[safePageNumber] || null,
+        snapshotHost: syncfusionStablePortalSnapshotHostsRef.current?.[safePageNumber] || null
+      };
+    }
+
+    let liveRoot = syncfusionStablePortalLiveRootsRef.current?.[safePageNumber] || null;
+    if (!liveRoot) {
+      liveRoot = document.createElement('div');
+      liveRoot.setAttribute('data-stable-live-root', String(safePageNumber));
+      liveRoot.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:20;';
+      syncfusionStablePortalLiveRootsRef.current[safePageNumber] = liveRoot;
+    }
+    if (liveRoot.parentElement !== resolvedHost) {
+      resolvedHost.appendChild(liveRoot);
+    }
+
+    let snapshotHost = syncfusionStablePortalSnapshotHostsRef.current?.[safePageNumber] || null;
+    if (!snapshotHost) {
+      snapshotHost = document.createElement('div');
+      snapshotHost.setAttribute('data-stable-snapshot-root', String(safePageNumber));
+      snapshotHost.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:24;visibility:hidden;opacity:0;';
+      syncfusionStablePortalSnapshotHostsRef.current[safePageNumber] = snapshotHost;
+    }
+    if (snapshotHost.parentElement !== resolvedHost) {
+      resolvedHost.appendChild(snapshotHost);
+    }
+
+    return { stablePortalHost: resolvedHost, liveRoot, snapshotHost };
+  }, []);
+
+  const resolveSyncfusionZoomPresentationMode = useCallback((pageNumber) => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return 'live';
+    }
+    const presentationState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber] || null;
+    if (presentationState?.snapshotVisible && presentationState?.snapshotUrl) {
+      return 'snapshot';
+    }
+    if (presentationState?.liveHidden) {
+      return 'none';
+    }
+    return 'live';
+  }, []);
+
+  const syncSyncfusionZoomPresentationPage = useCallback((pageNumber, stablePortalHost = null) => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return false;
+    }
+    const presentationState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber] || null;
+    const { stablePortalHost: resolvedHost, liveRoot, snapshotHost } = ensureSyncfusionStablePortalChildren(safePageNumber, stablePortalHost);
+    if (!liveRoot && !snapshotHost && !resolvedHost) {
+      return false;
+    }
+
+    const liveHidden = presentationState?.liveHidden === true;
+    if (liveRoot?.style) {
+      liveRoot.style.visibility = liveHidden ? 'hidden' : '';
+      liveRoot.style.opacity = liveHidden ? '0' : '';
+      if (liveHidden) {
+        liveRoot.setAttribute('data-scale-pending-hidden', 'true');
+      } else {
+        liveRoot.removeAttribute('data-scale-pending-hidden');
+      }
+    }
+
+    const hasSnapshot = typeof presentationState?.snapshotUrl === 'string' && presentationState.snapshotUrl.length > 0;
+    const snapshotVisible = hasSnapshot && presentationState?.snapshotVisible === true;
+    if (snapshotHost?.style) {
+      let snapshotImage = snapshotHost.querySelector('img[data-zoom-snapshot]');
+      if (hasSnapshot) {
+        if (!snapshotImage) {
+          snapshotImage = document.createElement('img');
+          snapshotImage.setAttribute('data-zoom-snapshot', String(safePageNumber));
+          snapshotImage.alt = '';
+          snapshotImage.draggable = false;
+          snapshotImage.style.cssText = 'display:block;width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none;';
+          snapshotHost.appendChild(snapshotImage);
+        }
+        if (snapshotImage.getAttribute('src') !== presentationState.snapshotUrl) {
+          snapshotImage.setAttribute('src', presentationState.snapshotUrl);
+        }
+      } else if (snapshotImage) {
+        snapshotImage.remove();
+      }
+
+      snapshotHost.style.visibility = snapshotVisible ? 'visible' : 'hidden';
+      snapshotHost.style.opacity = snapshotVisible ? '1' : '0';
+      snapshotHost.setAttribute('data-snapshot-visible', snapshotVisible ? 'true' : 'false');
+      snapshotHost.setAttribute('data-paint-ready', presentationState?.paintReady === true ? 'true' : 'false');
+      if (presentationState?.swapGroupId) {
+        snapshotHost.setAttribute('data-swap-group-id', String(presentationState.swapGroupId));
+      } else {
+        snapshotHost.removeAttribute('data-swap-group-id');
+      }
+    }
+
+    if (resolvedHost) {
+      const presentationMode = resolveSyncfusionZoomPresentationMode(safePageNumber);
+      resolvedHost.setAttribute('data-presentation-mode', presentationMode);
+      resolvedHost.setAttribute('data-snapshot-visible', snapshotVisible ? 'true' : 'false');
+      resolvedHost.setAttribute('data-paint-ready', presentationState?.paintReady === true ? 'true' : 'false');
+    }
+
+    return true;
+  }, [ensureSyncfusionStablePortalChildren, resolveSyncfusionZoomPresentationMode]);
+
+  const syncSyncfusionZoomPresentationPages = useCallback((pageNumbers = []) => {
+    Array.from(new Set(
+      (Array.isArray(pageNumbers) ? pageNumbers : [])
+        .map((pageNumber) => Number(pageNumber))
+        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
+    )).forEach((pageNumber) => {
+      syncSyncfusionZoomPresentationPage(pageNumber);
+    });
+  }, [syncSyncfusionZoomPresentationPage]);
+
+  const resetSyncfusionZoomPresentationPages = useCallback((pageNumbers = null, { revealLive = true } = {}) => {
+    const stateByPage = { ...(syncfusionZoomPresentationByPageRef.current || {}) };
+    const targetPages = Array.isArray(pageNumbers) && pageNumbers.length > 0
+      ? Array.from(new Set(
+          pageNumbers
+            .map((pageNumber) => Number(pageNumber))
+            .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
+        ))
+      : Array.from(new Set([
+          ...Object.keys(stateByPage).map((pageKey) => Number(pageKey)),
+          ...Object.keys(syncfusionStablePortalSnapshotHostsRef.current || {}).map((pageKey) => Number(pageKey)),
+          ...Object.keys(syncfusionStablePortalLiveRootsRef.current || {}).map((pageKey) => Number(pageKey))
+        ].filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)));
+
+    targetPages.forEach((pageNumber) => {
+      delete stateByPage[pageNumber];
+      const snapshotHost = syncfusionStablePortalSnapshotHostsRef.current?.[pageNumber];
+      if (snapshotHost?.style) {
+        const snapshotImage = snapshotHost.querySelector('img[data-zoom-snapshot]');
+        if (snapshotImage) {
+          snapshotImage.remove();
+        }
+        snapshotHost.style.visibility = 'hidden';
+        snapshotHost.style.opacity = '0';
+        snapshotHost.removeAttribute('data-snapshot-visible');
+        snapshotHost.removeAttribute('data-paint-ready');
+        snapshotHost.removeAttribute('data-swap-group-id');
+      }
+      const liveRoot = syncfusionStablePortalLiveRootsRef.current?.[pageNumber];
+      if (revealLive && liveRoot?.style) {
+        liveRoot.style.visibility = '';
+        liveRoot.style.opacity = '';
+        liveRoot.removeAttribute('data-scale-pending-hidden');
+      }
+      const stableHost = syncfusionStablePortalHostsRef.current?.[pageNumber];
+      if (stableHost) {
+        stableHost.removeAttribute('data-presentation-mode');
+        stableHost.removeAttribute('data-snapshot-visible');
+        stableHost.removeAttribute('data-paint-ready');
+      }
+    });
+
+    syncfusionZoomPresentationByPageRef.current = stateByPage;
+    if (!Array.isArray(pageNumbers) || pageNumbers.length === 0) {
+      syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set();
+    } else {
+      const nextVisibleSwapPages = new Set(syncfusionScaleConfirmVisibleSwapPagesRef.current || []);
+      targetPages.forEach((pageNumber) => nextVisibleSwapPages.delete(pageNumber));
+      syncfusionScaleConfirmVisibleSwapPagesRef.current = nextVisibleSwapPages;
+    }
+  }, []);
+
+  const setSyncfusionStablePortalHostHidden = useCallback((pageNumber, hidden) => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return false;
+    }
+    const existingState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber] || null;
+    const presentationState = existingState || (hidden ? ensureSyncfusionZoomPresentationState(safePageNumber) : null);
+    if (presentationState) {
+      presentationState.liveHidden = hidden === true;
+      syncfusionZoomPresentationByPageRef.current = {
+        ...(syncfusionZoomPresentationByPageRef.current || {}),
+        [safePageNumber]: presentationState
+      };
+    }
+    return syncSyncfusionZoomPresentationPage(safePageNumber);
+  }, [ensureSyncfusionZoomPresentationState, syncSyncfusionZoomPresentationPage]);
+
+  const syncScaleConfirmHiddenPages = useCallback((pageNumbers = []) => {
+    const targetPages = new Set(
+      (Array.isArray(pageNumbers) ? pageNumbers : [])
+        .map((pageNumber) => Number(pageNumber))
+        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
+    );
+    const previousHiddenPages = new Set(syncfusionScaleConfirmHiddenPagesRef.current || []);
+    previousHiddenPages.forEach((pageNumber) => {
+      if (!targetPages.has(pageNumber)) {
+        setSyncfusionStablePortalHostHidden(pageNumber, false);
+      }
+    });
+    targetPages.forEach((pageNumber) => {
+      setSyncfusionStablePortalHostHidden(pageNumber, true);
+    });
+    syncfusionScaleConfirmHiddenPagesRef.current = targetPages;
+  }, [setSyncfusionStablePortalHostHidden]);
+
+  const cancelSyncfusionScaleConfirmReveal = useCallback((pageNumber, { clearRevealPhase = false } = {}) => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return false;
+    }
+    const revealRafByPage = { ...(syncfusionScaleConfirmRevealRafByPageRef.current || {}) };
+    const revealEntry = revealRafByPage[safePageNumber];
+    if (revealEntry?.rafId != null) {
+      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(revealEntry.rafId);
+      } else {
+        clearTimeout(revealEntry.rafId);
+      }
+    }
+    delete revealRafByPage[safePageNumber];
+    syncfusionScaleConfirmRevealRafByPageRef.current = revealRafByPage;
+    const revealPendingPages = new Set(syncfusionScaleConfirmRevealPendingPagesRef.current || []);
+    revealPendingPages.delete(safePageNumber);
+    syncfusionScaleConfirmRevealPendingPagesRef.current = revealPendingPages;
+    if (clearRevealPhase) {
+      const revealPhaseByPage = { ...(syncfusionLastPALRevealPhaseByPageRef.current || {}) };
+      delete revealPhaseByPage[safePageNumber];
+      syncfusionLastPALRevealPhaseByPageRef.current = revealPhaseByPage;
+    }
+    return !!revealEntry;
+  }, []);
+
+  const cancelAllSyncfusionScaleConfirmReveals = useCallback(({ clearRevealPhases = false } = {}) => {
+    const revealRafByPage = syncfusionScaleConfirmRevealRafByPageRef.current || {};
+    Object.keys(revealRafByPage).forEach((pageKey) => {
+      cancelSyncfusionScaleConfirmReveal(pageKey, { clearRevealPhase: clearRevealPhases });
+    });
+    syncfusionScaleConfirmRevealRafByPageRef.current = {};
+    syncfusionScaleConfirmRevealPendingPagesRef.current = new Set();
+    if (clearRevealPhases) {
+      syncfusionLastPALRevealPhaseByPageRef.current = {};
+    }
+  }, [cancelSyncfusionScaleConfirmReveal]);
+
+  const scheduleSyncfusionScaleConfirmReveal = useCallback((pageNumber, phase = 'unknown') => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return false;
+    }
+    cancelSyncfusionScaleConfirmReveal(safePageNumber);
+    const revealPendingPages = new Set(syncfusionScaleConfirmRevealPendingPagesRef.current || []);
+    revealPendingPages.add(safePageNumber);
+    syncfusionScaleConfirmRevealPendingPagesRef.current = revealPendingPages;
+    const requestFrame =
+      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 16);
+
+    const rafId = requestFrame(() => {
+      const currentEntry = syncfusionScaleConfirmRevealRafByPageRef.current?.[safePageNumber];
+      if (!currentEntry) {
+        return;
+      }
+      const nextRevealRafByPage = { ...(syncfusionScaleConfirmRevealRafByPageRef.current || {}) };
+      delete nextRevealRafByPage[safePageNumber];
+      syncfusionScaleConfirmRevealRafByPageRef.current = nextRevealRafByPage;
+      const nextRevealPendingPages = new Set(syncfusionScaleConfirmRevealPendingPagesRef.current || []);
+      nextRevealPendingPages.delete(safePageNumber);
+      syncfusionScaleConfirmRevealPendingPagesRef.current = nextRevealPendingPages;
+      const presentationState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber];
+      if (presentationState) {
+        syncfusionZoomPresentationByPageRef.current = {
+          ...(syncfusionZoomPresentationByPageRef.current || {}),
+          [safePageNumber]: {
+            ...presentationState,
+            snapshotUrl: null,
+            snapshotVisible: false,
+            liveHidden: false,
+            paintReady: true
+          }
+        };
+      }
+      const hiddenPages = new Set(syncfusionScaleConfirmHiddenPagesRef.current || []);
+      hiddenPages.delete(safePageNumber);
+      syncScaleConfirmHiddenPages(Array.from(hiddenPages));
+      syncfusionLastPALRevealPhaseByPageRef.current = {
+        ...(syncfusionLastPALRevealPhaseByPageRef.current || {}),
+        [safePageNumber]: phase
+      };
+    });
+    syncfusionScaleConfirmRevealRafByPageRef.current = {
+      ...(syncfusionScaleConfirmRevealRafByPageRef.current || {}),
+      [safePageNumber]: { rafId, phase }
+    };
+    return true;
+  }, [cancelSyncfusionScaleConfirmReveal, syncScaleConfirmHiddenPages]);
+
+  const cancelSyncfusionScaleConfirmPending = useCallback((reason = 'unknown', { reveal = true } = {}) => {
+    const wasPending = syncfusionScaleConfirmPendingRef.current === true;
+    if (syncfusionScaleConfirmTimerRef.current) {
+      clearTimeout(syncfusionScaleConfirmTimerRef.current);
+      syncfusionScaleConfirmTimerRef.current = null;
+    }
+    cancelAllSyncfusionScaleConfirmReveals({ clearRevealPhases: true });
+    syncfusionScaleConfirmPendingRef.current = false;
+    syncfusionScaleConfirmPendingPagesRef.current = new Set();
+    syncfusionFrozenOverlayPagesRef.current = [];
+    syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set();
+    syncfusionOverlayTransformRatioByPageRef.current = {};
+    syncfusionOverlayTransformNodeByPageRef.current = {};
+    syncfusionLastPALScaleAppliedPhaseByPageRef.current = {};
+    resetSyncfusionZoomPresentationPages(null, { revealLive: reveal });
+    if (reveal) {
+      syncScaleConfirmHiddenPages([]);
+    }
+    if (wasPending) {
+      debugMark('portal_unfreeze', { reason });
+    }
+    return wasPending;
+  }, [cancelAllSyncfusionScaleConfirmReveals, resetSyncfusionZoomPresentationPages, syncScaleConfirmHiddenPages]);
+
   const resetSyncfusionOverlayTransformStyles = useCallback(() => {
     const overlayContentRefs = syncfusionOverlayContentRefs.current || {};
     Object.keys(overlayContentRefs).forEach((pageKey) => {
@@ -9593,6 +9964,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionOverlayTransformRatioByPageRef.current = {};
     syncfusionOverlayTransformNodeByPageRef.current = {};
     syncfusionScaleConfirmPendingPagesRef.current = new Set();
+    syncfusionFrozenOverlayPagesRef.current = [];
+    syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set();
+    cancelAllSyncfusionScaleConfirmReveals({ clearRevealPhases: true });
+    syncfusionLastPALScaleAppliedPhaseByPageRef.current = {};
+    resetSyncfusionZoomPresentationPages(null, { revealLive: true });
+    syncScaleConfirmHiddenPages([]);
     // Clean up any fallback portal hosts created during zoom
     const fallbacks = syncfusionFallbackHostsRef.current;
     Object.keys(fallbacks).forEach((pageKey) => {
@@ -9600,6 +9977,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (fb?.isConnected) fb.remove();
       delete fallbacks[pageKey];
     });
+  }, [cancelAllSyncfusionScaleConfirmReveals, resetSyncfusionZoomPresentationPages, syncScaleConfirmHiddenPages]);
+
+  const captureSyncfusionFrozenOverlayPages = useCallback((fallbackPages = null) => {
+    const currentOverlayPages = Object.keys(syncfusionOverlayContentRefs.current || {})
+      .map((pageKey) => Number(pageKey))
+      .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
+
+    const fallbackList = Array.isArray(fallbackPages)
+      ? fallbackPages
+      : syncfusionLastNonEmptyOverlayPagesRef.current;
+
+    const resolvedPages = Array.from(new Set(
+      (currentOverlayPages.length > 0 ? currentOverlayPages : (fallbackList || []))
+        .map((pageNumber) => Number(pageNumber))
+        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
+    )).sort((a, b) => a - b);
+
+    if (resolvedPages.length > 0) {
+      syncfusionFrozenOverlayPagesRef.current = resolvedPages;
+    }
+
+    return resolvedPages;
   }, []);
 
   const applySyncfusionPendingOverlayTransformToNode = useCallback((pageNumber, node) => {
@@ -9641,7 +10040,116 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return true;
   }, []);
 
+  const getSyncfusionVisibleSwapPages = useCallback((pendingPages) => {
+    const pendingSet = pendingPages instanceof Set
+      ? pendingPages
+      : new Set(
+          (Array.isArray(pendingPages) ? pendingPages : [])
+            .map((pageNumber) => Number(pageNumber))
+            .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
+        );
+    if (pendingSet.size === 0) {
+      return [];
+    }
+
+    const frozenPageSet = new Set(
+      (syncfusionFrozenOverlayPagesRef.current || [])
+        .map((pageNumber) => Number(pageNumber))
+        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
+    );
+    const visiblePageCandidates = Array.from(syncfusionVisiblePagesRef.current || [])
+      .map((pageNumber) => Number(pageNumber))
+      .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
+      .filter((pageNumber) => pendingSet.has(pageNumber) && (frozenPageSet.size === 0 || frozenPageSet.has(pageNumber)));
+
+    if (visiblePageCandidates.length > 0) {
+      return visiblePageCandidates;
+    }
+
+    const currentPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY);
+    if (Number.isFinite(currentPage) && currentPage > 0 && pendingSet.has(currentPage)) {
+      return [currentPage];
+    }
+
+    return Array.from(pendingSet).sort((left, right) => Math.abs(left - (currentPage || 1)) - Math.abs(right - (currentPage || 1))).slice(0, 1);
+  }, []);
+
+  const prepareSyncfusionZoomPresentationSwap = useCallback((pendingPages, source = 'unknown') => {
+    const pendingList = Array.from(
+      pendingPages instanceof Set
+        ? pendingPages
+        : new Set(
+            (Array.isArray(pendingPages) ? pendingPages : [])
+              .map((pageNumber) => Number(pageNumber))
+              .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
+          )
+    );
+    if (pendingList.length === 0) {
+      syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set();
+      resetSyncfusionZoomPresentationPages(null, { revealLive: true });
+      return { swapGroupId: 0, visibleSwapPages: [] };
+    }
+
+    resetSyncfusionZoomPresentationPages(null, { revealLive: true });
+    const swapGroupId = syncfusionScaleConfirmSwapGroupIdRef.current + 1;
+    syncfusionScaleConfirmSwapGroupIdRef.current = swapGroupId;
+    const nextPresentationStateByPage = { ...(syncfusionZoomPresentationByPageRef.current || {}) };
+    const visibleSwapPages = [];
+    pendingList.forEach((pageNumber) => {
+      let snapshotUrl = null;
+      let snapshotStatus = 'no_api';
+      let snapshotFailureReason = null;
+      const presentationApi = syncfusionPagePresentationApisRef.current?.[pageNumber] || null;
+      if (typeof presentationApi?.captureSnapshot === 'function') {
+        try {
+          const snapshotResult = presentationApi.captureSnapshot();
+          if (typeof snapshotResult === 'string') {
+            snapshotUrl = snapshotResult || null;
+            snapshotStatus = snapshotUrl ? 'captured' : 'empty';
+          } else if (snapshotResult && typeof snapshotResult === 'object') {
+            snapshotUrl = typeof snapshotResult.url === 'string' && snapshotResult.url.length > 0
+              ? snapshotResult.url
+              : null;
+            snapshotStatus = typeof snapshotResult.status === 'string' && snapshotResult.status.trim()
+              ? snapshotResult.status.trim()
+              : (snapshotUrl ? 'captured' : 'empty');
+            snapshotFailureReason = typeof snapshotResult.reason === 'string' && snapshotResult.reason.trim()
+              ? snapshotResult.reason.trim()
+              : null;
+          } else {
+            snapshotStatus = 'empty';
+          }
+        } catch (error) {
+          snapshotStatus = 'error';
+          snapshotFailureReason = error instanceof Error ? error.message : String(error || 'Unknown snapshot error');
+          console.warn(`[AnnotPerf] Failed to capture zoom snapshot for page ${pageNumber} during ${source}:`, error);
+        }
+      }
+      const snapshotVisible = !!snapshotUrl;
+      if (snapshotVisible) {
+        visibleSwapPages.push(pageNumber);
+      }
+      nextPresentationStateByPage[pageNumber] = {
+        snapshotUrl,
+        snapshotVisible,
+        snapshotStatus,
+        snapshotFailureReason,
+        liveHidden: true,
+        paintReady: false,
+        swapGroupId
+      };
+    });
+
+    syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set(visibleSwapPages);
+    syncfusionZoomPresentationByPageRef.current = nextPresentationStateByPage;
+    syncSyncfusionZoomPresentationPages(pendingList);
+    return { swapGroupId, visibleSwapPages };
+  }, [resetSyncfusionZoomPresentationPages, syncSyncfusionZoomPresentationPages]);
+
   const beginSyncfusionScaleConfirmPending = useCallback((source = 'unknown') => {
+    cancelAllSyncfusionScaleConfirmReveals({ clearRevealPhases: true });
+    syncfusionLastPALScaleAppliedPhaseByPageRef.current = {};
+    const frozenPages = captureSyncfusionFrozenOverlayPages();
     const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
     const overlayContentRefs = syncfusionOverlayContentRefs.current || {};
     const pendingPages = new Set();
@@ -9671,6 +10179,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
 
     if (pendingPages.size === 0) {
+      frozenPages.forEach((pageNumber) => pendingPages.add(pageNumber));
+    }
+
+    if (pendingPages.size === 0) {
       Object.keys(syncfusionInteractionPortalHostsRef.current || {}).forEach((pageKey) => {
         const pageNumber = Number(pageKey);
         if (Number.isFinite(pageNumber) && pageNumber > 0) {
@@ -9688,11 +10200,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     if (pendingPages.size === 0) {
+      syncScaleConfirmHiddenPages([]);
       zoomOverlayBaseScaleRef.current = 1;
       resetSyncfusionOverlayTransformStyles();
       return false;
     }
 
+    prepareSyncfusionZoomPresentationSwap(pendingPages, source);
+    syncScaleConfirmHiddenPages(Array.from(pendingPages));
     debugMark('portal_freeze', { reason: 'confirm_pending_start', source });
     syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
       syncfusionScaleConfirmTimerRef.current = null;
@@ -9708,7 +10223,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }, 3000);
 
     return true;
-  }, [applySyncfusionPendingOverlayTransformToNode, resetSyncfusionOverlayTransformStyles]);
+  }, [applySyncfusionPendingOverlayTransformToNode, cancelAllSyncfusionScaleConfirmReveals, captureSyncfusionFrozenOverlayPages, prepareSyncfusionZoomPresentationSwap, resetSyncfusionOverlayTransformStyles, syncScaleConfirmHiddenPages]);
 
   const clearSyncfusionInteractionTimer = useCallback(() => {
     if (!syncfusionInteractionTimerRef.current) return;
@@ -10172,6 +10687,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   ]);
 
   const handlePALScaleApplied = useCallback((pageNumber, appliedScale, _meta = null) => {
+    const safePageNumber = Number(pageNumber);
+    const scaleAppliedPhase = typeof _meta?.phase === 'string' ? _meta.phase : null;
+    const isVisualReadyPhase = scaleAppliedPhase === 'paint_committed' || scaleAppliedPhase === 'already_current';
+    if (Number.isFinite(safePageNumber) && safePageNumber > 0) {
+      syncfusionLastPALScaleAppliedPhaseByPageRef.current = {
+        ...(syncfusionLastPALScaleAppliedPhaseByPageRef.current || {}),
+        [safePageNumber]: scaleAppliedPhase || 'unknown'
+      };
+      const presentationState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber];
+      if (presentationState) {
+        syncfusionZoomPresentationByPageRef.current = {
+          ...(syncfusionZoomPresentationByPageRef.current || {}),
+          [safePageNumber]: {
+            ...presentationState,
+            paintReady: isVisualReadyPhase
+          }
+        };
+        syncSyncfusionZoomPresentationPage(safePageNumber);
+      }
+    }
     // PAL reports that this page can safely release the outer overlay CSS transform.
     // For delayed/off-screen pages this can happen once wrapper CSS compensation is
     // in place, before the expensive Fabric render completes.
@@ -10202,6 +10737,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
     delete ratioByPage[pageNumber];
     syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+
+    if (
+      Number.isFinite(safePageNumber) &&
+      safePageNumber > 0 &&
+      syncfusionScaleConfirmHiddenPagesRef.current.has(safePageNumber)
+    ) {
+      if (isVisualReadyPhase) {
+        scheduleSyncfusionScaleConfirmReveal(safePageNumber, scaleAppliedPhase || 'unknown');
+      }
+    } else if (Number.isFinite(safePageNumber) && safePageNumber > 0 && isVisualReadyPhase) {
+      syncfusionLastPALRevealPhaseByPageRef.current = {
+        ...(syncfusionLastPALRevealPhaseByPageRef.current || {}),
+        [safePageNumber]: scaleAppliedPhase || 'already_visible'
+      };
+    }
+
+    // PAL may report intermediate phases before the browser has presented the
+    // rebuilt canvas. Keep the stable host hidden until a true render-ready
+    // phase to avoid exposing intermediate handoff states.
+    if (!isVisualReadyPhase) return;
+
     const pendingPages = new Set(syncfusionScaleConfirmPendingPagesRef.current || []);
     pendingPages.delete(Number(pageNumber));
     syncfusionScaleConfirmPendingPagesRef.current = pendingPages;
@@ -10217,7 +10773,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       resetSyncfusionOverlayTransformStyles();
     }
-  }, [resetSyncfusionOverlayTransformStyles]);
+  }, [resetSyncfusionOverlayTransformStyles, scheduleSyncfusionScaleConfirmReveal, syncSyncfusionZoomPresentationPage]);
 
   const runSyncfusionCommitQueue = useCallback(() => {
     if (syncfusionInteractionPhaseRef.current !== 'committing') {
@@ -10396,7 +10952,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionProxyReadyPagesRef.current = new Set();
     syncfusionOverlayTransformRatioByPageRef.current = {};
     syncfusionScaleConfirmPendingPagesRef.current = new Set();
+    syncfusionFrozenOverlayPagesRef.current = [];
+    syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set();
     syncfusionInteractionPortalHostsRef.current = {};
+    cancelAllSyncfusionScaleConfirmReveals({ clearRevealPhases: true });
+    syncfusionLastPALScaleAppliedPhaseByPageRef.current = {};
+    resetSyncfusionZoomPresentationPages(null, { revealLive: true });
+    syncScaleConfirmHiddenPages([]);
     if (syncfusionScaleConfirmPendingRef.current) {
       console.log(`[AnnotPerf] new interaction (${reason}) — cancelling pending scale confirmation`);
     }
@@ -10474,12 +11036,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     scheduleSyncfusionInteractionSettleCheck();
   }, [
     applySyncfusionOverlayTransformSync,
+    cancelAllSyncfusionScaleConfirmReveals,
     computeSyncfusionInteractionResidentPages,
     freezeSyncfusionSessionPages,
     getSyncfusionViewerScale,
     queueSyncfusionOverlayTransformSync,
+    resetSyncfusionZoomPresentationPages,
     scheduleSyncfusionInteractionSettleCheck,
     startSyncfusionOverlayTransformLoop,
+    syncScaleConfirmHiddenPages,
     syncSyncfusionLightweightPages
   ]);
 
@@ -11460,6 +12025,40 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return null;
   }, [syncfusionViewerElementId, useSyncfusionRenderer]);
 
+  const attachOverlayToPageDiv = useCallback((pageNumber) => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return null;
+    }
+
+    // Create-once guard
+    let overlayDiv = overlayDivsRef.current[safePageNumber];
+    if (!overlayDiv) {
+      overlayDiv = document.createElement('div');
+      overlayDiv.setAttribute('data-overlay-page', String(safePageNumber));
+      overlayDiv.style.cssText =
+        'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:20;';
+      overlayDivsRef.current[safePageNumber] = overlayDiv;
+    }
+
+    // Find the Syncfusion page div from state ref or fallback ref
+    const pageDiv =
+      syncfusionPageContainersStateRef.current?.[safePageNumber] ||
+      pageContainersRef.current?.[safePageNumber] ||
+      null;
+
+    if (!pageDiv?.isConnected) {
+      return overlayDiv; // Created but not attached (page not in DOM yet)
+    }
+
+    // Attach if not already a child of this page div
+    if (overlayDiv.parentElement !== pageDiv) {
+      pageDiv.appendChild(overlayDiv);
+    }
+
+    return overlayDiv;
+  }, []);
+
   const sanitizeSyncfusionPageContainerMap = useCallback((containerMap) => {
     const next = {};
     Object.entries(containerMap || {}).forEach(([pageKey, pageHost]) => {
@@ -11783,6 +12382,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const nextScale = clampScale(rawZoomValue / 100);
     const prevScale = scaleRef.current;
     scaleRef.current = nextScale;
+    const cancelledConfirmPending = syncfusionScaleConfirmPendingRef.current
+      ? cancelSyncfusionScaleConfirmPending('zoom_restart', { reveal: false })
+      : false;
 
     // ── Activate zoom overlay transform on first zoom event ──
     // MUST happen BEFORE shouldDeferScaleCommit check so that
@@ -11815,6 +12417,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (Object.keys(existingHosts).length === 0) {
         syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
       }
+      captureSyncfusionFrozenOverlayPages(Object.keys(portalHostSnapshot).map(Number));
     }
     // Now that zoomOverlayTransformActiveRef is set, check whether to defer scale
     const shouldDeferScaleCommit =
@@ -11858,6 +12461,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           }
         }
       }
+    }
+    if (cancelledConfirmPending) {
+      syncScaleConfirmHiddenPages([]);
     }
     // (Re)start safety settle timer — PAL's onScaleApplied is the primary cleanup,
     // this is a fallback if PAL never confirms (e.g., error, hidden page).
@@ -11907,9 +12513,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [
     beginSyncfusionScaleConfirmPending,
     bumpOverlayLagEventTotal,
+    cancelSyncfusionScaleConfirmPending,
+    captureSyncfusionFrozenOverlayPages,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
     queueSyncfusionOverlayTransformSync,
+    syncScaleConfirmHiddenPages,
     syncfusionDualLayerEnabled,
     syncfusionLiveStableOverlayEnabled,
     useSyncfusionRenderer
@@ -12584,7 +13193,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const longTaskCounts = samples.map((sample) => sample.longTaskCount).filter((value) => Number.isFinite(value) && value >= 0);
     const longTaskTotals = samples.map((sample) => sample.longTaskTotalMs).filter((value) => Number.isFinite(value) && value >= 0);
     const eventTimingTotals = samples.map((sample) => sample.eventTimingTotalMs).filter((value) => Number.isFinite(value) && value >= 0);
+    const visiblePresentationGapCounts = samples.map((sample) => sample.visiblePresentationGapCount).filter((value) => Number.isFinite(value) && value >= 0);
+    const viewportPresentationGapCounts = samples.map((sample) => sample.viewportPresentationGapCount).filter((value) => Number.isFinite(value) && value >= 0);
     const samplesWithMissingOverlay = missingOverlayCounts.filter((count) => count > 0).length;
+    const samplesWithVisiblePresentationGap = visiblePresentationGapCounts.filter((count) => count > 0).length;
+    const samplesWithViewportPresentationGap = viewportPresentationGapCounts.filter((count) => count > 0).length;
     const jankThresholdMs = 32;
     const jankFrames = frameDurations.filter((frameMs) => frameMs > jankThresholdMs).length;
     const samplesWithLongTasks = longTaskCounts.filter((count) => count > 0).length;
@@ -12647,6 +13260,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       samplesWithMissingOverlay,
       samplesWithMissingOverlayPct: missingOverlayCounts.length > 0
         ? roundOverlayRecorderValue((samplesWithMissingOverlay / missingOverlayCounts.length) * 100, 2)
+        : null,
+      visiblePresentationGapMax: roundOverlayRecorderValue(visiblePresentationGapCounts.length ? Math.max(...visiblePresentationGapCounts) : null, 3),
+      samplesWithVisiblePresentationGap,
+      samplesWithVisiblePresentationGapPct: visiblePresentationGapCounts.length > 0
+        ? roundOverlayRecorderValue((samplesWithVisiblePresentationGap / visiblePresentationGapCounts.length) * 100, 2)
+        : null,
+      viewportPresentationGapMax: roundOverlayRecorderValue(viewportPresentationGapCounts.length ? Math.max(...viewportPresentationGapCounts) : null, 3),
+      samplesWithViewportPresentationGap,
+      samplesWithViewportPresentationGapPct: viewportPresentationGapCounts.length > 0
+        ? roundOverlayRecorderValue((samplesWithViewportPresentationGap / viewportPresentationGapCounts.length) * 100, 2)
         : null,
       sampleCaptureCostMsAvg: roundOverlayRecorderValue(avg(sampleCaptureCosts), 3),
       sampleCaptureCostMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(sampleCaptureCosts, 0.95), 3),
@@ -12741,6 +13364,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const overlayContentRefs = syncfusionOverlayContentRefs.current;
     const pageContainerMap = syncfusionPageContainersStateRef.current || {};
     const residentPages = syncfusionInteractionResidentPagesRef.current;
+    const visiblePages = syncfusionVisiblePagesRef.current || new Set();
+    const confirmPendingPages = syncfusionScaleConfirmPendingPagesRef.current || new Set();
+    const hiddenPendingPages = syncfusionScaleConfirmHiddenPagesRef.current || new Set();
+    const revealPendingPages = syncfusionScaleConfirmRevealPendingPagesRef.current || new Set();
+    const containerRect = container?.getBoundingClientRect?.() || null;
 
     const viewerScale = clampScale(
       Number(
@@ -12750,7 +13378,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       ) / 100
     );
 
-    const shouldCapturePageMetrics = syncfusionInteractionActiveRef.current || recorder.options?.captureIdlePageMetrics === true;
+    const shouldCapturePageMetrics =
+      syncfusionInteractionActiveRef.current ||
+      zoomOverlayTransformActiveRef.current ||
+      syncfusionScaleConfirmPendingRef.current ||
+      (Number(interactionEventDeltas.syncfusionZoomChange) || 0) > 0 ||
+      recorder.options?.captureIdlePageMetrics === true;
     const candidatePages = shouldCapturePageMetrics
       ? (residentPages && residentPages.size > 0
         ? Array.from(residentPages)
@@ -12758,12 +13391,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           .map((pageKey) => Number(pageKey))
           .filter((pageNumber) => Number.isFinite(pageNumber)))
       : [];
-    candidatePages.sort((left, right) => Math.abs(left - pageNumRef.current) - Math.abs(right - pageNumRef.current));
+    candidatePages.sort((left, right) => {
+      const leftVisibleRank = visiblePages.has(left) ? 0 : 1;
+      const rightVisibleRank = visiblePages.has(right) ? 0 : 1;
+      if (leftVisibleRank !== rightVisibleRank) {
+        return leftVisibleRank - rightVisibleRank;
+      }
+      const leftPendingRank = confirmPendingPages.has(left) ? 0 : 1;
+      const rightPendingRank = confirmPendingPages.has(right) ? 0 : 1;
+      if (leftPendingRank !== rightPendingRank) {
+        return leftPendingRank - rightPendingRank;
+      }
+      return Math.abs(left - pageNumRef.current) - Math.abs(right - pageNumRef.current);
+    });
 
     const sampledPages = candidatePages.slice(0, recorder.options.samplePageLimit);
     const pageDetails = [];
     const missingOverlayPages = [];
     const missingHostPages = [];
+    const visiblePresentationGapPages = [];
+    const viewportPresentationGapPages = [];
     let worstDriftPx = 0;
     let worstScaleMismatch = 0;
     let worstDriftPage = null;
@@ -12793,6 +13440,40 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const widthRatio = overlayRect.width / pageRect.width;
       const heightRatio = overlayRect.height / pageRect.height;
       const ratioMismatch = Math.max(Math.abs(widthRatio - 1), Math.abs(heightRatio - 1));
+      const lastScaleAppliedPhase = syncfusionLastPALScaleAppliedPhaseByPageRef.current?.[pageNumber] || null;
+      const lastRevealPhase = syncfusionLastPALRevealPhaseByPageRef.current?.[pageNumber] || null;
+      const presentationState = syncfusionZoomPresentationByPageRef.current?.[pageNumber] || null;
+      const snapshotVisible = presentationState?.snapshotVisible === true;
+      const snapshotAvailable = typeof presentationState?.snapshotUrl === 'string' && presentationState.snapshotUrl.length > 0;
+      const snapshotStatus = typeof presentationState?.snapshotStatus === 'string' && presentationState.snapshotStatus.length > 0
+        ? presentationState.snapshotStatus
+        : (snapshotAvailable ? 'captured' : 'none');
+      const snapshotFailureReason = typeof presentationState?.snapshotFailureReason === 'string' && presentationState.snapshotFailureReason.length > 0
+        ? presentationState.snapshotFailureReason
+        : null;
+      const paintReady = presentationState?.paintReady === true;
+      const liveHidden = presentationState?.liveHidden === true || hiddenPendingPages.has(pageNumber);
+      const presentationMode = snapshotVisible
+        ? 'snapshot'
+        : (liveHidden ? 'none' : 'live');
+      const viewportVisibleWidth = containerRect
+        ? Math.max(0, Math.min(pageRect.right, containerRect.right) - Math.max(pageRect.left, containerRect.left))
+        : 0;
+      const viewportVisibleHeight = containerRect
+        ? Math.max(0, Math.min(pageRect.bottom, containerRect.bottom) - Math.max(pageRect.top, containerRect.top))
+        : 0;
+      const viewportVisibleArea = viewportVisibleWidth * viewportVisibleHeight;
+      const pageArea = Math.max(1, pageRect.width * pageRect.height);
+      const viewportVisible = viewportVisibleArea > 0;
+      const viewportOverlapPct = viewportVisible
+        ? (viewportVisibleArea / pageArea) * 100
+        : 0;
+      if (confirmPendingPages.has(pageNumber) && visiblePages.has(pageNumber) && presentationMode === 'none') {
+        visiblePresentationGapPages.push(pageNumber);
+      }
+      if (confirmPendingPages.has(pageNumber) && viewportVisible && presentationMode === 'none') {
+        viewportPresentationGapPages.push(pageNumber);
+      }
 
       const innerLayer = overlayContentRefs[pageNumber];
       let observedScale = 1;
@@ -12839,7 +13520,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         liveScale: roundOverlayRecorderValue(liveScale, 5),
         observedScale: roundOverlayRecorderValue(observedScale, 5),
         expectedScale: roundOverlayRecorderValue(expectedScale, 5),
-        scaleMismatch: roundOverlayRecorderValue(scaleMismatch, 5)
+        scaleMismatch: roundOverlayRecorderValue(scaleMismatch, 5),
+        confirmPending: confirmPendingPages.has(pageNumber),
+        scalePendingHidden: hiddenPendingPages.has(pageNumber),
+        scaleRevealPending: revealPendingPages.has(pageNumber),
+        viewportVisible,
+        viewportOverlapPct: roundOverlayRecorderValue(viewportOverlapPct, 2),
+        snapshotAvailable,
+        snapshotVisible,
+        snapshotStatus,
+        snapshotFailureReason,
+        paintReady,
+        presentationMode,
+        swapGroupId: Number.isFinite(Number(presentationState?.swapGroupId)) ? Number(presentationState.swapGroupId) : null,
+        lastScaleAppliedPhase,
+        lastRevealPhase
       });
     });
 
@@ -12861,6 +13556,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       interactionPhase: syncfusionInteractionPhaseRef.current,
       interactionSessionId: syncfusionInteractionSessionIdRef.current,
       interactionReason: syncfusionInteractionReasonRef.current,
+      zoomOverlayTransformActive: zoomOverlayTransformActiveRef.current,
+      scaleConfirmPending: syncfusionScaleConfirmPendingRef.current,
+      frozenOverlayPageCount: syncfusionFrozenOverlayPagesRef.current.length,
+      revealPendingPageCount: syncfusionScaleConfirmRevealPendingPagesRef.current.size,
       lightweightPages: syncfusionLightweightPagesRef.current.size,
       residentPages: syncfusionInteractionResidentPagesRef.current.size,
       pageModeCounts,
@@ -12889,6 +13588,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       missingHostCount: missingHostPages.length,
       missingOverlayPages: missingOverlayPages.slice(0, 8),
       missingHostPages: missingHostPages.slice(0, 8),
+      hiddenPendingPageCount: syncfusionScaleConfirmHiddenPagesRef.current.size,
+      snapshotAvailablePageCount: pageDetails.filter((page) => page.snapshotAvailable).length,
+      snapshotVisiblePageCount: pageDetails.filter((page) => page.snapshotVisible).length,
+      paintReadyPageCount: pageDetails.filter((page) => page.paintReady).length,
+      visiblePresentationGapCount: visiblePresentationGapPages.length,
+      visiblePresentationGapPages: visiblePresentationGapPages.slice(0, 8),
+      viewportPresentationGapCount: viewportPresentationGapPages.length,
+      viewportPresentationGapPages: viewportPresentationGapPages.slice(0, 8),
       worstDriftPage,
       worstDriftPx: roundOverlayRecorderValue(worstDriftPx, 3),
       worstScalePage,
@@ -20525,6 +21232,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (Object.keys(existingHosts).length === 0) {
             syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
           }
+          captureSyncfusionFrozenOverlayPages(Object.keys(portalHostSnapshot).map(Number));
         }
         // Restart settle timer on every zoom step so rapid keyboard/toolbar
         // presses don't leave a stale timer that releases the ref mid-sequence.
@@ -20622,7 +21330,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       isZoomingRef.current = false;
       perfZoom.end(safeScale);
     });
-  }, [beginSyncfusionScaleConfirmPending, markSyncfusionInteractionActive, setScale, setAnchor, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionFrozenOverlayPages, markSyncfusionInteractionActive, setScale, setAnchor, useSyncfusionRenderer]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index) => {
@@ -21012,6 +21720,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         if (Object.keys(existingHosts).length === 0) {
           syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
         }
+        captureSyncfusionFrozenOverlayPages(Object.keys(portalHostSnapshot).map(Number));
       }
       // Restart settle timer (same as setScaleWithViewportPreservation)
       if (zoomOverlaySettleTimerRef.current) {
@@ -21037,7 +21746,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => {
       document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
     };
-  }, [beginSyncfusionScaleConfirmPending, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionFrozenOverlayPages, useSyncfusionRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
@@ -22753,6 +23462,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
   }, [useSyncfusionRenderer, syncfusionPageContainers, shouldShowPage]);
 
+  // Phase 1: attach overlay divs to page divs when Syncfusion reports them.
+  // Overlay divs are inert in Phase 1 -- they become portal targets in Phase 3.
+  useEffect(() => {
+    if (!useSyncfusionRenderer) return;
+    Object.entries(syncfusionPageContainers).forEach(([pageKey, pageDiv]) => {
+      const pageNumber = Number(pageKey);
+      if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
+      if (!pageDiv?.isConnected) return;
+      attachOverlayToPageDiv(pageNumber);
+    });
+  }, [useSyncfusionRenderer, syncfusionPageContainers, attachOverlayToPageDiv]);
+
   useEffect(() => {
     if (!useSyncfusionRenderer || !containerRef.current) {
       setSyncfusionOverlayWindowPages(new Set());
@@ -22907,7 +23628,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       if (changed) {
         syncfusionVisiblePagesRef.current = new Set(visiblePages);
-        if (syncfusionInteractionPhaseRef.current === 'interacting') {
+        if (
+          syncfusionInteractionPhaseRef.current === 'interacting' ||
+          syncfusionScaleConfirmPendingRef.current
+        ) {
           setSyncfusionVisiblePagesVersion((prev) => prev + 1);
         }
         applyWindowPages();
@@ -22945,6 +23669,47 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionPageContainers,
     useSyncfusionRenderer
   ]);
+
+  useEffect(() => {
+    if (!syncfusionScaleConfirmPendingRef.current) {
+      return;
+    }
+    const visiblePendingPages = Array.from(syncfusionVisiblePagesRef.current || [])
+      .map((pageNumber) => Number(pageNumber))
+      .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
+      .filter((pageNumber) => syncfusionScaleConfirmPendingPagesRef.current.has(pageNumber));
+    if (visiblePendingPages.length === 0) {
+      return;
+    }
+
+    const nextPresentationStateByPage = { ...(syncfusionZoomPresentationByPageRef.current || {}) };
+    const nextVisibleSwapPages = new Set(syncfusionScaleConfirmVisibleSwapPagesRef.current || []);
+    const changedPages = [];
+
+    visiblePendingPages.forEach((pageNumber) => {
+      const presentationState = nextPresentationStateByPage[pageNumber];
+      if (!presentationState || presentationState.paintReady || !presentationState.liveHidden) {
+        return;
+      }
+      if (!presentationState.snapshotUrl || presentationState.snapshotVisible) {
+        return;
+      }
+      nextPresentationStateByPage[pageNumber] = {
+        ...presentationState,
+        snapshotVisible: true
+      };
+      nextVisibleSwapPages.add(pageNumber);
+      changedPages.push(pageNumber);
+    });
+
+    if (changedPages.length === 0) {
+      return;
+    }
+
+    syncfusionZoomPresentationByPageRef.current = nextPresentationStateByPage;
+    syncfusionScaleConfirmVisibleSwapPagesRef.current = nextVisibleSwapPages;
+    syncSyncfusionZoomPresentationPages(changedPages);
+  }, [syncSyncfusionZoomPresentationPages, syncfusionVisiblePagesVersion]);
 
   useEffect(() => {
     if (!activeSpaceId) {
@@ -23632,16 +24397,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     }
                   }
                   // When portal hosts are frozen (zoom active or confirm-pending),
-                  // Syncfusion may have destroyed page containers so syncfusionPageContainers
-                  // can be empty. Merge in pages from the cached portal hosts so we still
-                  // attempt to render portals (fallback host creation handles disconnected hosts).
+                  // hold the portal render set stable. Expanding to every cached page
+                  // host after zoom settle causes late PAL mounts and visible churn.
                   const containerPageNumbers = Object.keys(syncfusionPageContainers).map((pageKey) => Number(pageKey));
                   const frozenPageNumbers = shouldFreezePortalHost
                     ? (() => {
+                        const frozenPages = (syncfusionFrozenOverlayPagesRef.current || [])
+                          .map((pageNumber) => Number(pageNumber))
+                          .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
+                        if (frozenPages.length > 0) {
+                          return frozenPages;
+                        }
+                        const currentOverlayPages = Object.keys(syncfusionOverlayContentRefs.current || {})
+                          .map((pageKey) => Number(pageKey))
+                          .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
+                        if (currentOverlayPages.length > 0) {
+                          return currentOverlayPages;
+                        }
+                        const lastKnownPages = (syncfusionLastNonEmptyOverlayPagesRef.current || [])
+                          .map((pageNumber) => Number(pageNumber))
+                          .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
+                        if (lastKnownPages.length > 0) {
+                          return lastKnownPages;
+                        }
                         const cachedHosts = syncfusionInteractionPortalHostsRef.current || {};
-                        const cachedPages = Object.keys(cachedHosts).map(Number);
-                        const merged = new Set([...containerPageNumbers, ...cachedPages]);
-                        return Array.from(merged);
+                        return Object.keys(cachedHosts)
+                          .map((pageKey) => Number(pageKey))
+                          .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
                       })()
                     : containerPageNumbers;
                   const overlayWindowPageNumbers = useInteractionWindow
@@ -23724,6 +24506,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       // Attach stable host to current page container if needed
                       if (pageHost.isConnected && stablePortalHost.parentElement !== pageHost) {
                         pageHost.appendChild(stablePortalHost);
+                      }
+                      const { liveRoot: stableLiveRoot } = ensureSyncfusionStablePortalChildren(pageNumber, stablePortalHost);
+                      syncSyncfusionZoomPresentationPage(pageNumber, stablePortalHost);
+                      if (!stableLiveRoot) {
+                        delete syncfusionOverlayLayerRefs.current[pageNumber];
+                        delete syncfusionOverlayContentRefs.current[pageNumber];
+                        return null;
                       }
 
                       const committedPageScale = syncfusionCommittedPageScales[pageNumber];
@@ -23808,13 +24597,32 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               const previousNode = syncfusionOverlayContentRefs.current[pageNumber];
                               const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
                               const nodeByPage = syncfusionOverlayTransformNodeByPageRef.current || {};
+                              const clearPALPhaseState = () => {
+                                const nextAppliedPhaseByPage = { ...(syncfusionLastPALScaleAppliedPhaseByPageRef.current || {}) };
+                                delete nextAppliedPhaseByPage[pageNumber];
+                                syncfusionLastPALScaleAppliedPhaseByPageRef.current = nextAppliedPhaseByPage;
+                                const presentationState = syncfusionZoomPresentationByPageRef.current?.[pageNumber];
+                                if (presentationState) {
+                                  syncfusionZoomPresentationByPageRef.current = {
+                                    ...(syncfusionZoomPresentationByPageRef.current || {}),
+                                    [pageNumber]: {
+                                      ...presentationState,
+                                      paintReady: false
+                                    }
+                                  };
+                                  syncSyncfusionZoomPresentationPage(pageNumber);
+                                }
+                                cancelSyncfusionScaleConfirmReveal(pageNumber, { clearRevealPhase: true });
+                              };
                               if (node) {
                                 syncfusionOverlayContentRefs.current[pageNumber] = node;
                                 if (node !== previousNode) {
+                                  clearPALPhaseState();
                                   if (syncfusionScaleConfirmPendingRef.current) {
                                     const pendingPages = new Set(syncfusionScaleConfirmPendingPagesRef.current || []);
                                     pendingPages.add(pageNumber);
                                     syncfusionScaleConfirmPendingPagesRef.current = pendingPages;
+                                    syncScaleConfirmHiddenPages(Array.from(pendingPages));
                                     nodeByPage[pageNumber] = node;
                                     syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
                                     applySyncfusionPendingOverlayTransformToNode(pageNumber, node);
@@ -23835,6 +24643,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   }
                                 }
                               } else {
+                                clearPALPhaseState();
                                 delete syncfusionOverlayContentRefs.current[pageNumber];
                                 delete ratioByPage[pageNumber];
                                 delete nodeByPage[pageNumber];
@@ -23909,6 +24718,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 isInteracting={syncfusionInteractionPhase === 'interacting'}
                                 isZooming={isZooming}
                                 onScaleApplied={handlePALScaleApplied}
+                                presentationApiRegistry={syncfusionPagePresentationApisRef}
                               />
                             </div>
                             {shouldRenderLightweightAnnotations ? (
@@ -23977,7 +24787,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             )}
                           </div>
                         </div>,
-                        stablePortalHost
+                        stableLiveRoot
                       );
                     });
                 })()}
