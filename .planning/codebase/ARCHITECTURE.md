@@ -1,230 +1,192 @@
 # Architecture
 
-**Analysis Date:** 2026-03-04
+**Analysis Date:** 2026-03-17
 
 ## Pattern Overview
 
-**Overall:** Monolithic Single-Page Application with Electron wrapper
+**Overall:** Hybrid layered architecture combining React component tree with Fabric.js canvas annotation system, Syncfusion PDF viewer integration, and Supabase backend services. Desktop-first Electron app with web UI.
 
 **Key Characteristics:**
-- React 18 SPA with a massive single-file App.jsx (~31K lines) containing the Dashboard and PDFViewer as inner components
-- Electron shell for desktop distribution with a Vite-based web build
-- Supabase backend for auth, database, real-time sync, and edge functions
-- Microsoft Graph API integration for OneDrive/SharePoint Excel co-authoring
-- Syncfusion EJ2 PDF Viewer SDK for PDF rendering with a custom annotation overlay system using Fabric.js
-- Context-based state management (no Redux/Zustand) with a custom subscription-based AnnotationStore
+- Canvas-overlay pattern: Syncfusion PDF viewer renders pages, custom Fabric.js canvas overlays provide interactive annotations
+- Portal-based isolation: React portals decouple annotation layer from main React tree to prevent cascading re-renders
+- Service-oriented backend: Supabase for persistence, Microsoft Graph for Office integration, Stripe for billing
+- State subscription model: AnnotationContext uses pub-sub to notify only affected pages, reducing re-render costs
+- Render queue system: Queues Fabric canvas renders to batch operations and prevent frame blocking
 
 ## Layers
 
-**Electron Shell:**
-- Purpose: Desktop app wrapper providing native file system access, OAuth windows, and file watchers
-- Location: `src/electron-main.js`, `src/preload.js`
-- Contains: Window management, IPC handlers for file dialogs, file read/write, file watchers, OAuth popup windows
-- Depends on: Nothing in React layer
-- Used by: React layer via `window.electronAPI` (contextBridge)
+**UI Layer (React Components):**
+- Purpose: React component tree providing UI shells, dialogs, and page management
+- Location: `src/components/`, `src/sidebar/`
+- Contains: Modal dialogs, sidebar panels, toolbar components, menus
+- Depends on: Contexts, hooks, services
+- Used by: App.jsx orchestrates all components
 
-**React UI (Presentation + Logic):**
-- Purpose: The entire client-side application -- PDF viewing, annotation, survey, template management, dashboard
-- Location: `src/App.jsx` (primary), `src/components/`, `src/sidebar/`
-- Contains: Two mega-components defined inside `src/App.jsx`:
-  - `Dashboard` (line ~2251) -- project/template management, document list, settings
-  - `PDFViewer` (line ~8961) -- PDF rendering, annotation tools, survey mode, Excel sync, undo/redo, zoom, spaces/regions
-  - `App()` (line ~30562) -- top-level router/tab manager
-- Depends on: Contexts, hooks, services, utils
-- Used by: Entry point `src/main.jsx`
+**Annotation Canvas Layer:**
+- Purpose: Fabric.js-based drawing and annotation system overlaid on PDF pages
+- Location: `src/PageAnnotationLayer.jsx`, `src/TextLayer.jsx`, `src/RegionSelectionTool.jsx`
+- Contains: Interactive tools (pen, shapes, callouts, regions), selection logic, geometry helpers
+- Depends on: Fabric.js, geometry utilities, Fabric customization
+- Used by: App.jsx mounts one per visible PDF page via React portals
 
-**Contexts (State Providers):**
-- Purpose: Shared application state via React Context API
-- Location: `src/contexts/`
-- Contains:
-  - `AuthContext.jsx` -- Supabase auth, subscription tier, sign-in/out/up methods, Google OAuth, SSO
-  - `MSGraphContext.jsx` -- Microsoft Graph API auth, OAuth PKCE flow, token refresh, graph client management
-  - `AnnotationContext.jsx` -- High-performance annotation store using subscription model (class-based `AnnotationStore` with page-level subscriptions via `useSyncExternalStore`)
-  - `SearchContext.jsx` -- PDF text search with progressive results, page data caching, result navigation
-  - `SurveySessionContext.jsx` -- Empty/stub file (1 line)
-- Depends on: `src/supabaseClient.js`, `src/authConfig.js`
-- Used by: All UI components
+**PDF Viewer Layer:**
+- Purpose: Syncfusion React PDF Viewer for page rendering and zoom control
+- Location: `src/components/SyncfusionPDFContainer.jsx`
+- Contains: Syncfusion component, zoom state, page caching, viewport management
+- Depends on: pdfjs-dist, PDF.js worker, zoom controller
+- Used by: App.jsx top-level container
 
-**Custom Hooks:**
-- Purpose: Reusable stateful logic for database operations, subscriptions, zoom, and visible page tracking
-- Location: `src/hooks/`
-- Contains:
-  - `useDatabase.js` (949 lines) -- CRUD hooks for projects, documents, templates, storage, tool preferences via Supabase
-  - `useSubscriptionLimits.js` -- Tier-based feature gating (free/pro/enterprise limits)
-  - `useZoomState.js` -- Zoom level management with persistence
-  - `useVisiblePages.js` -- IntersectionObserver-based visible page tracking
-  - `useSurveySync.js` -- Empty/stub file (1 line)
-- Depends on: Contexts, supabaseClient
-- Used by: App.jsx, components
+**Data Persistence Layer:**
+- Purpose: Supabase backend integration for annotations, projects, documents
+- Location: `src/services/documentAnnotationService.js`, hooks in `src/hooks/useDatabase.js`
+- Contains: Annotation sync, CRUD operations, real-time subscriptions, RLS error handling
+- Depends on: Supabase client
+- Used by: App.jsx, components trigger sync operations
 
-**Services:**
-- Purpose: External API interaction layer
-- Location: `src/services/`
-- Contains:
-  - `documentAnnotationService.js` (896 lines) -- Supabase CRUD for annotations, real-time subscriptions (postgres_changes), presence tracking, collaborator management (document + project level)
-  - `excelGraphService.js` (607 lines) -- Microsoft Graph API calls for OneDrive/SharePoint file operations (upload, download, list, metadata, ETag tracking)
-  - `excelSessionService.js` (335 lines) -- Excel workbook session management for real-time co-authoring via Graph API
-- Depends on: `src/supabaseClient.js`, Microsoft Graph client
-- Used by: App.jsx (PDFViewer)
+**Office Integration Layer:**
+- Purpose: Microsoft Graph and Excel Services for workbook sync
+- Location: `src/services/excelGraphService.js`, `src/services/excelSessionService.js`
+- Contains: OneDrive file operations, Excel cell updates, session management
+- Depends on: @microsoft/microsoft-graph-client, MSAL authentication
+- Used by: App.jsx handles Excel sync workflow
 
-**Utilities:**
-- Purpose: Pure functions and helper modules
-- Location: `src/utils/`
-- Contains:
-  - PDF utilities: `pdfAnnotationImporter.js`, `pdfAnnotations.js`, `pdfAnnotationsPdfLib.js`, `pdfCache.js`, `pdfDebug.js`, `PDFWorkerManager.js`
-  - Geometry: `calloutGeometry.js`, `geometryEraser.js`, `geometryHitTest.js`, `lineGeometry.js`, `regionMath.js`
-  - UI helpers: `fabricCustomization.js`, `menuPositioning.js`, `zoomController.js`, `renderQueue.js`, `layerPerformance.js`
-  - Data helpers: `excelSyncDirtyState.js`, `oneDriveUtils.js`, `pageRangeParser.js`, `validation.js`, `hooks.js`
-  - Performance: `performanceLogger.js`
-- Depends on: External libraries (pdf-lib, pdfjs-dist, fabric)
-- Used by: App.jsx, PageAnnotationLayer, components
+**Authentication Layer:**
+- Purpose: Auth provider and context for Supabase + Azure MSAL
+- Location: `src/contexts/AuthContext.jsx`, `src/authConfig.js`
+- Contains: Login/logout, token management, user state
+- Depends on: @azure/msal-browser, Supabase auth
+- Used by: Main.jsx wraps app tree
 
-**Annotation Layer:**
-- Purpose: Canvas-based annotation system for PDF pages using Fabric.js
-- Location: `src/PageAnnotationLayer.jsx` (9425 lines), `src/components/Callout/` (callout subsystem)
-- Contains: Fabric.js canvas management, drawing tools (rectangle, circle, line, polyline, pencil, eraser, text, callout), object selection, context menus, arrowheads, undo/redo integration
-- Depends on: Fabric.js, geometry utils, callout geometry
-- Used by: PDFViewer in App.jsx
-
-**Supabase Backend:**
-- Purpose: Serverless backend -- auth, database, real-time, edge functions
-- Location: `supabase/`
-- Contains:
-  - `migrations/` -- 22 SQL migration files defining schema (users, subscriptions, projects, documents, templates, annotations, collaborators, presence, survey sessions/items, connected services)
-  - `functions/` -- 5 Deno-based edge functions:
-    - `create-checkout-session/` -- Stripe checkout session creation
-    - `create-portal-session/` -- Stripe customer portal
-    - `stripe-webhook/` -- Stripe webhook handler for subscription events
-    - `send-email/` -- Email notifications via Resend API
-    - `send-profile-change-notification/` -- Profile change email alerts
-- Depends on: Stripe SDK, Resend SDK, Supabase service role
-- Used by: Client via Supabase JS SDK, Stripe via webhooks
-
-**Design System:**
-- Purpose: Centralized design tokens
-- Location: `src/theme.js` (247 lines)
-- Contains: COLORS, TYPOGRAPHY, SPACING, BORDERS, SHADOWS, TRANSITIONS, Z_INDEX, LAYOUT constants
-- Depends on: Nothing
-- Used by: App.jsx, components (via imports)
+**State Management:**
+- Purpose: Decentralized state using React Context and custom hooks
+- Location: `src/contexts/`, `src/hooks/`
+- Contains: AnnotationContext (page-specific annotations), AuthContext, MSGraphContext, SearchContext, database hooks
+- Pattern: Page-based subscription model + memoized selectors to prevent broad re-renders
+- Used by: Components subscribe to specific page or global state
 
 ## Data Flow
 
-**PDF Document Lifecycle:**
+**PDF Annotation Workflow:**
 
-1. User selects PDF via file dialog (Electron) or drag-and-drop (browser)
-2. `App.handleDocumentSelect()` creates a tab and sets the active PDF file
-3. `PDFViewer` component receives the file, loads it via `pdfjs-dist`
-4. Syncfusion `PdfViewerComponent` renders pages in `SyncfusionPDFContainer`
-5. `PageAnnotationLayer` overlays Fabric.js canvases on each visible page for annotation drawing
-6. `LightweightAnnotationOverlay` provides a lightweight SVG-based proxy during interactions (zoom/scroll) for performance
-7. Annotations are stored in component state and optionally synced to Supabase via `documentAnnotationService`
-8. PDF can be saved with annotations embedded via `pdfAnnotationsPdfLib.js` (using pdf-lib)
+1. User loads PDF → `App.jsx` fetches document metadata from Supabase
+2. Syncfusion PDF viewer renders pages → triggers `onPageLoaded` callback
+3. For each visible page, `App.jsx` mounts `PageAnnotationLayer` via React portal
+4. Fabric canvas initializes on PAL mount → user can draw/annotate
+5. User modifies annotation → `PageAnnotationLayer` updates Fabric objects
+6. On save: `App.jsx` serializes Fabric canvas → `savePDFWithAnnotationsPdfLib()` embeds in PDF
+7. Concurrent: `syncAnnotationsToSupabase()` pushes to database
+8. Real-time: `subscribeToDocumentAnnotations()` receives remote changes via Supabase realtime
 
-**Survey/Excel Sync Flow:**
+**Excel Sync Workflow:**
 
-1. User creates a survey template with modules, categories, and checklist items (Dashboard)
-2. User opens a PDF in survey mode, linking it to a template
-3. User creates highlight annotations on PDF pages, assigning them to categories
-4. Annotations are exported to Excel format using ExcelJS
-5. Excel file is uploaded to OneDrive via `excelGraphService`
-6. Live sync is attempted via `excelSessionService` (workbook sessions, requires M365 Business)
-7. Changes in the app are pushed to OneDrive; ETag-based change detection tracks external modifications
+1. User selects Excel file from OneDrive → `excelGraphService.getFileId()` resolves path
+2. `createWorkbookSession()` opens Excel workbook in Office cloud session
+3. App parses annotations into column data → `updateCellRange()` pushes to Excel
+4. On reload, `getCellRange()` pulls latest data back from Excel
+5. Dirty state tracked via `computeExcelSyncFingerprint()` to prevent unnecessary uploads
 
-**Authentication Flow:**
+**Zoom Workflow:**
 
-1. `AuthProvider` wraps entire app, manages Supabase auth state
-2. `MSGraphProvider` wraps app below auth, manages Microsoft Graph tokens
-3. Supabase auth: email/password, Google OAuth, SSO -- session stored in localStorage
-4. Microsoft auth: PKCE OAuth flow via popup (Electron) or redirect (browser)
-5. MS tokens stored in Supabase `connected_services` table, refreshed every 10 minutes
-6. Subscription tier fetched from `user_subscriptions` table, gates features
-
-**Real-time Collaboration:**
-
-1. When a document is opened, presence is updated via `updateDocumentPresence()`
-2. Annotation changes are synced to `document_annotations` table
-3. Supabase Realtime subscriptions (`postgres_changes`) push updates to other clients
-4. `subscribeToDocumentAnnotations()` receives INSERT/UPDATE/DELETE events
-5. Local state is reconciled with remote changes
+1. User triggers zoom (fit page, fit width, manual) → `zoomController.createZoomController()`
+2. Controller computes scale → Syncfusion PDF viewer receives scale and re-renders
+3. **Critical:** During zoom, Syncfusion destroys/recreates page DOM → portal hosts must be preserved
+4. Fix: `shouldFreezePortalHost` flag disables host filtering during zoom confirm window
+5. After zoom confirm (3000ms): `zoomOverlayTransformActiveRef` set true, page list reordered
+6. Cached fallback `syncfusionLastNonEmptyOverlayPagesRef` prevents PAL unmount when page list momentarily empty
 
 **State Management:**
-- Primary state: React useState/useRef inside App.jsx (monolithic)
-- Annotation state: `AnnotationStore` class with page-level subscriptions (`useSyncExternalStore`)
-- Auth state: React Context (`AuthContext`, `MSGraphContext`)
-- Search state: React Context (`SearchContext`)
-- Database state: Custom hooks (`useDatabase.js`) with local useState + Supabase queries
-- Preferences/settings: localStorage for zoom, view mode, debug flags
+
+- **Annotations:** `AnnotationStore` in `AnnotationContext` maintains per-page annotation maps and subscribers
+- **Presence:** `updateDocumentPresence()` sends user cursor/annotation updates to Supabase presence
+- **Zoom:** `useZoomState` hook stores mode (fit-page/fit-width/manual) + scale in localStorage
+- **UI state:** React useState for modals, selections, tool active states in `App.jsx`
 
 ## Key Abstractions
 
-**Tab System:**
-- Purpose: Multi-document interface with Home tab + PDF tabs
-- Examples: `src/App.jsx` (App function, lines 30562+)
-- Pattern: Array of `{ id, name, file, isHome }` objects, with `activeTabId` controlling which view is rendered. `TabBar` component at `src/TabBar.jsx`.
+**Fabric Canvas Layer (PageAnnotationLayer.jsx):**
+- Purpose: Wraps Fabric.js canvas with annotation-specific logic
+- Pattern: Canvas initialized on mount, disposed on unmount; toolbar controls state via props
+- Exports: Canvas object handles selection, serialization, undo/redo
+- Key methods: `getCanvasState()`, `setCanvasState()`, `updateDrawingTool()`
 
-**Template System:**
-- Purpose: Reusable survey configurations with modules (sheets), categories (groups), and checklist items
-- Examples: `src/App.jsx` (Dashboard component), `src/hooks/useDatabase.js` (useTemplates hook)
-- Pattern: Templates are stored in Supabase and cached locally. Each template has modules containing categories with checklist items. Templates drive Excel export structure.
+**PDF Page Cache (PageRenderCache):**
+- Purpose: Caches rendered PDF page canvases to avoid re-rendering on zoom/pan
+- Pattern: Keyed by page number + zoom level
+- Used by: `PDFPageCanvas` checks cache before calling pdf.js render
 
-**Spaces & Regions:**
-- Purpose: Named page groupings with optional rectangular regions for spatial organization
-- Examples: `src/SpaceRegionOverlay.jsx`, `src/RegionSelectionTool.jsx`, `src/sidebar/SpacesPanel.jsx`
-- Pattern: Spaces group pages and optionally define sub-regions on pages. Used for organizing survey work by area of a construction document.
+**Annotation Store (AnnotationContext):**
+- Purpose: Decoupled store allowing components to subscribe to specific pages
+- Pattern: Pub-sub model — pages only re-render if their annotations changed
+- Methods: `getPageAnnotations(pageNum)`, `setAnnotations()`, `deleteAnnotations()`
 
-**Dual-Layer Rendering:**
-- Purpose: Performance optimization for PDF annotation display during interactions
-- Examples: `src/components/LightweightAnnotationOverlay.jsx`, `src/components/SyncfusionPDFContainer.jsx`
-- Pattern: Full Fabric.js canvases are used for editing. During scroll/zoom interactions, a lightweight SVG proxy replaces them to prevent jank. Pages outside the visible window are proxied to limit DOM weight.
+**Zoom Controller:**
+- Purpose: Encapsulates zoom logic (scale computation, mode tracking)
+- Pattern: Functional factory returning `{ getScale(), setMode(), computeNewScale() }`
+- Used by: App.jsx + SyncfusionPDFContainer coordinate zoom events
 
-**Callout System:**
-- Purpose: Arrow-with-textbox annotation tool
-- Examples: `src/components/Callout/` (CalloutCanvas, CalloutComponent, CalloutContextMenu, CalloutEditModal, types)
-- Pattern: React-based rendering (not Fabric.js). Each callout has arrowTip, knee, and textBox positions stored as percentages of page dimensions. Connection geometry calculated by `src/utils/calloutGeometry.js`.
+**Geometry Utilities:**
+- Purpose: Hit testing, intersection detection, geometry operations for tools
+- Location: `src/utils/geometryHitTest.js`, `src/utils/lineGeometry.js`, `src/utils/calloutGeometry.js`
+- Examples: `isPointOnObject()`, `getCurvedPath()`, `calculateCalloutConnection()`
 
 ## Entry Points
 
-**Web (Vite Dev Server / Production Build):**
-- Location: `index.html` -> `src/main.jsx`
-- Triggers: Browser navigation / Electron `loadURL`
-- Responsibilities: Registers Syncfusion license, sets up provider hierarchy (ErrorBoundary > AuthProvider > MSGraphProvider > App + KeyboardShortcutsOverlay), mounts React root
-
-**Electron Main Process:**
+**Electron Main (electron-main.js):**
 - Location: `src/electron-main.js`
-- Triggers: `electron .` or packaged app launch
-- Responsibilities: Creates BrowserWindow, sets up IPC handlers for file system operations, handles OAuth redirect interception, manages file watchers, before-quit save hooks
+- Triggers: Application startup
+- Responsibilities: Create BrowserWindow, handle OAuth redirects, manage app lifecycle, IPC handlers
 
-**Electron Preload:**
-- Location: `src/preload.js`
-- Triggers: Loaded by Electron before renderer
-- Responsibilities: Exposes safe IPC bridge via `window.electronAPI` (contextBridge). Provides: openFile, saveFile, readFile, writeFile, fileExists, getFileStats, startFileWatcher, openOAuthWindow, etc.
+**React Root (main.jsx):**
+- Location: `src/main.jsx`
+- Triggers: Vite loads index.html → renders React root
+- Responsibilities: Register Syncfusion license, wrap App in AuthProvider/MSGraphProvider, suppress PDF.js warnings
 
-**Supabase Edge Functions:**
-- Location: `supabase/functions/*/index.ts`
-- Triggers: HTTP requests (Supabase function invocations, Stripe webhooks)
-- Responsibilities: Stripe checkout/portal session creation, webhook event processing, email sending via Resend
+**Main App Component (App.jsx):**
+- Location: `src/App.jsx` (~1.4MB)
+- Triggers: Mounted by main.jsx
+- Responsibilities: PDF viewer orchestration, zoom logic, page annotation layer mounting, Excel sync, annotation persistence, UI state management
+
+**Dev Test Route (DevTestRoute.jsx):**
+- Location: `src/DevTestRoute.jsx`
+- Triggers: `?testPdf=<name>` query param in dev environment
+- Responsibilities: Bypass auth and load test PDF directly (for rapid iteration)
 
 ## Error Handling
 
-**Strategy:** Defensive try/catch with console logging. No centralized error reporting service.
+**Strategy:** Layered error classification and graceful degradation
 
 **Patterns:**
-- `ErrorBoundary` component wraps entire app (`src/components/ErrorBoundary.jsx`)
-- Supabase operations return `{ data, error }` tuples; errors are logged and state falls back to defaults
-- Microsoft Graph operations throw errors that are caught by callers with user-facing error messages
-- Annotation sync errors are classified (`classifyAnnotationSyncError`) into retryable vs non-retryable categories (RLS, schema missing, not found)
-- Token refresh failures are tracked with cooldown/block timers to prevent infinite retry loops
+
+- **Annotation sync errors:** `classifyAnnotationSyncError()` in `documentAnnotationService.js` distinguishes RLS, schema, network, and retry-able errors
+- **Portal mounting:** Try/catch in App.jsx around `createPortal()` catches portal host resolution failures, falls back to warning log
+- **Fabric canvas:** Error handler on canvas events logs to `pdfDebug` system instead of crashing
+- **PDF loading:** Syncfusion `onLoadFailed` callback handles corrupted/missing PDFs, shows user-friendly modal
+- **Excel operations:** Try/catch around Graph API calls returns `{ data: null, error }` tuples
 
 ## Cross-Cutting Concerns
 
-**Logging:** Console-based (`console.log`, `console.error`, `console.warn`). Custom debug utilities at `src/utils/pdfDebug.js` and `src/utils/performanceLogger.js` with toggleable debug mode via localStorage/sessionStorage flags.
+**Logging:**
+- Development: `debugLog()` in `src/utils/pdfDebug.js` writes to in-memory buffer and console
+- Production: Performance metrics via `src/utils/performanceLogger.js` tracks upload, load, render, zoom timings
+- Electron: `console.log/error` goes to Electron main process logs
 
-**Validation:** `src/utils/validation.js` (277 lines) provides input validation helpers. No schema-level validation library (no Zod/Yup). Supabase RLS policies enforce row-level security on all tables.
+**Validation:**
+- URL validation in `electron-main.js` OAuth redirect handler
+- Annotation schema validation in `documentAnnotationService.js` before upsert
+- Excel range validation in `excelSessionService.js` before cell updates
+- Utility: `src/utils/validation.js` exports common validators
 
-**Authentication:** Supabase Auth (email/password, Google OAuth, SSO) via `AuthContext`. Microsoft Graph OAuth PKCE via `MSGraphContext`. Feature gating by subscription tier (`free`, `pro`, `enterprise`, `developer`).
+**Authentication:**
+- Azure MSAL handled in `AuthContext.jsx` — acquires tokens, handles popup consent
+- Supabase auth via MSAL token exchange
+- Preload script (`preload.js`) exposes safe IPC methods to renderer
 
-**Offline Support:** Graceful degradation -- `supabaseClient.js` exports `isSupabaseAvailable()` which returns false when env vars are missing. All auth/database hooks check this before making requests. The app works locally without Supabase for basic PDF viewing/annotation.
+**Performance:**
+- Render queue in `src/utils/renderQueue.js` batches canvas renders
+- Layer performance tracking in `src/utils/layerPerformance.js` monitors Fabric re-renders
+- React.memo used throughout component tree to prevent cascading re-renders
+- Page virtualization via react-window for large PDFs
 
 ---
 
-*Architecture analysis: 2026-03-04*
+*Architecture analysis: 2026-03-17*

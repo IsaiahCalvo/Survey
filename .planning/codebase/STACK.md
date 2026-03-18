@@ -1,133 +1,136 @@
 # Technology Stack
 
-**Analysis Date:** 2026-03-04
+**Analysis Date:** 2026-03-17
 
 ## Languages
 
 **Primary:**
-- JavaScript (ES2022+) - All application code (`.jsx`, `.js`)
-- TypeScript - Supabase Edge Functions only (`supabase/functions/*/index.ts`), database types (`src/types/database.ts`)
+- JavaScript (ES6+) - React components, frontend logic, and utilities
+- JSX - React component templates
+- Node.js - Electron main process, build tools, CLI utilities
 
 **Secondary:**
-- SQL - Database migrations (`supabase/migrations/*.sql`)
-- HTML/CSS - Landing page (`landing/index.html`, `landing/styles.css`), app styles (`src/styles.css`, `src/App.css`)
+- CSS - Styling via Syncfusion and custom stylesheets
 
 ## Runtime
 
 **Environment:**
-- Node.js v22+ (v22.17.0 detected on dev machine)
-- Electron v25 - Desktop shell wrapping the Vite-built React app
-- Deno v2 - Supabase Edge Functions runtime (`supabase/config.toml` edge_runtime)
+- Node.js (no specific version constraint in project, typically 16+)
+- Electron 25.2.1 - Desktop application runtime
 
 **Package Manager:**
-- npm v11.5.1
-- Lockfile: `package-lock.json` (lockfileVersion 3, present)
+- npm (implicit from package.json)
+- Lockfile: `package-lock.json` (expected, not verified)
 
 ## Frameworks
 
-**Core:**
-- React 18.2 - UI framework (JSX, functional components, hooks)
-- Electron 25 - Desktop application wrapper (`src/electron-main.js`, `src/preload.js`)
-- Vite 5.2 - Dev server and bundler (`vite.config.js`)
-
-**PDF Processing:**
-- Syncfusion EJ2 PDF Viewer 32.1.19 - Primary PDF rendering and annotation engine (local file: packages from `../Syncfusion/32.1.19/`)
-- pdfjs-dist 3.11.174 - PDF parsing, text extraction, and worker-based rendering (`src/workers/pdfRender.worker.js`)
-- pdf-lib 1.17.1 - PDF modification and annotation export (`src/utils/pdfAnnotationsPdfLib.js`)
-- annotpdf 1.0.15 - Additional PDF annotation support
-
-**Testing:**
-- Node.js built-in test runner (`node --experimental-default-type=module --test`)
-- Tests: `tests/*.test.mjs`
+**Core UI:**
+- React 18.2.0 - Frontend framework for UI components
+- Syncfusion EJ2 32.1.19 - PDF Viewer and UI components
+  - @syncfusion/ej2-react-pdfviewer - PDF rendering and annotation
+  - 30+ Syncfusion packages for base, buttons, inputs, popups, etc.
+  - Local file references: `/Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/`
 
 **Build/Dev:**
-- @vitejs/plugin-react 4.2.1 - React JSX transform for Vite
-- vite-plugin-node-polyfills 0.24.0 - Node.js API polyfills for browser (`buffer`, `stream`, etc.)
-- electron-builder 24.8.0 - Electron packaging and distribution
-- concurrently 8.2.0 - Run Vite dev server + Electron concurrently
-- wait-on 7.0.1 - Wait for Vite dev server before launching Electron
-- sharp 0.34.5 - Image processing (icon conversion)
+- Vite 5.2.0 - Frontend build tool and dev server (port 5173)
+- @vitejs/plugin-react 4.2.1 - React support for Vite
+- vite-plugin-node-polyfills 0.24.0 - Node polyfills for browser
+
+**Desktop/Electron:**
+- electron 25.2.1 - Desktop application framework
+- electron-builder 24.8.0 - Packaging and distribution
+
+**Testing:**
+- Playwright 1.58.2 - End-to-end testing
+  - Config: `debug/playwright.config.mjs`
+  - Headless Chromium testing with 1400x900 viewport
+  - 2-minute timeout per test (due to Syncfusion cold start overhead)
 
 ## Key Dependencies
 
-**Critical:**
-- `@supabase/supabase-js` ^2.81.1 - Database, auth, storage, realtime, and edge function invocation (`src/supabaseClient.js`)
-- `@azure/msal-browser` ^4.26.2 - Microsoft OAuth (PKCE flow) for OneDrive integration (`src/contexts/MSGraphContext.jsx`)
-- `@microsoft/microsoft-graph-client` ^3.0.7 - OneDrive/SharePoint file operations (`src/services/excelGraphService.js`, `src/services/excelSessionService.js`)
-- `@stripe/stripe-js` ^8.5.3 - Client-side Stripe checkout (`src/components/StripeCheckout.jsx`)
-- `@syncfusion/ej2-react-pdfviewer` (local) - React wrapper for Syncfusion PDF viewer (`src/components/SyncfusionPDFContainer.jsx`)
+**PDF & Document Processing:**
+- pdfjs-dist 3.11.174 - PDF.js for text extraction and rendering
+- pdf-lib 1.17.1 - PDF manipulation library
+- annotpdf 1.0.15 - PDF annotation support
+- exceljs 4.4.0 - Excel file reading/writing
+- xlsx 0.18.5 - Excel spreadsheet library
+- xlsx-js-style 1.2.0 - Excel styling
 
-**Data & Export:**
-- `exceljs` ^4.4.0 - Excel workbook generation and manipulation
-- `xlsx` ^0.18.5 - Spreadsheet parsing
-- `xlsx-js-style` ^1.2.0 - Styled Excel export
+**Canvas & Graphics:**
+- fabric 5.5.2 - Fabric.js for canvas annotation rendering
+- martinez-polygon-clipping 0.7.4 - Polygon clipping for geometry
+- polygon-clipping 0.15.7 - Polygon manipulation library
 
-**UI & Interaction:**
-- `fabric` ^5.5.2 - Canvas-based drawing and annotation overlays (`src/utils/fabricCustomization.js`)
-- `@dnd-kit/core` ^6.3.1 - Drag-and-drop framework
-- `@dnd-kit/sortable` ^10.0.0 - Sortable lists (bookmarks, sidebar items)
-- `react-window` ^2.2.1 - Virtualized list rendering for large PDFs
+**State & Drag-and-Drop:**
+- react-window 2.2.1 - Windowed list rendering for performance
+- @dnd-kit/core 6.3.1 - Drag-and-drop functionality
+- @dnd-kit/sortable 10.0.0 - Sortable drag-and-drop
 
-**Geometry & Math:**
-- `polygon-clipping` ^0.15.7 - Boolean polygon operations
-- `martinez-polygon-clipping` ^0.7.4 - Alternative polygon clipping algorithm
+**Authentication & External Services:**
+- @azure/msal-browser 4.26.2 - Azure AD authentication for browser
+- @azure/msal-node 3.8.3 - Azure AD authentication for Node (Electron main)
+- @microsoft/microsoft-graph-client 3.0.7 - Microsoft Graph API client
+- @supabase/supabase-js 2.81.1 - Supabase client for auth and database
+- @stripe/stripe-js 8.5.3 - Stripe payment library (client-side)
 
-**Infrastructure:**
-- `chokidar` ^5.0.0 - File system watching in Electron main process
-- `isomorphic-fetch` ^3.0.0 - Cross-environment fetch API
+**Development & Build:**
+- concurrently 8.2.0 - Run dev:ui and dev:electron in parallel
+- wait-on 7.0.1 - Wait for server startup during build
+- chokidar 5.0.0 - File system watching
+- cross-env 7.0.3 - Cross-platform environment variables
+- sharp 0.34.5 - Image processing
+- to-ico 1.1.5 - Icon conversion
+- buffer 6.0.3 - Node buffer polyfill for browser
+- stream-browserify 3.0.0 - Node stream polyfill
+- events 3.3.0 - Node events polyfill
+- util 0.12.5 - Node util polyfill
+- ws 8.18.3 - WebSocket library
+- isomorphic-fetch 3.0.0 - Cross-platform fetch
 
 ## Configuration
 
 **Environment:**
-- `.env` file present (contains secrets - do not read)
-- `.env.example` documents required variables
-- Required env vars (VITE_ prefix for client-side):
-  - `VITE_SUPABASE_URL` - Supabase project URL
-  - `VITE_SUPABASE_ANON_KEY` - Supabase anonymous key
-  - `VITE_STRIPE_PUBLISHABLE_KEY` - Stripe publishable key
-  - `VITE_SYNCFUSION_LICENSE_KEY` - Syncfusion license (has fallback in `src/main.jsx`)
-- Server-side secrets (Supabase Edge Function Secrets, NOT in .env):
-  - `STRIPE_SECRET_KEY`
-  - `STRIPE_WEBHOOK_SECRET`
-  - `STRIPE_PRO_MONTHLY_PRICE_ID`
-  - `STRIPE_PRO_ANNUAL_PRICE_ID`
-  - `STRIPE_ENTERPRISE_PRICE_ID`
-  - `RESEND_API_KEY`
-  - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY`
+- Uses Vite environment variables with `VITE_` prefix
+- `.env` file present (not committed) - contains `VITE_SUPABASE_*` and `VITE_STRIPE_*` keys
+- `.env.example` provides template for Supabase and Stripe configuration
 
-**Build:**
-- `vite.config.js` - Vite configuration with React plugin, node polyfills, symlink preservation for Syncfusion local packages, module shims for `ej2-interactive-chat` and `ej2-markdown-converter`
-- `package.json` `"build"` section - electron-builder config for macOS (DMG), Windows (NSIS), Linux
-- Output: `dist/` directory for Vite build, app packaged via `electron-builder`
+**Build Configuration:**
+- Vite: `vite.config.js`
+  - Base: relative paths for Electron file:// protocol
+  - Custom debug fixtures plugin serves PDFs from `debug/fixtures/`
+  - Node polyfills enabled for `node:` protocol imports
+  - CORS headers configured for MSAL popup authentication
+  - Path aliases for Syncfusion shims
 
-**Vite Aliases:**
-- `@syncfusion/ej2-interactive-chat` -> `src/shims/ej2-interactive-chat.js` (empty shim)
-- `@syncfusion/ej2-markdown-converter` -> `src/shims/ej2-markdown-converter.js` (empty shim)
-
-## Scripts
-
-```bash
-npm run dev           # Start Vite + Electron concurrently
-npm run dev:ui        # Vite dev server only (port 5173)
-npm run dev:electron  # Electron only (waits for Vite)
-npm run build         # Vite production build -> dist/
-npm run dist          # Build + electron-builder package
-npm run test          # Node.js built-in test runner
-```
+**Electron Configuration:**
+- Main entry: `src/electron-main.js`
+- Preload script: `src/preload.js`
+- Build config in `package.json` build section
+  - Platform targets: macOS (dmg), Windows (NSIS), Linux (.png)
+  - ASAR packaging enabled
+  - Icon: `build/icon.icns` (macOS), `build/icon.png` (Windows/Linux)
 
 ## Platform Requirements
 
 **Development:**
-- Node.js 22+
-- npm 11+
-- Syncfusion local packages at `../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/` (relative to project root)
-- macOS, Windows, or Linux
+- Vite dev server runs on port 5173
+- Node.js (version not strictly specified)
+- Platform-specific icons in `build/` directory
 
 **Production:**
-- Electron desktop app (cross-platform: macOS DMG, Windows NSIS, Linux)
-- Supabase hosted backend (PostgreSQL, Edge Functions, Storage, Realtime, Auth)
-- Landing page: Static HTML deployed to Vercel (`landing/vercel.json`)
+- Electron desktop application
+- Distributed as platform-specific installers (dmg, NSIS, or Linux package)
+- Built output: `dist/` directory
+- Requires Syncfusion license key (via `VITE_SYNCFUSION_LICENSE_KEY`)
+
+## Dependency Notes
+
+**Syncfusion packages:** Installed as local file references from `../Syncfusion/32.1.19/` directory, not from npm registry. This is a local SDK installation with version 32.1.19.
+
+**License Key:** Syncfusion PDF Viewer requires a valid license key registered in `src/main.jsx` via `registerLicense()`. Falls back to embedded key if `VITE_SYNCFUSION_LICENSE_KEY` not provided.
+
+**Electron Security:** Context isolation enabled, node integration disabled. Preload script used for IPC communication.
 
 ---
 
-*Stack analysis: 2026-03-04*
+*Stack analysis: 2026-03-17*

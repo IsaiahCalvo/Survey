@@ -1,184 +1,236 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-03-04
+**Analysis Date:** 2026-03-17
 
 ## Tech Debt
 
-**God File: `src/App.jsx` (30,985 lines / 1.3MB)**
-- Issue: The entire application logic -- Dashboard, PDFViewer, App component, plus ~100 helper functions, 40+ magic constants, and extensive inline styles -- lives in a single file. It contains 227 `useState`, 155 `useRef`, 144 `useEffect`, 225 `useCallback`, and 27 `useMemo` calls. Three major components (`Dashboard` at line 2251, `PDFViewer` at line 8961, `App` at line 30562) are defined here, each with hundreds of state variables and deeply nested render logic.
+**App.jsx monolithic component:**
+- Issue: Main component is 32,262 lines with 227 useState calls, excessive complexity and tight coupling
 - Files: `src/App.jsx`
-- Impact: Extremely difficult to navigate, modify, or review. Merge conflicts are near-guaranteed on any parallel work. IDE performance degrades. New developers cannot onboard efficiently. Any change risks unintended side effects due to shared closures and state.
-- Fix approach: Incrementally extract components and logic. Start by extracting `Dashboard` (~6700 lines) and `PDFViewer` (~21600 lines) into their own files. Extract shared constants, helper functions (`hexToRgba`, `ensureRgbaOpacity`, `generateUniqueId`, etc.), and performance-related constants into `src/utils/` or `src/constants/`. Extract the inline style objects into CSS modules or a dedicated styles file.
+- Impact: Difficult to test, maintain, and modify; every state change requires navigation through massive file; high risk of unintended side effects
+- Fix approach: Break into domain-specific feature modules (AnnotationManager, PDFDocumentManager, ExcelSyncManager, etc.); extract state management into custom hooks or context providers; consider extracting each major feature area into separate components
 
-**God File: `src/PageAnnotationLayer.jsx` (9,425 lines)**
-- Issue: The annotation layer handling Fabric.js canvas interactions, drawing tools, eraser logic, context menus, callout management, and undo/redo history is a single massive component. It patches `HTMLCanvasElement.prototype.getContext` at the module level (lines 8-29) as a global side effect.
+**PageAnnotationLayer complexity:**
+- Issue: 9,757 lines with Fabric.js canvas management, annotation rendering, and input handling tightly coupled
 - Files: `src/PageAnnotationLayer.jsx`
-- Impact: Same maintainability issues as App.jsx. The global `getContext` patch can cause subtle bugs if module load order changes. Difficult to test individual drawing tools in isolation.
-- Fix approach: Extract tool-specific logic (eraser, drawing, text, callout) into separate hook files under `src/hooks/`. Move the `getContext` patch to a dedicated initialization module. Extract context menu logic into its own component.
+- Impact: Hard to debug, test, or extend annotation features; performance optimizations hidden within massive component
+- Fix approach: Separate canvas initialization, event handlers, and annotation rendering into utility modules; create dedicated managers for each annotation type (highlights, shapes, callouts, eraser)
 
-**Massive Inline Styling (676 `style={{` in App.jsx alone)**
-- Issue: Almost all UI styling is done via inline style objects. Only 801 total lines of CSS exist across three files (`src/styles.css`, `src/App.css`, `src/index.css`), while thousands of style objects are scattered through JSX.
-- Files: `src/App.jsx`, `src/PageAnnotationLayer.jsx`, `src/components/ErrorBoundary.jsx`, and most component files
-- Impact: Styles are not reusable, cannot be cached by the browser, inflate component render cost (new object per render unless memoized), and make global design changes require touching hundreds of locations.
-- Fix approach: Adopt CSS modules or a CSS-in-JS solution with a theme system. The existing `src/theme.js` provides design tokens (`COLORS`, `BORDERS`, `SHADOWS`, `TYPOGRAPHY`) but these are consumed as inline style values rather than through a proper styling layer.
+**Hardcoded Azure credentials in authConfig:**
+- Issue: Client ID explicitly visible in source code at `src/authConfig.js:16`
+- Files: `src/authConfig.js`
+- Impact: Credentials are committed to repository; easy to expose in builds and distributions; should use environment variables
+- Fix approach: Move `clientId` and `authority` to `.env` variables; load from `import.meta.env.VITE_*`; ensure `.env` is in `.gitignore`
 
-**Duplicate/Divergent Components**
-- Issue: Two different `TextLayer` implementations exist -- `src/TextLayer.jsx` (192 lines, manually creates text spans) and `src/components/TextLayer.jsx` (67 lines, uses `pdfjsLib.renderTextLayer`). Two different `PageAnnotationLayer` files exist -- `src/PageAnnotationLayer.jsx` (9,425 lines, full Fabric.js annotation system) and `src/components/PageAnnotationLayer.jsx` (41 lines, simple SVG polygon overlay). The root-level versions are the active ones; the `components/` versions appear to be earlier/simpler implementations that were never removed.
-- Files: `src/TextLayer.jsx`, `src/components/TextLayer.jsx`, `src/PageAnnotationLayer.jsx`, `src/components/PageAnnotationLayer.jsx`
-- Impact: Confusing imports. A developer could accidentally import the wrong version. Dead code increases bundle size.
-- Fix approach: Delete the unused `src/components/TextLayer.jsx` and `src/components/PageAnnotationLayer.jsx` (or rename and consolidate if both are needed).
+**localStorage/sessionStorage used without error handling:**
+- Issue: Scattered JSON.parse/stringify calls without try-catch; storage quota not checked; usage pattern inconsistent
+- Files: `src/App.jsx` (lines 1623, 1638, 1648, 1658, 1687, 1699, 1711, 1724, 4069 and more), `src/supabaseClient.js`
+- Impact: Can crash on corrupted data or full storage quota; silent failures when storage disabled in private mode; data loss without visibility
+- Fix approach: Create `useLocalStorage` hook with serialization error handling; add quota check before writes; provide user feedback on storage issues; prefer Supabase for persistent data
 
-**Backup and Log Files Tracked in Git**
-- Issue: `src/App.jsx.backup` (22,019 lines), `1.log`, `2.log` (19,401 lines), and `3.log` are tracked by git. The `.gitignore` does not exclude `.backup` files or root-level log files.
-- Files: `src/App.jsx.backup`, `1.log`, `2.log`, `3.log`, `.gitignore`
-- Impact: Repository bloat. Log files may contain sensitive debug information. Backup files cause confusion about which version is authoritative.
-- Fix approach: Add `*.backup`, `*.log` (root-level) patterns to `.gitignore`. Remove tracked files with `git rm --cached`.
+**Excessive conditional renders with refs:**
+- Issue: 615+ hook uses (ref/useCallback/useMemo/useEffect) in App.jsx with many ref mutations (`.current = ...`) creating implicit dependencies
+- Files: `src/App.jsx` (lines 2063, 2194, 5250-5253, 9122, 9223, 9249-9271 and more)
+- Impact: Fragile state synchronization; easy to miss dependency array updates; refs can become stale unexpectedly; debug nightmare for render issues
+- Fix approach: Audit all refs for necessary mutations; convert to proper state where possible; ensure all refs have documented lifetime and dependencies
 
-**Non-Portable Syncfusion Dependencies**
-- Issue: 31 Syncfusion packages are referenced via `file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/...` paths in `package.json`. These are relative paths to a directory outside the repository.
-- Files: `package.json` (lines 22-52)
-- Impact: The project cannot be cloned and built on any machine without the exact same Syncfusion SDK directory structure at the sibling path. CI/CD is impossible without manual setup. `npm install` will fail on fresh clones.
-- Fix approach: Publish Syncfusion packages to a private npm registry, use a `.tgz` vendored approach within the repo, or use the official `@syncfusion` npm packages if licensing permits.
-
-**Weak ID Generation**
-- Issue: Unique IDs are generated with `Date.now() + Math.random()` throughout the codebase (found at lines 1040, 1605, 2640, 2740, 3511, 3521, 3522, 3539, 3554, 3555, 3572, 3654, 3669, 3724, 3985, 4398, 4758, 10507, etc. in `src/App.jsx`). This pattern can produce collisions under rapid successive calls and is not cryptographically suitable for any security context.
-- Files: `src/App.jsx` (numerous locations)
-- Impact: Potential ID collisions in batch operations. Not suitable if IDs are ever used for authorization checks.
-- Fix approach: Use `crypto.randomUUID()` (available in modern browsers and Node.js) for all ID generation. Create a centralized `generateId()` utility in `src/utils/`.
+**No ESLint or Prettier configuration:**
+- Issue: No `.eslintrc`, `.prettierrc`, or format/lint config found in project root
+- Files: Project root
+- Impact: Code style inconsistent across contributors; no type safety enforcement; linting rules undefined; unused variables and imports can accumulate
+- Fix approach: Set up ESLint with React plugin (`@eslint/js`, `eslint-plugin-react`); add Prettier for formatting; create `.prettierrc` and `.eslintrc.json`; add pre-commit hook
 
 ## Known Bugs
 
-**Unimplemented Features Behind TODO Comments**
-- Symptoms: "TODO: Actually create categories in template with cloned checklists" (line 29623 in `src/App.jsx`), "TODO: Implement actual page copying using PDF.js or a PDF manipulation library" (line 30846). These indicate user-facing features that silently do nothing or partially work.
-- Files: `src/App.jsx` (lines 29623, 30846)
-- Trigger: User attempts to clone template categories or copy PDF pages.
-- Workaround: None -- the operations likely fail silently or produce incomplete results.
+**Zoom flicker on Syncfusion PDF viewer:**
+- Symptoms: Brief visual glitch when zooming, overlay/annotation layer disconnects momentarily
+- Files: `src/App.jsx` (zoom logic ~11685, ~9013), `src/components/SyncfusionPDFContainer.jsx`
+- Trigger: All 6 zoom methods (zoom-in, zoom-out, zoom to fit, zoom to page, zoom to width, zoom to height)
+- Workaround: Three fixes in place but fragile: first-zoom defer reorder, cached page list fallback, filter bypass during freeze; breaks if Syncfusion DOM structure changes
 
-**Hardcoded localhost Redirect URIs**
-- Symptoms: Microsoft OAuth redirect URIs are hardcoded to `http://localhost:5173` in `src/authConfig.js` (lines 19-20) and `src/contexts/MSGraphContext.jsx` (line 13). Production Electron builds will fail Microsoft OAuth flows because the redirect URI won't match.
-- Files: `src/authConfig.js`, `src/contexts/MSGraphContext.jsx`
-- Trigger: Any Microsoft authentication attempt in a production/packaged Electron build.
-- Workaround: Manually override in Azure Portal, but the code itself needs environment-aware redirect URIs.
+**Unhandled JSON parse errors:**
+- Symptoms: App crashes or silently fails when corrupted annotation data loaded from localStorage
+- Files: `src/App.jsx` (lines 1623, 1687, 1699, 1724), `src/utils/pdfAnnotationImporter.js`
+- Trigger: Corrupted localStorage data, manual editing of localStorage, storage quota exceeded
+- Workaround: None; relies on data validity assumption
+
+**OAuth hash injection vulnerability in Electron:**
+- Symptoms: Potential for XSS if attacker controls OAuth redirect
+- Files: `src/electron-main.js` (line 80: `win.webContents.executeJavaScript`)
+- Trigger: Malicious OAuth callback with injected JavaScript in hash
+- Workaround: Currently uses string interpolation without escaping; `Escape quotes` is insufficient for complex payloads
 
 ## Security Considerations
 
-**executeJavaScript with User-Influenced Input**
-- Risk: In `src/electron-main.js` line 80, `executeJavaScript` is called with an OAuth hash that is only escaped for double quotes: `const hash = parsedUrl.hash.replace(/"/g, '\\"');`. A crafted OAuth redirect could potentially inject JavaScript through other means (backticks, string concatenation exploits).
-- Files: `src/electron-main.js` (line 80)
-- Current mitigation: Basic double-quote escaping, `contextIsolation: true` in webPreferences.
-- Recommendations: Pass the hash value through IPC instead of `executeJavaScript`. Use `win.webContents.send('set-oauth-hash', hash)` and handle it in the preload/renderer.
+**Electron security weakened by development flags:**
+- Risk: `ELECTRON_DISABLE_SECURITY_WARNINGS` suppresses important warnings in development and production
+- Files: `src/electron-main.js:10-12`
+- Current mitigation: Only applied in NODE_ENV=development, but easily changed
+- Recommendations: Remove flag entirely; address warnings instead of suppressing; use security best practices (CSP headers, subresource integrity); validate all IPC messages
 
-**Broad File System Access via IPC**
-- Risk: The preload script exposes `readFile`, `writeFile`, `writeFileAtomic`, `listDir`, `fileExists`, and `getFileStats` without path validation. A compromised renderer process could read/write arbitrary files on the user's system.
-- Files: `src/preload.js` (lines 8-15), `src/electron-main.js` (lines 327-384)
-- Current mitigation: `contextIsolation: true` and `nodeIntegration: false`.
-- Recommendations: Add allowlist-based path validation in IPC handlers. Restrict file operations to specific directories (e.g., app data directory, user's Documents folder). Validate file extensions.
+**Missing CORS and CSP headers:**
+- Risk: No Content-Security-Policy header enforced; CORS not configured; Electron app loads from localhost with full access
+- Files: Project-wide (no security header configuration found)
+- Current mitigation: contextIsolation enabled in Electron, but preload.js is not reviewed
+- Recommendations: Add CSP headers for web mode; review preload.js (`src/preload.js`) for exposed APIs; restrict IPC to only necessary channels
 
-**Azure Client ID Hardcoded in Source**
-- Risk: The Azure AD Client ID `0da81a9e-2b05-46ee-b826-5efc5114c765` is hardcoded in `src/authConfig.js` (line 16). While client IDs for public apps are not strictly secret, hardcoding makes it difficult to use different values per environment and exposes the app registration publicly.
-- Files: `src/authConfig.js` (line 16)
-- Current mitigation: None.
-- Recommendations: Move to environment variables (`VITE_AZURE_CLIENT_ID`). The Supabase credentials already follow this pattern via `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+**Azure credentials hardcoded in authConfig:**
+- Risk: Client ID visible in source; if app is distributed, credentials are exposed and could be misused
+- Files: `src/authConfig.js:16-18`
+- Current mitigation: Standard OAuth flow (not a secret), but could still be abused
+- Recommendations: Use environment variables; implement proper authorization scopes; add request signing where applicable
 
-**Broad Microsoft Graph Scopes**
-- Risk: The app requests `Files.ReadWrite.All` and `Sites.ReadWrite.All` scopes (in `src/authConfig.js` line 69), which grant read/write access to all files in the user's OneDrive and all SharePoint sites. This is far broader than necessary for Excel sync functionality.
-- Files: `src/authConfig.js` (line 69)
-- Current mitigation: None.
-- Recommendations: Use more restrictive scopes like `Files.ReadWrite.AppFolder` or request specific file permissions via incremental consent.
+**No input validation on file uploads:**
+- Risk: PDF files accepted without validation; could contain malicious content or crash renderer
+- Files: `src/App.jsx` (handleUploadClick ~2595), `src/utils/pdfAnnotationImporter.js`
+- Current mitigation: None visible
+- Recommendations: Validate PDF headers before processing; implement file size limits; use Web Worker for parsing to prevent main thread crashes
 
 ## Performance Bottlenecks
 
-**Single-Component Re-render Cascade**
-- Problem: The `PDFViewer` component (~21,600 lines within `src/App.jsx`) holds all viewer state in a single function scope. Any state change triggers re-evaluation of the entire component body, including all 225 `useCallback` closures and inline style objects.
-- Files: `src/App.jsx` (lines 8961-30560)
-- Cause: No component decomposition. All state is co-located in one function. Inline styles create new objects every render.
-- Improvement path: Extract sub-components (toolbar, sidebar, survey panel, annotation controls) with their own state. Use `React.memo` on child components with stable props. Extract frequently-changing state (cursor position, tooltip, eraser position) into separate contexts or refs.
-
-**676 Inline Style Objects in App.jsx**
-- Problem: Each `style={{...}}` creates a new JavaScript object on every render. With 676 occurrences in a component that re-renders frequently (on scroll, zoom, mouse move), this creates significant GC pressure.
+**App.jsx render loop with 227 state variables:**
+- Problem: Every state update triggers re-evaluation of entire component tree; no memoization of expensive calculations
 - Files: `src/App.jsx`
-- Cause: No style extraction or memoization.
-- Improvement path: Move static styles to CSS modules. For dynamic styles, use `useMemo` or extract to `const` outside the component.
+- Cause: All state lives in single component; no separation of concerns; every zoom, pan, or annotation change re-renders entire tree
+- Improvement path: Split into smaller components with proper memoization; use React.memo for pure components; move frequently-changing state to context; implement virtual scrolling for pages
 
-**Canvas `willReadFrequently` Global Patch**
-- Problem: `src/PageAnnotationLayer.jsx` (lines 8-29) monkey-patches `HTMLCanvasElement.prototype.getContext` globally to inject `willReadFrequently: true` for Fabric.js canvases. While the heuristic tries to target only Fabric canvases, false positives would disable GPU acceleration on PDF rendering canvases.
-- Files: `src/PageAnnotationLayer.jsx` (lines 8-29)
-- Cause: Fabric.js frequently reads pixel data, which is slow without `willReadFrequently`. But the patch is global.
-- Improvement path: Apply `willReadFrequently` directly when creating Fabric canvas instances rather than patching the prototype.
+**Fabric.js canvas operations on large PDFs:**
+- Problem: Canvas operations (hit testing, clipping, transformation) scale poorly with annotation count (100+ annotations cause clipPath creation delays of 2-7ms)
+- Files: `src/PageAnnotationLayer.jsx` (lines 2862, 2960)
+- Cause: Expensive geometry operations on every interaction; no spatial indexing; bruteforce hit-testing
+- Improvement path: Implement quadtree or spatial hashing for hit testing; batch geometry operations; use WebWorkers for heavy calculations; implement lazy rendering for off-screen annotations
+
+**Eraser path calculation with dense point sets:**
+- Problem: Eraser circle overlap calculation scales as O(n*m); checking every sample point against all eraser circles creates bottleneck
+- Files: `src/PageAnnotationLayer.jsx` (lines 2352, 2395, 2862-2960)
+- Cause: Sample point checking is exhaustive without spatial optimization
+- Improvement path: Use spatial hashing for eraser circles; implement grid-based point lookup; consider SMAA or edge-based erasing instead of circle-based
+
+**PDF rendering synchronization delays:**
+- Problem: Large PDFs with many pages cause cumulative delays in page rendering; no parallel processing of page renders
+- Files: `src/workers/pdfRender.worker.js`, `src/App.jsx` (render loop)
+- Cause: Pages rendered sequentially; heavy PDF.js operations block main thread
+- Improvement path: Implement Worker pool for parallel page rendering; add priority queue (visible pages first); implement timeout on stale render requests
 
 ## Fragile Areas
 
-**Annotation Undo/Redo System**
-- Files: `src/PageAnnotationLayer.jsx` (history-related code throughout), `src/App.jsx` (lines 177-263 for history debug helpers)
-- Why fragile: The undo/redo system serializes entire Fabric.js canvas state as JSON. Text objects require a `sanitizeTextStyles` workaround (lines 150-200 in `src/PageAnnotationLayer.jsx`) to prevent "Cannot read properties of undefined" errors during serialization. The history system has its own debug console (`HISTORY_DEBUG_CONSOLE_KEY`), suggesting ongoing reliability issues.
-- Safe modification: Always test undo/redo after changing any canvas object manipulation code. The `sanitizeTextObject` and `sanitizeTextStyles` functions must be called before any canvas serialization.
-- Test coverage: No automated tests for undo/redo.
+**Syncfusion-React portal synchronization:**
+- Files: `src/App.jsx` (portal host logic ~9000-10000), `src/PageAnnotationLayer.jsx` (portal render)
+- Why fragile: Syncfusion destroys/recreates `e-pv-page-div` during zoom; React portals disconnect when target removed; custom fixes use ref mutations to detect stale state
+- Safe modification: Do NOT add re-attachment callbacks in container change or zoom handlers; never change `shouldFreezePortalHost` logic without regression testing all 6 zoom methods
+- Test coverage: Only manual Playwright tests exist; no unit tests for zoom recovery; high risk of future regressions
 
-**Excel Sync Pipeline**
-- Files: `src/services/excelGraphService.js`, `src/services/excelSessionService.js`, `src/utils/excelSyncDirtyState.js`, `src/App.jsx` (Excel-related state and handlers)
-- Why fragile: The Excel sync involves Microsoft Graph API sessions, file locking detection, dirty-state fingerprinting, OneDrive file watchers, and multiple modal flows (locked file, new columns, sync confirm). State is spread across the PDFViewer component in `src/App.jsx` with refs like `lastExcelSyncFingerprintRef` and multiple modal visibility flags.
-- Safe modification: Only `src/utils/excelSyncDirtyState.js` has tests (`tests/excelSyncDirtyState.test.mjs`). Any change to the sync flow should verify the full cycle: local edit -> dirty detection -> sync -> OneDrive upload -> file watcher notification.
-- Test coverage: Only fingerprint/dirty-state utilities are tested. No integration tests for the full sync flow.
+**History timeline tracking with circular dependencies:**
+- Files: `src/App.jsx` (timeline logic ~14388)
+- Why fragile: History snapshots include reference to canvas objects; serialization/deserialization can break circular references; undo/redo can corrupt annotation state
+- Safe modification: Never serialize canvas objects directly; only store serializable snapshots; test undo/redo after every annotation operation
+- Test coverage: No automated tests for undo/redo with complex annotation chains
 
-**Real-time Annotation Collaboration**
-- Files: `src/services/documentAnnotationService.js`, `src/App.jsx` (subscription setup around line 18173)
-- Why fragile: Real-time sync uses Supabase Postgres changes subscriptions with per-document channels. The service handles RLS errors, schema-missing errors, and connection failures, but the error recovery paths in `src/App.jsx` are complex and interleaved with the annotation state management. Presence tracking has its own error classification system duplicated from the annotation sync classifier.
-- Safe modification: The `classifyAnnotationSyncError` and `classifyPresenceError` functions in `src/services/documentAnnotationService.js` are nearly identical (lines 9-47 and 383-421) -- keep them in sync or consolidate.
-- Test coverage: No tests for real-time sync or error recovery.
+**Supabase schema assumptions:**
+- Files: `src/hooks/useDatabase.js`, `src/services/documentAnnotationService.js`
+- Why fragile: Hardcoded table names and column names; schema errors return 406 silently and are ignored
+- Safe modification: Use constants for table names; add schema validation on first connection; implement table migration check
+- Test coverage: No schema versioning; no tests for missing tables or columns
+
+**localStorage/sessionStorage persistence:**
+- Files: `src/App.jsx` (throughout)
+- Why fragile: Data shape not validated on read; corrupted data causes silent failures; storage quota can be exceeded without warning
+- Safe modification: Wrap all localStorage access in utility function with error handling; add data migration logic for schema changes
+- Test coverage: No tests for corrupted data scenarios; only assumes valid JSON
 
 ## Scaling Limits
 
-**App.jsx File Size**
-- Current capacity: 30,985 lines / 1.3MB
-- Limit: IDE features (autocomplete, go-to-definition, syntax highlighting) degrade noticeably. The file already exceeds the 256KB read limit of many code analysis tools.
-- Scaling path: Component decomposition (see Tech Debt section).
+**Single localStorage JSON blob for all annotations:**
+- Current capacity: ~5-10MB depending on browser (localStorage limit 5-50MB)
+- Limit: Single large PDF with thousands of annotations will exceed quota quickly
+- Scaling path: Migrate to Supabase (unlimited storage); implement pagination for annotations; store only modified annotations locally, sync on save
 
-**In-Memory Annotation Storage**
-- Current capacity: All annotations for all pages are held in React state (`annotationsByPage`, `highlightAnnotations`, `callouts`, etc.)
-- Limit: Documents with thousands of annotations across hundreds of pages will consume significant memory and cause slow state updates.
-- Scaling path: Virtualize annotation storage -- only hydrate annotations for visible/nearby pages. Use a ref-based store for non-reactive annotation data.
+**Page rendering cache unbounded:**
+- Current capacity: All rendered pages cached in memory indefinitely
+- Limit: Large PDFs (500+ pages) cause memory pressure; no eviction policy
+- Scaling path: Implement LRU cache with configurable max size; evict non-visible pages after N seconds; implement memory pressure monitoring
+
+**React component tree depth:**
+- Current capacity: App > multiple nested contexts > components; no virtualization of page list
+- Limit: Hundreds of pages cause render tree explosion; large DOMNodeCache
+- Scaling path: Implement react-window for page list virtualization; lazy-load context consumers; implement component memoization boundaries
 
 ## Dependencies at Risk
 
-**Fabric.js v5.5.2**
-- Risk: Fabric.js v5 is legacy; v6 has breaking changes (ESM-only, renamed APIs). The codebase extensively monkey-patches Fabric internals (`src/utils/fabricCustomization.js`, the `getContext` prototype patch in `src/PageAnnotationLayer.jsx`).
-- Impact: Security patches and bug fixes for v5 will eventually stop. Migration to v6 will be a large effort due to deep integration.
-- Migration plan: Audit all Fabric.js API usage and prototype patches. Test with Fabric v6 alpha. Plan for renamed/removed APIs.
+**Syncfusion SDK local file paths:**
+- Risk: Dependencies installed from local filesystem paths (`file:../Syncfusion/...`); version pinned to 32.1.19; upgrades require manual file system updates
+- Impact: Cannot use npm version updates; tied to specific local installation; breaking changes require rebuilding entire SDK locally
+- Migration plan: Evaluate open-source PDF viewers (PDFKit, Mupdf); consider hosted PDF.js solution with community annotation libraries
 
-**pdfjs-dist v3.11.174**
-- Risk: PDF.js v3 is behind the current major version (v4+). The worker setup at `src/App.jsx` line 98 uses v3-specific import patterns.
-- Impact: Missing PDF rendering improvements, security fixes, and API enhancements from v4.
-- Migration plan: Update worker import pattern, test with sample PDFs for rendering regressions.
+**Fabric.js 5.5.2:**
+- Risk: Major version (5.x) with API changes; community issues with canvas rendering on high-DPI displays
+- Impact: Custom patching for `getContext()` to handle `willReadFrequently`; tight coupling to Fabric internals (Control, util, Path)
+- Migration plan: Monitor v6.0 release; consider alternative canvas library (PixiJS, Babylon.js) if performance requirements grow
 
-**Syncfusion v32.1.19 (Local File References)**
-- Risk: 31 Syncfusion packages are referenced from a local filesystem path outside the repository. If the local SDK directory is moved, renamed, or updated, all builds break.
-- Impact: Cannot build on CI. Cannot onboard new developers without manual SDK setup.
-- Migration plan: Vendor the packages into the repo (e.g., as `.tgz` files) or use a private npm registry.
+**PDF.js 3.11.174:**
+- Risk: Widely used, but updates often include rendering behavior changes; worker thread setup fragile
+- Impact: Custom worker manager required (`src/utils/PDFWorkerManager.js`); workerSrc path must be explicitly configured
+- Migration plan: Implement version compatibility tests; add fallback for worker loading failures
+
+**Stripe.js 8.5.3:**
+- Risk: Version pinned without bounds; integration not visible in code (may be disabled)
+- Impact: Outdated version could have security fixes in newer releases
+- Migration plan: Remove if unused; otherwise update to latest and test payment flow
 
 ## Missing Critical Features
 
-**No Linting or Formatting Enforcement**
-- Problem: No `.eslintrc`, `.prettierrc`, `biome.json`, or equivalent configuration files exist. No pre-commit hooks.
-- Blocks: Consistent code style, automated code quality checks, preventing common bugs (unused variables, missing dependencies in hooks, etc.).
+**No automated testing for PDF annotation workflows:**
+- Problem: Only manual Playwright tests exist; no regression detection for annotation operations
+- Blocks: Confidence in refactoring; impossible to verify zoom fixes don't regress
+- Recommendation: Implement Jest unit tests for annotation layer; add visual regression tests for rendering; create end-to-end tests for full workflows
 
-**No TypeScript**
-- Problem: The codebase is entirely JavaScript (`.jsx`, `.js`) except for `src/types/database.ts` (which appears to be a standalone type definition). No `tsconfig.json` exists.
-- Blocks: Type safety, refactoring confidence, IDE autocompletion accuracy, catching prop mismatches at build time.
+**No error reporting/observability:**
+- Problem: Errors logged to console only; no centralized error tracking in production
+- Blocks: Production issues invisible until user reports; performance issues undetected
+- Recommendation: Integrate Sentry or similar for error tracking; add performance monitoring with Web Vitals; implement session recording for user support
+
+**No data backup mechanism:**
+- Problem: All annotations stored in Supabase with no backup; accidental deletion unrecoverable
+- Blocks: Enterprise/compliance use cases; data loss risk
+- Recommendation: Implement nightly backup to external storage; add soft-delete for annotations with restore window; audit log for all changes
+
+**No offline-first sync strategy:**
+- Problem: Application requires connection to Supabase for most operations
+- Blocks: Offline annotation work; unreliable network scenarios
+- Recommendation: Implement local-first sync using SQLite or IndexedDB; queue changes locally; sync when online; implement conflict resolution
 
 ## Test Coverage Gaps
 
-**Minimal Test Suite (2 test files)**
-- What's not tested: The entire UI layer (30,985 lines of App.jsx), all React components, all React hooks, all context providers, the Electron main process, the annotation layer, real-time sync, authentication flows, Excel sync end-to-end, PDF rendering, and all user interactions.
-- Files: Only `tests/excelSyncDirtyState.test.mjs` (fingerprint utilities) and `tests/pdfAnnotationImporter.test.mjs` (PDF annotation import conversion) exist.
-- Risk: Any refactoring or feature addition has no safety net. Regressions are discovered only through manual testing.
-- Priority: High. The two existing test files cover pure utility functions. No component tests, no integration tests, no E2E tests exist.
+**Annotation import/export roundtrip:**
+- What's not tested: PDF annotation import followed by re-export to ensure fidelity
+- Files: `src/utils/pdfAnnotationImporter.js`, `src/utils/pdfAnnotationsPdfLib.js`, `tests/pdfAnnotationImporter.test.mjs`
+- Risk: Silent data loss during import/export cycles; specific annotation types may not roundtrip correctly
+- Priority: High - affects data integrity for users migrating from other tools
 
-**No Component or Integration Tests**
-- What's not tested: React component rendering, user interaction flows (document upload, annotation creation, template management, Excel export), Supabase hook behavior, authentication state transitions.
-- Files: All files under `src/components/`, `src/hooks/`, `src/contexts/`, `src/services/`
-- Risk: UI regressions, broken user flows, state management bugs go undetected.
-- Priority: High. Consider adding React Testing Library for component tests and Playwright/Cypress for E2E flows.
+**Syncfusion zoom interaction edge cases:**
+- What's not tested: Rapid zoom changes, zoom during drag, zoom with selection active
+- Files: `src/App.jsx` (zoom logic), `src/components/SyncfusionPDFContainer.jsx`
+- Risk: Undetected regressions in fragile zoom recovery logic; edge cases cause portal desync
+- Priority: High - zoom is core feature and current implementation is known to be fragile
+
+**Excel sync with concurrent edits:**
+- What's not tested: Multiple users editing same Excel template simultaneously
+- Files: `src/App.jsx` (Excel sync ~15000+), `src/utils/excelSyncDirtyState.js`
+- Risk: Data corruption, lost changes, formula overwrites
+- Priority: High - if multi-user editing supported, this is critical
+
+**localStorage corruption recovery:**
+- What's not tested: Invalid JSON in localStorage, quota exceeded, storage disabled
+- Files: `src/App.jsx` (storage access throughout)
+- Risk: Silent failures, lost state, unexplained behavior
+- Priority: Medium - graceful degradation important for UX
+
+**Authentication and token refresh:**
+- What's not tested: Token expiry during long sessions, Supabase connection loss, OAuth token revocation
+- Files: `src/contexts/AuthContext.jsx`, `src/services/excelGraphService.js`
+- Risk: Stale tokens cause silent failures; users can't recover without page reload
+- Priority: Medium - auth failures should be explicit to user
 
 ---
 
-*Concerns audit: 2026-03-04*
+*Concerns audit: 2026-03-17*

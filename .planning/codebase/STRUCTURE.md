@@ -1,293 +1,329 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-03-04
+**Analysis Date:** 2026-03-17
 
 ## Directory Layout
 
 ```
 Survey-BetaSafeS2/
-├── build/                      # Electron app icons (icns, png, svg)
-├── dist/                       # Vite build output (generated, gitignored partially)
-├── docs/                       # Project documentation (guides, audits)
-├── landing/                    # Separate landing page site (HTML/CSS, Vercel deploy)
-├── public/                     # Static assets served by Vite
-│   ├── ej2-pdfviewer-lib/      # Syncfusion pdfium WASM runtime
-│   ├── pdf.worker.min.js       # PDF.js web worker
-│   ├── paintWorker.js          # Canvas paint worker
-│   └── *.png, *.ico            # Favicons and app icons
-├── scripts/                    # Shell scripts for backup/restore automation
-├── src/                        # Application source code
-│   ├── assets/                 # SVG icons (lightbulb, rotate)
-│   ├── components/             # React UI components
-│   │   ├── Callout/            # Callout annotation subsystem
-│   │   │   ├── CalloutCanvas.jsx
-│   │   │   ├── CalloutComponent.jsx
-│   │   │   ├── CalloutContextMenu.jsx
-│   │   │   ├── CalloutEditModal.jsx
-│   │   │   ├── index.jsx
-│   │   │   └── types.js
-│   │   └── *.jsx               # Feature components and modals
-│   ├── contexts/               # React Context providers
-│   ├── hooks/                  # Custom React hooks
-│   ├── services/               # External API service modules
-│   ├── shims/                  # Module shims for unused Syncfusion dependencies
-│   ├── sidebar/                # PDF sidebar panel components
-│   ├── types/                  # TypeScript type definitions
-│   ├── utils/                  # Utility/helper modules
-│   ├── workers/                # Web workers
-│   ├── App.jsx                 # Main application (Dashboard + PDFViewer + App)
-│   ├── App.css                 # App-level styles
-│   ├── main.jsx                # React entry point
-│   ├── electron-main.js        # Electron main process
-│   ├── preload.js              # Electron preload script (contextBridge)
-│   ├── supabaseClient.js       # Supabase client initialization
-│   ├── authConfig.js           # Microsoft MSAL/Azure auth configuration
-│   ├── theme.js                # Design system tokens
-│   ├── Icons.jsx               # SVG icon components
-│   ├── PageAnnotationLayer.jsx # Fabric.js annotation canvas system (~9.4K lines)
-│   ├── PDFSidebar.jsx          # Sidebar container with tab navigation
-│   ├── RegionSelectionTool.jsx # Region/space selection tool
-│   ├── SpaceRegionOverlay.jsx  # Visual overlay for space regions
-│   ├── TabBar.jsx              # Multi-document tab bar
-│   ├── TextLayer.jsx           # PDF text layer overlay
-│   ├── styles.css              # Global styles
-│   └── index.css               # Base CSS reset/styles
-├── supabase/                   # Supabase project configuration
-│   ├── config.toml             # Supabase CLI configuration
-│   ├── functions/              # Deno edge functions
-│   │   ├── create-checkout-session/index.ts
-│   │   ├── create-portal-session/index.ts
-│   │   ├── send-email/index.ts
-│   │   ├── send-profile-change-notification/index.ts
-│   │   └── stripe-webhook/index.ts
-│   └── migrations/             # SQL migration files (22 files)
-├── tests/                      # Test files
-│   ├── excelSyncDirtyState.test.mjs
-│   └── pdfAnnotationImporter.test.mjs
-├── index.html                  # Vite HTML entry point
-├── package.json                # Project manifest
-├── vite.config.js              # Vite build configuration
-└── README.md                   # Project README
+├── src/                       # React + Electron frontend source
+│   ├── App.jsx                # Main orchestrator (~1.4MB, handles zoom, page mounting, sync)
+│   ├── main.jsx               # React root entry, context providers
+│   ├── electron-main.js       # Electron process entry point
+│   ├── PageAnnotationLayer.jsx # Fabric.js canvas overlay for PDF annotations (~389KB)
+│   ├── TextLayer.jsx          # Text selection overlay
+│   ├── RegionSelectionTool.jsx # Region/space selection tool (~81KB)
+│   ├── SpaceRegionOverlay.jsx # Space region visualization
+│   ├── PDFSidebar.jsx         # Left sidebar UI
+│   ├── TabBar.jsx             # Top tab navigation
+│   ├── Icons.jsx              # Icon definitions (~67KB)
+│   ├── preload.js             # Electron preload script for IPC
+│   ├── supabaseClient.js      # Supabase client initialization
+│   ├── authConfig.js          # Azure MSAL configuration
+│   ├── theme.js               # Color/typography constants
+│   ├── DevTestRoute.jsx       # Dev-only rapid test route (bypass auth)
+│   ├── styles.css             # Global styles
+│   ├── App.css                # App component styles
+│   ├── index.css              # Reset styles
+│   ├── components/            # React component library (42 components)
+│   │   ├── SyncfusionPDFContainer.jsx  # Syncfusion viewer + zoom orchestration (~50KB)
+│   │   ├── PageAnnotationLayer.jsx     # Alias to top-level PAL (component-level wrapper)
+│   │   ├── LightweightAnnotationOverlay.jsx # Performance-optimized annotation display
+│   │   ├── PDFPageCanvas.jsx   # Single page render with caching
+│   │   ├── SearchHighlightLayer.jsx    # Highlights for search results
+│   │   ├── AuthModal.jsx       # Login dialog
+│   │   ├── UserMenu.jsx        # User profile dropdown
+│   │   ├── AccountSettings.jsx # Account/subscription management
+│   │   ├── NewColumnsModal.jsx # Excel column creation dialog
+│   │   ├── ExcelLockedModal.jsx # Conflict resolution for locked Excel
+│   │   ├── OneDriveFileSaveModal.jsx   # File save location picker
+│   │   ├── OneDriveFolderBrowser.jsx   # Folder navigation for OneDrive
+│   │   ├── TemplateOverwriteWarningModal.jsx
+│   │   ├── ExcelSyncConfirmModal.jsx
+│   │   ├── ConfirmDialog.jsx   # Generic confirmation dialog
+│   │   ├── LocateModal.jsx     # Find annotation in document
+│   │   ├── CompactColorPicker.jsx # Color selection for tools
+│   │   ├── KeyboardShortcutsOverlay.jsx # Help overlay
+│   │   ├── BallInCourtIndicator.jsx # Status indicator for shared documents
+│   │   ├── UsageIndicator.jsx  # Subscription limits display
+│   │   ├── LoadingSpinner.jsx  # Generic loading UI
+│   │   ├── ErrorBoundary.jsx   # React error boundary
+│   │   ├── OptionalAuthPrompt.jsx # Soft auth requirement
+│   │   └── Callout/            # Callout annotation components (8 files)
+│   ├── contexts/              # React Context providers (5 files)
+│   │   ├── AuthContext.jsx     # User authentication + token management
+│   │   ├── AnnotationContext.jsx # Page-specific annotation store (pub-sub model)
+│   │   ├── MSGraphContext.jsx  # Microsoft Graph API integration
+│   │   ├── SearchContext.jsx   # PDF text search state
+│   │   └── SurveySessionContext.jsx # (empty)
+│   ├── hooks/                 # Custom React hooks (5 files)
+│   │   ├── useDatabase.js      # Supabase CRUD for projects, documents, templates, storage
+│   │   ├── useSubscriptionLimits.js # Check feature access based on subscription tier
+│   │   ├── useZoomState.js     # Zoom mode + scale state management
+│   │   ├── useVisiblePages.js  # Track which pages are currently in viewport
+│   │   └── useSurveySync.js    # (empty)
+│   ├── services/              # Backend service integrations (3 files)
+│   │   ├── documentAnnotationService.js # Supabase annotation CRUD, real-time sync, presence
+│   │   ├── excelGraphService.js        # Microsoft Graph API for Excel/OneDrive
+│   │   └── excelSessionService.js      # Office cloud session management
+│   ├── sidebar/               # Sidebar panel components (7 files)
+│   │   ├── PagesPanel.jsx      # Page navigator with thumbnails
+│   │   ├── BookmarksPanel.jsx  # Bookmark management
+│   │   ├── SpacesPanel.jsx     # Space (region) management
+│   │   ├── SearchTextPanel.jsx # Full-text search UI
+│   │   ├── DraggableBookmark.jsx # Individual bookmark item
+│   │   ├── DraggableBookmarkFolder.jsx # Folder for organizing bookmarks
+│   │   └── DropSlot.jsx        # Drag-and-drop target placeholder
+│   ├── utils/                 # Utility modules (24 files)
+│   │   ├── zoomController.js   # Zoom logic (fit-page, fit-width, manual)
+│   │   ├── pdfCache.js         # PageRenderCache for rendered pages
+│   │   ├── PDFWorkerManager.js # pdf.js worker pool management
+│   │   ├── pdfAnnotations.js   # Annotation serialization
+│   │   ├── pdfAnnotationsPdfLib.js # Embed annotations into PDF using pdf-lib
+│   │   ├── pdfAnnotationImporter.js # Load annotations from existing PDFs
+│   │   ├── pdfDebug.js         # Debug log buffer for annotation events
+│   │   ├── performanceLogger.js # Timing metrics (upload, load, render, zoom)
+│   │   ├── geometryHitTest.js  # Collision detection, point-on-object tests
+│   │   ├── geometryEraser.js   # Eraser tool path clipping
+│   │   ├── lineGeometry.js     # Line/curve calculations for connectors
+│   │   ├── calloutGeometry.js  # Callout box positioning logic
+│   │   ├── regionMath.js       # Region containment checks
+│   │   ├── fabricCustomization.js # Fabric.js control overrides
+│   │   ├── renderQueue.js      # Batch canvas render operations
+│   │   ├── layerPerformance.js # Timing & profiling for canvas operations
+│   │   ├── menuPositioning.js  # Context menu viewport-safe placement
+│   │   ├── excelSyncDirtyState.js # Compute dirty flag for Excel sync
+│   │   ├── oneDriveUtils.js    # OneDrive path parsing
+│   │   ├── pageRangeParser.js  # Parse page range strings (e.g., "1-5, 10")
+│   │   ├── validation.js       # Common validators (email, etc.)
+│   │   ├── hooks.js            # Utility hooks
+│   │   ├── useDragToReorder.js # Drag-to-reorder hook
+│   │   └── debugBridge.js      # Performance mark injection
+│   ├── types/                 # TypeScript type definitions
+│   │   └── database.ts        # Supabase table schemas (TypeScript)
+│   ├── workers/               # Web worker scripts
+│   └── shims/                 # Module shims for Syncfusion
+│       ├── ej2-interactive-chat.js
+│       └── ej2-markdown-converter.js
+├── supabase/                  # Supabase backend (migrations, functions)
+│   ├── migrations/            # SQL schema migrations
+│   └── functions/             # Edge functions
+│       ├── stripe-webhook/    # Stripe payment events
+│       ├── create-checkout-session/
+│       ├── create-portal-session/
+│       ├── send-email/
+│       └── send-profile-change-notification/
+├── public/                    # Static assets served in dev/prod
+│   ├── ej2-pdfviewer-lib/     # Syncfusion PDF viewer library (external)
+│   └── [other assets]
+├── tests/                     # Testing
+│   └── *.test.mjs             # Node.js test files (native ESM)
+├── debug/                     # Development & debugging
+│   ├── fixtures/              # Test PDF files
+│   ├── debug-sessions/        # Recorded test runs with diffs
+│   ├── lib/                   # Test utilities
+│   └── playwright.config.mjs  # Playwright test configuration
+├── docs/                      # Documentation
+│   └── superpowers/specs/     # Design specifications
+├── .planning/codebase/        # GSD codebase analysis documents
+├── .agent/                    # Agent skills and context
+├── .claude/                   # Claude-specific configs
+├── .vscode/                   # VS Code workspace settings
+├── build/                     # Build artifacts
+│   ├── icon.icns             # macOS app icon
+│   └── icon.png              # Windows/Linux app icon
+├── dist/                      # Built Vite output (dist/index.html)
+├── vite.config.js            # Vite build configuration
+├── package.json              # Dependencies and scripts
+├── tsconfig.json             # TypeScript config (minimal)
+├── index.html                # Electron app entry HTML
+└── .gitignore
 ```
 
 ## Directory Purposes
 
-**`src/`:**
-- Purpose: All application source code
-- Contains: React components, contexts, hooks, services, utilities, Electron entry points
-- Key files: `App.jsx` (30,985 lines -- the core of the application), `PageAnnotationLayer.jsx` (9,425 lines -- Fabric.js annotation engine)
+**src/:**
+- Purpose: All source code for React UI and Electron main process
+- Contains: Components, contexts, hooks, services, utilities, workers, styles
+- Key files: `App.jsx` (main orchestrator), `main.jsx` (React root), `electron-main.js` (app startup)
 
-**`src/components/`:**
-- Purpose: Reusable React UI components and feature-specific modals
-- Contains: ~35 JSX files covering PDF rendering, authentication, settings, modals, overlays
-- Key files:
-  - `SyncfusionPDFContainer.jsx` (1,489 lines) -- Syncfusion PDF viewer wrapper
-  - `AccountSettings.jsx` (974 lines) -- User account/subscription settings
-  - `OneDriveFolderBrowser.jsx` (801 lines) -- OneDrive/SharePoint folder picker
-  - `AuthModal.jsx` (322 lines) -- Sign in/up modal
-  - `LightweightAnnotationOverlay.jsx` (342 lines) -- SVG proxy for annotations during interactions
+**src/components/:**
+- Purpose: Reusable React components
+- Contains: UI modals, dialogs, page render components, overlays, buttons, menus
+- Naming: PascalCase.jsx (e.g., `AuthModal.jsx`)
+- Dependencies: Other components, contexts, services, utilities
 
-**`src/components/Callout/`:**
-- Purpose: Self-contained callout annotation subsystem
-- Contains: Canvas rendering, component display, context menu, edit modal, type definitions
-- Key files: `CalloutCanvas.jsx` (main canvas), `types.js` (callout data types and defaults)
+**src/contexts/:**
+- Purpose: React Context API providers for shared state
+- Contains: `AuthContext` (user login), `AnnotationContext` (page annotations), `MSGraphContext` (Office API), `SearchContext` (PDF search)
+- Pattern: Each context exports `[Name]Provider` component and `use[Name]` hook
+- File naming: `[Feature]Context.jsx`
 
-**`src/contexts/`:**
-- Purpose: React Context providers for shared state
-- Contains: Auth, MSGraph, Annotation, Search, SurveySession (stub)
-- Key files:
-  - `AuthContext.jsx` (289 lines) -- Supabase auth + subscription tier
-  - `MSGraphContext.jsx` (703 lines) -- Microsoft Graph OAuth + token management
-  - `AnnotationContext.jsx` (340 lines) -- Performance-optimized annotation store
-  - `SearchContext.jsx` (399 lines) -- PDF text search engine
+**src/hooks/:**
+- Purpose: Custom React hooks for reusable stateful logic
+- Contains: Database access (`useDatabase`), zoom state (`useZoomState`), visible pages, subscription limits
+- File naming: `use[Feature].js`
+- Pattern: Hooks call `useContext()` to access providers or `useSupabase` to access DB
 
-**`src/hooks/`:**
-- Purpose: Custom React hooks for database operations and UI state
-- Contains: Database CRUD, subscription limits, zoom state, visible page tracking
-- Key files:
-  - `useDatabase.js` (949 lines) -- Supabase CRUD hooks: `useProjects`, `useDocuments`, `useTemplates`, `useStorage`, `useDocumentToolPreferences`
-  - `useSubscriptionLimits.js` (253 lines) -- Feature limits by tier
-  - `useZoomState.js` (110 lines) -- Zoom persistence
-  - `useVisiblePages.js` (113 lines) -- IntersectionObserver page visibility
+**src/services/:**
+- Purpose: Backend service integrations (no UI logic)
+- Contains: Supabase annotation sync, Microsoft Graph API, Excel session management
+- File naming: `[Service]Service.js`
+- Pattern: Export named functions (no React dependencies)
 
-**`src/services/`:**
-- Purpose: External API communication
-- Contains: Supabase annotation sync, Microsoft Graph file operations, Excel session management
-- Key files:
-  - `documentAnnotationService.js` (896 lines) -- Full annotation CRUD + real-time + presence + collaborators
-  - `excelGraphService.js` (607 lines) -- OneDrive/SharePoint file operations
-  - `excelSessionService.js` (335 lines) -- Excel co-authoring sessions
+**src/sidebar/:**
+- Purpose: Left-side panel components
+- Contains: Page navigator, bookmarks, spaces, search
+- Naming: `[Feature]Panel.jsx` or `Draggable[Item].jsx`
+- Dependencies: Drag-and-drop kit (@dnd-kit), sidebar state
 
-**`src/utils/`:**
-- Purpose: Pure utility functions and helper modules
-- Contains: PDF processing, geometry calculations, performance tools, UI helpers
-- Key files:
-  - `pdfAnnotationImporter.js` (2,130 lines) -- Import annotations from existing PDFs
-  - `geometryHitTest.js` (2,063 lines) -- Geometric hit testing for annotations
-  - `regionMath.js` (587 lines) -- Region containment/intersection math
-  - `calloutGeometry.js` (592 lines) -- Callout arrow/knee/textbox geometry
-  - `geometryEraser.js` (507 lines) -- Path-based eraser operations
-  - `pdfAnnotationsPdfLib.js` (506 lines) -- Save annotations into PDF via pdf-lib
-  - `pdfCache.js` (315 lines) -- Page render caching
-  - `fabricCustomization.js` (283 lines) -- Fabric.js control overrides
+**src/utils/:**
+- Purpose: Non-React utility functions (geometry, PDF, rendering, etc.)
+- Contains: Zoom logic, PDF caching, Fabric customization, geometry math, performance logging
+- File naming: `[area][Feature].js` (e.g., `geometryHitTest.js`, `pdfAnnotations.js`)
+- Pattern: Pure functions, no React imports (except where unavoidable)
 
-**`src/sidebar/`:**
-- Purpose: PDF sidebar panel components
-- Contains: Pages thumbnail panel, search panel, bookmarks panel, spaces panel
-- Key files:
-  - `BookmarksPanel.jsx` (2,158 lines) -- Bookmark management with drag-and-drop folders
-  - `SpacesPanel.jsx` (1,401 lines) -- Spaces/regions management
-  - `PagesPanel.jsx` (1,125 lines) -- Page thumbnails with reordering
-  - `SearchTextPanel.jsx` (763 lines) -- Text search UI with results list
-  - `DraggableBookmark.jsx`, `DraggableBookmarkFolder.jsx`, `DropSlot.jsx` -- DnD primitives
+**src/types/:**
+- Purpose: TypeScript type definitions
+- Contains: Supabase table schemas exported as TypeScript interfaces
+- File naming: `[schema].ts`
 
-**`src/shims/`:**
-- Purpose: Empty module shims for unused Syncfusion transitive dependencies
-- Contains: `ej2-interactive-chat.js`, `ej2-markdown-converter.js`
-- Key files: Both export empty objects to prevent import errors
+**supabase/:**
+- Purpose: Backend infrastructure as code
+- Contains: SQL migrations defining tables, RLS policies, functions, webhooks
+- Subdirectories: `migrations/` (numbered SQL files), `functions/` (Edge Functions)
 
-**`src/types/`:**
-- Purpose: TypeScript type definitions for database entities
-- Contains: `database.ts` -- interfaces for UserSettings, Project, Template, Document, Space
+**public/:**
+- Purpose: Static assets served by Vite dev server and included in production build
+- Contains: Images, fonts, PDF viewer library, licenses
+- Served at: `/` in development and production
 
-**`src/workers/`:**
-- Purpose: Web worker scripts
-- Contains: `pdfRender.worker.js` -- Off-main-thread PDF page rendering
+**tests/:**
+- Purpose: Automated testing
+- Contains: `.test.mjs` files using Node.js native test runner
+- Pattern: One test file per feature (e.g., `pdf-render.test.mjs`, `zoom-flicker.test.mjs`)
 
-**`supabase/functions/`:**
-- Purpose: Deno-based serverless edge functions
-- Contains: Stripe integration (checkout, portal, webhooks), email notifications (Resend)
-- Key files: `stripe-webhook/index.ts` (handles subscription lifecycle events)
+**debug/:**
+- Purpose: Development and debugging tooling
+- Contains: Playwright config, test fixtures (sample PDFs), recorded debug sessions with visual diffs
+- Subdirectories: `fixtures/` (test PDFs), `debug-sessions/` (timestamped test runs), `lib/` (helper utilities)
 
-**`supabase/migrations/`:**
-- Purpose: PostgreSQL schema migrations
-- Contains: 22 migration files defining tables, indexes, RLS policies, triggers
-- Key tables: `user_subscriptions`, `usage_metrics`, `projects`, `documents`, `templates`, `document_annotations`, `document_collaborators`, `document_presence`, `survey_sessions`, `survey_items`, `connected_services`
-
-**`scripts/`:**
-- Purpose: Shell scripts for automated git backups
-- Contains: `auto-backup.sh`, `backup-control.sh`, `backup-daemon.sh`, `protect-backups.sh`, `restore-backup.sh`
-- Generated: No
-- Committed: Yes
-
-**`landing/`:**
-- Purpose: Separate static landing page for the product
-- Contains: HTML, CSS, Vercel deployment config
-- Deployed independently via Vercel
+**docs/:**
+- Purpose: Project documentation and specifications
+- Contains: Design specs, architecture notes, user guides
+- File naming: Markdown or plain text
 
 ## Key File Locations
 
 **Entry Points:**
-- `index.html`: Vite HTML shell, loads `src/main.jsx`
-- `src/main.jsx`: React root mount, provider setup, Syncfusion license registration
-- `src/electron-main.js`: Electron main process, BrowserWindow creation, IPC handlers
-- `src/preload.js`: Electron preload script, `window.electronAPI` bridge
+- `src/main.jsx`: React root initialization, context provider setup
+- `src/electron-main.js`: Electron process startup, window creation, IPC handlers
+- `src/App.jsx`: Main UI orchestration, PDF viewer control, page annotation mounting
+- `src/DevTestRoute.jsx`: Dev-only route for testing without auth (triggered by `?testPdf=<name>`)
 
 **Configuration:**
-- `package.json`: Dependencies, scripts, Electron builder config
-- `vite.config.js`: Vite plugins (React, nodePolyfills), path aliases for Syncfusion shims, dev server COOP headers
-- `src/authConfig.js`: Azure AD/MSAL configuration (client ID, scopes, redirect URIs)
-- `src/supabaseClient.js`: Supabase client initialization from env vars
-- `src/theme.js`: Design system tokens (colors, typography, spacing, borders, shadows)
-- `supabase/config.toml`: Supabase CLI project configuration
+- `vite.config.js`: Build config, dev server settings, debug fixtures plugin
+- `tsconfig.json`: TypeScript compiler options (minimal)
+- `package.json`: Dependencies, scripts (dev, build, test, debug)
+- `index.html`: HTML template for Electron app
+- `src/authConfig.js`: Azure MSAL configuration
+- `src/supabaseClient.js`: Supabase client initialization
+- `src/theme.js`: Color/typography constants
 
 **Core Logic:**
-- `src/App.jsx`: Dashboard (line ~2251), PDFViewer (line ~8961), App (line ~30562) -- the entire application UI and logic
-- `src/PageAnnotationLayer.jsx`: Fabric.js canvas annotation engine (drawing, selection, undo/redo, context menus)
-- `src/services/documentAnnotationService.js`: Supabase annotation CRUD, real-time sync, presence, collaborators
-- `src/hooks/useDatabase.js`: All Supabase database hooks
-- `src/contexts/AnnotationContext.jsx`: High-performance annotation store with page-level subscriptions
+- `src/PageAnnotationLayer.jsx`: Fabric.js canvas management, annotation tools, history
+- `src/components/SyncfusionPDFContainer.jsx`: Syncfusion PDF viewer, zoom orchestration
+- `src/utils/zoomController.js`: Zoom logic (fit-page, fit-width, manual scaling)
+- `src/contexts/AnnotationContext.jsx`: Page annotation storage and subscription model
+- `src/hooks/useDatabase.js`: Supabase CRUD for projects, documents, annotations
 
 **Testing:**
-- `tests/excelSyncDirtyState.test.mjs`: Tests for Excel sync fingerprint/dirty detection
-- `tests/pdfAnnotationImporter.test.mjs`: Tests for PDF annotation import
+- `tests/`: Test files (.test.mjs)
+- `debug/playwright.config.mjs`: Playwright configuration
+- `debug/fixtures/`: Sample PDF files for testing
 
 ## Naming Conventions
 
 **Files:**
-- React components: PascalCase `.jsx` (e.g., `AccountSettings.jsx`, `PDFPageCanvas.jsx`)
-- Hooks: camelCase with `use` prefix `.js` (e.g., `useDatabase.js`, `useZoomState.js`)
-- Services: camelCase `.js` (e.g., `excelGraphService.js`, `documentAnnotationService.js`)
-- Utilities: camelCase `.js` (e.g., `calloutGeometry.js`, `regionMath.js`)
-- Contexts: PascalCase with `Context` suffix `.jsx` (e.g., `AuthContext.jsx`, `SearchContext.jsx`)
-- CSS: Matches component name (e.g., `App.css`, `AccountSettings.css`, `AuthModal.css`)
-- Supabase functions: kebab-case directories with `index.ts` inside
-- Migrations: timestamp-prefixed snake_case `.sql` (e.g., `20241230000001_create_survey_realtime_tables.sql`)
+
+- **React Components:** PascalCase + `.jsx` (e.g., `AuthModal.jsx`, `UserMenu.jsx`)
+- **Hooks:** `use` prefix + camelCase (e.g., `useDatabase.js`, `useZoomState.js`)
+- **Services:** camelCase + `Service` suffix (e.g., `documentAnnotationService.js`)
+- **Utilities:** camelCase (e.g., `zoomController.js`, `geometryHitTest.js`)
+- **Contexts:** PascalCase + `Context` suffix (e.g., `AuthContext.jsx`)
+- **Tests:** feature name + `.test.mjs` (e.g., `zoom-flicker.test.mjs`)
 
 **Directories:**
-- Lowercase for category directories: `components/`, `contexts/`, `hooks/`, `services/`, `utils/`, `sidebar/`
-- PascalCase for feature directories: `Callout/`
 
-**Exports:**
-- Components: Default export (e.g., `export default function App()`)
-- Hooks: Named exports (e.g., `export const useProjects = () => ...`)
-- Services: Named exports of async functions (e.g., `export async function uploadExcelFile(...)`)
-- Contexts: Named exports for providers and hooks (e.g., `export const AuthProvider`, `export const useAuth`)
-- Types: Named exports of TypeScript interfaces
+- **Components:** PascalCase plural (e.g., `components/`)
+- **Logic grouping:** camelCase plural (e.g., `contexts/`, `hooks/`, `services/`, `utils/`)
+- **Feature subdirs:** camelCase (e.g., `sidebar/`, `Callout/`)
+- **Build output:** `dist/` (Vite convention)
+- **Supabase:** `supabase/` containing `migrations/` and `functions/`
 
 ## Where to Add New Code
 
-**New Feature (full feature with UI + data):**
-- Primary component: `src/components/FeatureName.jsx`
-- If it needs shared state: `src/contexts/FeatureContext.jsx`
-- If it needs database operations: Add hooks to `src/hooks/useDatabase.js` or create `src/hooks/useFeature.js`
-- If it needs external API calls: `src/services/featureService.js`
-- Wire into App.jsx (which handles routing between Dashboard and PDFViewer views)
+**New Feature (e.g., annotation tool, sidebar panel):**
+- UI Component: `src/components/[Feature].jsx`
+- Logic/hooks: `src/hooks/use[Feature].js` if stateful
+- Utilities: `src/utils/[feature]*.js` for helper functions
+- Tests: `tests/[feature].test.mjs`
+- Styles: Co-locate in component folder or in `src/styles.css`
 
-**New React Component:**
-- Small/reusable UI component: `src/components/ComponentName.jsx`
-- Sidebar panel: `src/sidebar/PanelName.jsx`
-- Feature subsystem: `src/components/FeatureName/index.jsx` (with directory for related files)
-- Associated CSS: `src/components/ComponentName.css` (co-located with component)
+**New Component/Module:**
+- If UI: Place in `src/components/`
+- If service integration: Place in `src/services/` as `[service]Service.js`
+- If state management: Place in `src/contexts/` or export hook from `src/hooks/`
+- If geometry/math: Place in `src/utils/` with descriptive name
 
-**New Utility Function:**
-- Geometry/math: `src/utils/geometryXxx.js`
-- PDF processing: `src/utils/pdfXxx.js`
-- General helpers: `src/utils/helperName.js`
+**Utilities:**
+- Shared helpers: `src/utils/[category][Feature].js` (e.g., `geometryHitTest.js`)
+- Geometry/math: `src/utils/` (e.g., `lineGeometry.js`, `regionMath.js`)
+- PDF operations: `src/utils/pdf*.js` (e.g., `pdfAnnotations.js`, `pdfCache.js`)
+- Performance: `src/utils/performanceLogger.js` or `layerPerformance.js`
 
-**New Supabase Edge Function:**
-- Create directory: `supabase/functions/function-name/index.ts`
-- Uses Deno runtime with ESM imports from `esm.sh`
+**Tests:**
+- Place in `tests/` directory
+- Naming: `[feature].test.mjs`
+- Use Playwright for browser automation, Node.js native test runner for unit tests
 
-**New Database Table:**
-- Create migration: `supabase/migrations/YYYYMMDDHHMMSS_description.sql`
-- Add TypeScript types: `src/types/database.ts`
-- Add CRUD hooks: `src/hooks/useDatabase.js`
-
-**New Test:**
-- Location: `tests/moduleName.test.mjs`
-- Uses Node.js built-in test runner (`node:test`)
+**Database Schema Changes:**
+- Create numbered SQL migration file in `supabase/migrations/`
+- Apply via Supabase CLI: `supabase migration up`
+- Update TypeScript types in `src/types/database.ts`
 
 ## Special Directories
 
-**`dist/`:**
-- Purpose: Vite production build output
-- Generated: Yes (by `npm run build`)
-- Committed: Partially (some files tracked per git status)
-
-**`node_modules/`:**
-- Purpose: npm dependencies
-- Generated: Yes (by `npm install`)
-- Committed: No
-
-**`supabase/.temp/`:**
-- Purpose: Supabase CLI temporary state (project ref, versions)
-- Generated: Yes
-- Committed: Partially
-
-**`public/ej2-pdfviewer-lib/`:**
-- Purpose: Syncfusion pdfium WebAssembly runtime (pdfium.js + pdfium.wasm)
-- Generated: No (vendored from Syncfusion SDK)
+**public/:**
+- Purpose: Static assets included in build
+- Generated: No (hand-curated)
 - Committed: Yes
+- Contents: Images, fonts, external library files (Syncfusion)
 
-**`.agent/`:**
-- Purpose: AI agent skills/plans
-- Generated: By AI tools
+**dist/:**
+- Purpose: Built React app (Vite output)
+- Generated: Yes (via `npm run build`)
+- Committed: No (.gitignore)
+- Contents: `index.html`, `index-*.js`, `index-*.css` (hashed chunks)
+
+**node_modules/:**
+- Purpose: Installed dependencies
+- Generated: Yes (via `npm install`)
+- Committed: No (.gitignore)
+- Size: Large (includes all Syncfusion packages, dev tools)
+
+**debug/debug-sessions/:**
+- Purpose: Timestamped test run artifacts
+- Generated: Yes (by test runner, `debug/lib/post-process.mjs`)
+- Committed: No (gitignore)
+- Contents: Video recordings, screenshots, visual diffs, console logs
+
+**build/:**
+- Purpose: App icon assets for Electron packaging
+- Generated: No (hand-curated)
 - Committed: Yes
-
-**Important Note on Syncfusion Dependencies:**
-The `@syncfusion/*` packages are linked via `file:` references to a local directory (`../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/`). This directory must exist at the sibling level of the project root for `npm install` to work. These are not published npm packages.
+- Contents: `icon.icns` (macOS), `icon.png` (cross-platform)
 
 ---
 
-*Structure analysis: 2026-03-04*
+*Structure analysis: 2026-03-17*
