@@ -1,165 +1,127 @@
-# Feature Landscape: Automated Visual Debugging Pipeline
+# Feature Landscape: PDF Annotation Canvas Overlay Zoom Handling
 
-**Domain:** Automated visual debugging and testing pipeline for canvas-based PDF annotation app
-**Researched:** 2026-03-12
-**Supersedes:** Previous FEATURES.md (zoom rendering features, 2026-03-04)
+**Domain:** PDF viewer with interactive canvas annotation overlays (Syncfusion + Fabric.js)
+**Researched:** 2026-03-17
+**Mode:** Ecosystem (What zoom behaviors do PDF annotation products have?)
 
 ## Table Stakes
 
-Features the pipeline needs or it is not useful. Missing any of these means you are still debugging manually.
+Features users expect from any professional PDF annotation viewer during zoom. Missing any of these and users perceive the product as broken or low-quality.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| **Playwright test harness with deterministic scenarios** | Without scripted, repeatable test sequences the pipeline has no inputs. Every run must reproduce the exact same interactions to compare results across code changes. | Medium | Existing `ralph-test/zoom-test.mjs` proves the pattern. Needs formalization: scenario registry, parameterized runs, CLI interface. |
-| **Dev-only test route (auth bypass)** | Fragile login flows (email/password fill, wait for auth modal) break constantly and add 3-8 seconds per run. Every professional Playwright harness separates auth from test scenarios. | Low | Express middleware or URL param (`?devMode=true`) that auto-authenticates and opens a specific document. Gate behind `NODE_ENV=development`. |
-| **Synchronized artifact capture** | The whole point: screenshot, video, console log, app state, and performance data captured together with a shared timeline. Without synchronization, you cannot correlate "this screenshot was taken when the app was in this state." | High | Must timestamp all artifacts from a single `performance.now()` epoch. Video frames, screenshots, console messages, and state snapshots need a shared `sessionT` offset. |
-| **Screenshot capture at deterministic points** | Screenshots before/after each action are the primary evidence for visual bugs. Playwright's `page.screenshot()` with `fullPage` and element-targeted variants. | Low | Already proven in `ralph-test/` (20+ screenshots captured). Needs naming convention and automatic association with scenario step. |
-| **Console log capture and persistence** | Console messages reveal internal errors, warnings, and debug output (`[pdfDebug]` events). Without capturing these, you lose half the diagnostic signal. | Low | `page.on('console', ...)` already used in zoom-test.mjs. Needs structured persistence: timestamped JSONL file per session. |
-| **Video recording** | Flicker bugs are sub-frame timing issues. A single screenshot misses the glitch. Video at 30fps captures the visual artifact even when you cannot predict exactly when it occurs. | Low | Playwright built-in: `recordVideo: { dir: sessionDir, size: { width: 1400, height: 900 } }`. Zero custom code needed. |
-| **Session folder structure (folder-per-run)** | Every run produces multiple artifacts that must be kept together and inspectable without tooling. Flat file dumps are useless after 5 runs. | Low | Convention: `sessions/YYYY-MM-DD_HH-mm-ss_{scenario}/` containing `video.webm`, `screenshots/`, `console.jsonl`, `state-snapshots.jsonl`, `perf.json`, `manifest.json`. |
-| **Session manifest (metadata)** | Which scenario ran, when, git SHA, zoom levels tested, pass/fail result, artifact paths. Without this, a session folder is a pile of opaque files. | Low | `manifest.json` written at session start (config) and updated at end (results, duration, pass/fail). |
-| **Extended debug API (window.__debugPipeline)** | Playwright needs to read internal app state: current zoom level, annotation count, canvas container count, portal host status, freeze state. `pdfDebug.js` exposes counters and event rates, but not the rendering pipeline internals needed for flicker diagnosis. | Medium | Extend `window.pdfDebug.dump()` to include zoom state, CSS transform active flag, `renderedScale` vs `targetScale`, visible page list, portal host count, freeze status. Add `window.__debugPipeline` for pipeline-specific queries. |
-| **App state snapshots at scenario steps** | At each scripted action, capture the full debug state (`pdfDebug.dump()` + extended fields). This creates a timeline of internal state that correlates with screenshots. | Medium | `page.evaluate(() => window.pdfDebug.dump())` at each step. Store as JSONL with timestamp and step label. |
-| **Pass/fail determination per scenario** | The pipeline must answer "did this scenario pass?" with a boolean. Without automated pass/fail, a human must review every artifact manually, defeating the purpose. | Medium | Already implemented in zoom-test.mjs (`minCC >= 1`). Generalize: each scenario defines its own pass criteria (canvas container count, no console errors, visual diff below threshold). |
+| **Annotations stay visible during zoom** | Adobe Acrobat, pdf.js, Nutrient/PSPDFKit, Foxit -- all keep annotations visible throughout zoom transitions. Disappearing annotations feel like data loss. | High | This is THE core problem being solved. Current portal system causes annotations to vanish/jump during zoom. The CSS-transform-then-redraw approach (used by pdf.js, described in design spec) is the industry standard pattern. |
+| **Annotations stay positionally correct during zoom** | Users annotate specific locations on the PDF. If annotations drift or jump to wrong positions mid-zoom, trust is destroyed. Every commercial viewer maintains annotation-to-page-content alignment. | High | Positional stability is more important than visual crispness. Blurry-but-correct beats crisp-but-wrong. |
+| **All zoom input methods work identically** | Users expect Ctrl+scroll, toolbar buttons, dropdown presets, fit-to-page, fit-to-width, and pinch-to-zoom to all produce the same annotation behavior. Inconsistency across methods is a common bug source. | Medium | The current app has 6 zoom entry points. The design spec correctly identifies that all must funnel through one code path. Syncfusion fires `onZoomChanged` for all methods, which helps. |
+| **CSS-transform visual stability during transition** | pdf.js and Adobe Acrobat both show a briefly blurry-but-stable view during zoom, then re-render at full resolution. Users accept momentary blur (it matches native OS zoom behavior -- like pinch-zooming a photo). They do NOT accept content vanishing. | Medium | This is the "zoom layer" pattern from pdf.js: apply `transform: scale(ratio)` to the existing canvas immediately, then re-render at correct resolution asynchronously. The design spec describes exactly this approach. HIGH confidence this is correct -- pdf.js has shipped this for years. |
+| **Post-zoom canvas re-render at correct resolution** | After zoom settles, annotations must be crisp -- not permanently blurry from the CSS transform. Commercial viewers all do a full re-render once the zoom gesture completes. | Medium | The settle timer approach (wait for zoom to stop, then re-render) is standard. pdf.js uses this. The design spec proposes 1000ms settle, which is reasonable. |
+| **Rapid consecutive zoom handling** | Users scroll-zoom rapidly or press Ctrl+/- multiple times quickly. The viewer must not crash, leak timers, or enter invalid states. Each new zoom should restart the settle timer, not stack up pending re-renders. | Medium | Debouncing/timer-restart pattern. Each new zoom event cancels the previous settle timer and starts a new one. Only the final zoom level triggers the expensive re-render. This is standard and described in the design spec. |
+| **Scroll position preserved across zoom** | When zooming, the content the user is looking at should stay centered (or at least visible). Zoom should not jump the user to a different page or scroll position. | Low | This is primarily a Syncfusion viewer responsibility, not the annotation layer's job. Syncfusion handles scroll position during zoom natively. The annotation layer just needs to follow the page div. |
+| **Drawing tools work correctly after zoom** | After zooming, annotation drawing tools (pen, shapes, callouts, regions) must produce annotations at the correct position and scale. A click at coordinates (x, y) on the zoomed canvas must map to the correct PDF coordinates. | Medium | This depends on the Fabric.js canvas having correct dimensions and the coordinate transform being updated after zoom. The design spec handles this by re-rendering the canvas at the new resolution after zoom settles. |
+| **Fit-to-page and fit-to-width modes** | Standard preset zoom levels. Every PDF viewer has these. Nutrient, Syncfusion, pdf.js, Adobe Acrobat all support them. | Low | Syncfusion provides these natively. The annotation layer just needs to handle the resulting zoom change like any other zoom event. |
 
 ## Differentiators
 
-Features that make the pipeline powerful rather than just functional. Not expected in a v1 debug tool, but high value.
+Features that go beyond table stakes. Not expected by users, but valued when present. These provide competitive advantage.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| **Visual diff between screenshots (pixelmatch)** | Automated pixel-level comparison between "before" and "after" screenshots. Detects flicker, position shifts, and scale errors that human eyes miss in side-by-side comparison. Produces a diff image highlighting exactly what changed. | Medium | pixelmatch is the standard library (Mapbox, 5.3KB, zero dependencies). Playwright has built-in `toHaveScreenshot()` but we want diff artifacts stored per session, not just test assertions. Custom: capture baseline, capture post-action, run pixelmatch, store diff image + mismatch percentage. |
-| **Performance metrics collection (CDP)** | Capture Layout Shift (CLS), Long Tasks, paint timing, and custom `performance.mark()`/`performance.measure()` data via Chrome DevTools Protocol. Quantifies rendering performance beyond "it looks right." | Medium | `page.context().newCDPSession(page)` already used in zoom-test.mjs for input dispatch. Add `Performance.enable()`, `Performance.getMetrics()`, and PerformanceObserver for layout-shift entries. Store as `perf.json` per session. |
-| **DOM mutation monitoring during scenarios** | Track when Syncfusion destroys/recreates page containers (`e-pv-page-div`), which is the root cause of portal host disconnection bugs. Captures the exact mutation that triggers annotation disappearance. | Medium | MutationObserver injected via `page.evaluate()`. Monitors `e-pv-pages-container` for childList changes. Log mutations with timestamps to correlate with video/screenshot timeline. |
-| **Keyframe extraction from video** | Auto-detect "interesting" frames in recorded video: moments where pixel content changes rapidly (potential flicker), frames at scenario step boundaries, frames where metrics spike. Reduces a 30-second video to 5-10 key frames. | High | Two approaches: (1) Simple: screenshot at each scripted step boundary (already have this). (2) Advanced: post-process video with frame differencing to find pixel-delta spikes. Start with (1), defer (2). |
-| **Timeline summary (human-readable)** | A single `timeline.md` file that narrates the session: "0ms: baseline captured, 150ms: zoom in started, 800ms: canvas containers dropped to 0, 1200ms: containers restored, 6000ms: settled." Readable by a human or LLM without opening any other file. | Medium | Post-processing step. Merge `state-snapshots.jsonl` + `console.jsonl` + `perf.json` into a chronological narrative. Template-driven (not AI-generated at this stage). |
-| **LLM-friendly artifact chunking** | Structure all artifacts so they fit in an LLM context window (~100-200K tokens) for analysis. Chunk large files (console logs, state snapshots) into labeled segments. Include a "reader's guide" that tells the LLM what each file is and what to look for. | Medium | `analysis-prompt.md` template: "You are analyzing a debug session for [scenario]. Here is the manifest, timeline, and key state snapshots. Screenshots are attached as images. Identify the root cause of [symptom]." Chunk console logs by scenario step, not by arbitrary token count. |
-| **Anomaly detection in state snapshots** | Automatically flag state transitions that indicate a bug: canvas container count dropping to 0, `renderedScale` diverging from `targetScale` for more than N ms, console error spikes. No AI needed -- simple threshold rules on structured data. | Medium | Rule engine on `state-snapshots.jsonl`: `if (snapshot.cc === 0 && prev.cc > 0) flag("canvas-drop", snapshot)`. Produces `anomalies.json` with timestamp, type, severity, and relevant state diff. |
-| **Scenario parameterization** | Run the same scenario with different parameters: zoom range (50-400% vs 100-200%), zoom speed (fast vs slow wheel events), starting page (page 1 vs page 6 with annotations). Multiplies test coverage without writing new scenarios. | Low | Scenario functions accept a config object: `{ zoomStart, zoomEnd, stepCount, waitMs }`. CLI passes variants. |
-| **Network request logging** | Capture Supabase API calls, PDF blob fetches, and any failed requests during scenarios. Network errors can cause state corruption that manifests as rendering bugs. | Low | `page.on('request')` and `page.on('response')` listeners. Filter to relevant domains. Store as `network.jsonl`. |
-| **Trace file recording** | Playwright's built-in trace (`tracing.start()`) captures DOM snapshots, network, console, and action timeline in a single `.zip`. Viewable in Playwright Trace Viewer -- the gold standard for post-mortem debugging. | Low | `context.tracing.start({ screenshots: true, snapshots: true })` and `context.tracing.stop({ path: traceFile })`. One line of config. Produces rich artifact at zero development cost. |
+| **Zero-frame annotation gap** | Most viewers (including pdf.js) have a 1-2 frame gap where the old canvas is detached before the new page div appears during Syncfusion page recreation. Eliminating this entirely (truly seamless) would exceed what pdf.js achieves. | High | The design spec acknowledges a potential 1-2 frame gap when Syncfusion destroys/recreates page divs. The overlay re-attachment via `useEffect` on `syncfusionPageContainers` is the mitigation. Achieving truly zero gap would require pre-creating overlay divs for pages not yet visible -- probably not worth the complexity. |
+| **Zoom-to-cursor (anchor point zoom)** | When Ctrl+scroll zooming, the zoom centers on the cursor position rather than the page center. Figma, Miro, and some PDF viewers (PDF-XChange, Nutrient) support this. Makes annotation workflows faster -- users zoom into the area they are working on. | Medium | This is a viewer-level feature (Syncfusion or custom scroll adjustment), not an annotation layer concern. Could be added as a separate enhancement. Not needed for the current refactor. |
+| **Zoom-to-annotation** | Clicking an annotation in a sidebar list zooms to and highlights that annotation. Nutrient/PSPDFKit supports this. Useful for review workflows. | Medium | This is an app-level feature, not related to zoom flicker fix. Would build on top of the stable zoom infrastructure. |
+| **Animated zoom transitions** | Smooth animated zoom rather than instant jump. pdf.js has implemented this (Bug 1659492). Makes the experience feel polished. | Medium | Requires interpolating between zoom levels rather than jumping. The CSS transform approach naturally supports this -- animate the transform scale over 200-300ms, then re-render. However, must respect `prefers-reduced-motion`. |
+| **Zoom history / Previous view** | PDF Annotator offers "Previous View" to jump back to prior zoom level/position. Useful for annotation review workflows (zoom in to inspect detail, one-click back to overview). | Low | Simple stack of (zoom, scrollPosition) tuples. Not related to zoom flicker, but builds on stable zoom infrastructure. |
+| **Annotation-aware zoom limits** | Prevent zooming so far out that annotations become invisible/unreadable, or so far in that you lose context. Syncfusion supports `minZoom`/`maxZoom` configuration. | Low | Configure Syncfusion's existing `minZoom`/`maxZoom` properties. Not an annotation layer concern. |
+| **High-resolution partial rendering at extreme zoom** | At very high zoom levels (400%+), render only the visible viewport at full resolution instead of the entire page. pdf.js merged PR #19128 for this exact feature -- prevents blurry text and reduces memory usage. | High | This is a significant optimization that would only matter at extreme zoom levels. Not needed for the current refactor. Could be a future enhancement if users zoom to very high levels for detailed annotation work. |
 
 ## Anti-Features
 
-Features to deliberately NOT build. Each represents a tempting rabbit hole that would derail the pipeline.
+Features to explicitly NOT build. These are tempting but harmful.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| **AI-generated test scenarios** | LLM improvisation produces non-deterministic, non-reproducible tests. Defeats the core philosophy: deterministic scripts, LLM analyzes evidence. | Human writes scenario scripts. LLM reads artifacts. Clear separation of concerns. |
-| **Automated fix generation** | LLM suggesting code changes based on artifacts is tempting but premature. Fix quality depends on artifact quality, which is unproven. Wrong fixes waste more time than manual debugging. | LLM produces a structured analysis report (root cause hypothesis, evidence citations, suggested investigation areas). Human decides what to change. |
-| **Real-time monitoring dashboard** | A live WebSocket dashboard showing metrics as tests run is over-engineered for a local-only tool used by one developer. Session folders are inspected after runs, not during. | Files and folders. `cat manifest.json` and `open timeline.md` are the "dashboard." |
-| **CI/CD pipeline integration** | Wiring into GitHub Actions, artifact upload, PR gating -- all premature. The pipeline runs locally, manually triggered, for the foreseeable future. CI adds config complexity without value until the local pipeline is proven. | `npm run debug:scenario zoom-all` from terminal. Results in local `sessions/` folder. |
-| **Database storage for sessions** | SQLite or Supabase for session metadata, query by date/scenario/pass-fail. Over-engineered until you have 100+ sessions. Folders are queryable with `ls` and `grep`. | Flat folders with `manifest.json`. Consider database only when folder-per-run management becomes painful (PROJECT.md already says this). |
-| **Electron-specific automation** | Electron's CDP support is flakier than Chromium. The rendering behavior is identical since the app runs in Chromium's renderer process anyway. | Target `localhost:5173` in Playwright-launched Chromium. Same DOM, same rendering, better stability. |
-| **Cross-browser testing** | Firefox and WebKit rendering differences are irrelevant -- this is an Electron app that only runs in Chromium. Cross-browser adds 3x run time for zero value. | Chromium only. One browser, one rendering engine, one set of baselines. |
-| **Screenshot diffing against golden baselines** | Traditional visual regression testing (compare against checked-in baseline images) is fragile for this app because annotation content varies, PDF rendering has sub-pixel differences, and the goal is flicker detection, not pixel-perfect consistency. | Diff between "before" and "after" within the same session (self-comparison). Detect unexpected changes, not deviation from a golden image. |
-| **Video frame-by-frame analysis** | Extracting every frame from a 30fps video and running pixel analysis is computationally expensive and produces massive artifacts. For a 30-second scenario, that is 900 frames. | Keyframe extraction at step boundaries (10-15 frames per scenario). Video exists for human playback review, not automated frame analysis. |
-| **Gemini embeddings / semantic retrieval** | Embedding session artifacts for semantic search is v3 scope (PROJECT.md explicitly defers this). Must prove capture quality first. | Flat file organization with good naming. `grep` is the search engine for now. |
+| **Freeze/snapshot/confirm-pending machinery** | This is the CURRENT approach and it is the root cause of the flicker bug. It creates multi-frame timing windows where annotations vanish, jump to wrong positions, or render at stale scales. It requires 14+ refs, 7+ functions, and a 3000ms confirm timer. The complexity is unmanageable. | Use the CSS-transform-then-redraw approach. One transform during zoom, one re-render after settle. Two states instead of fourteen. |
+| **SVG-based annotation rendering** | Tempting because SVG has `viewBox` for natural scaling. But Fabric.js (which provides all interactive editing -- pen, shapes, selection, undo/redo) requires a canvas element. Switching to SVG means rebuilding the entire annotation editing system. | Keep Fabric.js canvas. Use CSS `transform: scale()` as the canvas equivalent of SVG `viewBox`. The design spec is correct that this is the simpler path. |
+| **Continuous re-render during zoom gesture** | Re-rendering the Fabric.js canvas at every zoom increment (every mouse wheel tick) would cause severe jank. Canvas re-rendering is expensive. | Apply cheap CSS transform during gesture, re-render once after gesture completes. This is exactly what pdf.js does and what the design spec proposes. |
+| **Dual-canvas swap (hot-swap rendering)** | Rendering a second canvas in the background at the new zoom level, then swapping it in. Doubles memory usage and adds complexity for marginal benefit. The react-pdf community discussed this and concluded CSS transforms are simpler and sufficient. | Single canvas with CSS transform during transition. The 100-300ms of blur is acceptable (matches Adobe Acrobat behavior). |
+| **Per-page zoom (independent page zoom levels)** | Allowing different pages to be at different zoom levels. No standard PDF viewer does this. It would break spatial navigation expectations and complicate the annotation coordinate system enormously. | All pages zoom together. This is the universal standard. |
+| **Drawing-during-zoom support** | Allowing users to continue drawing annotations while a zoom gesture is active. Adobe Acrobat on iPad explicitly prevents this (users must exit draw mode to zoom). The coordinate system is in flux during zoom. | Disable pointer events on annotation canvases during active zoom gesture (which the `isZooming` prop already handles). Resume drawing after zoom settles. |
+| **Custom zoom animation easing** | Configurable animation curves for zoom transitions. Over-engineering for near-zero user benefit. | If animated zoom is ever added, use a simple ease-out curve. No configuration needed. |
 
 ## Feature Dependencies
 
 ```
-Dev-only test route ─────────────────────┐
-                                         v
-Playwright test harness ──────────> Deterministic Scenarios
-         │                                │
-         v                                v
-  Session folder structure ────> Session manifest (metadata)
-         │
-         ├──> Video recording (Playwright built-in)
-         ├──> Screenshot capture at deterministic points
-         ├──> Console log capture and persistence
-         └──> App state snapshots at scenario steps
-                    │
-                    ├──> Pass/fail determination (reads state snapshots)
-                    ├──> Anomaly detection (reads state snapshots)
-                    └──> Timeline summary (merges all artifacts)
-                              │
-                              v
-                    LLM-friendly artifact chunking
+Annotations stay visible during zoom
+  --> CSS-transform visual stability during transition (required technique)
+    --> Post-zoom canvas re-render at correct resolution (completes the cycle)
+      --> Drawing tools work correctly after zoom (depends on correct re-render)
 
-Extended debug API ──────────> App state snapshots (richer data)
-                               DOM mutation monitoring (richer data)
+All zoom input methods work identically
+  --> Rapid consecutive zoom handling (debounce/settle timer pattern)
 
-Visual diff (pixelmatch) ──── Requires: Screenshot capture
-Performance metrics (CDP) ─── Requires: Playwright harness + CDP session
-Network request logging ───── Requires: Playwright harness
-Trace file recording ──────── Requires: Playwright harness
-Scenario parameterization ─── Requires: Deterministic scenarios
-Keyframe extraction ───────── Requires: Video recording OR Screenshot capture
+Scroll position preserved across zoom
+  --> (Syncfusion handles this; no dependency on annotation layer)
+
+Zero-frame annotation gap (differentiator)
+  --> Annotations stay visible during zoom (table stakes must work first)
+  --> Overlay re-attachment when Syncfusion recreates page divs (Step 5 in design spec)
+
+Zoom-to-cursor (differentiator)
+  --> All zoom input methods work identically (must have stable zoom first)
+  --> (Viewer-level feature, independent of annotation layer)
+
+Zoom-to-annotation (differentiator)
+  --> Drawing tools work correctly after zoom (must have correct coordinates)
+  --> (App-level feature, builds on stable zoom infrastructure)
 ```
-
-### Critical Path
-
-The shortest path to a useful pipeline:
-
-```
-1. Dev-only test route (unblocks everything)
-2. Playwright harness + session folder structure (infrastructure)
-3. Scenario scripts + screenshot + console + video capture (evidence collection)
-4. Extended debug API + state snapshots (internal visibility)
-5. Pass/fail determination (automation payoff)
-```
-
-Everything else (pixelmatch, anomaly detection, timeline summary, LLM chunking) is valuable but builds on top of steps 1-5.
 
 ## MVP Recommendation
 
-### Phase 1: Pipeline Foundation (must-have)
+### Must ship (table stakes -- the refactor goal):
 
-Build the minimum viable pipeline that can run one scenario and produce inspectable artifacts.
+1. **Annotations stay visible during zoom** -- THE reason this refactor exists. Users currently see annotations disappear and jump during zoom. This is the #1 priority.
+2. **CSS-transform visual stability** -- The implementation technique. Apply `transform: scale(ratio)` during zoom so annotations are blurry-but-stable rather than absent.
+3. **Post-zoom re-render at correct resolution** -- Complete the zoom cycle. After zoom settles (1000ms timer), redraw canvas at full resolution and remove CSS transform.
+4. **All 6 zoom methods work identically** -- Ensure Ctrl+scroll, toolbar buttons, dropdown, fit-to-page, fit-to-width, and pinch all produce the same stable behavior.
+5. **Rapid consecutive zoom handling** -- Debounce with timer restart. Users will scroll-zoom rapidly.
+6. **Drawing tools work after zoom** -- Verify coordinate mapping is correct after the canvas re-renders at new resolution.
 
-1. **Dev-only test route** -- Bypass auth, auto-open specific document
-2. **Playwright harness** -- Launch browser, navigate, scenario runner framework
-3. **Session folder structure** -- `sessions/{timestamp}_{scenario}/` with manifest
-4. **One scenario: zoom-all** -- Port existing `zoom-test.mjs` into the new framework
-5. **Basic artifact capture** -- Screenshots at step boundaries, video, console log
-6. **Pass/fail from canvas container count** -- Existing `minCC >= 1` logic
+### Defer:
 
-### Phase 2: Deep Visibility
+- **Zero-frame annotation gap**: Accept the 1-2 frame gap during Syncfusion page div recreation. The design spec's re-attachment logic mitigates this. Polish later if users notice.
+- **Zoom-to-cursor**: Not related to the flicker fix. Enhancement for a future milestone.
+- **Zoom-to-annotation**: App-level feature. Build after zoom infrastructure is stable.
+- **Animated zoom transitions**: Nice polish, but not needed. The CSS transform already provides visual continuity.
+- **Zoom history**: Separate feature entirely. Low priority.
+- **High-res partial rendering**: Only relevant at extreme zoom levels. Future optimization.
 
-Add internal state capture and correlation.
+### Explicitly remove:
 
-7. **Extended debug API** -- Zoom state, portal host status, freeze flags
-8. **State snapshots at each step** -- Full debug dump as JSONL
-9. **DOM mutation monitoring** -- Track Syncfusion page container changes
-10. **Performance metrics via CDP** -- Layout shift, long tasks, paint timing
+- **Freeze/snapshot/confirm-pending machinery**: ~14 refs, ~7 functions, 3000ms timer. This IS the bug. The design spec's Step 6 (dead code removal) is essential, not optional.
 
-### Phase 3: Analysis Layer
+## Confidence Assessment
 
-Add automated analysis and LLM-ready output.
-
-11. **Anomaly detection** -- Rule-based flagging of suspicious state transitions
-12. **Visual diff (pixelmatch)** -- Before/after pixel comparison per step
-13. **Timeline summary** -- Human-readable chronological narrative
-14. **LLM-friendly chunking** -- Analysis prompt template + chunked artifacts
-
-### Defer
-
-- **Keyframe extraction from video** (advanced variant): Complex, low incremental value over step-boundary screenshots
-- **Scenario parameterization**: Nice but not needed until base scenarios are solid
-- **Trace file recording**: Zero-effort to add but produces huge files; add when you actually need Trace Viewer's time-travel debugging
-
-## Complexity Budget
-
-| Complexity | Features | Estimated Effort |
-|------------|----------|-----------------|
-| Low | Dev route, session folders, manifest, video, console capture, screenshots, trace recording, network logging, scenario params | 1-2 hours each |
-| Medium | Playwright harness framework, synchronized timestamps, extended debug API, state snapshots, pass/fail logic, pixelmatch diffing, anomaly detection, timeline summary, LLM chunking, DOM mutation monitoring, performance metrics | 3-8 hours each |
-| High | Synchronized artifact capture (full timeline correlation), keyframe extraction (video frame analysis) | 1-2 days each |
+| Finding | Confidence | Source |
+|---------|------------|--------|
+| CSS-transform-then-redraw is the industry standard approach | HIGH | pdf.js implementation (Bug 1659492, PR #19128), design spec analysis, react-pdf community discussion |
+| Blurry-but-stable is acceptable during zoom transitions | HIGH | Adobe Acrobat behavior, pdf.js behavior, design spec references this explicitly |
+| 1000ms settle timer is reasonable | MEDIUM | pdf.js uses similar approach, but exact timing is implementation-specific. May need tuning. |
+| Drawing-during-zoom should be prevented | MEDIUM | Adobe Acrobat iPad explicitly prevents this. Web viewers generally disable interaction during zoom. |
+| Zero-frame gap is difficult to achieve with Syncfusion page recreation | MEDIUM | Design spec acknowledges this. Depends on Syncfusion internal behavior. |
+| Zoom-to-cursor is a differentiator not table stakes | HIGH | Only some PDF viewers support it. Users don't expect it in all viewers. |
 
 ## Sources
 
-- [Playwright Visual Comparisons (official docs)](https://playwright.dev/docs/test-snapshots)
-- [Playwright Videos (official docs)](https://playwright.dev/docs/videos)
-- [Playwright Trace Viewer (official docs)](https://playwright.dev/docs/trace-viewer)
-- [Playwright Evaluating JavaScript (official docs)](https://playwright.dev/docs/evaluating)
-- [pixelmatch (Mapbox)](https://github.com/mapbox/pixelmatch)
-- [Checkly: Measuring Page Performance Using Playwright](https://www.checklyhq.com/docs/learn/playwright/performance/)
-- [Playwright CDPSession API](https://playwright.dev/docs/api/class-cdpsession)
-- [HTML5 Canvas Testing (askui.com)](https://www.askui.com/blog-posts/html5-canvas-testing-techniques-tools-and-best-practices)
-- [Canvas Visual Testing with Retries (Gleb Bahmutov)](https://glebbahmutov.com/blog/canvas-testing/)
-- [Patrick Desjardins: Console and Network Logs in Playwright](https://patrickdesjardins.com/blog/adding-console-and-network-logs-in-playwright)
-- [Pinecone: Chunking Strategies for LLM Applications](https://www.pinecone.io/learn/chunking-strategies/)
-- [Integrating Software Artifacts for LLM-based Bug Localization (ACM)](https://dl.acm.org/doi/10.1145/3770581)
-- Existing codebase: `ralph-test/zoom-test.mjs`, `src/utils/pdfDebug.js`, `.playwright-mcp/` console logs
+- [pdf.js smooth zoom implementation (Bug 1659492)](https://bugzilla.mozilla.org/show_bug.cgi?id=1659492)
+- [pdf.js high-res partial rendering at zoom (PR #19128)](https://github.com/mozilla/pdf.js/pull/19128)
+- [react-pdf flickering during zoom (Issue #875)](https://github.com/wojtekmaj/react-pdf/issues/875)
+- [react-pdf flickering when scaling (Issue #1760)](https://github.com/wojtekmaj/react-pdf/issues/1760)
+- [Nutrient/PSPDFKit zoom documentation](https://www.nutrient.io/guides/web/viewer/zooming/)
+- [PDF Annotator zoom manual](https://www.pdfannotator.com/en/help/viewzoom)
+- [Syncfusion React PDF Viewer magnification docs](https://help.syncfusion.com/document-processing/pdf/pdf-viewer/react/magnification)
+- [Syncfusion minZoom/maxZoom configuration](https://help.syncfusion.com/document-processing/pdf/pdf-viewer/react/how-to/min-max-zoom)
+- [pdf.js CSS zoom and annotation sync (Issue #6463)](https://github.com/mozilla/pdf.js/issues/6463)
+- [pdf.js annotation scaling during zoom (Issue #15571)](https://github.com/mozilla/pdf.js/issues/15571)
+- [Adobe Acrobat zoom-while-drawing limitation](https://community.adobe.com/questions-15/acrobat-on-ipad-pan-or-zoom-while-drawing-3013)
+- [Figma zoom and view options](https://help.figma.com/hc/en-us/articles/360041065034-Adjust-your-zoom-and-view-options)
+- [prefers-reduced-motion accessibility guidance](https://web.dev/articles/prefers-reduced-motion)

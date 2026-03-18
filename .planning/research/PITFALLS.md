@@ -1,401 +1,414 @@
-# Domain Pitfalls: Automated Visual Debugging Pipeline for Canvas Rendering
+# Domain Pitfalls: Canvas Overlay Zoom Refactor (Direct Child Attachment)
 
-**Domain:** Playwright-driven debugging infrastructure for Syncfusion PDF Viewer + Fabric.js annotation layer
-**Researched:** 2026-03-12
-**Prior milestone:** Smooth zoom annotation rendering (v1.0, completed)
-**Current milestone:** v2.0 Automated debugging and analysis pipeline
-
----
+**Domain:** PDF viewer annotation overlay zoom handling refactor
+**Researched:** 2026-03-17
+**Confidence:** HIGH (verified against codebase, Fabric.js documentation, React documentation, and community issue trackers)
 
 ## Critical Pitfalls
 
-Mistakes that cause the entire debugging pipeline to produce unreliable or useless artifacts.
+Mistakes that cause rewrites, regressions, or major user-visible breakage.
 
-### Pitfall 1: Canvas Elements Invisible in Playwright Traces
+---
 
-**What goes wrong:** Playwright trace recordings show blank white rectangles where Fabric.js canvases should be. The debugging pipeline captures traces that contain zero useful visual information about annotation rendering -- the exact thing being debugged.
+### Pitfall 1: Fabric.js Pointer Coordinate Corruption After DOM Reparenting
 
-**Why it happens:** Playwright's trace viewer captures DOM snapshots, not pixel buffers. Canvas content lives in GPU memory and requires an expensive GPU readback to capture. Prior to Playwright v1.48, canvas content was not captured at all. As of v1.48+, it is opt-in via the "Display canvas content" setting in Trace Viewer, but traces still use DOM snapshots by default.
+**What goes wrong:** After moving the overlay div (and thus the Fabric.js canvas) to a new Syncfusion page div via `appendChild()`, all pointer coordinates become wrong. Users click on one annotation but a different one is selected (or nothing is selected). Drawing tools place strokes in the wrong location. The canvas appears to work visually but interaction is silently broken.
 
-**Consequences:** The primary debugging artifact (traces) is useless for diagnosing visual rendering bugs. Team wastes time building a trace-based workflow, then discovers canvas content is missing and must redesign around screenshots instead.
+**Why it happens:** Fabric.js caches the canvas element's offset relative to the document viewport at initialization time and during window resize events. When the canvas's DOM parent changes (Step 5 of the design spec -- re-attaching overlay div after Syncfusion recreates page containers), the cached offset becomes stale. Fabric.js uses `getBoundingClientRect()` internally for `getPointer()`, but the cached `_offset` values used for coordinate translation are not automatically recalculated on DOM moves. This is a well-documented issue (fabricjs/fabric.js#778, #748, #82).
+
+**Consequences:**
+- Pen/highlighter strokes drawn at wrong canvas positions
+- Selection hit-testing fails (objects not selectable at their visual location)
+- Eraser misses targets
+- Context menus appear at wrong positions
+- All of these failures are SILENT -- no console errors, just wrong behavior
 
 **Prevention:**
-- Use `page.screenshot()` as the primary visual capture method, NOT trace DOM snapshots
-- If using traces, enable canvas content capture explicitly (requires Playwright >= 1.48)
-- Build the artifact pipeline around timed screenshots + video recording from the start
-- Test the trace/screenshot capture pipeline on a Fabric.js canvas BEFORE building the rest of the infrastructure
-- Use CDP `Page.captureScreenshot` for frame-precise captures when Playwright's built-in screenshot timing is insufficient
+1. After every `pageDiv.appendChild(overlayDiv)` call in the `useEffect` watching `syncfusionPageContainers`, immediately call `fabricRef.current.calcOffset()` on every Fabric.js canvas instance whose overlay div was reparented.
+2. PAL does not directly expose `calcOffset()` -- either:
+   - Add a ref-based imperative handle (`useImperativeHandle`) to PAL that exposes a `recalcOffset()` method, OR
+   - Trigger the recalculation by briefly toggling a `forceRecalcOffset` prop, OR
+   - Have PAL listen for its container element being reparented (e.g., via a ResizeObserver or by checking `parentElement` in the scale useEffect) and call `calcOffset()` automatically.
+3. After `calcOffset()`, also call `setCoords()` on all canvas objects to update their interactive bounding boxes.
+4. Test by: zoom in, wait for settle, then try to select/draw on annotations. If coordinates are off, this pitfall was hit.
 
-**Detection:** Run a single test that renders one annotation on a canvas, capture a trace, open in Trace Viewer. If the canvas area is blank, the pipeline will not work for visual debugging.
+**Detection (warning signs):**
+- Annotations visually present but not selectable after zoom
+- Drawing strokes appear offset from cursor
+- Works fine on initial load, breaks only after a zoom cycle that triggers page container recreation
 
-**Phase:** Must be validated in Phase 1 (harness setup), before building any artifact capture infrastructure.
+**Phase mapping:** Must be addressed in Step 5 (Handle page container recreation) and verified immediately in Step 5 testing. Do NOT defer to Step 6.
 
 **Sources:**
-- [Playwright Issue #23964: Canvas not visible in trace](https://github.com/microsoft/playwright/issues/23964) -- confirmed and resolved in v1.48
-- [Playwright Issue #19225: Canvas elements don't show up in screenshots](https://github.com/microsoft/playwright/issues/19225) -- resolved via proper wait strategies
-- [Playwright PR #34010: Canvas content display setting](https://github.com/microsoft/playwright/pull/34010)
+- [fabricjs/fabric.js#778 - Moving parent wrapper loses coordinates](https://github.com/fabricjs/fabric.js/issues/778)
+- [fabricjs/fabric.js#748 - calcOffset/setCoords issue](https://github.com/fabricjs/fabric.js/issues/748)
+- [Fabric.js Gotchas - setCoords documentation](https://fabricjs.com/docs/old-docs/gotchas/)
 
 ---
 
-### Pitfall 2: Headless vs Headed Rendering Differences for Canvas
+### Pitfall 2: CSS Transform on Overlay Div Breaks Fabric.js Pointer Events During Zoom
 
-**What goes wrong:** Screenshots captured in headless mode (the default) look different from what the developer sees in headed mode. Anti-aliasing, font rendering, and canvas compositing differ because Playwright uses two entirely separate Chromium binaries: a lightweight headless shell vs the full Chromium browser.
+**What goes wrong:** The design spec applies `transform: scale(ratio)` + `transform-origin: top left` to the overlay div during zoom transitions (Step 2). While this provides correct visual scaling, it can break Fabric.js mouse/pointer interactions if a user attempts to draw or select during the zoom transition window.
 
-**Why it happens:** The headless shell is a stripped-down implementation built on Chromium's `//content` module with different rendering paths. GPU handling, font fallback, and frame compositing all differ. WebGL/Canvas applications can run 10x slower in headless shell without hardware acceleration, and CSS transform compositing (which this app uses heavily during zoom) may produce visually different results.
+**Why it happens:** When a CSS transform is active on an ancestor element, `getBoundingClientRect()` returns the element's rendered (transformed) dimensions. Fabric.js 5.5.2's `getPointer()` does use `getBoundingClientRect()` and should theoretically handle this correctly. However, the `_offset` cache (updated by `calcOffset()`) uses `offsetWidth`/`offsetHeight` which do NOT reflect CSS transforms. If `calcOffset()` runs while the transform is active, the cached offset will be wrong for the post-transform state. Additionally, when `offsetWidth` and `getBoundingClientRect().width` disagree (which happens under CSS transforms), Fabric.js coordinate math produces inconsistent results.
 
-**Consequences:** The debugging pipeline captures screenshots that do not match the actual bug being investigated. A flicker visible in headed mode might not reproduce in headless captures. Developers chase phantom differences or miss real bugs because the capture environment does not match the runtime environment.
+**Consequences:**
+- If a user tries to interact during the zoom transition (before settle), annotations are drawn at wrong positions
+- After zoom settles (CSS transform removed + canvas redrawn), everything works again
+- The danger is if the CSS transform is NOT properly removed after settle -- then ALL drawing/selection is permanently broken until the next zoom cycle
 
 **Prevention:**
-- Use `channel: 'chromium'` in Playwright config (new headless mode) instead of the default headless shell -- this runs the same rendering code as headed mode
-- If using default headless, add `--use-gl=egl` or `--use-gl=desktop` launch args to enable GPU acceleration
-- Generate baseline screenshots in the SAME mode you will use for debugging captures
-- Do NOT mix headed and headless screenshots in the same comparison workflow
-- For the initial pipeline, default to headless with `channel: 'chromium'`, add `--headed` flag for interactive debugging
+1. Disable pointer events on the canvas during the entire CSS transform phase. The overlay div already has `pointer-events: none` in the design spec, and PAL manages its own `pointer-events: auto` on the canvas element (line ~8871). During the CSS transform phase, PAL should also set `pointer-events: none` on its canvas wrapper.
+2. Use the existing `isZooming` prop to disable pointer events. The code at line ~8871 conditionally sets `pointerEvents` based on the active tool -- extend this to also return `'none'` when `isZooming` is true.
+3. Ensure the CSS transform removal (in the settle timer callback) happens BEFORE triggering the canvas resize/redraw. If the transform is still present when Fabric.js calls `renderAll()` and subsequently `calcOffset()`, the new offset calculation will be wrong.
+4. Never leave a CSS transform on the overlay div after settle. Add a safety sweep: after the settle timer fires, iterate all overlay divs and force-clear any remaining transforms.
 
-**Detection:** Capture the same page at the same zoom level in both headless and headed mode. Diff the screenshots. If pixel differences exceed 1-2% (especially in canvas areas), the rendering paths differ significantly.
+**Detection (warning signs):**
+- Drawing works at some zoom levels but not others
+- Annotations drawn during zoom appear offset from cursor
+- After removing CSS transform, `calcOffset()` returns wrong values
 
-**Phase:** Must be decided in Phase 1 (harness setup). The Chromium channel choice affects all downstream screenshots.
+**Phase mapping:** Step 2 (Simplify zoom handlers) -- the CSS transform application/removal logic. Step 4 (PAL zoom handling) -- the pointer-events disabling during zoom.
 
 **Sources:**
-- [Currents: When Tests Should Run Headless vs Headed](https://currents.dev/posts/when-tests-should-run-headless-vs-headed-in-playwright) -- HIGH confidence
-- [Enable GPU for slow Playwright tests in headless mode](https://michelkraemer.com/enable-gpu-for-slow-playwright-tests-in-headless-mode/) -- MEDIUM confidence
-- [Playwright Issue #33566: Changes in Chromium headless in v1.49](https://github.com/microsoft/playwright/issues/33566)
+- [CSS transform issue with canvas coordinates - mapbox/mapbox-gl-js#7701](https://github.com/mapbox/mapbox-gl-js/issues/7701)
+- [DOM Element Dimensions and CSS Transforms](https://www.impressivewebs.com/dom-element-dimensions-and-css-transforms/)
+- [fabricjs/fabric.js#778 - offset recalculation after DOM change](https://github.com/fabricjs/fabric.js/issues/778)
 
 ---
 
-### Pitfall 3: Race Conditions Between Syncfusion Page Load and Screenshot Capture
+### Pitfall 3: React Portal Target Stability -- Changing `createPortal` Target Triggers Full Unmount/Remount
 
-**What goes wrong:** Screenshots capture partially-rendered PDF pages or annotations. Syncfusion's PDF viewer loads pages asynchronously, and the `e-pv-page-div` elements get destroyed and recreated during zoom operations. Playwright's auto-waiting checks DOM element visibility, but a visible canvas does not mean a fully-rendered canvas.
+**What goes wrong:** If the `createPortal(children, domNode)` call receives a DIFFERENT `domNode` reference between renders, React unmounts ALL portal children (including the Fabric.js canvas component) and remounts them from scratch. This destroys the Fabric.js canvas instance, all its in-memory objects, event listeners, undo history references, and any in-progress drawing operations.
 
-**Why it happens:** Playwright considers a canvas "actionable" the moment the DOM element appears, but Fabric.js has not yet called `renderAll()` on that canvas. Similarly, after a zoom operation, Syncfusion destroys and recreates page containers (the `e-pv-page-div` DOM mutation documented in v1.0). Between destruction and recreation, any screenshot captures a blank or partially-rendered state. There are at least 16 references to `e-pv-page-div` in App.jsx -- this is a deeply integrated coupling.
+**Why it happens:** React treats `createPortal` target identity as part of its reconciliation. If the target DOM node reference changes, React sees it as a new portal and tears down the old one completely. The design spec creates overlay divs via `overlayDivsRef` and reuses them, which should avoid this -- but there are several ways the reference can accidentally change:
+- Creating a new overlay div when the old one was detached (instead of reattaching the existing one)
+- A re-render path that calls `document.createElement('div')` again for a page that already has an overlay div
+- The overlay div reference in the ref being cleared when Syncfusion removes the page div
 
-**Consequences:** Flaky artifact capture. Sometimes screenshots show the bug, sometimes they capture a transient rendering state that is not the actual bug. The pipeline produces unreliable evidence, undermining the entire purpose.
-
-**Prevention:**
-- Expose a custom readiness signal from the app: `window.__debugReady = { pageRendered: true, annotationsRendered: true, zoomSettled: true }`
-- Use `page.waitForFunction(() => window.__debugReady?.annotationsRendered === true)` before capturing screenshots
-- After zoom operations, wait for the app's internal `confirmPendingTimer` (3000ms per MEMORY.md) to complete before capturing
-- Use the existing `window.pdfPerf` performance metrics to detect when rendering is complete
-- Never rely on `page.waitForLoadState('networkidle')` alone -- PDF binary blob loads complete long before canvas rendering finishes
-- Add a `page.waitForFunction` that checks `document.querySelectorAll('.e-pv-page-div').length > 0` AND the Fabric.js canvas `__rendered` flag
-
-**Detection:** Run the same capture scenario 10 times. If screenshots differ between runs (especially in canvas regions), you have a race condition.
-
-**Phase:** Phase 1 (harness setup) must include readiness signals. Phase 2 (debug API) must expose the rendering state.
-
----
-
-### Pitfall 4: Serialization Depth/Size Limits When Extracting App State
-
-**What goes wrong:** `page.evaluate()` calls that extract internal app state (Fabric.js objects, annotation data, zoom state) fail silently or return `undefined`. The debugging pipeline gets empty state dumps where it expected rich debugging data.
-
-**Why it happens:** Playwright's `page.evaluate()` serializes return values via JSON-like serialization with a depth limit of 64. Fabric.js canvas objects contain deeply nested circular references (object -> canvas -> objects -> object). A single Fabric.js object can have 100+ properties including nested groups, paths with hundreds of coordinates, and cached bitmap references. The 1.3MB App.jsx likely has similarly complex internal state objects.
-
-**Consequences:** The state extraction portion of the debugging pipeline silently produces empty or truncated data. LLM analysis receives incomplete state information and draws wrong conclusions.
+**Consequences:**
+- Fabric.js canvas destroyed mid-zoom
+- All annotation objects in memory lost (must reload from data model)
+- Active drawing operations cancelled
+- Undo/redo stack references invalidated
+- 500ms+ re-initialization time per canvas (setWidth + setHeight + renderAll)
+- Visual flash as canvas disappears and reappears
 
 **Prevention:**
-- Never return raw Fabric.js objects from `page.evaluate()` -- always project to a flat, serializable shape inside the evaluate callback
-- Build a state extraction layer in the app (the "extended debug API" from PROJECT.md) that returns pre-serialized, LLM-friendly JSON -- not raw internal state
-- Limit extracted state to: annotation count, positions, dimensions, scale values, zoom state, timing values -- not full object trees
-- Use `page.evaluate(() => JSON.stringify(window.__debugState()))` and parse on the Node.js side, so serialization errors are caught in-browser rather than in the Playwright protocol layer
-- Test state extraction with the largest annotation set (most objects, most complex paths) early
+1. The `overlayDivsRef.current[pageNumber]` must be treated as an eternal reference for the lifetime of the document. NEVER delete or recreate entries. The `attachOverlayToPageDiv()` function (Step 1) must check `overlayDivsRef.current[pageNumber]` FIRST and only create a new div if none exists.
+2. When Syncfusion destroys a page div, the overlay div becomes an orphan (detached from DOM but still in memory via the ref). This is CORRECT behavior. The re-attachment effect (Step 5) will put it back.
+3. Do NOT clean up `overlayDivsRef` entries when pages leave the viewport. The div must persist even when not visible, because clearing it and recreating it later would change the `createPortal` target reference.
+4. Add a guard: if `overlayDivsRef.current[pageNumber]` already exists, return the existing div instead of creating a new one. Never overwrite.
 
-**Detection:** Call `page.evaluate(() => fabricCanvas.getObjects())` on a page with annotations. If the result is `undefined` or missing expected properties, serialization is truncating.
+**Detection (warning signs):**
+- Fabric.js canvas `dispose()` called unexpectedly during zoom (check PAL cleanup effect at line ~7783)
+- Annotations disappear and then slowly reappear after zoom
+- Console shows PAL component mounting/unmounting during zoom cycles
+- `[Page X] Disposal error` messages in console during zoom
 
-**Phase:** Phase 2 (debug API design). The API must be designed for serialization safety from day one.
+**Phase mapping:** Step 1 (Create overlay attachment function) and Step 3 (Render loop). These two steps MUST maintain portal target identity. Verify by adding a temporary `console.warn` in PAL's mount/unmount cleanup effect that fires if `fabricRef.current` is being disposed during what should be a zoom cycle.
 
 **Sources:**
-- [Playwright Issue #27181: evaluate serializing fails](https://github.com/microsoft/playwright/issues/27181)
-- [Playwright docs: Evaluating JavaScript](https://playwright.dev/docs/evaluating) -- non-serializable values resolve to undefined
+- [React createPortal documentation](https://react.dev/reference/react-dom/createPortal)
+- [React Issue #12247 - Portal container changes cause remounting](https://github.com/facebook/react/issues/12247)
+- [React Issue #10826 - Cannot prevent portal unmounting](https://github.com/facebook/react/issues/10826)
 
 ---
 
-### Pitfall 5: Artifact Timeline Desynchronization
+### Pitfall 4: Dual Settle Timer Race Condition (App.jsx 1000ms vs PAL 300ms)
 
-**What goes wrong:** Video frames, screenshots, console logs, performance marks, and app state dumps all have slightly different timestamps. When correlating "what was on screen at time T" with "what was the app state at time T," the artifacts disagree by 50-200ms -- enough to miss the exact frame where a flicker occurs.
+**What goes wrong:** The design spec introduces a 1000ms settle timer in `handleSyncfusionZoomChange` (Step 2a, item 4). PAL already has its own 300ms settle timer (line ~7955) for deferred Fabric.js canvas resize. These two timers interact in ways that cause either: (a) the CSS transform being removed before PAL has redrawn at the new resolution (flash of stale pixels), or (b) PAL trying to resize while the CSS transform is still active (wrong dimensions calculated from transformed layout).
 
-**Why it happens:** Each artifact source has its own clock and capture latency:
-- Playwright video is recorded by the browser at paint-frame granularity
-- `page.screenshot()` is async and has 10-50ms round-trip overhead
-- `console.log` timestamps come from the browser's `performance.now()`
-- `page.evaluate()` for state extraction adds 5-20ms protocol overhead
-- Performance marks (`performance.mark()`) use the browser's high-resolution timer
-- The Node.js test runner has its own `Date.now()` clock
+**Why it happens:** Two independent debounce timers operate on the same visual output but have no coordination:
+- App.jsx timer (1000ms): removes CSS transform from overlay div, then updates React `scale` state
+- PAL timer (300ms after receiving new scale prop): performs expensive Fabric.js `setWidth`/`setHeight`/`setZoom`/`renderAll`
 
-**Consequences:** Post-processing analysis correlates the wrong events. The LLM sees a state dump that appears to match a flicker screenshot but is actually from 100ms before/after the flicker. Diagnosis is wrong.
+If the App.jsx timer fires at T=1000ms, it removes the CSS transform and sets the scale state. React propagates the new scale to PAL. PAL's scale useEffect fires, enters zoom mode via the latch, and starts its own 300ms timer. The CSS transform is already removed at this point, so for 300ms the canvas shows the OLD resolution at the NEW zoom level -- visually wrong (blurry at low-to-high zoom, pixelated at high-to-low zoom).
+
+**Consequences:**
+- 300ms window where annotations appear at wrong resolution after zoom
+- If the user rapid-zooms, the two timers can interleave unpredictably
+- The exact timing depends on React batching, which varies by React version and concurrent mode
 
 **Prevention:**
-- Use a single time source: inject `performance.now()` timestamps from the BROWSER into all artifacts
-- At capture time, call `page.evaluate(() => performance.now())` and attach that timestamp to the screenshot/state dump metadata
-- For video correlation, use performance marks (`performance.mark('screenshot-N')`) that appear in the browser's Performance timeline -- these can be correlated with video frame numbers
-- Store all timestamps as offsets from a single `t0` (session start) rather than absolute wall-clock times
-- In the session manifest, record `t0_browser = performance.timeOrigin` and `t0_node = Date.now()` at session start, so the offset between clocks is known
+1. Do NOT remove the CSS transform in the App.jsx settle timer. Instead, only update the React `scale` state. Let PAL's own settle/render logic handle both: (a) resize the canvas to the new resolution, THEN (b) remove the CSS transform from the wrapper div (PAL already does this at lines 7903-7906 by clearing `wrapperEl.style.transform`).
+2. The App.jsx settle timer should: release the `scale` state freeze (so PAL receives the new scale) and nothing else. PAL is responsible for the visual transition from CSS-scaled to natively-rendered.
+3. Alternatively, keep a single timer system. Since PAL already has a well-tested settle mechanism with center-page priority and deferred rendering for off-screen pages (lines 7876-7953), let it be the authority. App.jsx should only freeze scale state during zoom and release it after the last zoom event + a small buffer (500ms, since PAL's 300ms timer handles the rest).
+4. Add a `data-css-scaled` attribute to the overlay div when CSS transform is active, and have PAL check it in `doFabricRender` to clear the parent transform only when it is actually present.
 
-**Detection:** Capture a screenshot immediately after a `performance.mark()`. Compare the mark timestamp to the screenshot file's metadata timestamp. If they differ by more than 20ms, the pipeline has a sync problem.
+**Detection (warning signs):**
+- Brief flash of blurry/wrong-size annotations AFTER zoom settles (not during zoom)
+- Flash duration is approximately 300ms
+- More visible when zooming to higher zoom levels (the resolution mismatch is more obvious)
+- Inconsistent behavior between zoom methods (some fire Syncfusion's onZoomChanged at different rates)
 
-**Phase:** Phase 3 (artifact capture). The timestamp strategy must be designed before any artifact storage format is finalized.
+**Phase mapping:** Step 2 (Simplify zoom handlers) must carefully coordinate with Step 4 (PAL zoom handling). Test them together, not independently.
+
+---
+
+### Pitfall 5: Incomplete Dead Code Removal Leaves Zombie Refs That Overwrite New Logic
+
+**What goes wrong:** The design spec lists ~20 refs and ~14 functions to remove in Step 6. If any of these are only partially removed (function deleted but call site missed, or ref deleted but still written to elsewhere), the app crashes at runtime or silently reverts to old behavior. Worse: if old effects/callbacks that reference removed refs are left in place, they can overwrite the new overlay div state or interfere with the simplified zoom flow.
+
+**Why it happens:** App.jsx is 25,000+ lines with 615+ hook calls and 227 useState declarations. The refs and functions being removed are deeply entangled:
+- `syncfusionStablePortalHostsRef` is referenced in the render loop, in `ensureSyncfusionStablePortalChildren`, in `resolveSyncfusionOverlayPortalHost`, and in several effects
+- `zoomOverlayTransformActiveRef` is read in the render loop's `shouldFreezePortalHost` calculation (line ~24337), in ref callbacks (line ~24585), and in the zoom handler (line ~12355)
+- `beginSyncfusionScaleConfirmPending` is called from 4 different locations (zoom settle at line ~12473, keyboard settle, ctrl-key settle, finalize-idle at line ~10663)
+
+Missing a single call site means the old code path still executes, and it will try to manipulate DOM elements or refs that no longer exist or have been replaced by the new system.
+
+**Consequences:**
+- `TypeError: Cannot read properties of undefined` at runtime
+- Silent data corruption if old code writes to a ref that new code also reads
+- Intermittent failures that only occur under specific zoom paths (e.g., works with scroll wheel but crashes with toolbar buttons)
+- Extremely difficult to debug because the error manifests far from the root cause
+
+**Prevention:**
+1. Before deleting ANY ref or function, grep the entire codebase for ALL references to it. Not just the file -- check for dynamic access patterns and string references too.
+2. Delete in dependency order: first remove call sites, then remove the functions, then remove the refs/state. NEVER remove a ref before removing all code that reads/writes it.
+3. After removing each function, run the dev server and test ALL 6 zoom methods. Do not batch removals.
+4. Use a checklist approach: for each item in the design spec's removal lists, mark off (a) all call sites found, (b) all call sites removed, (c) build succeeds, (d) tested.
+5. For the render loop specifically (lines ~24330-24700): rewrite the entire section rather than surgically removing pieces. The existing logic is too interwoven -- 370 lines of tightly coupled ref reads, portal host resolution, frozen scale calculations, and presentation mode syncing. Write the new simple version, then replace the entire block.
+
+**Detection (warning signs):**
+- Any `undefined` or `TypeError` errors in the console after the refactor
+- Zoom works differently depending on which method is used (some methods trigger different code paths)
+- Memory leaks from orphaned timers (check `setTimeout` calls in removed functions that never get `clearTimeout`)
+- `clearTimeout` called on timer IDs from removed refs (harmless no-ops that hide missing cleanup)
+
+**Phase mapping:** Step 6 (Remove dead code). Must be the LAST step, after Steps 1-5 are fully verified. Do NOT interleave cleanup with feature work.
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall 6: Vite Dev Server HMR Interference During Test Runs
+Mistakes that cause bugs requiring investigation but not full rewrites.
 
-**What goes wrong:** During a Playwright test run, Vite's Hot Module Replacement triggers a page reload or partial module replacement, causing the test to interact with a stale or partially-loaded page. The 1.3MB App.jsx is especially prone to triggering HMR on any file save.
+---
 
-**Why it happens:** The Vite dev server watches for file changes and pushes updates via WebSocket. If a developer saves a file during a test run (or if the test framework itself writes to a watched directory), HMR fires. For a 1.3MB monolith like App.jsx, HMR can cause a full page reload rather than a partial update.
+### Pitfall 6: Overlay Div Sizing Mismatch During Syncfusion's Multi-Frame Zoom Resize
+
+**What goes wrong:** The overlay div is styled `width: 100%; height: 100%` so it fills its parent page div. But during Syncfusion's zoom transition, the page div dimensions change in discrete steps (Syncfusion updates width/height CSS properties on the page div over multiple frames). During this window, `width: 100%` resolves to intermediate sizes.
+
+**Why it happens:** Syncfusion's zoom implementation resizes page divs by setting explicit pixel dimensions. The resize may not happen in a single frame -- it can take 2-3 frames for Syncfusion to reach the final dimensions.
 
 **Prevention:**
-- Use Playwright's `webServer` config to start a DEDICATED Vite instance for testing, separate from the dev instance
-- Alternatively, build and serve a static preview (`vite build && vite preview`) for test runs -- eliminates HMR entirely
-- If using dev server, configure Vite with `server.hmr: false` for the test instance, or use `--mode test` with HMR disabled
-- Place test artifacts in a directory OUTSIDE the Vite project root (e.g., `~/.betasafe-debug/sessions/`) to avoid triggering file watchers
-- Add the test artifact directory to Vite's `server.watch.ignored` config
+1. The overlay div's `width: 100%; height: 100%` is actually fine for the final state, because by the time the settle timer fires and PAL redraws, the page div is at its final size.
+2. During the CSS transform phase, the overlay div should NOT be resized by PAL. The CSS `transform: scale(ratio)` handles visual sizing. The canvas inside stays at its old pixel dimensions.
+3. If PAL reads `offsetWidth`/`offsetHeight` from the overlay div or its wrapper to compute canvas dimensions (e.g., in `wrapperEl.getBoundingClientRect()` at line ~7879), it may get intermediate values during zoom. PAL should use the `width` and `height` PROPS (which come from `resolvedPageSize`) rather than measuring its DOM container for dimension calculations.
 
-**Detection:** Run a test while saving App.jsx in the editor. If the test fails with "target closed" or "page navigated," HMR is interfering.
+**Detection:**
+- Canvas dimensions don't match expected size at certain zoom levels
+- Annotations appear slightly stretched or compressed after zoom
+- Issue is more visible on large zoom jumps (e.g., 50% to 200%)
 
-**Phase:** Phase 1 (harness setup). The server configuration must prevent HMR interference.
+**Phase mapping:** Step 3 (Render loop) and Step 4 (PAL zoom handling). Verify that PAL uses props not DOM measurements for sizing.
+
+---
+
+### Pitfall 7: MutationObserver Fires Before New Page Div is Fully Initialized
+
+**What goes wrong:** The `SyncfusionPDFContainer` MutationObserver (line ~311) fires on `childList` changes to the page container. When Syncfusion destroys and recreates a page div during zoom, the MutationObserver fires when the new div is added. But the new div may not yet have all its attributes set (e.g., `data-page-number`).
+
+**Why it happens:** MutationObservers fire synchronously within the microtask queue after a DOM mutation. Syncfusion may add the page div in one step, then set its attributes in subsequent steps. The observer fires after the first step.
+
+**Prevention:**
+1. The re-attachment `useEffect` in Step 5 watches `syncfusionPageContainers` state, not the raw MutationObserver. The `emitPageContainerMap` in SyncfusionPDFContainer already debounces via `requestAnimationFrame` (`schedulePageContainerRefresh` at line ~256). This provides a 1-frame delay.
+2. The overlay div is appended as a child of the page div -- it does not depend on the page div's internal structure. As long as the page div element itself exists and is connected, appending is safe.
+3. The `computePageContainerMap` function (line ~198) resolves page numbers via multiple fallback strategies (dataset, ID pattern, attribute). This is resilient to partially-initialized divs.
+4. Edge case: if Syncfusion fires multiple rapid DOM mutations during a single zoom operation, the state-driven useEffect will batch them naturally (React batches state updates within the same event loop tick).
+
+**Detection:**
+- Overlay div attached to wrong page div (rare)
+- Annotations briefly appear on wrong page during zoom
+- `overlayDiv.parentElement !== pageDiv` condition in useEffect fires repeatedly for the same page
+
+**Phase mapping:** Step 5 (Handle page container recreation). Likely a non-issue due to existing debouncing, but verify during testing.
+
+---
+
+### Pitfall 8: Fabric.js `renderAll()` Triggered During CSS Transform Phase Wastes CPU
+
+**What goes wrong:** If something triggers `canvas.renderAll()` while the overlay div has a CSS transform applied (during zoom transition), the canvas re-renders at its old resolution. This is visually acceptable (CSS transform handles scaling) but wastes 5-30ms of main thread time per canvas per render. If multiple pages trigger simultaneous renders, this can cause jank during what should be a smooth CSS-only transition.
+
+**Why it happens:** External events can trigger `renderAll()` during the zoom window: annotation data changes from Supabase real-time subscription, undo/redo operations, selection state changes, or highlight updates. The current code does not guard all of these paths against mid-zoom re-renders.
+
+**Prevention:**
+1. During the CSS transform phase (`isZooming === true`), PAL should suppress non-essential `renderAll()` calls. The existing `isInteracting` check (line 7807) already handles some cases by deferring canvas operations.
+2. Audit all paths that can trigger `renderAll()` inside PAL and ensure they respect the zoom latch (`inZoomModeRef`).
+3. If a render must happen during zoom, use `requestRenderAll()` instead of `renderAll()` -- it batches to the next animation frame and coalesces redundant renders.
+
+**Detection:**
+- Performance profiler shows Fabric.js `renderAll` calls during active zoom gesture
+- Zoom feels janky on pages with many annotations (50+)
+- CPU spikes during zoom that are not present on pages without annotations
+
+**Phase mapping:** Step 4 (PAL zoom handling). Audit all `renderAll()` trigger paths.
 
 **Sources:**
-- [Playwright Issue #21227: webServer config with Vite dev server](https://github.com/microsoft/playwright/issues/21227)
-- [Vite Issue #12883: Flaky tests when using Vite with Playwright](https://github.com/vitejs/vite/issues/12883)
+- [Fabric.js Optimizing Performance Wiki](https://github.com/fabricjs/fabric.js/wiki/Optimizing-performance)
+- [fabricjs/fabric.js#5885 - Performance with hundreds of objects](https://github.com/fabricjs/fabric.js/issues/5885)
 
 ---
 
-### Pitfall 7: Auth Bypass Route Leaking to Production
+### Pitfall 9: `overlayDivsRef` Memory Growth on Long Sessions With Large PDFs
 
-**What goes wrong:** The dev-only test route that bypasses Supabase authentication is accidentally included in production builds, creating a security vulnerability that allows unauthenticated access to the app.
+**What goes wrong:** The design spec stores overlay divs permanently in `overlayDivsRef.current[pageNumber]`. For a 500-page PDF where the user scrolls through all pages, this means 500 div elements are created and never garbage collected. Each div potentially has an attached React portal with a Fabric.js canvas instance.
 
-**Why it happens:** React does not have built-in dead-code elimination for routes. A route component conditionally rendered via `process.env.NODE_ENV === 'development'` may still be included in the bundle if Vite's tree-shaking does not eliminate it. Environment variable checks are runtime, not compile-time, unless using Vite's `import.meta.env` with static analysis.
+**Why it happens:** The "never delete overlay divs" rule (Pitfall 3 prevention) is correct for portal stability, but it means DOM nodes accumulate. React portals keep their entire subtree in memory even when the target div is detached from the DOM.
 
 **Prevention:**
-- Use `import.meta.env.DEV` (Vite's compile-time boolean) for the conditional, NOT `process.env.NODE_ENV` -- Vite statically replaces `import.meta.env.DEV` with `false` in production builds, enabling dead-code elimination
-- Place the test route component in a separate file that is only dynamically imported in dev mode: `if (import.meta.env.DEV) { const TestRoute = await import('./TestRoute') }`
-- Add a build-time check: grep the production bundle for the test route's path string (e.g., `/dev-test`) and fail the build if found
-- Keep the test route path obscure (not `/test` or `/debug`) and require a query parameter token even in dev mode
-- The test route should ONLY set a pre-authenticated Supabase session token, not bypass auth checks in the rest of the app
+1. This is acceptable for most PDFs (100-200 pages). The overlay div itself is lightweight (~200 bytes) -- the concern is the React portal children (PAL + Fabric.js canvas).
+2. The render loop should only create portals for pages that have annotations OR are currently visible. Pages without annotations and outside the viewport should not have portals rendered into their overlay divs. The existing page filtering logic already does this.
+3. When a page leaves the viewport AND has no annotations, unmount the portal children by returning `null` from the render function for that page. The overlay div stays in `overlayDivsRef` (for future reuse), but no React children are mounted into it. This means the Fabric.js canvas is disposed, freeing its memory.
+4. Monitor memory usage during testing with large PDFs. If canvas instances are not being disposed when pages scroll far out of view, investigate.
 
-**Detection:** Run `vite build` and search the output for the test route's path string. If present, the route leaked.
+**Detection:**
+- Memory usage grows steadily as user scrolls through document
+- Browser DevTools "Elements" panel shows increasing number of canvas elements
+- Performance degrades after scrolling through many pages
 
-**Phase:** Phase 1 (harness setup). The auth bypass mechanism must be designed with production safety from the start.
-
-**Sources:**
-- [Supabase Playwright testing: REST API login approach](https://mokkapps.de/blog/login-at-supabase-via-rest-api-in-playwright-e2e-test) -- MEDIUM confidence
-- [Supawright: Playwright harness for Supabase E2E](https://github.com/isaacharrisholt/supawright) -- MEDIUM confidence
+**Phase mapping:** Step 3 (Render loop). Ensure the page filtering logic correctly limits which pages have active portals.
 
 ---
 
-### Pitfall 8: Disk Space Exhaustion from Accumulated Artifacts
+### Pitfall 10: `isZooming` Prop Flicker Between Scroll-Wheel Zoom Events Causes Premature Settle
 
-**What goes wrong:** The folder-per-run storage design accumulates gigabytes of artifacts (video files, screenshots, traces, state dumps) within days of active debugging. Developer's disk fills up, or artifact retrieval becomes slow due to filesystem overhead.
+**What goes wrong:** The `isZooming` prop passed to PAL briefly flickers to `false` between consecutive scroll-wheel zoom events. If PAL's settle timer fires during this false gap, it triggers an expensive canvas resize/render that is immediately invalidated by the next zoom event.
 
-**Why it happens:** A single debugging session generates:
-- Video: 5-20MB per test (WebM at 1280x720)
-- Screenshots: 500KB-2MB each, 10-50 per session
-- Traces: 5-50MB each (especially with screenshots enabled)
-- State dumps: 100KB-1MB each
-- Console logs: 1-10MB per session
-
-At 10 sessions per day, this is 500MB-2GB daily. The PROJECT.md explicitly chose "folder-per-run, no database" which means no built-in cleanup.
-
-**Consequences:** Disk fills up. Old sessions become a haystack. Finding the relevant session requires manual browsing. The "simple and inspectable" design goal becomes "cluttered and unusable."
+**Why it happens:** Scroll-wheel zoom fires discrete `onZoomChanged` events with ~100-200ms gaps. If the interaction tracking timeout (controlled by `markSyncfusionInteractionActive`) is shorter than this gap, `isZooming` transitions to `false` momentarily. PAL's settle timer (300ms) can fire during a gap between scroll events.
 
 **Prevention:**
-- Implement a retention policy from day one: keep last N sessions (e.g., 20), auto-delete older ones
-- Use symlinks for "pinned" sessions that should survive cleanup
-- Compress completed sessions (zip the folder after analysis)
-- Record video at 720p, not full resolution -- sufficient for visual debugging, 50-75% size reduction
-- Only capture traces on failure or when explicitly requested, not for every run
-- Use Playwright's `video: 'retain-on-failure'` option for routine runs, `video: 'on'` only for targeted debugging
-- Add a `--cleanup` flag to the harness that removes sessions older than N days
+1. PAL already has the `inZoomModeRef` latch (line ~7814-7816) that prevents this -- once zoom starts, the latch stays true until the settle timer fires AND `isZoomingRef.current` is false. This is the correct pattern and MUST be preserved during the refactor.
+2. The settle callback (line ~7851-7857) re-checks `isZoomingRef.current` and restarts the timer if zoom is still active. This guard MUST be preserved.
+3. Do NOT change the settle timer from 300ms to a longer value to "fix" this -- the 300ms is carefully tuned for responsiveness. The latch pattern is the correct solution.
 
-**Detection:** After one week of daily use, check total artifact storage size. If exceeding 5GB, the retention policy is insufficient.
+**Detection:**
+- Canvas briefly goes blank/white during rapid scroll-wheel zoom
+- Expensive `renderAll` fires multiple times per zoom gesture (check with Performance profiler)
+- Annotations redraw at intermediate zoom levels during continuous scroll-wheel zoom
 
-**Phase:** Phase 3 (artifact capture) must include retention. Phase 4 (session management) must enforce it.
-
-**Sources:**
-- [Playwright Issue #38433: Traces not cleaned up, causing disk space issues](https://github.com/microsoft/playwright/issues/38433)
-- [Playwright Issue #36682: Playwright leaking temp files](https://github.com/microsoft/playwright/issues/36682)
-- [TestRig: Reduced Playwright artifact storage by 60%](https://www.testrigtechnologies.com/how-testrig-reduced-playwright-test-artifact-storage-by-more-than-60-real-ci-cd-insights/)
-
----
-
-### Pitfall 9: LLM Context Window Overflow from Raw Artifacts
-
-**What goes wrong:** The post-processing pipeline feeds raw console logs (10MB), full state dumps (1MB), and verbose performance data to the LLM for analysis. The LLM either truncates critical information, exceeds token limits, or produces hallucinated analysis because the signal-to-noise ratio is too low.
-
-**Why it happens:** Raw debugging artifacts are verbose by nature. A single zoom operation generates hundreds of console log lines, dozens of performance marks, and state changes across multiple components. Feeding this raw data to an LLM (even one with a 200K context window) wastes tokens on noise and buries the relevant signal.
-
-**Consequences:** LLM analysis is unreliable. It either misses the critical event (buried in noise) or confidently attributes the bug to irrelevant log entries. The "LLM-friendly analysis output" goal from PROJECT.md fails.
-
-**Prevention:**
-- Pre-process artifacts BEFORE LLM ingestion: filter console logs to errors/warnings only, extract only the time window around the anomaly, summarize performance data into key metrics
-- Use structured JSON for LLM input, not raw text -- JSON with semantic keys (`{ "event": "zoom_end", "timestamp_ms": 1234, "annotation_count": 5, "flicker_detected": true }`)
-- Chunk by semantic unit (one zoom operation, one page navigation) not by arbitrary byte size
-- Include a "session summary" as the first chunk: what scenario ran, what anomalies were detected, which timestamps to focus on
-- Budget tokens: reserve 30% for source code context, 40% for artifact data, 30% for analysis output
-- Use header-based chunking: each artifact section has a header that provides hierarchical context so the LLM knows what it is reading even in isolation
-
-**Detection:** Feed a sample session's raw artifacts to the target LLM. If the analysis mentions irrelevant log entries or misses the known bug, the preprocessing is insufficient.
-
-**Phase:** Phase 5 (post-processing pipeline). But the artifact FORMAT must be designed in Phase 3 with LLM consumption in mind.
-
-**Sources:**
-- [Deepchecks: 5 Approaches to Solve LLM Token Limits](https://www.deepchecks.com/5-approaches-to-solve-llm-token-limits/) -- MEDIUM confidence
-- [Pinecone: Chunking Strategies for LLM Applications](https://www.pinecone.io/learn/chunking-strategies/) -- MEDIUM confidence
-
----
-
-### Pitfall 10: CSS Transform Timing Creates Uncapturable Transient States
-
-**What goes wrong:** The post-zoom flicker (the target bug) occurs in a 50-200ms window between CSS transform removal and Fabric.js canvas repaint. Playwright's `page.screenshot()` has 10-50ms async overhead, making it likely to capture BEFORE or AFTER the flicker but not DURING it.
-
-**Why it happens:** The flicker is a single-frame visual artifact. Playwright's screenshot API issues a CDP command, waits for the next composited frame, captures it, and returns. By the time the screenshot is taken, the browser may have already painted the corrected frame. The flicker exists in paint frames that are never captured by the async screenshot path.
-
-**Consequences:** The primary debugging target (post-zoom flicker) is invisible to the primary debugging tool (screenshots). The pipeline cannot capture evidence of the exact bug it was built to investigate.
-
-**Prevention:**
-- Use Playwright video recording (`video: 'on'`) as the primary visual evidence -- video captures every paint frame including the flicker
-- Extract individual frames from the video file post-capture using ffmpeg (`ffmpeg -i video.webm -vf "select=gte(n\,FRAME)" frame_%d.png`)
-- Use CDP `Page.startScreencast` for frame-by-frame streaming at the browser's paint rate -- captures frames the screenshot API misses
-- Inject `performance.mark('transform-removed')` and `performance.mark('canvas-repainted')` from inside the app -- these bracket the flicker window and can be correlated with video frame numbers
-- Use `requestAnimationFrame` instrumentation inside the app to log every paint frame's state during the flicker window
-- Consider using Chrome's `--enable-gpu-benchmarking` flag with `chrome.gpuBenchmarking.printToSkPicture()` for frame-level capture (experimental)
-
-**Detection:** Record a video of 10 zoom operations on an annotated page. Frame-step through the video at the zoom-settle point. If you can see the flicker in the video but not in any screenshot, the screenshot path cannot capture it.
-
-**Phase:** Phase 2 (debug API) must instrument the flicker window. Phase 3 (artifact capture) must use video as the primary visual evidence.
-
----
-
-### Pitfall 11: Debug API Instrumentation Altering the Bug Being Debugged
-
-**What goes wrong:** Adding `console.log`, `performance.mark`, or state capture hooks to the zoom/render path changes the timing enough that the post-zoom flicker no longer reproduces. The debugging infrastructure makes the bug disappear (Heisenbug).
-
-**Why it happens:** The flicker is a timing-sensitive race condition in a 50-200ms window. Each `console.log` adds 0.1-1ms of main thread work. `performance.mark()` adds ~0.01ms. `page.evaluate()` for state extraction adds 5-20ms of protocol overhead and forces a microtask checkpoint. In aggregate, these perturbations can shift the race condition outcome.
-
-**Consequences:** The pipeline successfully captures artifacts, but the artifacts show no flicker. The team concludes the flicker is fixed when it actually still occurs in uninstrumented production builds. False confidence.
-
-**Prevention:**
-- Use `performance.mark()` (0.01ms) over `console.log` (0.1-1ms) for timing instrumentation
-- Batch state extraction: do NOT call `page.evaluate()` during the critical flicker window -- capture state BEFORE the zoom starts and AFTER the flicker window closes, not during
-- Add instrumentation behind a compile-time flag (`import.meta.env.VITE_DEBUG_INSTRUMENTATION`) so it can be toggled without changing code
-- Validate that the bug reproduces WITH instrumentation enabled before trusting the pipeline
-- Use passive observation (video, performance observer) rather than active extraction (evaluate calls) during timing-critical paths
-- The existing `window.pdfPerf` is already in the hot path -- extend it rather than adding new instrumentation
-
-**Detection:** Run the same zoom scenario with and without debug instrumentation. If the flicker occurs without instrumentation but not with it, the instrumentation is perturbing the timing.
-
-**Phase:** Phase 2 (debug API). Instrumentation design must be timing-aware from the start.
+**Phase mapping:** Step 4 (Simplify PAL zoom handling). When the design spec says "Keep: isZooming latch and settle timer," take this literally -- preserve the entire pattern, not just the boolean.
 
 ---
 
 ## Minor Pitfalls
 
-### Pitfall 12: Playwright's page.exposeFunction Surviving Navigation
-
-**What goes wrong:** Functions exposed via `page.exposeFunction()` survive page navigations but NOT page reloads triggered by HMR or Vite full-reload. The test continues calling the exposed function, which silently fails or throws.
-
-**Prevention:**
-- Re-expose functions after detecting a navigation event via `page.on('load')`
-- Prefer placing debug functions on `window` from within the app code (controlled by `import.meta.env.DEV`) rather than injecting from Playwright
-- Use `page.addInitScript()` for functions that must survive navigations -- init scripts are re-executed on every navigation
+Issues that cause confusion or minor visual artifacts but are easily fixed.
 
 ---
 
-### Pitfall 13: Flaky Waits Due to Syncfusion's Multi-Phase Page Rendering
+### Pitfall 11: CSS Transform `transform-origin` Conflict Between App.jsx and PAL
 
-**What goes wrong:** Tests pass `page.waitForSelector('.e-pv-page-div')` but the page container is empty -- Syncfusion creates the DOM shell before rendering content into it. The test proceeds too early.
+**What goes wrong:** The design spec (Step 2a) sets `transform-origin: top left` on the overlay div in App.jsx. PAL's existing code (line ~7894) also sets `transform-origin: top left` on the Fabric.js `wrapperEl`. If both are active simultaneously during the transition from CSS-scaled to natively-rendered, the compound transform could produce incorrect visual positioning (though in practice, `top left` + `top left` nests correctly -- this is more of a maintenance hazard).
 
-**Prevention:**
-- Wait for Syncfusion's internal rendering completion, not just DOM element presence
-- Chain waits: `waitForSelector('.e-pv-page-div')` THEN `waitForFunction(() => document.querySelector('.e-pv-page-div canvas')?.getContext('2d'))` THEN the custom `__debugReady` signal
-- Use the existing `pdfPerf` metrics to detect when page rendering completes
-- Add a `data-rendered="true"` attribute to PageAnnotationLayer's container after Fabric.js `renderAll()` completes -- Playwright can wait for this attribute
+**Prevention:** With the new architecture, ONLY App.jsx should apply CSS transforms to the overlay div during zoom. PAL should NOT apply CSS transforms to `wrapperEl` during zoom (design spec Step 4, item 4 explicitly says to remove this). Ensure Step 4 removes the PAL wrapper transform logic (lines 7891-7906) before Step 2 adds the overlay div transform.
+
+**Phase mapping:** Step 2 and Step 4 -- these must be coordinated.
 
 ---
 
-### Pitfall 14: Video Recording Performance Impact on Canvas Rendering
+### Pitfall 12: Sibling Layers (SearchHighlightLayer, SpaceRegionOverlay) Get Wrong Scale During CSS Transform
 
-**What goes wrong:** Enabling Playwright video recording (`video: 'on'`) causes frame drops during zoom operations. The video captures a janky zoom that does not occur in normal usage, making flicker diagnosis unreliable.
+**What goes wrong:** SearchHighlightLayer, SpaceRegionOverlay, and LightweightAnnotationOverlay all receive `layerScale` as a prop. During the CSS transform phase, `layerScale` should be the PRE-zoom scale (since the CSS transform handles visual scaling). If `layerScale` is set to the NEW scale during the transform phase, these components render at the new size, and the CSS transform then scales them AGAIN -- a double-scaling effect.
 
-**Prevention:**
-- Use 720p resolution for video (`recordVideo: { size: { width: 1280, height: 720 } }`) instead of full viewport resolution
-- Test that zoom operations still hit 60fps with video recording enabled
-- If video recording causes jank, use CDP `Page.startScreencast` at a lower frame rate (e.g., 10fps) instead -- sufficient for detecting flicker without impacting rendering performance
-- Profile with Chrome DevTools Performance panel while video recording is active to confirm the recording overhead
+**Prevention:** If the App.jsx settle timer freezes the React `scale` state during zoom (by deferring `setScale()` until the timer fires, as the design spec implies), then `layerScale` will naturally stay at the pre-zoom value during the transform phase. Verify this by logging `layerScale` during a zoom transition. If it changes before the CSS transform is removed, there is a double-scaling bug.
 
----
+**Detection:**
+- Search highlights appear too large or too small during zoom
+- Region overlays jump or flash during zoom
+- Double-scaling effect: elements grow/shrink too far then snap back on settle
 
-### Pitfall 15: Session Bundle Manifest Drift
-
-**What goes wrong:** The session bundle folder contains artifacts, but the manifest file (index.json) does not reflect all captured files, or lists files that were not captured due to errors. The post-processing pipeline reads the manifest, misses artifacts, and produces incomplete analysis.
-
-**Prevention:**
-- Write the manifest LAST, after all artifacts are finalized
-- Build the manifest by scanning the actual folder contents, not by recording what SHOULD have been captured
-- Include checksums (SHA256) for each artifact file so corruption is detectable
-- Include a `status` field per artifact: `"captured"`, `"failed"`, `"skipped"`
-- Validate the manifest against the folder contents before passing to post-processing
+**Phase mapping:** Step 2 (scale state freezing) and Step 3 (render loop layerScale calculation).
 
 ---
 
-### Pitfall 16: PDF Loading as Binary Blob Complicates Test Fixtures
+### Pitfall 13: Handling the "Overlay Div Exists But Page Div Does Not" Orphan State
 
-**What goes wrong:** Tests need a specific PDF loaded to exercise annotation scenarios, but PDFs are loaded from Supabase Storage as binary blobs. The test must either authenticate with Supabase to fetch the PDF, or provide the PDF through an alternative path.
+**What goes wrong:** When Syncfusion destroys a page div during zoom, the overlay div (stored in `overlayDivsRef`) becomes an orphan -- it exists in the ref but has no parent in the DOM (`!overlayDiv.isConnected`). If `attachOverlayToPageDiv()` returns the orphaned div as the portal target, React renders children into a detached DOM node. This works (React portals CAN render into detached nodes) but the content is invisible to the user.
 
 **Prevention:**
-- Store test PDFs as local fixtures in the test directory (e.g., `tests/fixtures/package-2-rev4.pdf`)
-- The dev-only test route should accept a local file path or base64-encoded PDF, bypassing Supabase Storage entirely
-- Alternatively, pre-load the PDF into the dev Supabase instance and hardcode the test to use that known document
-- Do NOT download PDFs from production Supabase during test runs -- adds network dependency, authentication complexity, and non-determinism
+1. `attachOverlayToPageDiv()` should check whether the overlay div is connected. If not, attempt to find the page div and re-attach. If no page div exists yet, return `null` to skip rendering for this page this frame.
+2. Returning `null` means the portal is not rendered this frame. When the re-attachment effect (Step 5) runs and appends the overlay div to the new page div, the next render cycle will find it connected and render the portal.
+3. This brief invisibility (1-2 frames) is the intended behavior per the design spec: "much better than the current multi-frame flicker at wrong sizes."
+
+**Phase mapping:** Step 1 (attachOverlayToPageDiv) and Step 5 (re-attachment).
+
+---
+
+### Pitfall 14: Adding CSS `transition` to the Overlay Transform
+
+**What goes wrong:** Adding `transition: transform 300ms ease` to the overlay div to smooth the zoom animation causes the overlay to lag behind Syncfusion's instant page resize. Syncfusion resizes page divs synchronously during zoom. A CSS transition would cause the overlay to animate to the new size over 300ms, producing visible misalignment.
+
+**Prevention:** Do not add CSS transition to the overlay div's transform. Apply the scale synchronously in the zoom handler. The visual effect of instant CSS transform scaling is already smooth because the GPU compositor applies it within a single frame.
+
+---
+
+### Pitfall 15: Using CSS `zoom` Property Instead of `transform: scale()`
+
+**What goes wrong:** The CSS `zoom` property changes the element's layout box, affecting `offsetWidth`/`offsetHeight` and triggering layout recalculation. Fabric.js's pointer math relies on `getBoundingClientRect()`, which correctly handles `transform: scale()` but interacts unpredictably with `zoom` (since `zoom` changes both layout and rendering dimensions).
+
+**Prevention:** Use `transform: scale()` exclusively. It is a compositor-only operation (no layout recalculation) and is verified to work with Fabric.js's coordinate system.
 
 ---
 
 ## Phase-Specific Warnings
 
-| Phase | Likely Pitfall | Severity | Mitigation |
-|-------|---------------|----------|------------|
-| Phase 1: Harness Setup | Canvas invisible in traces (#1) | Critical | Validate screenshot/video capture of canvas content before proceeding |
-| Phase 1: Harness Setup | Headless rendering differences (#2) | Critical | Use `channel: 'chromium'` new headless mode |
-| Phase 1: Harness Setup | HMR interference (#6) | Moderate | Dedicated test Vite instance with HMR disabled |
-| Phase 1: Harness Setup | Auth bypass leak (#7) | Moderate | Use `import.meta.env.DEV` for compile-time elimination |
-| Phase 2: Debug API | Serialization depth limits (#4) | Critical | Pre-serialize state in-browser, never return raw Fabric.js objects |
-| Phase 2: Debug API | Heisenbug from instrumentation (#11) | Moderate | Use performance.mark(), avoid console.log in hot paths |
-| Phase 2: Debug API | Syncfusion readiness signals (#3, #13) | Critical | Expose `__debugReady` with granular completion flags |
-| Phase 3: Artifact Capture | Timeline desynchronization (#5) | Critical | Single time source (browser performance.now()) for all artifacts |
-| Phase 3: Artifact Capture | Uncapturable transient states (#10) | Critical | Video as primary evidence, frame extraction post-capture |
-| Phase 3: Artifact Capture | Disk space exhaustion (#8) | Moderate | Retention policy and compression from day one |
-| Phase 4: Session Management | Manifest drift (#15) | Minor | Write manifest last, scan actual folder contents |
-| Phase 4: Session Management | PDF fixture loading (#16) | Minor | Local fixture files, bypass Supabase in tests |
-| Phase 5: Post-Processing | LLM context overflow (#9) | Moderate | Pre-filter artifacts, structured JSON, semantic chunking |
-| Phase 5: Post-Processing | Video as primary evidence (#10) | Moderate | ffmpeg frame extraction, keyframe identification |
+| Phase / Step | Likely Pitfall | Mitigation |
+|---|---|---|
+| Step 1: Overlay attachment function | **Pitfall 3** (portal target identity) | Never recreate overlay divs. Check ref first, reuse always. |
+| Step 2: Simplify zoom handlers | **Pitfall 2** (CSS transform breaks pointer events) | Disable pointer events during transform phase. Clear transforms before `calcOffset()`. |
+| Step 2: Simplify zoom handlers | **Pitfall 4** (dual timer race condition) | App.jsx timer only releases scale state. PAL handles canvas resize + transform removal. |
+| Step 3: Render loop | **Pitfall 3** (portal target change) | Always pass same `overlayDiv` reference to `createPortal`. Never overwrite refs. |
+| Step 3: Render loop | **Pitfall 12** (wrong scale for sibling layers) | Freeze `layerScale` to base scale during CSS transform phase (defer `setScale()`). |
+| Step 4: PAL zoom handling | **Pitfall 10** (isZooming flicker) | Preserve `inZoomModeRef` latch AND the settle callback re-check pattern. |
+| Step 4: PAL zoom handling | **Pitfall 11** (double transform-origin) | Remove PAL wrapper CSS transform code. Only App.jsx applies CSS transforms. |
+| Step 4: PAL zoom handling | **Pitfall 8** (wasted renderAll during zoom) | Audit all `renderAll()` triggers; guard with zoom latch. |
+| Step 5: Page container recreation | **Pitfall 1** (Fabric.js coordinates broken) | Call `calcOffset()` + `setCoords()` on all objects after every re-attachment. |
+| Step 5: Page container recreation | **Pitfall 7** (MutationObserver timing) | Rely on state-driven useEffect with existing rAF debounce. |
+| Step 6: Dead code removal | **Pitfall 5** (incomplete removal) | Grep every identifier before removing. Delete in dependency order. Test after each removal. Rewrite render loop as a block rather than surgical edits. |
 
-## Decision Matrix: What To Use For What
+---
 
-| Artifact Need | Wrong Approach | Right Approach | Why |
-|---------------|---------------|----------------|-----|
-| Visual state of canvas | Playwright trace DOM snapshot | `page.screenshot()` or video frame extraction | Traces don't capture canvas pixels reliably |
-| App internal state | `page.evaluate(() => bigObject)` | `page.evaluate(() => JSON.stringify(window.__debugState()))` | Avoids Playwright serialization depth limits |
-| Timing of flicker | Timed screenshots | Video recording + `performance.mark()` correlation | Screenshots miss single-frame transients |
-| Console errors | Post-hoc log file parsing | `page.on('console')` with browser timestamp | Real-time capture with synchronized timestamps |
-| Rendering completion | `waitForSelector('.canvas')` | Custom `__debugReady` signal from app | DOM presence does not equal render completion |
-| Performance metrics | `page.evaluate(() => performance.getEntries())` after test | CDP Performance domain real-time streaming | Post-hoc collection misses entries cleared during navigation |
+## Summary of Severity by Phase
+
+| Phase | Critical Pitfalls | Moderate Pitfalls | Minor Pitfalls |
+|---|---|---|---|
+| Step 1 (Overlay attachment) | #3 | #9 | #13 |
+| Step 2 (Zoom handlers) | #2, #4 | | #12, #14, #15 |
+| Step 3 (Render loop) | #3 | #9 | #12 |
+| Step 4 (PAL zoom handling) | | #6, #8, #10 | #11 |
+| Step 5 (Page recreation) | #1 | #7 | #13 |
+| Step 6 (Dead code removal) | #5 | | |
+
+**Highest-risk phase:** Step 5 (page container recreation) -- it combines DOM manipulation with Fabric.js coordinate systems and React portal lifecycle. This is where Pitfall 1 (the most insidious bug, because it is silent) will surface.
+
+**Second highest-risk phase:** Step 2 (zoom handler simplification) -- dual timers and CSS transform coordination require careful orchestration between App.jsx and PAL.
+
+---
 
 ## Sources
 
-- [Playwright: Visual comparisons](https://playwright.dev/docs/test-snapshots) -- HIGH confidence
-- [Playwright: Trace viewer](https://playwright.dev/docs/trace-viewer) -- HIGH confidence
-- [Playwright: Videos](https://playwright.dev/docs/videos) -- HIGH confidence
-- [Playwright: CDPSession](https://playwright.dev/docs/api/class-cdpsession) -- HIGH confidence
-- [Playwright: Evaluating JavaScript](https://playwright.dev/docs/evaluating) -- HIGH confidence
-- [Playwright Issue #23964: Canvas not visible in trace](https://github.com/microsoft/playwright/issues/23964) -- HIGH confidence
-- [Playwright Issue #19225: Canvas elements in screenshots](https://github.com/microsoft/playwright/issues/19225) -- HIGH confidence
-- [Playwright Issue #38433: Disk space from uncleaned traces](https://github.com/microsoft/playwright/issues/38433) -- HIGH confidence
-- [Currents: Headless vs Headed in Playwright](https://currents.dev/posts/when-tests-should-run-headless-vs-headed-in-playwright) -- HIGH confidence
-- [Playwright Issue #21227: webServer config with Vite](https://github.com/microsoft/playwright/issues/21227) -- MEDIUM confidence
-- [Vite Issue #12883: Flaky tests with Playwright](https://github.com/vitejs/vite/issues/12883) -- MEDIUM confidence
-- [Deepchecks: LLM Token Limits](https://www.deepchecks.com/5-approaches-to-solve-llm-token-limits/) -- MEDIUM confidence
-- [Pinecone: Chunking Strategies](https://www.pinecone.io/learn/chunking-strategies/) -- MEDIUM confidence
-- [Supabase Playwright login via REST API](https://mokkapps.de/blog/login-at-supabase-via-rest-api-in-playwright-e2e-test) -- MEDIUM confidence
-- [TestRig: Reduced Playwright artifact storage by 60%](https://www.testrigtechnologies.com/how-testrig-reduced-playwright-test-artifact-storage-by-more-than-60-real-ci-cd-insights/) -- MEDIUM confidence
+### Verified (HIGH confidence)
+- [fabricjs/fabric.js#778 - Moving parent wrapper loses coordinates](https://github.com/fabricjs/fabric.js/issues/778)
+- [fabricjs/fabric.js#748 - calcOffset/setCoords issue](https://github.com/fabricjs/fabric.js/issues/748)
+- [fabricjs/fabric.js#82 - Mouse coordinates incorrect in scrolled div](https://github.com/fabricjs/fabric.js/issues/82)
+- [Fabric.js Gotchas - setCoords documentation](https://fabricjs.com/docs/old-docs/gotchas/)
+- [Fabric.js Optimizing Performance Wiki](https://github.com/fabricjs/fabric.js/wiki/Optimizing-performance)
+- [React createPortal documentation](https://react.dev/reference/react-dom/createPortal)
+- [React Issue #12247 - Portal container changes cause remounting](https://github.com/facebook/react/issues/12247)
+
+### Research (MEDIUM confidence)
+- [CSS transform issue with canvas coordinates - mapbox/mapbox-gl-js#7701](https://github.com/mapbox/mapbox-gl-js/issues/7701)
+- [DOM Element Dimensions and CSS Transforms](https://www.impressivewebs.com/dom-element-dimensions-and-css-transforms/)
+- [fabricjs/fabric.js#5885 - Performance with hundreds of objects](https://github.com/fabricjs/fabric.js/issues/5885)
+- [Canvas blur after rescale - fabricjs/fabric.js#7502](https://github.com/fabricjs/fabric.js/issues/7502)
+- [React Issue #10826 - Cannot prevent portal unmounting](https://github.com/facebook/react/issues/10826)
+
+### Project-specific
+- Codebase analysis: `src/App.jsx` (lines ~9580-9710, ~12337-12487, ~24330-24700)
+- Codebase analysis: `src/PageAnnotationLayer.jsx` (lines ~7788-8028, ~8869-8873)
+- Codebase analysis: `src/components/SyncfusionPDFContainer.jsx` (lines ~198-317)
+- Design spec: `docs/superpowers/specs/2026-03-17-option3-direct-child-canvas-design.md`
+- Project memory: Zoom Bug section (MEMORY.md)
+- Known concerns: `.planning/codebase/CONCERNS.md`
