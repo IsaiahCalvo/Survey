@@ -44,11 +44,11 @@ Plans:
   2. CSS `transform: scale(ratio)` with `transform-origin: top left` is applied to overlay divs during zoom transition
   3. Rapid consecutive zoom actions (e.g., scrolling the mouse wheel quickly through multiple zoom levels) do not leave stuck transforms or stale visual state
   4. Pointer events are disabled on annotation canvases during the active CSS transform phase (prevents coordinate corruption)
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md -- Create Playwright E2E test suite for zoom handler CSS transforms
+- [ ] 02-02-PLAN.md -- Implement overlay zoom transform system (refs, functions, wiring into 3 zoom entry points) + manual pinch verification
 
 ### Phase 3: Render Loop Rewrite
 **Goal**: React portals render annotation layers into persistent overlay divs with correct scale computation
@@ -117,7 +117,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Overlay Attachment Foundation | 1/1 | Complete   | 2026-03-18 |
-| 2. Zoom Handler | 0/? | Not started | - |
+| 2. Zoom Handler | 0/2 | Not started | - |
 | 3. Render Loop Rewrite | 0/? | Not started | - |
 | 4. PAL Zoom Simplification | 0/? | Not started | - |
 | 5. Page Container Re-attachment | 0/? | Not started | - |
