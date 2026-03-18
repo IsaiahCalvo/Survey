@@ -30,11 +30,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Overlay divs are styled `position:absolute; width:100%; height:100%; pointer-events:none; z-index:20` and visually overlay the PDF page
   3. Overlay divs are stored in `overlayDivsRef` and never recreated for the same page number (create-once guard)
   4. Existing annotation rendering still works (no regression from adding overlay divs)
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md -- Add overlay divs to App.jsx and verify with Playwright e2e test
 
 ### Phase 2: Zoom Handler
 **Goal**: Annotations stay visually stable (blurry but present, never disappearing or jumping) during all zoom operations
@@ -117,7 +116,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Overlay Attachment Foundation | 0/? | Not started | - |
+| 1. Overlay Attachment Foundation | 0/1 | Planning complete | - |
 | 2. Zoom Handler | 0/? | Not started | - |
 | 3. Render Loop Rewrite | 0/? | Not started | - |
 | 4. PAL Zoom Simplification | 0/? | Not started | - |
