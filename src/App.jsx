@@ -174,6 +174,7 @@ const HISTORY_DEBUG_CONSOLE_KEY = 'pdf_history_debug_console';
 const HISTORY_DEBUG_TRACE_LIMIT = 250;
 const HISTORY_PAGE_PREVIEW_LIMIT = 12;
 const HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT = 10;
+const PHASE_2_DEBUG_INDICATORS = true; // Phase 2 debug: visual tint on overlay divs. Set false in Phase 3.
 
 const roundHistoryDebugNumber = (value, digits = 2) => {
   const numeric = Number(value);
@@ -9017,6 +9018,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Phase 1: created and attached but inert (not used for rendering).
   // Phase 2+: zoom handler applies CSS transforms; render loop creates portals into these.
   const overlayDivsRef = useRef({});
+  // Phase 2: Overlay div zoom transform state (parallel to old zoomOverlay* refs on lines 9004-9006)
+  const overlayZoomBaseScaleRef = useRef(1);
+  const overlayZoomActiveRef = useRef(false);
+  const overlayZoomSettleTimerRef = useRef(null);
+  const overlayZoomSafetyTimerRef = useRef(null);
   const syncfusionPagePresentationApisRef = useRef({});
   const syncfusionLastNonEmptyOverlayPagesRef = useRef([]);
   const syncfusionFrozenOverlayPagesRef = useRef([]);
@@ -12039,6 +12045,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       overlayDiv.style.cssText =
         'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:20;';
       overlayDivsRef.current[safePageNumber] = overlayDiv;
+
+      // Phase 2 debug: make overlay divs visible during testing
+      if (PHASE_2_DEBUG_INDICATORS) {
+        overlayDiv.style.background = 'rgba(0, 128, 255, 0.1)';
+        overlayDiv.style.border = '1px dashed rgba(0, 128, 255, 0.5)';
+      }
     }
 
     // Find the Syncfusion page div from state ref or fallback ref
@@ -12057,6 +12069,82 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     return overlayDiv;
+  }, []);
+
+  // Phase 2: Centralized CSS transform application for overlay divs.
+  // Called from all zoom entry points. Operates ONLY on overlayDivsRef nodes,
+  // never on syncfusionOverlayContentRefs (old system).
+  const applyOverlayZoomTransform = useCallback((newScale) => {
+    const baseScale = overlayZoomBaseScaleRef.current;
+    if (!(baseScale > 0)) return;
+
+    const ratio = newScale / baseScale;
+    const overlayDivs = overlayDivsRef.current;
+    const keys = Object.keys(overlayDivs);
+    for (let i = 0; i < keys.length; i++) {
+      const div = overlayDivs[keys[i]];
+      if (div && div.isConnected) {
+        div.style.transform = `scale(${ratio})`;
+        div.style.transformOrigin = 'top left';
+      }
+    }
+  }, []);
+
+  // Phase 2: Debounce settle timer for overlay zoom transforms.
+  // Resets on every zoom event. Fires 1000ms after last zoom event.
+  // On settle: removes CSS transforms from all overlay divs.
+  const startOverlayZoomSettleTimer = useCallback(() => {
+    // Clear existing settle timer (debounce reset)
+    if (overlayZoomSettleTimerRef.current) {
+      clearTimeout(overlayZoomSettleTimerRef.current);
+    }
+    // Clear existing safety timer (will restart below)
+    if (overlayZoomSafetyTimerRef.current) {
+      clearTimeout(overlayZoomSafetyTimerRef.current);
+    }
+
+    // Primary settle timer: 1000ms after last zoom event
+    overlayZoomSettleTimerRef.current = setTimeout(() => {
+      overlayZoomSettleTimerRef.current = null;
+      overlayZoomActiveRef.current = false;
+
+      // Remove CSS transforms from all connected overlay divs
+      const overlayDivs = overlayDivsRef.current;
+      const keys = Object.keys(overlayDivs);
+      for (let i = 0; i < keys.length; i++) {
+        const div = overlayDivs[keys[i]];
+        if (div && div.isConnected) {
+          div.style.transform = '';
+          div.style.transformOrigin = '';
+        }
+      }
+
+      // Clear safety timer since settle completed normally
+      if (overlayZoomSafetyTimerRef.current) {
+        clearTimeout(overlayZoomSafetyTimerRef.current);
+        overlayZoomSafetyTimerRef.current = null;
+      }
+
+      // Phase 3+ will add: update layerScale for canvas redraw here
+    }, 1000);
+
+    // Safety timeout: 5000ms forcibly clears transforms regardless of zoom state.
+    // Fallback if settle timer fails to fire (e.g., error, edge case).
+    overlayZoomSafetyTimerRef.current = setTimeout(() => {
+      overlayZoomSafetyTimerRef.current = null;
+      if (overlayZoomActiveRef.current) {
+        overlayZoomActiveRef.current = false;
+        const overlayDivs = overlayDivsRef.current;
+        const keys = Object.keys(overlayDivs);
+        for (let i = 0; i < keys.length; i++) {
+          const div = overlayDivs[keys[i]];
+          if (div && div.isConnected) {
+            div.style.transform = '';
+            div.style.transformOrigin = '';
+          }
+        }
+      }
+    }, 5000);
   }, []);
 
   const sanitizeSyncfusionPageContainerMap = useCallback((containerMap) => {
