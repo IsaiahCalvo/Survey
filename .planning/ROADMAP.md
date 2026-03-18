@@ -1,121 +1,125 @@
-# Roadmap: BetaSafe Survey Tool
+# Roadmap: Zoom Flicker Fix -- Direct Child Canvas
 
-## Milestones
+## Overview
 
-- ✅ **v1.0 Zoom Fix** - Phases 1-4 (shipped 2026-03-11)
-- 🚧 **v2.0 Debug Annotations** - Phases 5-9 (in progress)
+This refactor replaces the freeze/snapshot/confirm-pending portal system with a direct-child overlay model where annotation canvases live inside Syncfusion's page divs and scale with CSS transforms during zoom. The build follows a strict sequential order dictated by hard architectural dependencies: overlay divs must exist before anything can use them, zoom handling must work before the render loop can be rewritten, PAL simplification must precede re-attachment logic, and dead code removal must be last. Each phase delivers a testable capability, and the final result is annotations that stay visible and correctly positioned during all zoom operations.
 
 ## Phases
 
-<details>
-<summary>v1.0 Zoom Fix (Phases 1-4) - SHIPPED 2026-03-11</summary>
-
-- [x] **Phase 1: CSS Transform Scaling** - Annotations stay visible and scale smoothly during zoom
-- [x] **Phase 2: Positional Accuracy** - Annotations track page content with cursor-centered zoom
-- [x] **Phase 3: Flicker-Free Transitions** - Three-ref freeze prevents portal host disconnection during zoom
-- [x] **Phase 4: Scale Caching** - Deferred (unnecessary after three-ref freeze approach)
-
-</details>
-
-### v2.0 Debug Annotations
-
 **Phase Numbering:**
-- Integer phases (5, 6, 7, 8, 9): Planned milestone work
-- Decimal phases (e.g., 5.1): Urgent insertions (marked with INSERTED)
+- Integer phases (1, 2, 3): Planned milestone work
+- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [x] **Phase 5: Pipeline Foundation** - Dev test route, Playwright harness, session folder infrastructure, and canvas capture validation (completed 2026-03-12)
-- [x] **Phase 6: Debug Bridge + Readiness Signals** - App instrumentation exposing internal state for external capture (completed 2026-03-13)
-- [ ] **Phase 7: Capture Modules + Scenario Execution** - Full artifact capture with deterministic scenario scripts and CLI entry point
-- [ ] **Phase 8: Post-Processing + Analysis** - Anomaly detection, visual diffs, and unified timeline from raw session artifacts
-- [ ] **Phase 9: LLM Integration** - Chunked artifacts and prompt templates for LLM-assisted diagnosis
+Decimal phases appear between their surrounding integers in numeric order.
+
+- [ ] **Phase 1: Overlay Attachment Foundation** - Create persistent overlay divs as direct children of Syncfusion page divs
+- [ ] **Phase 2: Zoom Handler** - Apply CSS transforms to overlay divs during zoom for visual stability across all 6 zoom methods
+- [ ] **Phase 3: Render Loop Rewrite** - Replace portal host resolution with direct portal creation into persistent overlay divs
+- [ ] **Phase 4: PAL Zoom Simplification** - Simplify PageAnnotationLayer zoom handling to own the settle/redraw/transform-removal sequence
+- [ ] **Phase 5: Page Container Re-attachment** - Detect Syncfusion page div recreation and re-attach overlay divs with coordinate recalculation
+- [ ] **Phase 6: Dead Code Removal** - Remove freeze/snapshot/confirm-pending machinery (~30 refs, ~14 functions)
 
 ## Phase Details
 
-### Phase 5: Pipeline Foundation
-**Goal**: A working pipeline can open the app without authentication, navigate to a test page, and produce a session folder with a screenshot proving Fabric.js canvas content is captured
-**Depends on**: Nothing (first phase of v2.0 milestone)
-**Requirements**: FOUN-01, FOUN-02, FOUN-03, FOUN-04, FOUN-05, FOUN-06
+### Phase 1: Overlay Attachment Foundation
+**Goal**: Persistent overlay divs exist as direct children of Syncfusion page divs, ready to serve as portal targets
+**Depends on**: Nothing (first phase)
+**Requirements**: OVLY-01
 **Success Criteria** (what must be TRUE):
-  1. Running a test script opens the app at `localhost:5173?testPdf=<name>` and displays a PDF with annotations visible -- no login required
-  2. The dev test route produces zero code in a production build (verified by building and inspecting output)
-  3. Playwright launches Chromium against the Vite dev server and a screenshot of an annotated page shows Fabric.js canvas content (not blank canvases)
-  4. Each test run creates a `debug-sessions/<timestamp>_<scenario>/` folder containing a `manifest.json` with scenario name, git SHA, start/end time, and artifact paths
-**Plans**: 2 plans
-
-Plans:
-- [x] 05-01-PLAN.md -- Dev test route and fixture infrastructure (FOUN-01, FOUN-02)
-- [x] 05-02-PLAN.md -- Playwright harness, session folders, and canvas capture validation (FOUN-03, FOUN-04, FOUN-05, FOUN-06)
-
-### Phase 6: Debug Bridge + Readiness Signals
-**Goal**: The app exposes its internal rendering state through window globals that external tools can query without altering timing-sensitive behavior
-**Depends on**: Phase 5
-**Requirements**: INST-01, INST-02, INST-03, INST-04, INST-05, INST-06
-**Success Criteria** (what must be TRUE):
-  1. `window.__debugBridge.snapshot()` returns a flat JSON object containing zoom level, rendered scale, target scale, portal host count, freeze state, and canvas container count
-  2. `window.__debugReady` accurately reports when annotations are rendered, zoom has settled, and page navigation is complete -- Playwright can wait on these signals before taking action
-  3. DOM mutation events for Syncfusion `e-pv-page-div` container destroy/recreate appear in state snapshots with timestamps
-  4. Debug instrumentation uses `performance.mark()` in hot paths and produces zero overhead in production builds
-**Plans**: 2 plans
-
-Plans:
-- [x] 06-01-PLAN.md -- Core debug bridge module with snapshot(), mutation tracking, and hot-path instrumentation (INST-01, INST-02, INST-04, INST-05, INST-06)
-- [x] 06-02-PLAN.md -- Readiness signal system (waitFor) and Playwright integration tests (INST-03)
-
-### Phase 7: Capture Modules + Scenario Execution
-**Goal**: A deterministic scenario script drives the app through a zoom sequence, captures synchronized artifacts (video, screenshots, console, state, performance), determines pass/fail, and is runnable from a single CLI command
-**Depends on**: Phase 6
-**Requirements**: CAPT-01, CAPT-02, CAPT-03, CAPT-04, CAPT-05, CAPT-06, CAPT-07, CAPT-08, FOUN-07, FOUN-08
-**Success Criteria** (what must be TRUE):
-  1. Running `npm run debug:scenario zoom-flicker` produces a session folder containing: video (WebM), step-boundary screenshots, `console.jsonl`, `state.jsonl`, `performance.jsonl`, and `manifest.json`
-  2. All artifacts share a synchronized timeline -- any event in `console.jsonl` can be correlated to the matching frame in the video and the matching entry in `state.jsonl` by `sessionMs` offset
-  3. Screenshots are captured only after `window.__debugReady` signals readiness, avoiding race conditions with Syncfusion page rebuilds
-  4. The scenario determines pass/fail automatically based on defined criteria (canvas container count, console error absence) and records the result in the manifest
-  5. The same scenario can run with different parameters (zoom range, speed, starting page) without code changes
-**Plans**: 2 plans
-
-Plans:
-- [ ] 07-01-PLAN.md -- Capture module library: screenshot, console, state, performance modules + CaptureContext coordinator (CAPT-01, CAPT-02, CAPT-03, CAPT-04, CAPT-06, CAPT-07, CAPT-08)
-- [ ] 07-02-PLAN.md -- Zoom-flicker scenario with parameterization, pass/fail criteria, and CLI entry point (CAPT-05, FOUN-07, FOUN-08)
-
-### Phase 8: Post-Processing + Analysis
-**Goal**: Raw session artifacts are automatically processed into a unified timeline, anomaly reports, and visual diffs that highlight exactly when and where rendering problems occurred
-**Depends on**: Phase 7
-**Requirements**: PROC-01, PROC-02, PROC-03, PROC-04, PROC-05
-**Success Criteria** (what must be TRUE):
-  1. Running post-processing on a session folder produces `timeline.json` (all JSONL streams merged and sorted by `sessionMs`) and `timeline.md` (human-readable narrative of session events with key state changes highlighted)
-  2. `anomalies.json` flags suspicious transitions -- canvas container count dropping to 0, portal host disconnects, console error bursts, rendered scale diverging from target scale -- with timestamps and references to related screenshots/state entries
-  3. `diffs/` folder contains before/after screenshot comparisons with diff images and mismatch percentages for every step boundary
-**Plans**: 2 plans
-
-Plans:
-- [ ] 08-01-PLAN.md -- Test fixtures, timeline merger, and anomaly detector (PROC-01, PROC-02, PROC-04)
-- [ ] 08-02-PLAN.md -- Visual diff generation, timeline narrative, and CLI orchestrator (PROC-03, PROC-05)
-
-### Phase 9: LLM Integration
-**Goal**: Session artifacts are chunked into context-window-sized pieces with source code references so an LLM can analyze a debugging session and identify root causes
-**Depends on**: Phase 8
-**Requirements**: PROC-06, PROC-07
-**Success Criteria** (what must be TRUE):
-  1. Session artifacts are split into chunks keyed to semantic units (per zoom operation, per anomaly) with relevant source code snippets included -- each chunk fits within an LLM context window
-  2. The analysis prompt template (`analysis-prompt.md`) provides structured instructions that, when given to an LLM with a session's chunks, produces a diagnosis identifying the timeline of events, the anomaly, and candidate root causes in the source code
+  1. Each visible page has an overlay div that is a direct child of its Syncfusion `e-pv-page-div` element
+  2. Overlay divs are styled `position:absolute; width:100%; height:100%; pointer-events:none; z-index:20` and visually overlay the PDF page
+  3. Overlay divs are stored in `overlayDivsRef` and never recreated for the same page number (create-once guard)
+  4. Existing annotation rendering still works (no regression from adding overlay divs)
 **Plans**: TBD
 
 Plans:
-- [ ] 09-01: TBD
+- [ ] 01-01: TBD
+- [ ] 01-02: TBD
+
+### Phase 2: Zoom Handler
+**Goal**: Annotations stay visually stable (blurry but present, never disappearing or jumping) during all zoom operations
+**Depends on**: Phase 1
+**Requirements**: OVLY-02, ZOOM-03, ZOOM-04, ZOOM-05, ZOOM-06, ZOOM-07, ZOOM-08, ZOOM-10
+**Success Criteria** (what must be TRUE):
+  1. During any of the 6 zoom methods (ctrl+scroll, toolbar buttons, dropdown, fit-to-page, fit-to-width, pinch), annotations remain visible and positioned correctly relative to the PDF content (may be blurry)
+  2. CSS `transform: scale(ratio)` with `transform-origin: top left` is applied to overlay divs during zoom transition
+  3. Rapid consecutive zoom actions (e.g., scrolling the mouse wheel quickly through multiple zoom levels) do not leave stuck transforms or stale visual state
+  4. Pointer events are disabled on annotation canvases during the active CSS transform phase (prevents coordinate corruption)
+**Plans**: TBD
+
+Plans:
+- [ ] 02-01: TBD
+- [ ] 02-02: TBD
+
+### Phase 3: Render Loop Rewrite
+**Goal**: React portals render annotation layers into persistent overlay divs with correct scale computation
+**Depends on**: Phase 2
+**Requirements**: ZOOM-01, ZOOM-02
+**Success Criteria** (what must be TRUE):
+  1. Annotations never disappear during zoom (portal content stays mounted because portal target is stable)
+  2. Annotations never jump to wrong location or size during zoom (layerScale frozen to pre-zoom value while CSS transform is active)
+  3. Portal creation is limited to annotated and visible pages (no unbounded memory growth)
+**Plans**: TBD
+
+Plans:
+- [ ] 03-01: TBD
+- [ ] 03-02: TBD
+
+### Phase 4: PAL Zoom Simplification
+**Goal**: PageAnnotationLayer owns the post-zoom sequence: canvas redraw at correct resolution, CSS transform removal, and pointer event restoration
+**Depends on**: Phase 3
+**Requirements**: ZOOM-09, OVLY-04, PRES-01, PRES-02, PRES-03, PRES-04, PRES-05
+**Success Criteria** (what must be TRUE):
+  1. After zoom settles, canvas redraws at the new resolution and annotations appear crisp (not blurry)
+  2. Drawing tools (pen, shapes, callouts, regions) work correctly at the new zoom level -- strokes land where the cursor is
+  3. Search highlights are visible and positioned correctly at all zoom levels
+  4. Undo/redo works after zoom operations
+  5. Pan/scroll proxy rendering (LightweightAnnotationOverlay) still works at all zoom levels
+**Plans**: TBD
+
+Plans:
+- [ ] 04-01: TBD
+- [ ] 04-02: TBD
+
+### Phase 5: Page Container Re-attachment
+**Goal**: Overlay divs survive Syncfusion page div destruction/recreation cycles without losing annotation state or breaking pointer coordinates
+**Depends on**: Phase 4
+**Requirements**: OVLY-03, OVLY-05
+**Success Criteria** (what must be TRUE):
+  1. After zooming causes Syncfusion to destroy and recreate a page div, the overlay div is re-attached and annotations are visible on that page
+  2. After re-attachment, annotation selection and drawing tools produce correct coordinates (Fabric.js calcOffset and setCoords called)
+  3. No console errors during zoom operations that trigger page div recreation
+**Plans**: TBD
+
+Plans:
+- [ ] 05-01: TBD
+- [ ] 05-02: TBD
+
+### Phase 6: Dead Code Removal
+**Goal**: All freeze/snapshot/confirm-pending machinery is removed, leaving a clean codebase with no orphaned references
+**Depends on**: Phase 5
+**Requirements**: CLEN-01, CLEN-02, CLEN-03, CLEN-04
+**Success Criteria** (what must be TRUE):
+  1. ~30 freeze/snapshot/confirm-pending refs are removed from App.jsx with zero remaining references to them
+  2. ~14 freeze/snapshot/confirm-pending functions are removed from App.jsx with zero remaining call sites
+  3. Dead props (onScaleApplied, presentationApiRegistry, isHidden) are removed from PageAnnotationLayer
+  4. All 6 zoom methods still work after removal (no regression from removing old code paths)
+**Plans**: TBD
+
+Plans:
+- [ ] 06-01: TBD
+- [ ] 06-02: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 1. CSS Transform Scaling | v1.0 | 2/2 | Complete | 2026-03-11 |
-| 2. Positional Accuracy | v1.0 | 2/2 | Complete | 2026-03-11 |
-| 3. Flicker-Free Transitions | v1.0 | 1/1 | Complete | 2026-03-11 |
-| 4. Scale Caching | v1.0 | 0/0 | Deferred | - |
-| 5. Pipeline Foundation | v2.0 | 2/2 | Complete | 2026-03-12 |
-| 6. Debug Bridge + Readiness Signals | v2.0 | 2/2 | Complete | 2026-03-13 |
-| 7. Capture Modules + Scenario Execution | v2.0 | 0/2 | Not started | - |
-| 8. Post-Processing + Analysis | v2.0 | 0/2 | Not started | - |
-| 9. LLM Integration | v2.0 | 0/? | Not started | - |
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Overlay Attachment Foundation | 0/? | Not started | - |
+| 2. Zoom Handler | 0/? | Not started | - |
+| 3. Render Loop Rewrite | 0/? | Not started | - |
+| 4. PAL Zoom Simplification | 0/? | Not started | - |
+| 5. Page Container Re-attachment | 0/? | Not started | - |
+| 6. Dead Code Removal | 0/? | Not started | - |

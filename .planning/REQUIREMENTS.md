@@ -71,36 +71,36 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ZOOM-01 | — | Pending |
-| ZOOM-02 | — | Pending |
-| ZOOM-03 | — | Pending |
-| ZOOM-04 | — | Pending |
-| ZOOM-05 | — | Pending |
-| ZOOM-06 | — | Pending |
-| ZOOM-07 | — | Pending |
-| ZOOM-08 | — | Pending |
-| ZOOM-09 | — | Pending |
-| ZOOM-10 | — | Pending |
-| OVLY-01 | — | Pending |
-| OVLY-02 | — | Pending |
-| OVLY-03 | — | Pending |
-| OVLY-04 | — | Pending |
-| OVLY-05 | — | Pending |
-| PRES-01 | — | Pending |
-| PRES-02 | — | Pending |
-| PRES-03 | — | Pending |
-| PRES-04 | — | Pending |
-| PRES-05 | — | Pending |
-| CLEN-01 | — | Pending |
-| CLEN-02 | — | Pending |
-| CLEN-03 | — | Pending |
-| CLEN-04 | — | Pending |
+| ZOOM-01 | Phase 3 | Pending |
+| ZOOM-02 | Phase 3 | Pending |
+| ZOOM-03 | Phase 2 | Pending |
+| ZOOM-04 | Phase 2 | Pending |
+| ZOOM-05 | Phase 2 | Pending |
+| ZOOM-06 | Phase 2 | Pending |
+| ZOOM-07 | Phase 2 | Pending |
+| ZOOM-08 | Phase 2 | Pending |
+| ZOOM-09 | Phase 4 | Pending |
+| ZOOM-10 | Phase 2 | Pending |
+| OVLY-01 | Phase 1 | Pending |
+| OVLY-02 | Phase 2 | Pending |
+| OVLY-03 | Phase 5 | Pending |
+| OVLY-04 | Phase 4 | Pending |
+| OVLY-05 | Phase 5 | Pending |
+| PRES-01 | Phase 4 | Pending |
+| PRES-02 | Phase 4 | Pending |
+| PRES-03 | Phase 4 | Pending |
+| PRES-04 | Phase 4 | Pending |
+| PRES-05 | Phase 4 | Pending |
+| CLEN-01 | Phase 6 | Pending |
+| CLEN-02 | Phase 6 | Pending |
+| CLEN-03 | Phase 6 | Pending |
+| CLEN-04 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 24 ⚠️
+- Mapped to phases: 24
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after initial definition*
+*Last updated: 2026-03-17 after roadmap creation*
