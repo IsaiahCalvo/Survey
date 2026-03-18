@@ -3136,6 +3136,7 @@ const PageAnnotationLayer = memo(({
   isInteracting = false,
   isZooming = false,
   onScaleApplied = null,
+  presentationApiRegistry = null,
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
@@ -3149,6 +3150,8 @@ const PageAnnotationLayer = memo(({
   const pendingScaleRef = useRef(null);
   const deferredZoomScaleRef = useRef(null);
   const viewportObserverRef = useRef(null);
+  const paintCommitTokenRef = useRef(0);
+  const paintCommitRafIdsRef = useRef([]);
   const processedHighlightsRef = useRef(new Set());
   const isInitializedRef = useRef(false);
   const drawingStateRef = useRef({ isDrawingShape: false, startX: 0, startY: 0, tempObj: null });
@@ -3183,6 +3186,98 @@ const PageAnnotationLayer = memo(({
   const justCreatedCalloutRef = useRef(false);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
   const onHighlightDeletedRef = useRef(onHighlightDeleted);
+
+  const cancelPendingPaintCommit = useCallback(() => {
+    paintCommitTokenRef.current += 1;
+    const rafIds = Array.isArray(paintCommitRafIdsRef.current) ? paintCommitRafIdsRef.current : [];
+    rafIds.forEach((rafId) => {
+      if (rafId == null) return;
+      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId);
+      } else {
+        clearTimeout(rafId);
+      }
+    });
+    paintCommitRafIdsRef.current = [];
+  }, []);
+
+  const schedulePaintCommitted = useCallback((appliedScale) => {
+    cancelPendingPaintCommit();
+    const safeScale = Number(appliedScale);
+    if (!(Number.isFinite(safeScale) && safeScale > 0)) {
+      return;
+    }
+    const token = paintCommitTokenRef.current + 1;
+    paintCommitTokenRef.current = token;
+    const requestFrame =
+      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 16);
+    let secondRafId = null;
+    const firstRafId = requestFrame(() => {
+      if (paintCommitTokenRef.current !== token) {
+        return;
+      }
+      secondRafId = requestFrame(() => {
+        if (paintCommitTokenRef.current !== token) {
+          return;
+        }
+        paintCommitRafIdsRef.current = [];
+        if (typeof onScaleApplied === 'function') {
+          onScaleApplied(pageNumber, safeScale, { phase: 'paint_committed' });
+        }
+      });
+      paintCommitRafIdsRef.current = [firstRafId, secondRafId];
+    });
+    paintCommitRafIdsRef.current = [firstRafId];
+  }, [cancelPendingPaintCommit, onScaleApplied, pageNumber]);
+
+  const capturePresentationSnapshot = useCallback(() => {
+    const canvas = fabricRef.current;
+    const lowerCanvas = canvas?.lowerCanvasEl;
+    if (!lowerCanvas || !lowerCanvas.width || !lowerCanvas.height) {
+      return {
+        url: null,
+        status: 'missing_canvas',
+        width: Number(lowerCanvas?.width) || 0,
+        height: Number(lowerCanvas?.height) || 0,
+        reason: 'Fabric canvas not ready'
+      };
+    }
+    try {
+      const url = lowerCanvas.toDataURL('image/png');
+      return {
+        url: typeof url === 'string' && url.length > 0 ? url : null,
+        status: typeof url === 'string' && url.length > 0 ? 'captured' : 'empty',
+        width: Number(lowerCanvas.width) || 0,
+        height: Number(lowerCanvas.height) || 0,
+        reason: typeof url === 'string' && url.length > 0 ? null : 'Canvas returned an empty snapshot'
+      };
+    } catch (error) {
+      console.warn(`[Page ${pageNumber}] Failed to capture presentation snapshot:`, error);
+      return {
+        url: null,
+        status: 'error',
+        width: Number(lowerCanvas.width) || 0,
+        height: Number(lowerCanvas.height) || 0,
+        reason: error instanceof Error ? error.message : String(error || 'Unknown snapshot error')
+      };
+    }
+  }, [pageNumber]);
+
+  useEffect(() => {
+    if (!presentationApiRegistry?.current || !(Number.isFinite(pageNumber) && pageNumber > 0)) {
+      return undefined;
+    }
+    presentationApiRegistry.current[pageNumber] = {
+      captureSnapshot: capturePresentationSnapshot
+    };
+    return () => {
+      if (presentationApiRegistry?.current) {
+        delete presentationApiRegistry.current[pageNumber];
+      }
+    };
+  }, [capturePresentationSnapshot, pageNumber, presentationApiRegistry]);
   const onHighlightClickedRef = useRef(onHighlightClicked);
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const activeSpaceIdRef = useRef(activeSpaceId);
@@ -7665,14 +7760,15 @@ const PageAnnotationLayer = memo(({
     // Global cursor update (runs for both pan and select tools)
     canvas.on('mouse:move', handleMouseMoveForCursor);
 
-    return () => {
-      debugMark('pal_unmount', { page: pageNumber });
-      window.removeEventListener('keydown', handleKeyDown);
-      isInitializedRef.current = false;
-      if (zoomSettleTimerRef.current) {
-        clearTimeout(zoomSettleTimerRef.current);
-        zoomSettleTimerRef.current = null;
-      }
+	    return () => {
+	      debugMark('pal_unmount', { page: pageNumber });
+	      window.removeEventListener('keydown', handleKeyDown);
+	      isInitializedRef.current = false;
+	      cancelPendingPaintCommit();
+	      if (zoomSettleTimerRef.current) {
+	        clearTimeout(zoomSettleTimerRef.current);
+	        zoomSettleTimerRef.current = null;
+	      }
       if (scaleUpdateFrameRef.current) {
         cancelAnimationFrame(scaleUpdateFrameRef.current);
         scaleUpdateFrameRef.current = null;
@@ -7687,7 +7783,7 @@ const PageAnnotationLayer = memo(({
         fabricRef.current = null;
       }
     };
-  }, [pageNumber, width, height]);
+	  }, [cancelPendingPaintCommit, pageNumber, width, height]);
 
   // Keep annotation canvas scale tightly aligned with page render scale.
   // During active zoom interaction, defer the expensive Fabric.js resize/re-render
@@ -7722,19 +7818,20 @@ const PageAnnotationLayer = memo(({
     // ── Deferred resize path (zoom mode active) ──
     // App-level CSS transform handles visual scaling during zoom.
     // PAL only defers the expensive canvas resize until zoom settles.
-    if (inZoomModeRef.current) {
-      const prevPending = pendingScaleRef.current;
-      pendingScaleRef.current = scale;
+	    if (inZoomModeRef.current) {
+	      const prevPending = pendingScaleRef.current;
+	      pendingScaleRef.current = scale;
 
       // Only reset settle timer if scale actually changed (avoids spurious
       // resets from isZooming prop transitions that don't change scale).
       const scaleActuallyChanged = prevPending === null || Math.abs(scale - prevPending) > 0.001;
       if (!scaleActuallyChanged) return;
 
-      // Cancel any pending resize rAF (zoom resumed before it fired)
-      if (scaleUpdateFrameRef.current) {
-        cancelAnimationFrame(scaleUpdateFrameRef.current);
-        scaleUpdateFrameRef.current = null;
+	      // Cancel any pending resize rAF (zoom resumed before it fired)
+	      cancelPendingPaintCommit();
+	      if (scaleUpdateFrameRef.current) {
+	        cancelAnimationFrame(scaleUpdateFrameRef.current);
+	        scaleUpdateFrameRef.current = null;
       }
 
       // Cancel any pending viewport observer or deferred timer (new zoom invalidates them)
@@ -7798,25 +7895,27 @@ const PageAnnotationLayer = memo(({
         }
 
         // Helper: perform the expensive Fabric.js resize + render
-        const doFabricRender = () => {
-          if (inZoomModeRef.current) return;
-          const fc = fabricRef.current;
-          if (!fc) return;
-          deferredZoomScaleRef.current = null;
+	        const doFabricRender = () => {
+	          if (inZoomModeRef.current) return;
+	          const fc = fabricRef.current;
+	          if (!fc) return;
+	          deferredZoomScaleRef.current = null;
           if (fc.wrapperEl) {
             fc.wrapperEl.style.transform = '';
             fc.wrapperEl.style.transformOrigin = '';
           }
-          fc.setWidth(tw);
-          fc.setHeight(th);
-          fc.setZoom(finalScale);
-          debugMark('fabric_renderStart', { page: pageNumber, scale: finalScale });
-          fc.renderAll();
-          debugMark('fabric_renderEnd', { page: pageNumber, scale: finalScale });
-          if (typeof onScaleApplied === 'function') {
-            onScaleApplied(pageNumber, finalScale, { phase: 'fabric_rendered' });
-          }
-        };
+	          fc.setWidth(tw);
+	          fc.setHeight(th);
+	          fc.setZoom(finalScale);
+	          cancelPendingPaintCommit();
+	          debugMark('fabric_renderStart', { page: pageNumber, scale: finalScale });
+	          fc.renderAll();
+	          debugMark('fabric_renderEnd', { page: pageNumber, scale: finalScale });
+	          if (typeof onScaleApplied === 'function') {
+	            onScaleApplied(pageNumber, finalScale, { phase: 'fabric_rendered' });
+	          }
+	          schedulePaintCommitted(finalScale);
+	        };
 
         if (isCenterPage) {
           // ── Tier 1: Center page — immediate render via stagger queue ──
@@ -7881,9 +7980,9 @@ const PageAnnotationLayer = memo(({
       scaleUpdateFrameRef.current = null;
     }
 
-    scaleUpdateFrameRef.current = requestAnimationFrame(() => {
-      const targetWidth = Math.floor(width * scale);
-      const targetHeight = Math.floor(height * scale);
+	    scaleUpdateFrameRef.current = requestAnimationFrame(() => {
+	      const targetWidth = Math.floor(width * scale);
+	      const targetHeight = Math.floor(height * scale);
       const canvasZoom = canvas.getZoom();
       const needsResize = canvas.getWidth() !== targetWidth || canvas.getHeight() !== targetHeight;
       const needsZoom = Math.abs(canvasZoom - scale) > 0.0001;
@@ -7901,17 +8000,20 @@ const PageAnnotationLayer = memo(({
         canvas.setZoom(scale);
       }
 
-      if (needsResize || needsZoom) {
-        canvas.once('after:render', () => {
-          if (typeof onScaleApplied === 'function') {
-            onScaleApplied(pageNumber, scale, { phase: 'fabric_rendered' });
-          }
-        });
-        canvas.renderAll();
-      } else {
-        if (typeof onScaleApplied === 'function') {
-          onScaleApplied(pageNumber, scale, { phase: 'already_current' });
-        }
+	      if (needsResize || needsZoom) {
+	        cancelPendingPaintCommit();
+	        canvas.once('after:render', () => {
+	          if (typeof onScaleApplied === 'function') {
+	            onScaleApplied(pageNumber, scale, { phase: 'fabric_rendered' });
+	          }
+	          schedulePaintCommitted(scale);
+	        });
+	        canvas.renderAll();
+	      } else {
+	        cancelPendingPaintCommit();
+	        if (typeof onScaleApplied === 'function') {
+	          onScaleApplied(pageNumber, scale, { phase: 'already_current' });
+	        }
       }
 
       scaleUpdateFrameRef.current = null;
@@ -7923,7 +8025,7 @@ const PageAnnotationLayer = memo(({
         scaleUpdateFrameRef.current = null;
       }
     };
-  }, [scale, width, height, isHidden, isInteracting, isZooming, onScaleApplied, pageNumber]);
+	  }, [cancelPendingPaintCommit, scale, schedulePaintCommitted, width, height, isHidden, isInteracting, isZooming, onScaleApplied, pageNumber]);
 
   // Handle drawing mode changes
   useEffect(() => {
@@ -9645,7 +9747,8 @@ const PageAnnotationLayer = memo(({
     prevProps.isHidden === nextProps.isHidden &&
     prevProps.isInteracting === nextProps.isInteracting &&
     prevProps.isZooming === nextProps.isZooming &&
-    prevProps.onScaleApplied === nextProps.onScaleApplied
+    prevProps.onScaleApplied === nextProps.onScaleApplied &&
+    prevProps.presentationApiRegistry === nextProps.presentationApiRegistry
   );
 });
 

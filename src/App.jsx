@@ -10647,14 +10647,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionCommittingProxyPagesRef.current = new Set();
     setSyncfusionProxyReadyPages(new Set());
     syncfusionProxyReadyPagesRef.current = new Set();
-    const pendingScaleRaw = Number(syncfusionPendingZoomScaleRef.current);
-    if (Number.isFinite(pendingScaleRaw) && pendingScaleRaw > 0) {
-      const pendingScale = clampScale(pendingScaleRaw);
-      scaleRef.current = pendingScale;
-      setScale((prev) => (Math.abs(prev - pendingScale) <= 0.0005 ? prev : pendingScale));
-      setManualZoomScale((prev) => (Math.abs(prev - pendingScale) <= 0.0005 ? prev : pendingScale));
+    // During active overlay zoom transforms, don't flush the deferred pending scale
+    // or start confirm-pending. The zoom settle timer (zoomOverlaySettleTimerRef)
+    // owns that lifecycle and will flush/confirm when zoom activity stops.
+    const overlayZoomInProgress = zoomOverlayTransformActiveRef.current || overlayZoomActiveRef.current;
+    if (!overlayZoomInProgress) {
+      const pendingScaleRaw = Number(syncfusionPendingZoomScaleRef.current);
+      if (Number.isFinite(pendingScaleRaw) && pendingScaleRaw > 0) {
+        const pendingScale = clampScale(pendingScaleRaw);
+        scaleRef.current = pendingScale;
+        setScale((prev) => (Math.abs(prev - pendingScale) <= 0.0005 ? prev : pendingScale));
+        setManualZoomScale((prev) => (Math.abs(prev - pendingScale) <= 0.0005 ? prev : pendingScale));
+      }
+      syncfusionPendingZoomScaleRef.current = null;
     }
-    syncfusionPendingZoomScaleRef.current = null;
     setSyncfusionInteractionResidentPages(new Set());
     syncfusionInteractionResidentPagesRef.current = new Set();
     setSyncfusionInteractionPageModes({});
@@ -10669,8 +10675,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncSyncfusionLightweightPages('idle');
     // Defer CSS transform removal until Fabric.js confirms it rendered at the new scale.
     // This prevents the visual flicker between CSS transform removal and canvas re-render.
-    console.log(`[AnnotPerf] finalize idle (${reason}) — deferring CSS transform removal, waiting for PAL confirmation`);
-    beginSyncfusionScaleConfirmPending('finalize_idle');
+    // Skip during active overlay zoom — the zoom settle timer handles cleanup.
+    if (!overlayZoomInProgress) {
+      console.log(`[AnnotPerf] finalize idle (${reason}) — deferring CSS transform removal, waiting for PAL confirmation`);
+      beginSyncfusionScaleConfirmPending('finalize_idle');
+    }
     if (wasActive) {
       syncfusionInteractionTransitionsRef.current.off += 1;
       setDebugData({
@@ -12084,6 +12093,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     for (let i = 0; i < keys.length; i++) {
       const div = overlayDivs[keys[i]];
       if (div && div.isConnected) {
+        // Lock to base-scale pixel dimensions on first transform to prevent
+        // double-scaling. The overlay div is 100% of its parent page div, which
+        // Syncfusion already resized to the new zoom. We need the div at the
+        // BASE zoom pixel size so scale(ratio) gives the correct visual result.
+        if (!div.dataset.overlayLocked) {
+          const w = div.offsetWidth * (baseScale / newScale);
+          const h = div.offsetHeight * (baseScale / newScale);
+          if (w > 0 && h > 0) {
+            div.style.width = `${Math.round(w)}px`;
+            div.style.height = `${Math.round(h)}px`;
+            div.dataset.overlayLocked = '1';
+          }
+        }
         div.style.transform = `scale(${ratio})`;
         div.style.transformOrigin = 'top left';
       }
@@ -12108,7 +12130,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       overlayZoomSettleTimerRef.current = null;
       overlayZoomActiveRef.current = false;
 
-      // Remove CSS transforms from all connected overlay divs
+      // Remove CSS transforms and unlock dimensions on all connected overlay divs
       const overlayDivs = overlayDivsRef.current;
       const keys = Object.keys(overlayDivs);
       for (let i = 0; i < keys.length; i++) {
@@ -12116,6 +12138,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         if (div && div.isConnected) {
           div.style.transform = '';
           div.style.transformOrigin = '';
+          div.style.width = '100%';
+          div.style.height = '100%';
+          delete div.dataset.overlayLocked;
         }
       }
 
@@ -12141,6 +12166,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (div && div.isConnected) {
             div.style.transform = '';
             div.style.transformOrigin = '';
+            div.style.width = '100%';
+            div.style.height = '100%';
+            delete div.dataset.overlayLocked;
           }
         }
       }
