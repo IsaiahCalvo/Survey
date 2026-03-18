@@ -116,10 +116,15 @@ test.describe('zoom-handler', () => {
   test('toolbar zoom buttons apply CSS transform to overlay divs', async ({ page }) => {
     await setupPage(page);
 
-    // Find and click the zoom-in toolbar button
-    const zoomInBtn = page.locator(
-      'button[id*="zoomIn"], .e-pv-zoom-in-btn, [title="Zoom in"]'
-    ).first();
+    // The app uses a custom zoom toolbar (not Syncfusion's built-in toolbar).
+    // Zoom controls are grouped near the zoom percentage input (aria-label="Zoom percentage").
+    // The zoom-in button is the second btn-icon button in the flex container that holds zoom controls.
+    // It renders a plus SVG icon whose path contains "M12 5V19" (the vertical bar of the + sign).
+    const zoomInput = page.locator('input[aria-label="Zoom percentage"]');
+    await expect(zoomInput).toBeVisible({ timeout: 15_000 });
+    // Find the parent container that holds zoom buttons, then get the second btn-icon (zoom-in)
+    const zoomContainer = zoomInput.locator('xpath=ancestor::div[.//button[contains(@class,"btn-icon")]]').last();
+    const zoomInBtn = zoomContainer.locator('button.btn-icon').nth(1);
     await expect(zoomInBtn).toBeVisible({ timeout: 15_000 });
     await zoomInBtn.click();
 
@@ -157,27 +162,16 @@ test.describe('zoom-handler', () => {
   test('dropdown zoom applies CSS transform to overlay divs', async ({ page }) => {
     await setupPage(page);
 
-    // Find the zoom percentage dropdown
-    // Syncfusion zoom dropdown typically shows a percentage value
-    const zoomDropdown = page.locator(
-      '.e-pv-zoom-drop-down, [title="Zoom"], input[aria-label*="zoom"], .e-pv-zoom-drop-down-input'
-    ).first();
-    await expect(zoomDropdown).toBeVisible({ timeout: 15_000 });
+    // The app uses a custom zoom input (aria-label="Zoom percentage") where users
+    // type a percentage and press Enter. This is the "dropdown" zoom method since
+    // it sets an arbitrary zoom level via user input.
+    const zoomInput = page.locator('input[aria-label="Zoom percentage"]');
+    await expect(zoomInput).toBeVisible({ timeout: 15_000 });
 
-    // Click the dropdown to open it
-    await zoomDropdown.click();
-    await page.waitForTimeout(500);
-
-    // Select a different zoom level (150%)
-    // Syncfusion dropdown items are typically in a popup list
-    const zoomOption = page.locator('text=150%').first();
-    if (await zoomOption.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await zoomOption.click();
-    } else {
-      // Fallback: try typing a zoom value directly if it's an input
-      await zoomDropdown.fill('150');
-      await zoomDropdown.press('Enter');
-    }
+    // Click, clear, type 150, and press Enter to set zoom to 150%
+    await zoomInput.click();
+    await zoomInput.fill('150');
+    await zoomInput.press('Enter');
 
     // Wait for transform to apply
     await page.waitForTimeout(200);
@@ -213,12 +207,25 @@ test.describe('zoom-handler', () => {
   test('fit-to-page applies CSS transform to overlay divs', async ({ page }) => {
     await setupPage(page);
 
-    // Find and click the fit-to-page button
-    const fitPageBtn = page.locator(
-      '[title="Fit to page"], button[id*="fitPage"], .e-pv-fit-page-btn'
-    ).first();
-    await expect(fitPageBtn).toBeVisible({ timeout: 15_000 });
-    await fitPageBtn.click();
+    // First set zoom to something other than fit-page so the action triggers a zoom change
+    const zoomInput = page.locator('input[aria-label="Zoom percentage"]');
+    await expect(zoomInput).toBeVisible({ timeout: 15_000 });
+    await zoomInput.click();
+    await zoomInput.fill('80');
+    await zoomInput.press('Enter');
+    await page.waitForTimeout(2000);
+
+    // Fit-to-page is accessed via the zoom mode dropdown (button with aria-haspopup="listbox").
+    // Click the dropdown to open it, then click the "Fit Page" option.
+    const zoomModeBtn = page.locator('button[aria-haspopup="listbox"]');
+    await expect(zoomModeBtn).toBeVisible({ timeout: 15_000 });
+    await zoomModeBtn.click();
+    await page.waitForTimeout(300);
+
+    // Click the "Fit Page" option in the dropdown
+    const fitPageOption = page.locator('button.btn-ghost').filter({ hasText: 'Fit Page' }).first();
+    await expect(fitPageOption).toBeVisible({ timeout: 5_000 });
+    await fitPageOption.click();
 
     // Wait for transform to apply
     await page.waitForTimeout(200);
@@ -254,12 +261,24 @@ test.describe('zoom-handler', () => {
   test('fit-to-width applies CSS transform to overlay divs', async ({ page }) => {
     await setupPage(page);
 
-    // Find and click the fit-to-width button
-    const fitWidthBtn = page.locator(
-      '[title="Fit to width"], button[id*="fitWidth"], .e-pv-fit-width-btn'
-    ).first();
-    await expect(fitWidthBtn).toBeVisible({ timeout: 15_000 });
-    await fitWidthBtn.click();
+    // First set zoom to something other than fit-width so the action triggers a zoom change
+    const zoomInput = page.locator('input[aria-label="Zoom percentage"]');
+    await expect(zoomInput).toBeVisible({ timeout: 15_000 });
+    await zoomInput.click();
+    await zoomInput.fill('60');
+    await zoomInput.press('Enter');
+    await page.waitForTimeout(2000);
+
+    // Fit-to-width is accessed via the zoom mode dropdown (button with aria-haspopup="listbox").
+    const zoomModeBtn = page.locator('button[aria-haspopup="listbox"]');
+    await expect(zoomModeBtn).toBeVisible({ timeout: 15_000 });
+    await zoomModeBtn.click();
+    await page.waitForTimeout(300);
+
+    // Click the "Fit Width" option in the dropdown
+    const fitWidthOption = page.locator('button.btn-ghost').filter({ hasText: 'Fit Width' }).first();
+    await expect(fitWidthOption).toBeVisible({ timeout: 5_000 });
+    await fitWidthOption.click();
 
     // Wait for transform to apply
     await page.waitForTimeout(200);

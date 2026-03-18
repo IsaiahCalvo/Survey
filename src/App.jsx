@@ -12550,6 +12550,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       }
     }
+    // ── Phase 2: Parallel CSS transform for NEW overlay divs ──
+    // Operates on overlayDivsRef (Phase 1 direct-child divs), NOT syncfusionOverlayContentRefs.
+    if (!overlayZoomActiveRef.current) {
+      overlayZoomBaseScaleRef.current = prevScale;
+      overlayZoomActiveRef.current = true;
+    }
+    applyOverlayZoomTransform(nextScale);
+    startOverlayZoomSettleTimer();
     if (cancelledConfirmPending) {
       syncScaleConfirmHiddenPages([]);
     }
@@ -12599,6 +12607,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       beginSyncfusionScaleConfirmPending('zoomChange_settle');
     }, 1000);
   }, [
+    applyOverlayZoomTransform,
     beginSyncfusionScaleConfirmPending,
     bumpOverlayLagEventTotal,
     cancelSyncfusionScaleConfirmPending,
@@ -12606,6 +12615,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
     queueSyncfusionOverlayTransformSync,
+    startOverlayZoomSettleTimer,
     syncScaleConfirmHiddenPages,
     syncfusionDualLayerEnabled,
     syncfusionLiveStableOverlayEnabled,
@@ -21322,6 +21332,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           }
           captureSyncfusionFrozenOverlayPages(Object.keys(portalHostSnapshot).map(Number));
         }
+        // Phase 2: Pre-activate overlay div zoom protection (parallel to old system above)
+        if (!overlayZoomActiveRef.current) {
+          overlayZoomBaseScaleRef.current = previousScale;
+          overlayZoomActiveRef.current = true;
+        }
+        startOverlayZoomSettleTimer();
         // Restart settle timer on every zoom step so rapid keyboard/toolbar
         // presses don't leave a stale timer that releases the ref mid-sequence.
         if (zoomOverlaySettleTimerRef.current) {
@@ -21418,7 +21434,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       isZoomingRef.current = false;
       perfZoom.end(safeScale);
     });
-  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionFrozenOverlayPages, markSyncfusionInteractionActive, setScale, setAnchor, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionFrozenOverlayPages, markSyncfusionInteractionActive, setScale, setAnchor, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index) => {
@@ -21810,6 +21826,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
         captureSyncfusionFrozenOverlayPages(Object.keys(portalHostSnapshot).map(Number));
       }
+      // Phase 2: Pre-activate overlay div zoom protection (parallel to old system above)
+      if (!overlayZoomActiveRef.current) {
+        overlayZoomBaseScaleRef.current = prevScale;
+        overlayZoomActiveRef.current = true;
+      }
+      startOverlayZoomSettleTimer();
       // Restart settle timer (same as setScaleWithViewportPreservation)
       if (zoomOverlaySettleTimerRef.current) {
         clearTimeout(zoomOverlaySettleTimerRef.current);
@@ -21834,7 +21856,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => {
       document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
     };
-  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionFrozenOverlayPages, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionFrozenOverlayPages, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
