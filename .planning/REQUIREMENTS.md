@@ -11,14 +11,14 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [ ] **ZOOM-01**: Annotations stay visible during all zoom operations (never disappear or flash out)
 - [ ] **ZOOM-02**: Annotations stay positioned correctly during zoom (never jump to wrong location/size)
-- [ ] **ZOOM-03**: Ctrl+scroll wheel zoom works without annotation flicker
-- [ ] **ZOOM-04**: Toolbar zoom in/out buttons work without annotation flicker
-- [ ] **ZOOM-05**: Zoom percentage dropdown works without annotation flicker
-- [ ] **ZOOM-06**: Fit-to-page works without annotation flicker
-- [ ] **ZOOM-07**: Fit-to-width works without annotation flicker
+- [x] **ZOOM-03**: Ctrl+scroll wheel zoom works without annotation flicker
+- [x] **ZOOM-04**: Toolbar zoom in/out buttons work without annotation flicker
+- [x] **ZOOM-05**: Zoom percentage dropdown works without annotation flicker
+- [x] **ZOOM-06**: Fit-to-page works without annotation flicker
+- [x] **ZOOM-07**: Fit-to-width works without annotation flicker
 - [ ] **ZOOM-08**: Pinch-to-zoom (trackpad) works without annotation flicker
 - [ ] **ZOOM-09**: Canvas redraws at correct resolution after zoom settles (crisp, not blurry)
-- [ ] **ZOOM-10**: Rapid consecutive zooms handled gracefully (no stuck transforms or stale state)
+- [x] **ZOOM-10**: Rapid consecutive zooms handled gracefully (no stuck transforms or stale state)
 
 ### Overlay Architecture
 
@@ -73,14 +73,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | ZOOM-01 | Phase 3 | Pending |
 | ZOOM-02 | Phase 3 | Pending |
-| ZOOM-03 | Phase 2 | Pending |
-| ZOOM-04 | Phase 2 | Pending |
-| ZOOM-05 | Phase 2 | Pending |
-| ZOOM-06 | Phase 2 | Pending |
-| ZOOM-07 | Phase 2 | Pending |
+| ZOOM-03 | Phase 2 | Complete |
+| ZOOM-04 | Phase 2 | Complete |
+| ZOOM-05 | Phase 2 | Complete |
+| ZOOM-06 | Phase 2 | Complete |
+| ZOOM-07 | Phase 2 | Complete |
 | ZOOM-08 | Phase 2 | Pending |
 | ZOOM-09 | Phase 4 | Pending |
-| ZOOM-10 | Phase 2 | Pending |
+| ZOOM-10 | Phase 2 | Complete |
 | OVLY-01 | Phase 1 | Complete |
 | OVLY-02 | Phase 2 | Pending |
 | OVLY-03 | Phase 5 | Pending |
