@@ -117,8 +117,19 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Overlay Attachment Foundation | 1/1 | Complete   | 2026-03-18 |
-| 2. Zoom Handler | 0/2 | Not started | - |
+| 2. Zoom Handler | 2/2 | Complete | 2026-03-18 |
 | 3. Render Loop Rewrite | 0/? | Not started | - |
 | 4. PAL Zoom Simplification | 0/? | Not started | - |
 | 5. Page Container Re-attachment | 0/? | Not started | - |
 | 6. Dead Code Removal | 0/? | Not started | - |
+| 7. Widen Zoom Range | 0/? | Not started | - |
+
+### Phase 7: Widen Zoom Range
+
+**Goal:** Remove the 50%-500% clamp restriction from zoomController.js so all zoom methods (toolbar, trackpad pinch, dropdown, fit-to-page, fit-to-width) can zoom to Syncfusion's native range. Ensure CSS transform dimension-locking works at extreme zoom levels.
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 7 to break down)
