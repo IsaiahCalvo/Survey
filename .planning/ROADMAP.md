@@ -12,7 +12,7 @@ This refactor replaces the freeze/snapshot/confirm-pending portal system with a 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Overlay Attachment Foundation** - Create persistent overlay divs as direct children of Syncfusion page divs
+- [x] **Phase 1: Overlay Attachment Foundation** - Create persistent overlay divs as direct children of Syncfusion page divs (completed 2026-03-18)
 - [ ] **Phase 2: Zoom Handler** - Apply CSS transforms to overlay divs during zoom for visual stability across all 6 zoom methods
 - [ ] **Phase 3: Render Loop Rewrite** - Replace portal host resolution with direct portal creation into persistent overlay divs
 - [ ] **Phase 4: PAL Zoom Simplification** - Simplify PageAnnotationLayer zoom handling to own the settle/redraw/transform-removal sequence
@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Overlay divs are styled `position:absolute; width:100%; height:100%; pointer-events:none; z-index:20` and visually overlay the PDF page
   3. Overlay divs are stored in `overlayDivsRef` and never recreated for the same page number (create-once guard)
   4. Existing annotation rendering still works (no regression from adding overlay divs)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 01-01-PLAN.md -- Add overlay divs to App.jsx and verify with Playwright e2e test
@@ -116,7 +116,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Overlay Attachment Foundation | 0/1 | Planning complete | - |
+| 1. Overlay Attachment Foundation | 1/1 | Complete   | 2026-03-18 |
 | 2. Zoom Handler | 0/? | Not started | - |
 | 3. Render Loop Rewrite | 0/? | Not started | - |
 | 4. PAL Zoom Simplification | 0/? | Not started | - |

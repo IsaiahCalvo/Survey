@@ -22,7 +22,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Overlay Architecture
 
-- [ ] **OVLY-01**: Canvas overlays are direct children of Syncfusion page divs (not via portal host system)
+- [x] **OVLY-01**: Canvas overlays are direct children of Syncfusion page divs (not via portal host system)
 - [ ] **OVLY-02**: CSS transform: scale(ratio) applied to overlay divs during zoom transition
 - [ ] **OVLY-03**: Overlay divs re-attach when Syncfusion destroys/recreates page divs
 - [ ] **OVLY-04**: Fabric.js pointer events (drawing, selection) work correctly with CSS-transformed parent
@@ -81,7 +81,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ZOOM-08 | Phase 2 | Pending |
 | ZOOM-09 | Phase 4 | Pending |
 | ZOOM-10 | Phase 2 | Pending |
-| OVLY-01 | Phase 1 | Pending |
+| OVLY-01 | Phase 1 | Complete |
 | OVLY-02 | Phase 2 | Pending |
 | OVLY-03 | Phase 5 | Pending |
 | OVLY-04 | Phase 4 | Pending |
