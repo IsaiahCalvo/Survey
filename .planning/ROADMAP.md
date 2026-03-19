@@ -74,11 +74,11 @@ Plans:
   3. Search highlights are visible and positioned correctly at all zoom levels
   4. Undo/redo works after zoom operations
   5. Pan/scroll proxy rendering (LightweightAnnotationOverlay) still works at all zoom levels
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md -- Create Playwright E2E test suite for PAL zoom simplification (canvas crisp, pointer events, drawing tools, search, undo, proxy, no errors)
+- [ ] 04-02-PLAN.md -- Simplify PAL scale useEffect: remove 300ms timer, remove dead props, remove wrapper CSS transforms, verify with E2E + manual checkpoint
 
 ### Phase 5: Page Container Re-attachment
 **Goal**: Overlay divs survive Syncfusion page div destruction/recreation cycles without losing annotation state or breaking pointer coordinates
@@ -119,7 +119,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Overlay Attachment Foundation | 1/1 | Complete   | 2026-03-18 |
 | 2. Zoom Handler | 2/2 | Complete | 2026-03-18 |
 | 3. Render Loop Rewrite | 2/2 | Complete | 2026-03-19 |
-| 4. PAL Zoom Simplification | 0/? | Not started | - |
+| 4. PAL Zoom Simplification | 0/2 | Not started | - |
 | 5. Page Container Re-attachment | 0/? | Not started | - |
 | 6. Dead Code Removal | 0/? | Not started | - |
 | 7. Widen Zoom Range | 0/? | Not started | - |
