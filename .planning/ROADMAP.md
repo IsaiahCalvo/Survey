@@ -58,11 +58,11 @@ Plans:
   1. Annotations never disappear during zoom (portal content stays mounted because portal target is stable)
   2. Annotations never jump to wrong location or size during zoom (layerScale frozen to pre-zoom value while CSS transform is active)
   3. Portal creation is limited to annotated and visible pages (no unbounded memory growth)
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md -- Create Playwright E2E test suite for render loop portal targeting, zoom visibility, and position stability
+- [ ] 03-02-PLAN.md -- Rewrite render loop: swap portal targets to overlay divs, simplify layerScale to live viewer scale, simplify page filtering
 
 ### Phase 4: PAL Zoom Simplification
 **Goal**: PageAnnotationLayer owns the post-zoom sequence: canvas redraw at correct resolution, CSS transform removal, and pointer event restoration
@@ -118,7 +118,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 |-------|----------------|--------|-----------|
 | 1. Overlay Attachment Foundation | 1/1 | Complete   | 2026-03-18 |
 | 2. Zoom Handler | 2/2 | Complete | 2026-03-18 |
-| 3. Render Loop Rewrite | 0/? | Not started | - |
+| 3. Render Loop Rewrite | 0/2 | Not started | - |
 | 4. PAL Zoom Simplification | 0/? | Not started | - |
 | 5. Page Container Re-attachment | 0/? | Not started | - |
 | 6. Dead Code Removal | 0/? | Not started | - |
