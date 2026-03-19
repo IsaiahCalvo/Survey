@@ -7800,19 +7800,42 @@ const PageAnnotationLayer = memo(({
       const prevPending = pendingScaleRef.current;
       pendingScaleRef.current = scale;
 
-      // Only proceed if scale actually changed (avoids spurious
-      // re-runs from isZooming prop transitions that don't change scale).
       const scaleActuallyChanged = prevPending === null || Math.abs(scale - prevPending) > 0.001;
-      if (!scaleActuallyChanged) return;
 
-      // Cancel any pending resize rAF (zoom resumed before it fired)
+      // If isZooming is still true, we're mid-zoom. Only cancel/reset
+      // pending work if scale actually changed; otherwise just return.
+      if (isZoomingRef.current) {
+        if (!scaleActuallyChanged) return;
+
+        // Cancel any pending resize rAF (zoom resumed before it fired)
+        cancelPendingPaintCommit();
+        if (scaleUpdateFrameRef.current) {
+          cancelAnimationFrame(scaleUpdateFrameRef.current);
+          scaleUpdateFrameRef.current = null;
+        }
+
+        // Cancel any pending viewport observer or deferred timer (new zoom invalidates them)
+        if (viewportObserverRef.current) {
+          viewportObserverRef.current.disconnect();
+          viewportObserverRef.current = null;
+        }
+        if (deferredZoomScaleRef.current?._timerId) {
+          clearTimeout(deferredZoomScaleRef.current._timerId);
+        }
+        deferredZoomScaleRef.current = null;
+
+        // Still zooming -- just store pending and return.
+        return;
+      }
+
+      // isZooming is false -- this is the settle signal (isZooming transitioned
+      // from true to false, or the scale prop changed after overlay settle timer fired).
+      // Cancel any pending work before executing the settle redraw.
       cancelPendingPaintCommit();
       if (scaleUpdateFrameRef.current) {
         cancelAnimationFrame(scaleUpdateFrameRef.current);
         scaleUpdateFrameRef.current = null;
       }
-
-      // Cancel any pending viewport observer or deferred timer (new zoom invalidates them)
       if (viewportObserverRef.current) {
         viewportObserverRef.current.disconnect();
         viewportObserverRef.current = null;
@@ -7821,15 +7844,6 @@ const PageAnnotationLayer = memo(({
         clearTimeout(deferredZoomScaleRef.current._timerId);
       }
       deferredZoomScaleRef.current = null;
-
-      // If isZooming is still true, just store pending and return.
-      // When isZooming goes false, App.jsx's overlay settle timer will fire,
-      // causing layerScale to switch from frozen to live value. That scale
-      // prop change will re-trigger this useEffect with isZoomingRef = false,
-      // which is the settle signal.
-      if (isZoomingRef.current) {
-        return;
-      }
 
       // Zoom settled! Execute tiered redraw.
       const finalScale = pendingScaleRef.current ?? scale;
