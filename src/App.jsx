@@ -24516,12 +24516,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   );
                   const useLiveStableOverlay = syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled;
                   const isZoomOnlyInteraction = syncfusionInteractionIsZoomOnlyRef.current;
+
+                  /* Phase 3: Old freeze/window/fallback page filtering bypassed.
+                     Code retained for Phase 6 dead code removal.
+                     --- original lines 24519-24584 ---
                   const isInInteraction = syncfusionInteractionPhase !== 'idle';
                   const shouldFreezeOverlayScale = useLiveStableOverlay && isInInteraction;
-                  // Freeze portal hosts during zoom-only interactions even without liveStableOverlay.
-                  // Prevents PAL unmount/remount when Syncfusion replaces page DOM nodes during zoom.
-                  // Also freeze during zoom overlay transforms and confirm-pending — without this,
-                  // Syncfusion page re-renders disconnect the portal host and annotations vanish.
                   const shouldFreezePortalHost = ((useLiveStableOverlay || isZoomOnlyInteraction) && isInInteraction) || zoomOverlayTransformActiveRef.current || syncfusionScaleConfirmPendingRef.current;
                   const useInteractionWindow = shouldFreezeOverlayScale;
                   const interactionWindowSet = new Set();
@@ -24534,151 +24534,69 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       interactionWindowSet.add(currentPage);
                     }
                   }
-                  // When portal hosts are frozen (zoom active or confirm-pending),
-                  // hold the portal render set stable. Expanding to every cached page
-                  // host after zoom settle causes late PAL mounts and visible churn.
-                  const containerPageNumbers = Object.keys(syncfusionPageContainers).map((pageKey) => Number(pageKey));
+                  const containerPageNumbers_old = Object.keys(syncfusionPageContainers).map((pageKey) => Number(pageKey));
                   const frozenPageNumbers = shouldFreezePortalHost
                     ? (() => {
                         const frozenPages = (syncfusionFrozenOverlayPagesRef.current || [])
                           .map((pageNumber) => Number(pageNumber))
                           .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
-                        if (frozenPages.length > 0) {
-                          return frozenPages;
-                        }
+                        if (frozenPages.length > 0) return frozenPages;
                         const currentOverlayPages = Object.keys(syncfusionOverlayContentRefs.current || {})
                           .map((pageKey) => Number(pageKey))
                           .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
-                        if (currentOverlayPages.length > 0) {
-                          return currentOverlayPages;
-                        }
+                        if (currentOverlayPages.length > 0) return currentOverlayPages;
                         const lastKnownPages = (syncfusionLastNonEmptyOverlayPagesRef.current || [])
                           .map((pageNumber) => Number(pageNumber))
                           .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
-                        if (lastKnownPages.length > 0) {
-                          return lastKnownPages;
-                        }
+                        if (lastKnownPages.length > 0) return lastKnownPages;
                         const cachedHosts = syncfusionInteractionPortalHostsRef.current || {};
                         return Object.keys(cachedHosts)
                           .map((pageKey) => Number(pageKey))
                           .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
                       })()
-                    : containerPageNumbers;
+                    : containerPageNumbers_old;
                   const overlayWindowPageNumbers = useInteractionWindow
-                    ? Array.from(
-                      interactionWindowSet.size > 0
-                        ? interactionWindowSet
-                        : (
-                          syncfusionOverlayWindowPages.size > 0
-                            ? syncfusionOverlayWindowPages
-                            : syncfusionInteractionResidentPages
-                        )
-                    )
+                    ? Array.from(interactionWindowSet.size > 0 ? interactionWindowSet : (syncfusionOverlayWindowPages.size > 0 ? syncfusionOverlayWindowPages : syncfusionInteractionResidentPages))
                     : frozenPageNumbers;
-
                   const effectiveOverlayPages = overlayWindowPageNumbers.length > 0
                     ? overlayWindowPageNumbers
                     : syncfusionLastNonEmptyOverlayPagesRef.current;
                   if (effectiveOverlayPages.length > 0) {
                     syncfusionLastNonEmptyOverlayPagesRef.current = effectiveOverlayPages;
                   }
-                  return effectiveOverlayPages
-                    .filter((pageNumber) => {
-                      if (!Number.isFinite(pageNumber) || !shouldShowPage(pageNumber)) {
-                        return false;
-                      }
-                      // When portal hosts are frozen (zoom active), skip the overlay
-                      // window filter — it would remove pages that Syncfusion hasn't
-                      // re-rendered yet, causing PAL unmount/remount churn.
-                      if (shouldFreezePortalHost) {
-                        return true;
-                      }
-                      if (useInteractionWindow) {
-                        return interactionWindowSet.size === 0 || interactionWindowSet.has(pageNumber);
-                      }
-                      return syncfusionOverlayWindowPages.size === 0 || syncfusionOverlayWindowPages.has(pageNumber);
+                  --- end original lines 24519-24584 --- */
+
+                  // Phase 3: Simplified page list — container pages filtered by visibility + content
+                  const containerPageNumbers = Object.keys(syncfusionPageContainers)
+                    .map(k => Number(k))
+                    .filter(n => Number.isFinite(n) && n > 0);
+
+                  return containerPageNumbers
+                    .filter(pageNumber => {
+                      if (!shouldShowPage(pageNumber)) return false;
+                      // Limit portals to pages with content to avoid unbounded memory growth
+                      const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
+                      const hasRegions = getPageRegions(pageNumber)?.length > 0;
+                      const hasSearchHighlights = searchResultsByPage[pageNumber]?.length > 0;
+                      return hasAnnotations || hasRegions || hasSearchHighlights;
                     })
                     .sort((a, b) => a - b)
                     .map(pageNumber => {
+                      // Phase 3: Portal target is the persistent overlay div (Phase 1)
+                      const overlayDiv = attachOverlayToPageDiv(pageNumber);
+                      if (!overlayDiv) return null;
+
                       const pageRegions = getPageRegions(pageNumber);
-                      const pageHost = resolveSyncfusionOverlayPortalHost(
-                        pageNumber,
-                        shouldFreezePortalHost,
-                        syncfusionPageContainers
-                      );
                       const pageAnnotations = annotationsByPage[pageNumber];
                       const pageSize = pageSizes[pageNumber];
-                      const fallbackLayerScale = Number.isFinite(syncfusionViewerScale) && syncfusionViewerScale > 0
-                        ? syncfusionViewerScale
-                        : 1;
-                      const fallbackWidth = Number(pageHost?.clientWidth || pageHost?.getBoundingClientRect?.()?.width || 0);
-                      const fallbackHeight = Number(pageHost?.clientHeight || pageHost?.getBoundingClientRect?.()?.height || 0);
-                      // When host is disconnected (clientWidth=0), use cached page rects
-                      // from zoom start as fallback dimensions to prevent bail-out
-                      const cachedRect = syncfusionCachedPageRectsRef.current?.[pageNumber];
-                      const effectiveWidth = fallbackWidth > 0 ? fallbackWidth : (cachedRect?.width || 0);
-                      const effectiveHeight = fallbackHeight > 0 ? fallbackHeight : (cachedRect?.height || 0);
-                      const derivedPageSize = (!pageSize && effectiveWidth > 0 && effectiveHeight > 0)
-                        ? {
-                          width: effectiveWidth / fallbackLayerScale,
-                          height: effectiveHeight / fallbackLayerScale
-                        }
-                        : null;
-                      const resolvedPageSize = pageSize || derivedPageSize;
-                      if (!resolvedPageSize || !pageHost) {
-                        delete syncfusionOverlayLayerRefs.current[pageNumber];
-                        delete syncfusionOverlayContentRefs.current[pageNumber];
-                        return null;
-                      }
-                      // Stable portal host: use a persistent div as createPortal() target
-                      // so React never unmounts/remounts when Syncfusion swaps page containers.
-                      // We physically move this div into the current page host.
-                      const stableHosts = syncfusionStablePortalHostsRef.current;
-                      if (!stableHosts[pageNumber]) {
-                        const div = document.createElement('div');
-                        div.setAttribute('data-stable-portal', String(pageNumber));
-                        div.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
-                        stableHosts[pageNumber] = div;
-                      }
-                      const stablePortalHost = stableHosts[pageNumber];
-                      // Attach stable host to current page container if needed
-                      if (pageHost.isConnected && stablePortalHost.parentElement !== pageHost) {
-                        pageHost.appendChild(stablePortalHost);
-                      }
-                      const { liveRoot: stableLiveRoot } = ensureSyncfusionStablePortalChildren(pageNumber, stablePortalHost);
-                      syncSyncfusionZoomPresentationPage(pageNumber, stablePortalHost);
-                      if (!stableLiveRoot) {
-                        delete syncfusionOverlayLayerRefs.current[pageNumber];
-                        delete syncfusionOverlayContentRefs.current[pageNumber];
-                        return null;
-                      }
+                      if (!pageSize) return null;  // Page size not yet known -- skip this render
 
-                      const committedPageScale = syncfusionCommittedPageScales[pageNumber];
-                      const hasCommittedPageScale = Number.isFinite(committedPageScale) && committedPageScale > 0;
-                      const shouldMeasureLiveScale = !shouldFreezeOverlayScale || !hasCommittedPageScale;
-                      const measuredPageScale = shouldMeasureLiveScale
-                        ? getSyncfusionPageScale(pageNumber, syncfusionViewerScale)
-                        : syncfusionViewerScale;
-                      const fallbackPageScale = Number.isFinite(measuredPageScale) && measuredPageScale > 0
-                        ? measuredPageScale
-                        : (Number.isFinite(syncfusionViewerScale) && syncfusionViewerScale > 0 ? syncfusionViewerScale : 1);
-                      const frozenPageScale = hasCommittedPageScale
-                        ? committedPageScale
-                        : fallbackPageScale;
-                      // During zoom overlay transforms, freeze layerScale to the pre-zoom
-                      // base scale. This prevents PAL from receiving a new scale prop and
-                      // rebuilding the canvas mid-zoom. CSS transforms handle visual scaling.
-                      const zoomFrozenBaseScale = zoomOverlayTransformActiveRef.current
-                        ? zoomOverlayBaseScaleRef.current
-                        : 0;
-                      const layerScaleRaw = zoomFrozenBaseScale > 0
-                        ? zoomFrozenBaseScale
-                        : (shouldFreezeOverlayScale
-                          ? frozenPageScale
-                          : fallbackPageScale);
-                      const layerScale = Number.isFinite(layerScaleRaw) && layerScaleRaw > 0
-                        ? layerScaleRaw
-                        : 1;
+                      const resolvedPageSize = pageSize;
+
+                      // Phase 3: live scale, no freezing. CSS transforms handle visual scaling.
+                      const layerScale = syncfusionViewerScale > 0 ? syncfusionViewerScale : 1;
+
+                      // Proxy rendering variables (kept -- for scroll/drag interactions, not zoom)
                       const interactionPageMode = syncfusionInteractionPageModes[pageNumber] || 'full';
                       const isProxyPageWhileInteracting = interactionPageMode === 'proxy';
                       const isProxyPageWhileCommitting = syncfusionCommittingProxyPages.has(pageNumber);
@@ -24726,67 +24644,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             height: '100%',
                             pointerEvents: 'none',
                             zIndex: 20,
-                            transform: getPageTransform(pageNumber),
-                            transformOrigin: 'center center'
                           }}
                         >
                           <div
                             ref={(node) => {
-                              const previousNode = syncfusionOverlayContentRefs.current[pageNumber];
-                              const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
-                              const nodeByPage = syncfusionOverlayTransformNodeByPageRef.current || {};
-                              const clearPALPhaseState = () => {
-                                const nextAppliedPhaseByPage = { ...(syncfusionLastPALScaleAppliedPhaseByPageRef.current || {}) };
-                                delete nextAppliedPhaseByPage[pageNumber];
-                                syncfusionLastPALScaleAppliedPhaseByPageRef.current = nextAppliedPhaseByPage;
-                                const presentationState = syncfusionZoomPresentationByPageRef.current?.[pageNumber];
-                                if (presentationState) {
-                                  syncfusionZoomPresentationByPageRef.current = {
-                                    ...(syncfusionZoomPresentationByPageRef.current || {}),
-                                    [pageNumber]: {
-                                      ...presentationState,
-                                      paintReady: false
-                                    }
-                                  };
-                                  syncSyncfusionZoomPresentationPage(pageNumber);
-                                }
-                                cancelSyncfusionScaleConfirmReveal(pageNumber, { clearRevealPhase: true });
-                              };
                               if (node) {
                                 syncfusionOverlayContentRefs.current[pageNumber] = node;
-                                if (node !== previousNode) {
-                                  clearPALPhaseState();
-                                  if (syncfusionScaleConfirmPendingRef.current) {
-                                    const pendingPages = new Set(syncfusionScaleConfirmPendingPagesRef.current || []);
-                                    pendingPages.add(pageNumber);
-                                    syncfusionScaleConfirmPendingPagesRef.current = pendingPages;
-                                    syncScaleConfirmHiddenPages(Array.from(pendingPages));
-                                    nodeByPage[pageNumber] = node;
-                                    syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
-                                    applySyncfusionPendingOverlayTransformToNode(pageNumber, node);
-                                  } else if (syncfusionInteractionPhaseRef.current === 'interacting') {
-                                    delete ratioByPage[pageNumber];
-                                    syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
-                                    nodeByPage[pageNumber] = node;
-                                    syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
-                                    applySyncfusionOverlayTransformSync();
-                                  } else if (zoomOverlayTransformActiveRef.current) {
-                                    // New node created during zoom — apply CSS transform
-                                    const baseScale = zoomOverlayBaseScaleRef.current;
-                                    if (baseScale > 0) {
-                                      const ratio = scaleRef.current / baseScale;
-                                      node.style.transform = `scale(${ratio})`;
-                                      node.style.transformOrigin = 'top left';
-                                    }
-                                  }
-                                }
                               } else {
-                                clearPALPhaseState();
                                 delete syncfusionOverlayContentRefs.current[pageNumber];
-                                delete ratioByPage[pageNumber];
-                                delete nodeByPage[pageNumber];
-                                syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
-                                syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
                               }
                             }}
                           >
@@ -24852,11 +24717,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onInsertBlankPage={handleInsertBlankPage}
                                 pageClipboard={pageClipboardPayload}
                                 onPastePageHere={handlePastePageHere}
-                                isHidden={shouldHideFullLayer}
                                 isInteracting={syncfusionInteractionPhase === 'interacting'}
                                 isZooming={isZooming}
-                                onScaleApplied={handlePALScaleApplied}
-                                presentationApiRegistry={syncfusionPagePresentationApisRef}
                               />
                             </div>
                             {shouldRenderLightweightAnnotations ? (
@@ -24925,7 +24787,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             )}
                           </div>
                         </div>,
-                        stableLiveRoot
+                        overlayDiv  // Phase 3: direct portal target
                       );
                     });
                 })()}
