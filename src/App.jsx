@@ -10705,6 +10705,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const safePageNumber = Number(pageNumber);
     const scaleAppliedPhase = typeof _meta?.phase === 'string' ? _meta.phase : null;
     const isVisualReadyPhase = scaleAppliedPhase === 'paint_committed' || scaleAppliedPhase === 'already_current';
+    // Temporary debug: log every PAL scale-applied callback
+    console.log(`[PAL-confirm +${performance.now().toFixed(1)}ms] page=${safePageNumber} scale=${appliedScale} phase=${scaleAppliedPhase} visual=${isVisualReadyPhase} pending=${syncfusionScaleConfirmPendingRef.current} pendingPages=${JSON.stringify(Array.from(syncfusionScaleConfirmPendingPagesRef.current || []))}`);
     if (Number.isFinite(safePageNumber) && safePageNumber > 0) {
       syncfusionLastPALScaleAppliedPhaseByPageRef.current = {
         ...(syncfusionLastPALScaleAppliedPhaseByPageRef.current || {}),
@@ -24566,25 +24568,70 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   }
                   --- end original lines 24519-24584 --- */
 
-                  // Phase 3: Simplified page list — container pages filtered by visibility + content
+                  // Phase 3: page list for portal rendering.
+                  // CRITICAL: Never shrink the portal set in a single render — Syncfusion
+                  // can transiently destroy page containers during zoom BEFORE the freeze
+                  // flag is set. Use the union of current containers + cached overlay pages
+                  // to prevent PAL unmount/remount flicker.
+                  const isInInteraction = syncfusionInteractionPhase !== 'idle';
+                  const shouldFreezePortalHost = ((useLiveStableOverlay || isZoomOnlyInteraction) && isInInteraction) || zoomOverlayTransformActiveRef.current || syncfusionScaleConfirmPendingRef.current;
+                  const isZoomActive = zoomOverlayTransformActiveRef.current || syncfusionScaleConfirmPendingRef.current;
+
                   const containerPageNumbers = Object.keys(syncfusionPageContainers)
                     .map(k => Number(k))
                     .filter(n => Number.isFinite(n) && n > 0);
 
-                  return containerPageNumbers
-                    .filter(pageNumber => {
-                      if (!shouldShowPage(pageNumber)) return false;
-                      // Limit portals to pages with content to avoid unbounded memory growth
-                      const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
-                      const hasRegions = getPageRegions(pageNumber)?.length > 0;
-                      const hasSearchHighlights = searchResultsByPage[pageNumber]?.length > 0;
-                      return hasAnnotations || hasRegions || hasSearchHighlights;
-                    })
+                  // Pages with content (annotations, regions, search highlights)
+                  const contentPages = new Set();
+                  containerPageNumbers.forEach(pageNumber => {
+                    if (!shouldShowPage(pageNumber)) return;
+                    const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
+                    const hasRegions = getPageRegions(pageNumber)?.length > 0;
+                    const hasSearchHighlights = searchResultsByPage[pageNumber]?.length > 0;
+                    if (hasAnnotations || hasRegions || hasSearchHighlights) {
+                      contentPages.add(pageNumber);
+                    }
+                  });
+
+                  // Also include any page that already has an overlay div AND has content.
+                  // This prevents unmounts when Syncfusion transiently removes page containers
+                  // during zoom (containers disappear before the freeze flag is set).
+                  Object.keys(overlayDivsRef.current).forEach(k => {
+                    const n = Number(k);
+                    if (!Number.isFinite(n) || n <= 0 || !shouldShowPage(n)) return;
+                    const hasAnn = annotationsByPage[n]?.objects?.length > 0;
+                    const hasReg = getPageRegions(n)?.length > 0;
+                    const hasSH = searchResultsByPage[n]?.length > 0;
+                    if (hasAnn || hasReg || hasSH) {
+                      contentPages.add(n);
+                    }
+                  });
+
+                  const effectivePages = Array.from(contentPages);
+
+                  // Cache for other subsystems that read this ref
+                  if (effectivePages.length > 0) {
+                    syncfusionLastNonEmptyOverlayPagesRef.current = effectivePages;
+                  }
+
+                  return effectivePages
                     .sort((a, b) => a - b)
                     .map(pageNumber => {
                       // Phase 3: Portal target is the persistent overlay div (Phase 1)
-                      const overlayDiv = attachOverlayToPageDiv(pageNumber);
+                      // Always use cached div if available — the div identity is stable
+                      // even if the parent page div was destroyed by Syncfusion.
+                      const overlayDiv = overlayDivsRef.current[pageNumber] || attachOverlayToPageDiv(pageNumber);
                       if (!overlayDiv) return null;
+
+                      // Re-attach overlay div to current page div if needed
+                      // (it may have been detached during a Syncfusion page rebuild)
+                      const pageDiv =
+                        syncfusionPageContainersStateRef.current?.[pageNumber] ||
+                        pageContainersRef.current?.[pageNumber] ||
+                        null;
+                      if (pageDiv?.isConnected && overlayDiv.parentElement !== pageDiv) {
+                        pageDiv.appendChild(overlayDiv);
+                      }
 
                       const pageRegions = getPageRegions(pageNumber);
                       const pageAnnotations = annotationsByPage[pageNumber];
@@ -24593,8 +24640,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                       const resolvedPageSize = pageSize;
 
-                      // Phase 3: live scale, no freezing. CSS transforms handle visual scaling.
-                      const layerScale = syncfusionViewerScale > 0 ? syncfusionViewerScale : 1;
+                      // Scale computation: during zoom, use committed page scale (what PAL
+                      // last rendered at) so PAL sees NO scale change and doesn't re-render.
+                      // CSS transforms on overlay divs handle visual scaling.
+                      // After zoom settles, use live measured scale.
+                      const committedPageScale = syncfusionCommittedPageScales[pageNumber];
+                      const hasCommittedPageScale = Number.isFinite(committedPageScale) && committedPageScale > 0;
+                      const measuredPageScale = getSyncfusionPageScale(pageNumber, syncfusionViewerScale);
+                      const fallbackPageScale = Number.isFinite(measuredPageScale) && measuredPageScale > 0
+                        ? measuredPageScale
+                        : (syncfusionViewerScale > 0 ? syncfusionViewerScale : 1);
+
+                      const zoomFrozenBaseScale = zoomOverlayTransformActiveRef.current
+                        ? zoomOverlayBaseScaleRef.current
+                        : 0;
+                      const frozenPageScale = hasCommittedPageScale
+                        ? committedPageScale
+                        : (zoomFrozenBaseScale > 0 ? zoomFrozenBaseScale : fallbackPageScale);
+                      const layerScale = isZoomActive
+                        ? frozenPageScale
+                        : fallbackPageScale;
 
                       // Proxy rendering variables (kept -- for scroll/drag interactions, not zoom)
                       const interactionPageMode = syncfusionInteractionPageModes[pageNumber] || 'full';
