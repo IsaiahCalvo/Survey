@@ -9,8 +9,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Zoom Stability
 
-- [ ] **ZOOM-01**: Annotations stay visible during all zoom operations (never disappear or flash out)
-- [ ] **ZOOM-02**: Annotations stay positioned correctly during zoom (never jump to wrong location/size)
+- [x] **ZOOM-01**: Annotations stay visible during all zoom operations (never disappear or flash out)
+- [x] **ZOOM-02**: Annotations stay positioned correctly during zoom (never jump to wrong location/size)
 - [x] **ZOOM-03**: Ctrl+scroll wheel zoom works without annotation flicker
 - [x] **ZOOM-04**: Toolbar zoom in/out buttons work without annotation flicker
 - [x] **ZOOM-05**: Zoom percentage dropdown works without annotation flicker
@@ -71,8 +71,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ZOOM-01 | Phase 3 | Pending |
-| ZOOM-02 | Phase 3 | Pending |
+| ZOOM-01 | Phase 3 | Complete |
+| ZOOM-02 | Phase 3 | Complete |
 | ZOOM-03 | Phase 2 | Complete |
 | ZOOM-04 | Phase 2 | Complete |
 | ZOOM-05 | Phase 2 | Complete |
