@@ -210,17 +210,18 @@ test.describe('pal-zoom', () => {
       `Overlay CSS transform should be removed after settle, got: "${postZoom.overlayTransform}"`
     ).toBe(true);
 
-    // ASSERT: post-zoom canvas dimensions approximately match overlay div dimensions
-    // Canvas uses PDF points (72 DPI), overlay uses CSS pixels (96 DPI), so
-    // the expected ratio is 72/96 = 0.75.  Allow ±15% tolerance around that.
+    // ASSERT: post-zoom canvas dimensions approximately match overlay div dimensions.
+    // With container-aware sizing (Phase 4), the canvas measures the actual
+    // container and sizes to match it 1:1. The expected ratio is ~1.0.
+    // Allow generous tolerance (0.85-1.15) to account for rounding and
+    // Electron/browser zoom factor differences.
     if (postZoom.canvasWidth && postZoom.overlayWidth) {
       const widthRatio = postZoom.canvasWidth / postZoom.overlayWidth;
-      const PDF_TO_CSS_DPI_RATIO = 72 / 96; // 0.75
       expect(
         widthRatio,
-        `Canvas/overlay ratio (${widthRatio.toFixed(3)}) should be near ${PDF_TO_CSS_DPI_RATIO} (72/96 DPI), got canvas=${postZoom.canvasWidth}, overlay=${postZoom.overlayWidth}`
-      ).toBeGreaterThan(PDF_TO_CSS_DPI_RATIO * 0.85);
-      expect(widthRatio).toBeLessThan(PDF_TO_CSS_DPI_RATIO * 1.15);
+        `Canvas/overlay ratio (${widthRatio.toFixed(3)}) should be near 1.0 (container-aware sizing), got canvas=${postZoom.canvasWidth}, overlay=${postZoom.overlayWidth}`
+      ).toBeGreaterThan(0.85);
+      expect(widthRatio).toBeLessThan(1.15);
     }
   });
 

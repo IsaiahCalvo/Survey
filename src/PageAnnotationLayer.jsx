@@ -7839,27 +7839,29 @@ const PageAnnotationLayer = memo(({
 	      const prevPending = pendingScaleRef.current;
 	      pendingScaleRef.current = scale;
 
-      // Only reset settle timer if scale actually changed (avoids spurious
-      // resets from isZooming prop transitions that don't change scale).
+      // Only cancel/restart pending work if scale actually changed.
+      // When useEffect re-fires solely because isZooming changed (true->false)
+      // with the same scale, skip the cancel but fall through to the settle logic.
       const scaleActuallyChanged = prevPending === null || Math.abs(scale - prevPending) > 0.001;
-      if (!scaleActuallyChanged) return;
 
-	      // Cancel any pending resize rAF (zoom resumed before it fired)
-	      cancelPendingPaintCommit();
-	      if (scaleUpdateFrameRef.current) {
-	        cancelAnimationFrame(scaleUpdateFrameRef.current);
-	        scaleUpdateFrameRef.current = null;
-      }
+      if (scaleActuallyChanged) {
+	        // Cancel any pending resize rAF (zoom resumed before it fired)
+	        cancelPendingPaintCommit();
+	        if (scaleUpdateFrameRef.current) {
+	          cancelAnimationFrame(scaleUpdateFrameRef.current);
+	          scaleUpdateFrameRef.current = null;
+        }
 
-      // Cancel any pending viewport observer or deferred timer (new zoom invalidates them)
-      if (viewportObserverRef.current) {
-        viewportObserverRef.current.disconnect();
-        viewportObserverRef.current = null;
+        // Cancel any pending viewport observer or deferred timer (new zoom invalidates them)
+        if (viewportObserverRef.current) {
+          viewportObserverRef.current.disconnect();
+          viewportObserverRef.current = null;
+        }
+        if (deferredZoomScaleRef.current?._timerId) {
+          clearTimeout(deferredZoomScaleRef.current._timerId);
+        }
+        deferredZoomScaleRef.current = null;
       }
-      if (deferredZoomScaleRef.current?._timerId) {
-        clearTimeout(deferredZoomScaleRef.current._timerId);
-      }
-      deferredZoomScaleRef.current = null;
 
       // Phase 4: isZoomingRef guard replaces the old 300ms settle timer.
       // If zoom is still active, defer -- the useEffect will re-fire when
