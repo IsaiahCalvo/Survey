@@ -10677,8 +10677,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // This prevents the visual flicker between CSS transform removal and canvas re-render.
     // Skip during active overlay zoom — the zoom settle timer handles cleanup.
     if (!overlayZoomInProgress) {
-      console.log(`[AnnotPerf] finalize idle (${reason}) — deferring CSS transform removal, waiting for PAL confirmation`);
-      beginSyncfusionScaleConfirmPending('finalize_idle');
+      // Phase 4: directly reset overlay transforms. The confirm-pending system
+      // was designed for the old frozen/live layerScale transition (removed in
+      // Phase 3, line 24597). With live layerScale, PAL already has the correct
+      // scale -- no need to hide canvases and wait for confirmation.
+      resetSyncfusionOverlayTransformStyles();
     }
     if (wasActive) {
       syncfusionInteractionTransitionsRef.current.off += 1;
@@ -10693,7 +10696,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       });
     }
   }, [
-    beginSyncfusionScaleConfirmPending,
     clearSyncfusionCommitRaf,
     clearSyncfusionInteractionTimer,
     clearSyncfusionOverlayTransformSyncRaf,
@@ -12630,19 +12632,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
         setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
       }
-      // Use confirm-pending so handlePALScaleApplied removes CSS transforms
-      // per-page as each canvas rebuilds (prevents flash at wrong scale).
-      beginSyncfusionScaleConfirmPending('zoomChange_settle');
+      // Phase 4: directly reset overlay transforms (see Change 1 comment).
+      resetSyncfusionOverlayTransformStyles();
     }, 1000);
   }, [
     applyOverlayZoomTransform,
-    beginSyncfusionScaleConfirmPending,
     bumpOverlayLagEventTotal,
     cancelSyncfusionScaleConfirmPending,
     captureSyncfusionFrozenOverlayPages,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
     queueSyncfusionOverlayTransformSync,
+    resetSyncfusionOverlayTransformStyles,
     startOverlayZoomSettleTimer,
     syncScaleConfirmHiddenPages,
     syncfusionDualLayerEnabled,
@@ -21382,7 +21383,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
             setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
           }
-          beginSyncfusionScaleConfirmPending('keyboard_toolbar_settle');
+          // Phase 4: directly reset overlay transforms (see Change 1 comment).
+          resetSyncfusionOverlayTransformStyles();
         }, 1000);
       }
       scaleRef.current = safeScale;
@@ -21875,7 +21877,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
           setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
         }
-        beginSyncfusionScaleConfirmPending('ctrl_key_settle');
+        // Phase 4: directly reset overlay transforms (see Change 1 comment).
+        resetSyncfusionOverlayTransformStyles();
       }, 1000);
     };
 
@@ -21884,7 +21887,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => {
       document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
     };
-  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionFrozenOverlayPages, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
+  }, [resetSyncfusionOverlayTransformStyles, captureSyncfusionFrozenOverlayPages, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
@@ -24724,7 +24727,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onPastePageHere={handlePastePageHere}
                                 isInteracting={syncfusionInteractionPhase === 'interacting'}
                                 isZooming={isZooming}
-                                onScaleApplied={handlePALScaleApplied}
                               />
                             </div>
                             {shouldRenderLightweightAnnotations ? (
