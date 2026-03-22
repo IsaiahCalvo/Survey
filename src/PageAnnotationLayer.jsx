@@ -3132,12 +3132,16 @@ const PageAnnotationLayer = memo(({
   onInsertBlankPage = () => { },
   pageClipboard = null, // { pageNumber, type: 'cut' | 'copy' } | null
   onPastePageHere = () => { },
+  isHidden = false,
   isInteracting = false,
   isZooming = false,
+  onScaleApplied = null,
+  presentationApiRegistry = null,
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
   const scaleUpdateFrameRef = useRef(null);
+  const zoomSettleTimerRef = useRef(null);
   const inZoomModeRef = useRef(false);
   const isZoomingRef = useRef(isZooming);
   isZoomingRef.current = isZooming;
@@ -3219,11 +3223,14 @@ const PageAnnotationLayer = memo(({
           return;
         }
         paintCommitRafIdsRef.current = [];
+        if (typeof onScaleApplied === 'function') {
+          onScaleApplied(pageNumber, safeScale, { phase: 'paint_committed' });
+        }
       });
       paintCommitRafIdsRef.current = [firstRafId, secondRafId];
     });
     paintCommitRafIdsRef.current = [firstRafId];
-  }, [cancelPendingPaintCommit, pageNumber]);
+  }, [cancelPendingPaintCommit, onScaleApplied, pageNumber]);
 
   const capturePresentationSnapshot = useCallback(() => {
     const canvas = fabricRef.current;
@@ -3258,6 +3265,19 @@ const PageAnnotationLayer = memo(({
     }
   }, [pageNumber]);
 
+  useEffect(() => {
+    if (!presentationApiRegistry?.current || !(Number.isFinite(pageNumber) && pageNumber > 0)) {
+      return undefined;
+    }
+    presentationApiRegistry.current[pageNumber] = {
+      captureSnapshot: capturePresentationSnapshot
+    };
+    return () => {
+      if (presentationApiRegistry?.current) {
+        delete presentationApiRegistry.current[pageNumber];
+      }
+    };
+  }, [capturePresentationSnapshot, pageNumber, presentationApiRegistry]);
   const onHighlightClickedRef = useRef(onHighlightClicked);
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const activeSpaceIdRef = useRef(activeSpaceId);
@@ -5169,9 +5189,23 @@ const PageAnnotationLayer = memo(({
       canvasRef.current.dataset.fabricWillReadFrequently = 'true';
     }
 
+    // Measure actual container for initial sizing (accounts for browser/Electron zoom)
+    const initContainerEl = canvasRef.current?.parentElement;
+    let initScale = scale;
+    if (initContainerEl) {
+      const initCW = initContainerEl.offsetWidth;
+      if (initCW > 0 && width > 0) {
+        const initMeasured = initCW / width;
+        if (Math.abs(initMeasured - scale) > 0.01) {
+          initScale = initMeasured;
+        }
+      }
+    }
+    console.log(`[PAL-Debug p${pageNumber}] Canvas INIT — scale=${scale}, initScale=${initScale}, width=${width}, height=${height}, containerW=${initContainerEl?.offsetWidth}`);
+
     const canvas = new Canvas(canvasRef.current, {
-      width: Math.floor(width * scale),
-      height: Math.floor(height * scale),
+      width: Math.floor(width * initScale),
+      height: Math.floor(height * initScale),
       backgroundColor: 'transparent',
       // Disable Fabric.js built-in selection for Pan tool (we use drag-to-pan)
       // Also disable for Select tool as we use custom selection handlers
@@ -7745,6 +7779,10 @@ const PageAnnotationLayer = memo(({
 	      window.removeEventListener('keydown', handleKeyDown);
 	      isInitializedRef.current = false;
 	      cancelPendingPaintCommit();
+	      if (zoomSettleTimerRef.current) {
+	        clearTimeout(zoomSettleTimerRef.current);
+	        zoomSettleTimerRef.current = null;
+	      }
       if (scaleUpdateFrameRef.current) {
         cancelAnimationFrame(scaleUpdateFrameRef.current);
         scaleUpdateFrameRef.current = null;
@@ -7770,22 +7808,49 @@ const PageAnnotationLayer = memo(({
   //   canvas resize until the settle timer fires AND completes. This prevents
   //   the 500ms+ renderAll from blanking the canvas mid-zoom, even when
   //   isZooming briefly flickers false between scroll-wheel events.
+  //
+  // Container-aware sizing: instead of computing canvas size as width*scale
+  // (which assumes 1:1 CSS pixel mapping), we measure the actual parent
+  // container and derive the effective scale from it. This accounts for
+  // Electron/browser zoom, DPR mismatches, and Syncfusion rendering quirks.
   useEffect(() => {
+    if (isHidden) return;
     if (!fabricRef.current || !width || !height) return;
 
     const canvas = fabricRef.current;
     const currentZoom = canvas.getZoom();
     const scaleJump = Math.abs(scale - currentZoom);
 
+    // Measure actual container to derive effective dimensions.
+    // The canvas wrapper sits inside the overlay content div, which sits
+    // inside the overlay div (100% x 100% of the Syncfusion page div).
+    const containerEl = canvas.wrapperEl?.parentElement;
+    let effectiveScale = scale;
+    if (containerEl) {
+      const containerW = containerEl.offsetWidth;
+      if (containerW > 0 && width > 0) {
+        const measuredScale = containerW / width;
+        // Only use measured scale if it differs meaningfully from prop scale
+        // (indicates browser/Electron zoom factor)
+        if (Math.abs(measuredScale - scale) > 0.01) {
+          effectiveScale = measuredScale;
+        }
+      }
+    }
+
+    // [DEBUG] PAL scale useEffect entry
+    console.log(`[PAL-Debug p${pageNumber}] scale useEffect ENTRY — scale=${scale}, effectiveScale=${effectiveScale}, currentZoom=${currentZoom}, width=${width}, height=${height}, isZooming=${isZooming}, isInteracting=${isInteracting}, isHidden=${isHidden}, inZoomMode=${inZoomModeRef.current}, pendingScale=${pendingScaleRef.current}, canvasW=${canvas.getWidth()}, canvasH=${canvas.getHeight()}, containerW=${containerEl?.offsetWidth}, containerH=${containerEl?.offsetHeight}`);
+
     // During interactions (scroll, zoom, drag), defer expensive canvas operations.
     // App-level CSS transform on overlay content div handles visual scaling.
     if (isInteracting) {
       pendingScaleRef.current = scale;
+      console.log(`[PAL-Debug p${pageNumber}] DEFERRED — isInteracting=true`);
       return;
     }
 
     // Enter zoom mode on any zoom signal or large scale jump.
-    // Once latched, only the settle path below clears it.
+    // Once latched, only the settle timer callback clears it.
     if (isZooming || scaleJump > 0.01) {
       inZoomModeRef.current = true;
     }
@@ -7793,20 +7858,20 @@ const PageAnnotationLayer = memo(({
     // ── Deferred resize path (zoom mode active) ──
     // App-level CSS transform handles visual scaling during zoom.
     // PAL only defers the expensive canvas resize until zoom settles.
-    if (inZoomModeRef.current) {
-      const prevPending = pendingScaleRef.current;
-      pendingScaleRef.current = scale;
+	    if (inZoomModeRef.current) {
+	      const prevPending = pendingScaleRef.current;
+	      pendingScaleRef.current = scale;
 
-      // Only proceed if scale actually changed (avoids spurious
+      // Only reset settle timer if scale actually changed (avoids spurious
       // resets from isZooming prop transitions that don't change scale).
       const scaleActuallyChanged = prevPending === null || Math.abs(scale - prevPending) > 0.001;
       if (!scaleActuallyChanged) return;
 
-      // Cancel any pending resize rAF (zoom resumed before it fired)
-      cancelPendingPaintCommit();
-      if (scaleUpdateFrameRef.current) {
-        cancelAnimationFrame(scaleUpdateFrameRef.current);
-        scaleUpdateFrameRef.current = null;
+	      // Cancel any pending resize rAF (zoom resumed before it fired)
+	      cancelPendingPaintCommit();
+	      if (scaleUpdateFrameRef.current) {
+	        cancelAnimationFrame(scaleUpdateFrameRef.current);
+	        scaleUpdateFrameRef.current = null;
       }
 
       // Cancel any pending viewport observer or deferred timer (new zoom invalidates them)
@@ -7819,89 +7884,132 @@ const PageAnnotationLayer = memo(({
       }
       deferredZoomScaleRef.current = null;
 
-      // Phase 4: isZooming guard replaces the old 300ms settle timer.
-      // If zoom is still active, store pending scale and wait for next
-      // useEffect re-fire when isZooming goes false.
-      if (isZoomingRef.current) {
-        return;
+      // (Re)start settle timer. Fires only after 300ms of no scale changes.
+      if (zoomSettleTimerRef.current) {
+        clearTimeout(zoomSettleTimerRef.current);
       }
-
-      // ── Zoom settled — execute tiered redraw immediately ──
-      const c = fabricRef.current;
-      if (!c) return;
-      const finalScale = pendingScaleRef.current ?? scale;
-      pendingScaleRef.current = null;
-      const tw = Math.floor(width * finalScale);
-      const th = Math.floor(height * finalScale);
-
-      // Clear zoom latch before enqueueing. If a new zoom starts before
-      // the queued callback runs, it will re-latch inZoomModeRef.
-      inZoomModeRef.current = false;
-
-      const wrapperEl = c.wrapperEl;
-
-      // Classify page priority:
-      // - Center page (contains viewport center): immediate Fabric render
-      // - Visible but not center: delayed Fabric render
-      // - Off-screen: render when scrolled into view
-      let isCenterPage = false;
-      let isVisible = false;
-      if (wrapperEl) {
-        const rect = wrapperEl.getBoundingClientRect();
-        isVisible = rect.bottom > 0 && rect.top < window.innerHeight;
-        if (isVisible) {
-          const vcY = window.innerHeight / 2;
-          isCenterPage = rect.top <= vcY && rect.bottom >= vcY;
+      const settleCallback = () => {
+        // If zoom is still active (e.g. slow scroll-out with >300ms gaps),
+        // defer the expensive resize — restart the timer instead.
+        if (isZoomingRef.current) {
+          console.log(`[PAL-Debug p${pageNumber}] settle DEFERRED — isZooming still true`);
+          zoomSettleTimerRef.current = setTimeout(settleCallback, 300);
+          return;
         }
-      }
+        zoomSettleTimerRef.current = null;
+        const c = fabricRef.current;
+        if (!c) return;
+        let finalScale = pendingScaleRef.current ?? scale;
+        pendingScaleRef.current = null;
 
-      // Helper: perform the expensive Fabric.js resize + render
-      const doFabricRender = () => {
-        // Skip if a NEW zoom started with a different target scale.
-        // But proceed if inZoomMode was re-latched with the same scale
-        // (e.g., spurious isZooming prop transitions during initial load).
-        if (inZoomModeRef.current && pendingScaleRef.current != null && Math.abs(pendingScaleRef.current - finalScale) > 0.001) return;
-        const fc = fabricRef.current;
-        if (!fc) return;
-        deferredZoomScaleRef.current = null;
-        fc.setWidth(tw);
-        fc.setHeight(th);
-        fc.setZoom(finalScale);
-        cancelPendingPaintCommit();
-        debugMark('fabric_renderStart', { page: pageNumber, scale: finalScale });
-        fc.renderAll();
-        debugMark('fabric_renderEnd', { page: pageNumber, scale: finalScale });
-        schedulePaintCommitted(finalScale);
+        // Re-measure container for effective scale (same logic as useEffect entry)
+        const settleContainerEl = c.wrapperEl?.parentElement;
+        if (settleContainerEl) {
+          const cw = settleContainerEl.offsetWidth;
+          if (cw > 0 && width > 0) {
+            const measured = cw / width;
+            if (Math.abs(measured - finalScale) > 0.01) {
+              finalScale = measured;
+            }
+          }
+        }
+
+        const tw = Math.floor(width * finalScale);
+        const th = Math.floor(height * finalScale);
+        console.log(`[PAL-Debug p${pageNumber}] settle FIRED — finalScale=${finalScale}, tw=${tw}, th=${th}, width=${width}, height=${height}, canvasW=${c.getWidth()}, canvasH=${c.getHeight()}, canvasZoom=${c.getZoom()}, containerW=${settleContainerEl?.offsetWidth}`);
+
+        // Clear zoom latch before enqueueing. If a new zoom starts before
+        // the queued callback runs, it will re-latch inZoomModeRef.
+        inZoomModeRef.current = false;
+
+        const wrapperEl = c.wrapperEl;
+
+        // Classify page priority:
+        // - Center page (contains viewport center): immediate Fabric render
+        // - Visible but not center: CSS-scale now, delayed Fabric render
+        // - Off-screen: CSS-scale now, render when scrolled into view
+        let isCenterPage = false;
+        let isVisible = false;
+        if (wrapperEl) {
+          const rect = wrapperEl.getBoundingClientRect();
+          isVisible = rect.bottom > 0 && rect.top < window.innerHeight;
+          if (isVisible) {
+            const vcY = window.innerHeight / 2;
+            isCenterPage = rect.top <= vcY && rect.bottom >= vcY;
+          }
+        }
+
+        // Apply CSS scale to the canvas wrapper for non-center pages only.
+        // This lets App release the outer overlay transform per-page without
+        // exposing stale Fabric pixels while delayed pages wait their turn.
+        const currentZoom = c.getZoom();
+        if (wrapperEl && currentZoom > 0 && !isCenterPage) {
+          const ratio = finalScale / currentZoom;
+          wrapperEl.style.transform = `scale(${ratio})`;
+          wrapperEl.style.transformOrigin = 'top left';
+        }
+
+        // Helper: perform the expensive Fabric.js resize + render
+	        const doFabricRender = () => {
+	          if (inZoomModeRef.current) return;
+	          const fc = fabricRef.current;
+	          if (!fc) return;
+	          deferredZoomScaleRef.current = null;
+          if (fc.wrapperEl) {
+            fc.wrapperEl.style.transform = '';
+            fc.wrapperEl.style.transformOrigin = '';
+          }
+          console.log(`[PAL-Debug p${pageNumber}] doFabricRender — setting W=${tw}, H=${th}, zoom=${finalScale}, wrapperEl=${!!fc.wrapperEl}, wrapperTransform=${fc.wrapperEl?.style?.transform || 'none'}`);
+	          fc.setWidth(tw);
+	          fc.setHeight(th);
+	          fc.setZoom(finalScale);
+	          cancelPendingPaintCommit();
+	          debugMark('fabric_renderStart', { page: pageNumber, scale: finalScale });
+	          fc.renderAll();
+	          debugMark('fabric_renderEnd', { page: pageNumber, scale: finalScale });
+	          console.log(`[PAL-Debug p${pageNumber}] doFabricRender DONE — canvasW=${fc.getWidth()}, canvasH=${fc.getHeight()}, canvasZoom=${fc.getZoom()}, objects=${fc.getObjects().length}`);
+	          if (typeof onScaleApplied === 'function') {
+	            onScaleApplied(pageNumber, finalScale, { phase: 'fabric_rendered' });
+	          }
+	          schedulePaintCommitted(finalScale);
+	        };
+
+        if (isCenterPage) {
+          // ── Tier 1: Center page — immediate render via stagger queue ──
+          enqueueZoomResize(doFabricRender);
+        } else if (isVisible) {
+          // ── Tier 2: Visible non-center — delayed render ──
+          // Let center page finish first, then render during idle.
+          deferredZoomScaleRef.current = { tw, th, finalScale };
+          if (typeof onScaleApplied === 'function') {
+            onScaleApplied(pageNumber, finalScale, { phase: 'wrapper_css_ready' });
+          }
+          const deferTimerId = setTimeout(() => {
+            if (inZoomModeRef.current) return;
+            if (!deferredZoomScaleRef.current) return;
+            enqueueZoomResize(doFabricRender);
+          }, 800);
+          // Store timer so it can be cleaned up if new zoom starts
+          if (!deferredZoomScaleRef.current) deferredZoomScaleRef.current = { tw, th, finalScale };
+          deferredZoomScaleRef.current._timerId = deferTimerId;
+        } else {
+          // ── Tier 3: Off-screen — render when scrolled into view ──
+          deferredZoomScaleRef.current = { tw, th, finalScale };
+          if (typeof onScaleApplied === 'function') {
+            onScaleApplied(pageNumber, finalScale, { phase: 'wrapper_css_ready' });
+          }
+          if (viewportObserverRef.current) viewportObserverRef.current.disconnect();
+          viewportObserverRef.current = new IntersectionObserver((entries) => {
+            if (!entries[0]?.isIntersecting) return;
+            viewportObserverRef.current.disconnect();
+            viewportObserverRef.current = null;
+            if (!deferredZoomScaleRef.current) return;
+            enqueueZoomResize(doFabricRender);
+          }, { threshold: 0 });
+          viewportObserverRef.current.observe(wrapperEl);
+        }
       };
-
-      if (isCenterPage) {
-        // ── Tier 1: Center page — immediate render via stagger queue ──
-        enqueueZoomResize(doFabricRender);
-      } else if (isVisible) {
-        // ── Tier 2: Visible non-center — delayed render ──
-        // Let center page finish first, then render during idle.
-        deferredZoomScaleRef.current = { tw, th, finalScale };
-        const deferTimerId = setTimeout(() => {
-          if (inZoomModeRef.current && pendingScaleRef.current != null && Math.abs(pendingScaleRef.current - finalScale) > 0.001) return;
-          if (!deferredZoomScaleRef.current) return;
-          enqueueZoomResize(doFabricRender);
-        }, 800);
-        // Store timer so it can be cleaned up if new zoom starts
-        if (!deferredZoomScaleRef.current) deferredZoomScaleRef.current = { tw, th, finalScale };
-        deferredZoomScaleRef.current._timerId = deferTimerId;
-      } else {
-        // ── Tier 3: Off-screen — render when scrolled into view ──
-        deferredZoomScaleRef.current = { tw, th, finalScale };
-        if (viewportObserverRef.current) viewportObserverRef.current.disconnect();
-        viewportObserverRef.current = new IntersectionObserver((entries) => {
-          if (!entries[0]?.isIntersecting) return;
-          viewportObserverRef.current.disconnect();
-          viewportObserverRef.current = null;
-          if (!deferredZoomScaleRef.current) return;
-          enqueueZoomResize(doFabricRender);
-        }, { threshold: 0 });
-        viewportObserverRef.current.observe(wrapperEl);
-      }
+      zoomSettleTimerRef.current = setTimeout(settleCallback, 300);
 
       return;
     }
@@ -7919,17 +8027,25 @@ const PageAnnotationLayer = memo(({
     }
     deferredZoomScaleRef.current = null;
 
+    if (zoomSettleTimerRef.current) {
+      clearTimeout(zoomSettleTimerRef.current);
+      zoomSettleTimerRef.current = null;
+    }
+
     if (scaleUpdateFrameRef.current) {
       cancelAnimationFrame(scaleUpdateFrameRef.current);
       scaleUpdateFrameRef.current = null;
     }
 
+	    console.log(`[PAL-Debug p${pageNumber}] DIRECT resize path — scale=${scale}, effectiveScale=${effectiveScale}, width=${width}, height=${height}`);
     scaleUpdateFrameRef.current = requestAnimationFrame(() => {
-      const targetWidth = Math.floor(width * scale);
-      const targetHeight = Math.floor(height * scale);
+	      const targetWidth = Math.floor(width * effectiveScale);
+	      const targetHeight = Math.floor(height * effectiveScale);
       const canvasZoom = canvas.getZoom();
       const needsResize = canvas.getWidth() !== targetWidth || canvas.getHeight() !== targetHeight;
-      const needsZoom = Math.abs(canvasZoom - scale) > 0.0001;
+      const needsZoom = Math.abs(canvasZoom - effectiveScale) > 0.0001;
+
+      console.log(`[PAL-Debug p${pageNumber}] DIRECT rAF — targetW=${targetWidth}, targetH=${targetHeight}, canvasW=${canvas.getWidth()}, canvasH=${canvas.getHeight()}, canvasZoom=${canvasZoom}, needsResize=${needsResize}, needsZoom=${needsZoom}, effectiveScale=${effectiveScale}`);
 
       if (canvas.wrapperEl) {
         canvas.wrapperEl.style.transform = '';
@@ -7941,17 +8057,23 @@ const PageAnnotationLayer = memo(({
       }
 
       if (needsZoom) {
-        canvas.setZoom(scale);
+        canvas.setZoom(effectiveScale);
       }
 
-      if (needsResize || needsZoom) {
-        cancelPendingPaintCommit();
-        canvas.once('after:render', () => {
-          schedulePaintCommitted(scale);
-        });
-        canvas.renderAll();
-      } else {
-        cancelPendingPaintCommit();
+	      if (needsResize || needsZoom) {
+	        cancelPendingPaintCommit();
+	        canvas.once('after:render', () => {
+	          if (typeof onScaleApplied === 'function') {
+	            onScaleApplied(pageNumber, effectiveScale, { phase: 'fabric_rendered' });
+	          }
+	          schedulePaintCommitted(effectiveScale);
+	        });
+	        canvas.renderAll();
+	      } else {
+	        cancelPendingPaintCommit();
+	        if (typeof onScaleApplied === 'function') {
+	          onScaleApplied(pageNumber, effectiveScale, { phase: 'already_current' });
+	        }
       }
 
       scaleUpdateFrameRef.current = null;
@@ -7963,7 +8085,7 @@ const PageAnnotationLayer = memo(({
         scaleUpdateFrameRef.current = null;
       }
     };
-  }, [cancelPendingPaintCommit, scale, schedulePaintCommitted, width, height, isInteracting, isZooming, pageNumber]);
+	  }, [cancelPendingPaintCommit, scale, schedulePaintCommitted, width, height, isHidden, isInteracting, isZooming, onScaleApplied, pageNumber]);
 
   // Handle drawing mode changes
   useEffect(() => {
@@ -9682,8 +9804,11 @@ const PageAnnotationLayer = memo(({
     prevProps.layerVisibility === nextProps.layerVisibility &&
     prevProps.callouts === nextProps.callouts &&
     prevProps.selectedCalloutId === nextProps.selectedCalloutId &&
+    prevProps.isHidden === nextProps.isHidden &&
     prevProps.isInteracting === nextProps.isInteracting &&
-    prevProps.isZooming === nextProps.isZooming
+    prevProps.isZooming === nextProps.isZooming &&
+    prevProps.onScaleApplied === nextProps.onScaleApplied &&
+    prevProps.presentationApiRegistry === nextProps.presentationApiRegistry
   );
 });
 

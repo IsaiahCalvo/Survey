@@ -10677,11 +10677,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // This prevents the visual flicker between CSS transform removal and canvas re-render.
     // Skip during active overlay zoom — the zoom settle timer handles cleanup.
     if (!overlayZoomInProgress) {
-      // Phase 4: directly reset overlay transforms. The confirm-pending system
-      // was designed for the old frozen/live layerScale transition (removed in
-      // Phase 3, line 24597). With live layerScale, PAL already has the correct
-      // scale -- no need to hide canvases and wait for confirmation.
-      resetSyncfusionOverlayTransformStyles();
+      console.log(`[AnnotPerf] finalize idle (${reason}) — deferring CSS transform removal, waiting for PAL confirmation`);
+      beginSyncfusionScaleConfirmPending('finalize_idle');
     }
     if (wasActive) {
       syncfusionInteractionTransitionsRef.current.off += 1;
@@ -10696,6 +10693,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       });
     }
   }, [
+    beginSyncfusionScaleConfirmPending,
     clearSyncfusionCommitRaf,
     clearSyncfusionInteractionTimer,
     clearSyncfusionOverlayTransformSyncRaf,
@@ -12564,13 +12562,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     markSyncfusionInteractionActive('syncfusion-zoom-change');
     queueSyncfusionOverlayTransformSync(true);
 
-    // Phase 4: Content div CSS transform removed. The overlay div CSS transform
-    // (applyOverlayZoomTransform below) handles visual scaling during zoom.
-    // Applying scale to BOTH the overlay div AND its content div caused double-
-    // scaling when PAL resized its canvas before transforms were cleaned up.
-    // The old system relied on beginSyncfusionScaleConfirmPending to hide
-    // canvases during this window, but Phase 4 removes that hiding.
-
+    // ── Lightweight synchronous CSS transform for overlay during zoom ──
+    const baseScale = zoomOverlayBaseScaleRef.current;
+    if (baseScale > 0) {
+      const ratio = nextScale / baseScale;
+      const overlayRefs = syncfusionOverlayContentRefs.current;
+      if (overlayRefs) {
+        const keys = Object.keys(overlayRefs);
+        for (let i = 0; i < keys.length; i++) {
+          const node = overlayRefs[keys[i]];
+          if (node && node.isConnected) {
+            node.style.transform = `scale(${ratio})`;
+            node.style.transformOrigin = 'top left';
+          }
+        }
+      }
+    }
     // ── Phase 2: Parallel CSS transform for NEW overlay divs ──
     // Operates on overlayDivsRef (Phase 1 direct-child divs), NOT syncfusionOverlayContentRefs.
     if (!overlayZoomActiveRef.current) {
@@ -12589,12 +12596,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     zoomOverlaySettleTimerRef.current = setTimeout(() => {
       zoomOverlaySettleTimerRef.current = null;
-      // Phase 4: ratioByPage seeding removed -- it fed into
-      // beginSyncfusionScaleConfirmPending and handlePALScaleApplied,
-      // both of which are neutralized in Phase 4.
-
+      // Populate ratioByPage for all pages that currently have CSS transforms.
+      // The inline CSS transforms applied during zoom don't update ratioByPage,
+      // so seed the per-page ratios before entering confirm-pending. The
+      // explicit pending page set uses these ratios when portal nodes remount.
+      const baseScale = zoomOverlayBaseScaleRef.current;
+      if (baseScale > 0) {
+        const currentScale = scaleRef.current;
+        const ratio = currentScale / baseScale;
+        if (Math.abs(ratio - 1) > 0.001) {
+          const overlayRefs = syncfusionOverlayContentRefs.current || {};
+          const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
+          Object.keys(overlayRefs).forEach((pageKey) => {
+            const ref = overlayRefs[pageKey];
+            if (ref && ref.isConnected) {
+              ratioByPage[pageKey] = ratio;
+            }
+          });
+          syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+        }
+      }
       // Zoom has settled. Release the layerScale freeze so the next render
       // passes the final scale to PAL, triggering a crisp canvas rebuild.
+      // CSS transforms remain — handlePALScaleApplied removes them per-page
+      // as each canvas rebuilds, preventing a visible gap.
       zoomOverlayTransformActiveRef.current = false;
       debugMark('zoom_end', { source: 'zoomChange_settle' });
       // Flush deferred scale so PAL starts rebuilding at final zoom level.
@@ -12605,18 +12630,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
         setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
       }
-      // Phase 4: directly reset overlay transforms (see finalizeSyncfusionInteraction comment).
-      resetSyncfusionOverlayTransformStyles();
+      // Use confirm-pending so handlePALScaleApplied removes CSS transforms
+      // per-page as each canvas rebuilds (prevents flash at wrong scale).
+      beginSyncfusionScaleConfirmPending('zoomChange_settle');
     }, 1000);
   }, [
     applyOverlayZoomTransform,
+    beginSyncfusionScaleConfirmPending,
     bumpOverlayLagEventTotal,
     cancelSyncfusionScaleConfirmPending,
     captureSyncfusionFrozenOverlayPages,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
     queueSyncfusionOverlayTransformSync,
-    resetSyncfusionOverlayTransformStyles,
     startOverlayZoomSettleTimer,
     syncScaleConfirmHiddenPages,
     syncfusionDualLayerEnabled,
@@ -21356,8 +21382,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
             setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
           }
-          // Phase 4: directly reset overlay transforms (see finalizeSyncfusionInteraction comment).
-          resetSyncfusionOverlayTransformStyles();
+          beginSyncfusionScaleConfirmPending('keyboard_toolbar_settle');
         }, 1000);
       }
       scaleRef.current = safeScale;
@@ -21850,8 +21875,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
           setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
         }
-        // Phase 4: directly reset overlay transforms (see finalizeSyncfusionInteraction comment).
-        resetSyncfusionOverlayTransformStyles();
+        beginSyncfusionScaleConfirmPending('ctrl_key_settle');
       }, 1000);
     };
 
@@ -21860,7 +21884,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => {
       document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
     };
-  }, [captureSyncfusionFrozenOverlayPages, resetSyncfusionOverlayTransformStyles, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionFrozenOverlayPages, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
@@ -24572,6 +24596,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       // Phase 3: live scale. CSS transforms handle visual scaling during zoom.
                       const layerScale = syncfusionViewerScale > 0 ? syncfusionViewerScale : 1;
 
+                      // [DEBUG] Log props being passed to PAL
+                      if (pageNumber === 6) {
+                        console.log(`[App-Debug p${pageNumber}] PAL render — pageSize={w:${pageSize.width}, h:${pageSize.height}}, layerScale=${layerScale}, syncfusionViewerScale=${syncfusionViewerScale}, overlayDiv=${!!overlayDiv}, overlayDivW=${overlayDiv?.offsetWidth}, overlayDivH=${overlayDiv?.offsetHeight}, overlayDivTransform=${overlayDiv?.style?.transform || 'none'}`);
+                      }
+
                       // Proxy rendering variables (kept -- for scroll/drag interactions, not zoom)
                       const interactionPageMode = syncfusionInteractionPageModes[pageNumber] || 'full';
                       const isProxyPageWhileInteracting = interactionPageMode === 'proxy';
@@ -24695,6 +24724,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onPastePageHere={handlePastePageHere}
                                 isInteracting={syncfusionInteractionPhase === 'interacting'}
                                 isZooming={isZooming}
+                                onScaleApplied={handlePALScaleApplied}
                               />
                             </div>
                             {shouldRenderLightweightAnnotations ? (
