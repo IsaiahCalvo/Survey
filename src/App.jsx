@@ -24593,7 +24593,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                       const resolvedPageSize = pageSize;
 
-                      // Phase 3: live scale, no freezing. CSS transforms handle visual scaling.
+                      // Phase 3: live scale. CSS transforms handle visual scaling during zoom.
                       const layerScale = syncfusionViewerScale > 0 ? syncfusionViewerScale : 1;
 
                       // Proxy rendering variables (kept -- for scroll/drag interactions, not zoom)
@@ -24719,6 +24719,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onPastePageHere={handlePastePageHere}
                                 isInteracting={syncfusionInteractionPhase === 'interacting'}
                                 isZooming={isZooming}
+                                onScaleApplied={handlePALScaleApplied}
                               />
                             </div>
                             {shouldRenderLightweightAnnotations ? (
