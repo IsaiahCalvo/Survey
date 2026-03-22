@@ -12564,22 +12564,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     markSyncfusionInteractionActive('syncfusion-zoom-change');
     queueSyncfusionOverlayTransformSync(true);
 
-    // ── Lightweight synchronous CSS transform for overlay during zoom ──
-    const baseScale = zoomOverlayBaseScaleRef.current;
-    if (baseScale > 0) {
-      const ratio = nextScale / baseScale;
-      const overlayRefs = syncfusionOverlayContentRefs.current;
-      if (overlayRefs) {
-        const keys = Object.keys(overlayRefs);
-        for (let i = 0; i < keys.length; i++) {
-          const node = overlayRefs[keys[i]];
-          if (node && node.isConnected) {
-            node.style.transform = `scale(${ratio})`;
-            node.style.transformOrigin = 'top left';
-          }
-        }
-      }
-    }
+    // Phase 4: Content div CSS transform removed. The overlay div CSS transform
+    // (applyOverlayZoomTransform below) handles visual scaling during zoom.
+    // Applying scale to BOTH the overlay div AND its content div caused double-
+    // scaling when PAL resized its canvas before transforms were cleaned up.
+    // The old system relied on beginSyncfusionScaleConfirmPending to hide
+    // canvases during this window, but Phase 4 removes that hiding.
+
     // ── Phase 2: Parallel CSS transform for NEW overlay divs ──
     // Operates on overlayDivsRef (Phase 1 direct-child divs), NOT syncfusionOverlayContentRefs.
     if (!overlayZoomActiveRef.current) {
@@ -12598,30 +12589,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     zoomOverlaySettleTimerRef.current = setTimeout(() => {
       zoomOverlaySettleTimerRef.current = null;
-      // Populate ratioByPage for all pages that currently have CSS transforms.
-      // The inline CSS transforms applied during zoom don't update ratioByPage,
-      // so seed the per-page ratios before entering confirm-pending. The
-      // explicit pending page set uses these ratios when portal nodes remount.
-      const baseScale = zoomOverlayBaseScaleRef.current;
-      if (baseScale > 0) {
-        const currentScale = scaleRef.current;
-        const ratio = currentScale / baseScale;
-        if (Math.abs(ratio - 1) > 0.001) {
-          const overlayRefs = syncfusionOverlayContentRefs.current || {};
-          const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
-          Object.keys(overlayRefs).forEach((pageKey) => {
-            const ref = overlayRefs[pageKey];
-            if (ref && ref.isConnected) {
-              ratioByPage[pageKey] = ratio;
-            }
-          });
-          syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
-        }
-      }
+      // Phase 4: ratioByPage seeding removed -- it fed into
+      // beginSyncfusionScaleConfirmPending and handlePALScaleApplied,
+      // both of which are neutralized in Phase 4.
+
       // Zoom has settled. Release the layerScale freeze so the next render
       // passes the final scale to PAL, triggering a crisp canvas rebuild.
-      // CSS transforms remain — handlePALScaleApplied removes them per-page
-      // as each canvas rebuilds, preventing a visible gap.
       zoomOverlayTransformActiveRef.current = false;
       debugMark('zoom_end', { source: 'zoomChange_settle' });
       // Flush deferred scale so PAL starts rebuilding at final zoom level.

@@ -7857,7 +7857,10 @@ const PageAnnotationLayer = memo(({
 
       // Helper: perform the expensive Fabric.js resize + render
       const doFabricRender = () => {
-        if (inZoomModeRef.current) return;
+        // Skip if a NEW zoom started with a different target scale.
+        // But proceed if inZoomMode was re-latched with the same scale
+        // (e.g., spurious isZooming prop transitions during initial load).
+        if (inZoomModeRef.current && pendingScaleRef.current != null && Math.abs(pendingScaleRef.current - finalScale) > 0.001) return;
         const fc = fabricRef.current;
         if (!fc) return;
         deferredZoomScaleRef.current = null;
@@ -7879,7 +7882,7 @@ const PageAnnotationLayer = memo(({
         // Let center page finish first, then render during idle.
         deferredZoomScaleRef.current = { tw, th, finalScale };
         const deferTimerId = setTimeout(() => {
-          if (inZoomModeRef.current) return;
+          if (inZoomModeRef.current && pendingScaleRef.current != null && Math.abs(pendingScaleRef.current - finalScale) > 0.001) return;
           if (!deferredZoomScaleRef.current) return;
           enqueueZoomResize(doFabricRender);
         }, 800);
