@@ -284,55 +284,57 @@ test.describe('render-loop', () => {
     ).toBeLessThanOrEqual(settleTolerance);
   });
 
-  test('portals target overlay divs not old stable-live-root', async ({ page }) => {
+  test('overlay divs host stable live/snapshot portal roots', async ({ page }) => {
     await setupPage(page);
 
     const portalTargetState = await page.evaluate(() => {
-      // Check overlay divs have React-rendered content
       const overlayDiv = document.querySelector('[data-overlay-page="6"]');
       const overlayHasContent = overlayDiv ? overlayDiv.children.length > 0 : false;
       const overlayChildCount = overlayDiv ? overlayDiv.children.length : 0;
-
-      // Check old stable-live-root divs do NOT have React-rendered annotation content
+      const pageLiveRoot = overlayDiv?.querySelector('[data-stable-live-root="6"]') || null;
+      const pageSnapshotRoot = overlayDiv?.querySelector('[data-stable-snapshot-root="6"]') || null;
       const stableLiveRoots = document.querySelectorAll('[data-stable-live-root]');
       const stableLiveRootResults = Array.from(stableLiveRoots).map(div => ({
+        page: div.getAttribute('data-stable-live-root'),
         connected: div.isConnected,
         childCount: div.children.length,
         hasContent: div.children.length > 0,
       }));
 
-      // Old system: stable-live-root divs should NOT have content
-      // (they should either not exist or be empty)
-      const anyStableLiveRootHasContent = stableLiveRootResults.some(r => r.hasContent);
-
       return {
         overlayExists: !!overlayDiv,
         overlayHasContent,
         overlayChildCount,
+        pageLiveRootExists: !!pageLiveRoot,
+        pageLiveRootHasContent: pageLiveRoot ? pageLiveRoot.children.length > 0 : false,
+        pageSnapshotRootExists: !!pageSnapshotRoot,
         stableLiveRootCount: stableLiveRoots.length,
         stableLiveRootResults,
-        anyStableLiveRootHasContent,
       };
     });
 
     console.log('Portal target state:', JSON.stringify(portalTargetState, null, 2));
 
-    // Overlay divs must have content (portals render here)
     expect(
       portalTargetState.overlayExists,
       'Overlay div for page 6 must exist'
     ).toBe(true);
     expect(
       portalTargetState.overlayHasContent,
-      'Overlay div for page 6 must have React-rendered content (portal children)'
+      'Overlay div for page 6 must host the stable portal roots'
     ).toBe(true);
-
-    // Old stable-live-root divs should NOT have content
-    // (they should either not exist or be empty after render loop rewrite)
     expect(
-      portalTargetState.anyStableLiveRootHasContent,
-      'Old stable-live-root divs should NOT have React-rendered annotation content -- portals should target overlay divs instead'
-    ).toBe(false);
+      portalTargetState.pageLiveRootExists,
+      'Overlay div for page 6 must contain a stable live-root portal target'
+    ).toBe(true);
+    expect(
+      portalTargetState.pageLiveRootHasContent,
+      'Stable live-root for page 6 must contain React-rendered annotation content'
+    ).toBe(true);
+    expect(
+      portalTargetState.pageSnapshotRootExists,
+      'Overlay div for page 6 must contain a stable snapshot root for zoom presentation swap'
+    ).toBe(true);
   });
 
   test('portals only created for pages with annotations or regions', async ({ page }) => {

@@ -10157,6 +10157,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionLastPALScaleAppliedPhaseByPageRef.current = {};
     const frozenPages = captureSyncfusionFrozenOverlayPages();
     const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
+    const nodeByPage = syncfusionOverlayTransformNodeByPageRef.current || {};
     const overlayContentRefs = syncfusionOverlayContentRefs.current || {};
     const pendingPages = new Set();
 
@@ -10197,23 +10198,41 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       });
     }
 
-    syncfusionScaleConfirmPendingPagesRef.current = pendingPages;
-    syncfusionScaleConfirmPendingRef.current = pendingPages.size > 0;
+    const visiblePendingPages = new Set(getSyncfusionVisibleSwapPages(pendingPages));
+    pendingPages.forEach((pageNumber) => {
+      if (visiblePendingPages.has(pageNumber)) {
+        return;
+      }
+      const node = overlayContentRefs[pageNumber] || nodeByPage[pageNumber];
+      if (node && node.isConnected && node.style) {
+        node.style.transform = '';
+        node.style.transformOrigin = '';
+        node.style.willChange = '';
+        node.style.backfaceVisibility = '';
+      }
+      delete ratioByPage[pageNumber];
+      delete nodeByPage[pageNumber];
+    });
+    syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+    syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
+
+    syncfusionScaleConfirmPendingPagesRef.current = visiblePendingPages;
+    syncfusionScaleConfirmPendingRef.current = visiblePendingPages.size > 0;
 
     if (syncfusionScaleConfirmTimerRef.current) {
       clearTimeout(syncfusionScaleConfirmTimerRef.current);
       syncfusionScaleConfirmTimerRef.current = null;
     }
 
-    if (pendingPages.size === 0) {
+    if (visiblePendingPages.size === 0) {
       syncScaleConfirmHiddenPages([]);
       zoomOverlayBaseScaleRef.current = 1;
       resetSyncfusionOverlayTransformStyles();
       return false;
     }
 
-    prepareSyncfusionZoomPresentationSwap(pendingPages, source);
-    syncScaleConfirmHiddenPages(Array.from(pendingPages));
+    prepareSyncfusionZoomPresentationSwap(visiblePendingPages, source);
+    syncScaleConfirmHiddenPages(Array.from(visiblePendingPages));
     debugMark('portal_freeze', { reason: 'confirm_pending_start', source });
     syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
       syncfusionScaleConfirmTimerRef.current = null;
@@ -10229,7 +10248,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }, 3000);
 
     return true;
-  }, [applySyncfusionPendingOverlayTransformToNode, cancelAllSyncfusionScaleConfirmReveals, captureSyncfusionFrozenOverlayPages, prepareSyncfusionZoomPresentationSwap, resetSyncfusionOverlayTransformStyles, syncScaleConfirmHiddenPages]);
+  }, [applySyncfusionPendingOverlayTransformToNode, cancelAllSyncfusionScaleConfirmReveals, captureSyncfusionFrozenOverlayPages, getSyncfusionVisibleSwapPages, prepareSyncfusionZoomPresentationSwap, resetSyncfusionOverlayTransformStyles, syncScaleConfirmHiddenPages]);
 
   const clearSyncfusionInteractionTimer = useCallback(() => {
     if (!syncfusionInteractionTimerRef.current) return;
@@ -12063,6 +12082,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         overlayDiv.style.border = '1px dashed rgba(0, 128, 255, 0.5)';
       }
     }
+
+    syncfusionStablePortalHostsRef.current[safePageNumber] = overlayDiv;
 
     // Find the Syncfusion page div from state ref or fallback ref
     const pageDiv =
@@ -24590,6 +24611,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       // Phase 3: Portal target is the persistent overlay div (Phase 1)
                       const overlayDiv = attachOverlayToPageDiv(pageNumber);
                       if (!overlayDiv) return null;
+                      const { liveRoot } = ensureSyncfusionStablePortalChildren(pageNumber, overlayDiv);
+                      const portalTarget = liveRoot || overlayDiv;
+                      if (!portalTarget) return null;
 
                       const pageRegions = getPageRegions(pageNumber);
                       const pageAnnotations = annotationsByPage[pageNumber];
@@ -24738,6 +24762,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 isInteracting={syncfusionInteractionPhase === 'interacting' || zoomOverlayTransformActiveRef.current}
                                 isZooming={isZooming}
                                 onScaleApplied={handlePALScaleApplied}
+                                presentationApiRegistry={syncfusionPagePresentationApisRef}
                               />
                             </div>
                             {shouldRenderLightweightAnnotations ? (
@@ -24806,7 +24831,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             )}
                           </div>
                         </div>,
-                        overlayDiv  // Phase 3: direct portal target
+                        portalTarget
                       );
                     });
                 })()}
