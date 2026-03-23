@@ -3132,12 +3132,17 @@ const PageAnnotationLayer = memo(({
   onInsertBlankPage = () => { },
   pageClipboard = null, // { pageNumber, type: 'cut' | 'copy' } | null
   onPastePageHere = () => { },
+  isHidden = false,
   isInteracting = false,
   isZooming = false,
+  onScaleApplied = null,
+  presentationApiRegistry = null,
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
   const scaleUpdateFrameRef = useRef(null);
+  const pointerRecoveryRafRef = useRef(null);
+  const zoomSettleTimerRef = useRef(null);
   const inZoomModeRef = useRef(false);
   const isZoomingRef = useRef(isZooming);
   isZoomingRef.current = isZooming;
@@ -3197,6 +3202,39 @@ const PageAnnotationLayer = memo(({
     paintCommitRafIdsRef.current = [];
   }, []);
 
+  const cancelPointerRecovery = useCallback(() => {
+    const rafId = pointerRecoveryRafRef.current;
+    if (rafId == null) {
+      return;
+    }
+    if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(rafId);
+    } else {
+      clearTimeout(rafId);
+    }
+    pointerRecoveryRafRef.current = null;
+  }, []);
+
+  const schedulePointerRecovery = useCallback(() => {
+    cancelPointerRecovery();
+    const requestFrame =
+      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 16);
+    pointerRecoveryRafRef.current = requestFrame(() => {
+      pointerRecoveryRafRef.current = null;
+      const canvas = fabricRef.current;
+      if (!canvas || typeof canvas.calcOffset !== 'function') {
+        return;
+      }
+      try {
+        canvas.calcOffset();
+      } catch (error) {
+        console.warn(`[Page ${pageNumber}] Failed to recalculate Fabric offset after zoom settle:`, error);
+      }
+    });
+  }, [cancelPointerRecovery, pageNumber]);
+
   const schedulePaintCommitted = useCallback((appliedScale) => {
     cancelPendingPaintCommit();
     const safeScale = Number(appliedScale);
@@ -3219,11 +3257,15 @@ const PageAnnotationLayer = memo(({
           return;
         }
         paintCommitRafIdsRef.current = [];
+        if (typeof onScaleApplied === 'function') {
+          onScaleApplied(pageNumber, safeScale, { phase: 'paint_committed' });
+        }
+        schedulePointerRecovery();
       });
       paintCommitRafIdsRef.current = [firstRafId, secondRafId];
     });
     paintCommitRafIdsRef.current = [firstRafId];
-  }, [cancelPendingPaintCommit, pageNumber]);
+  }, [cancelPendingPaintCommit, onScaleApplied, pageNumber, schedulePointerRecovery]);
 
   const capturePresentationSnapshot = useCallback(() => {
     const canvas = fabricRef.current;
@@ -3258,6 +3300,19 @@ const PageAnnotationLayer = memo(({
     }
   }, [pageNumber]);
 
+  useEffect(() => {
+    if (!presentationApiRegistry?.current || !(Number.isFinite(pageNumber) && pageNumber > 0)) {
+      return undefined;
+    }
+    presentationApiRegistry.current[pageNumber] = {
+      captureSnapshot: capturePresentationSnapshot
+    };
+    return () => {
+      if (presentationApiRegistry?.current) {
+        delete presentationApiRegistry.current[pageNumber];
+      }
+    };
+  }, [capturePresentationSnapshot, pageNumber, presentationApiRegistry]);
   const onHighlightClickedRef = useRef(onHighlightClicked);
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const activeSpaceIdRef = useRef(activeSpaceId);
@@ -7759,6 +7814,11 @@ const PageAnnotationLayer = memo(({
 	      window.removeEventListener('keydown', handleKeyDown);
 	      isInitializedRef.current = false;
 	      cancelPendingPaintCommit();
+	      cancelPointerRecovery();
+	      if (zoomSettleTimerRef.current) {
+	        clearTimeout(zoomSettleTimerRef.current);
+	        zoomSettleTimerRef.current = null;
+	      }
       if (scaleUpdateFrameRef.current) {
         cancelAnimationFrame(scaleUpdateFrameRef.current);
         scaleUpdateFrameRef.current = null;
@@ -7773,7 +7833,7 @@ const PageAnnotationLayer = memo(({
         fabricRef.current = null;
       }
     };
-	  }, [cancelPendingPaintCommit, pageNumber, width, height]);
+	  }, [cancelPendingPaintCommit, cancelPointerRecovery, pageNumber, width, height]);
 
   // Keep annotation canvas scale tightly aligned with page render scale.
   // During active zoom interaction, defer the expensive Fabric.js resize/re-render
@@ -7781,17 +7841,16 @@ const PageAnnotationLayer = memo(({
   //
   // Architecture:
   //   inZoomModeRef is a latch: once zoom starts, we NEVER do an expensive
-  //   canvas resize until zoom settles. The isInteracting guard (primary)
-  //   prevents redraws during active zoom interaction. The isZoomingRef guard
-  //   (secondary) prevents redraws during the brief settle transition.
-  //   When both are false and inZoomModeRef is true, we execute the tiered
-  //   redraw immediately (no independent timer needed).
+  //   canvas resize until the settle timer fires AND completes. This prevents
+  //   the 500ms+ renderAll from blanking the canvas mid-zoom, even when
+  //   isZooming briefly flickers false between scroll-wheel events.
   //
   // Container-aware sizing: instead of computing canvas size as width*scale
   // (which assumes 1:1 CSS pixel mapping), we measure the actual parent
   // container and derive the effective scale from it. This accounts for
   // Electron/browser zoom, DPR mismatches, and Syncfusion rendering quirks.
   useEffect(() => {
+    if (isHidden) return;
     if (!fabricRef.current || !width || !height) return;
 
     const canvas = fabricRef.current;
@@ -7816,7 +7875,7 @@ const PageAnnotationLayer = memo(({
     }
 
     // [DEBUG] PAL scale useEffect entry
-    console.log(`[PAL-Debug p${pageNumber}] scale useEffect ENTRY — scale=${scale}, effectiveScale=${effectiveScale}, currentZoom=${currentZoom}, width=${width}, height=${height}, isZooming=${isZooming}, isInteracting=${isInteracting}, inZoomMode=${inZoomModeRef.current}, pendingScale=${pendingScaleRef.current}, canvasW=${canvas.getWidth()}, canvasH=${canvas.getHeight()}, containerW=${containerEl?.offsetWidth}, containerH=${containerEl?.offsetHeight}`);
+    console.log(`[PAL-Debug p${pageNumber}] scale useEffect ENTRY — scale=${scale}, effectiveScale=${effectiveScale}, currentZoom=${currentZoom}, width=${width}, height=${height}, isZooming=${isZooming}, isInteracting=${isInteracting}, isHidden=${isHidden}, inZoomMode=${inZoomModeRef.current}, pendingScale=${pendingScaleRef.current}, canvasW=${canvas.getWidth()}, canvasH=${canvas.getHeight()}, containerW=${containerEl?.offsetWidth}, containerH=${containerEl?.offsetHeight}`);
 
     // During interactions (scroll, zoom, drag), defer expensive canvas operations.
     // App-level CSS transform on overlay content div handles visual scaling.
@@ -7839,40 +7898,42 @@ const PageAnnotationLayer = memo(({
 	      const prevPending = pendingScaleRef.current;
 	      pendingScaleRef.current = scale;
 
-      // Only cancel/restart pending work if scale actually changed.
-      // When useEffect re-fires solely because isZooming changed (true->false)
-      // with the same scale, skip the cancel but fall through to the settle logic.
+      // Only reset settle timer if scale actually changed (avoids spurious
+      // resets from isZooming prop transitions that don't change scale).
       const scaleActuallyChanged = prevPending === null || Math.abs(scale - prevPending) > 0.001;
+      if (!scaleActuallyChanged) return;
 
-      if (scaleActuallyChanged) {
-	        // Cancel any pending resize rAF (zoom resumed before it fired)
-	        cancelPendingPaintCommit();
-	        if (scaleUpdateFrameRef.current) {
-	          cancelAnimationFrame(scaleUpdateFrameRef.current);
-	          scaleUpdateFrameRef.current = null;
-        }
-
-        // Cancel any pending viewport observer or deferred timer (new zoom invalidates them)
-        if (viewportObserverRef.current) {
-          viewportObserverRef.current.disconnect();
-          viewportObserverRef.current = null;
-        }
-        if (deferredZoomScaleRef.current?._timerId) {
-          clearTimeout(deferredZoomScaleRef.current._timerId);
-        }
-        deferredZoomScaleRef.current = null;
+	      // Cancel any pending resize rAF (zoom resumed before it fired)
+	      cancelPendingPaintCommit();
+	      if (scaleUpdateFrameRef.current) {
+	        cancelAnimationFrame(scaleUpdateFrameRef.current);
+	        scaleUpdateFrameRef.current = null;
       }
 
-      // Phase 4: isZoomingRef guard replaces the old 300ms settle timer.
-      // If zoom is still active, defer -- the useEffect will re-fire when
-      // isZooming goes false (it's in the dependency array).
-      if (isZoomingRef.current) {
-        console.log(`[PAL-Debug p${pageNumber}] settle DEFERRED — isZooming still true`);
-        return;
+      // Cancel any pending viewport observer or deferred timer (new zoom invalidates them)
+      if (viewportObserverRef.current) {
+        viewportObserverRef.current.disconnect();
+        viewportObserverRef.current = null;
       }
+      if (deferredZoomScaleRef.current?._timerId) {
+        clearTimeout(deferredZoomScaleRef.current._timerId);
+      }
+      deferredZoomScaleRef.current = null;
 
-      // ── Zoom settled: execute tiered redraw ──
-      {
+      // (Re)start settle timer. Fires only after 300ms of no scale changes.
+      cancelPointerRecovery();
+      if (zoomSettleTimerRef.current) {
+        clearTimeout(zoomSettleTimerRef.current);
+      }
+      const settleCallback = () => {
+        // If zoom is still active (e.g. slow scroll-out with >300ms gaps),
+        // defer the expensive resize — restart the timer instead.
+        if (isZoomingRef.current) {
+          console.log(`[PAL-Debug p${pageNumber}] settle DEFERRED — isZooming still true`);
+          zoomSettleTimerRef.current = setTimeout(settleCallback, 300);
+          return;
+        }
+        zoomSettleTimerRef.current = null;
         const c = fabricRef.current;
         if (!c) return;
         let finalScale = pendingScaleRef.current ?? scale;
@@ -7915,13 +7976,27 @@ const PageAnnotationLayer = memo(({
           }
         }
 
+        // Apply CSS scale to the canvas wrapper for non-center pages only.
+        // This lets App release the outer overlay transform per-page without
+        // exposing stale Fabric pixels while delayed pages wait their turn.
+        const currentZoom = c.getZoom();
+        if (wrapperEl && currentZoom > 0 && !isCenterPage) {
+          const ratio = finalScale / currentZoom;
+          wrapperEl.style.transform = `scale(${ratio})`;
+          wrapperEl.style.transformOrigin = 'top left';
+        }
+
         // Helper: perform the expensive Fabric.js resize + render
 	        const doFabricRender = () => {
 	          if (inZoomModeRef.current) return;
 	          const fc = fabricRef.current;
 	          if (!fc) return;
 	          deferredZoomScaleRef.current = null;
-          console.log(`[PAL-Debug p${pageNumber}] doFabricRender — setting W=${tw}, H=${th}, zoom=${finalScale}`);
+          if (fc.wrapperEl) {
+            fc.wrapperEl.style.transform = '';
+            fc.wrapperEl.style.transformOrigin = '';
+          }
+          console.log(`[PAL-Debug p${pageNumber}] doFabricRender — setting W=${tw}, H=${th}, zoom=${finalScale}, wrapperEl=${!!fc.wrapperEl}, wrapperTransform=${fc.wrapperEl?.style?.transform || 'none'}`);
 	          fc.setWidth(tw);
 	          fc.setHeight(th);
 	          fc.setZoom(finalScale);
@@ -7930,6 +8005,10 @@ const PageAnnotationLayer = memo(({
 	          fc.renderAll();
 	          debugMark('fabric_renderEnd', { page: pageNumber, scale: finalScale });
 	          console.log(`[PAL-Debug p${pageNumber}] doFabricRender DONE — canvasW=${fc.getWidth()}, canvasH=${fc.getHeight()}, canvasZoom=${fc.getZoom()}, objects=${fc.getObjects().length}`);
+	          if (typeof onScaleApplied === 'function') {
+	            onScaleApplied(pageNumber, finalScale, { phase: 'fabric_rendered' });
+	          }
+	          schedulePointerRecovery();
 	          schedulePaintCommitted(finalScale);
 	        };
 
@@ -7940,6 +8019,9 @@ const PageAnnotationLayer = memo(({
           // ── Tier 2: Visible non-center — delayed render ──
           // Let center page finish first, then render during idle.
           deferredZoomScaleRef.current = { tw, th, finalScale };
+          if (typeof onScaleApplied === 'function') {
+            onScaleApplied(pageNumber, finalScale, { phase: 'wrapper_css_ready' });
+          }
           const deferTimerId = setTimeout(() => {
             if (inZoomModeRef.current) return;
             if (!deferredZoomScaleRef.current) return;
@@ -7951,6 +8033,9 @@ const PageAnnotationLayer = memo(({
         } else {
           // ── Tier 3: Off-screen — render when scrolled into view ──
           deferredZoomScaleRef.current = { tw, th, finalScale };
+          if (typeof onScaleApplied === 'function') {
+            onScaleApplied(pageNumber, finalScale, { phase: 'wrapper_css_ready' });
+          }
           if (viewportObserverRef.current) viewportObserverRef.current.disconnect();
           viewportObserverRef.current = new IntersectionObserver((entries) => {
             if (!entries[0]?.isIntersecting) return;
@@ -7961,7 +8046,8 @@ const PageAnnotationLayer = memo(({
           }, { threshold: 0 });
           viewportObserverRef.current.observe(wrapperEl);
         }
-      }
+      };
+      zoomSettleTimerRef.current = setTimeout(settleCallback, 300);
 
       return;
     }
@@ -7978,6 +8064,11 @@ const PageAnnotationLayer = memo(({
       clearTimeout(deferredZoomScaleRef.current._timerId);
     }
     deferredZoomScaleRef.current = null;
+
+    if (zoomSettleTimerRef.current) {
+      clearTimeout(zoomSettleTimerRef.current);
+      zoomSettleTimerRef.current = null;
+    }
 
     if (scaleUpdateFrameRef.current) {
       cancelAnimationFrame(scaleUpdateFrameRef.current);
@@ -7996,6 +8087,7 @@ const PageAnnotationLayer = memo(({
 
       if (canvas.wrapperEl) {
         canvas.wrapperEl.style.transform = '';
+        canvas.wrapperEl.style.transformOrigin = '';
       }
 
       if (needsResize) {
@@ -8010,11 +8102,19 @@ const PageAnnotationLayer = memo(({
 	      if (needsResize || needsZoom) {
 	        cancelPendingPaintCommit();
 	        canvas.once('after:render', () => {
+	          if (typeof onScaleApplied === 'function') {
+	            onScaleApplied(pageNumber, effectiveScale, { phase: 'fabric_rendered' });
+	          }
+	          schedulePointerRecovery();
 	          schedulePaintCommitted(effectiveScale);
 	        });
 	        canvas.renderAll();
 	      } else {
 	        cancelPendingPaintCommit();
+	        if (typeof onScaleApplied === 'function') {
+	          onScaleApplied(pageNumber, effectiveScale, { phase: 'already_current' });
+	        }
+	        schedulePointerRecovery();
       }
 
       scaleUpdateFrameRef.current = null;
@@ -8026,7 +8126,7 @@ const PageAnnotationLayer = memo(({
         scaleUpdateFrameRef.current = null;
       }
     };
-	  }, [cancelPendingPaintCommit, scale, schedulePaintCommitted, width, height, isInteracting, isZooming, pageNumber]);
+	  }, [cancelPendingPaintCommit, cancelPointerRecovery, scale, schedulePaintCommitted, schedulePointerRecovery, width, height, isHidden, isInteracting, isZooming, onScaleApplied, pageNumber]);
 
   // Handle drawing mode changes
   useEffect(() => {
@@ -9745,8 +9845,11 @@ const PageAnnotationLayer = memo(({
     prevProps.layerVisibility === nextProps.layerVisibility &&
     prevProps.callouts === nextProps.callouts &&
     prevProps.selectedCalloutId === nextProps.selectedCalloutId &&
+    prevProps.isHidden === nextProps.isHidden &&
     prevProps.isInteracting === nextProps.isInteracting &&
-    prevProps.isZooming === nextProps.isZooming
+    prevProps.isZooming === nextProps.isZooming &&
+    prevProps.onScaleApplied === nextProps.onScaleApplied &&
+    prevProps.presentationApiRegistry === nextProps.presentationApiRegistry
   );
 });
 
