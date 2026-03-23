@@ -10720,6 +10720,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncSyncfusionLightweightPages
   ]);
 
+  const isSyncfusionPageViewportVisible = useCallback((pageNumber) => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return false;
+    }
+    const container = syncfusionWrapperRef.current || containerRef.current;
+    const pageHost =
+      syncfusionPageContainersStateRef.current?.[safePageNumber] ||
+      pageContainersRef.current?.[safePageNumber] ||
+      null;
+    if (
+      !container?.getBoundingClientRect ||
+      !pageHost?.getBoundingClientRect ||
+      !pageHost.isConnected
+    ) {
+      return false;
+    }
+    const containerRect = container.getBoundingClientRect();
+    const pageRect = pageHost.getBoundingClientRect();
+    const visibleWidth = Math.max(0, Math.min(pageRect.right, containerRect.right) - Math.max(pageRect.left, containerRect.left));
+    const visibleHeight = Math.max(0, Math.min(pageRect.bottom, containerRect.bottom) - Math.max(pageRect.top, containerRect.top));
+    return visibleWidth > 0 && visibleHeight > 0;
+  }, []);
+
   const handlePALScaleApplied = useCallback((pageNumber, appliedScale, _meta = null) => {
     const safePageNumber = Number(pageNumber);
     const scaleAppliedPhase = typeof _meta?.phase === 'string' ? _meta.phase : null;
@@ -10727,6 +10751,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       scaleAppliedPhase === 'fabric_rendered' ||
       scaleAppliedPhase === 'paint_committed' ||
       scaleAppliedPhase === 'already_current';
+    const pageViewportVisible = isSyncfusionPageViewportVisible(safePageNumber);
+    const canReleaseOffscreenWrapperPhase =
+      scaleAppliedPhase === 'wrapper_css_ready' &&
+      !pageViewportVisible;
+    const canReleaseConfirmPending =
+      isVisualReadyPhase ||
+      canReleaseOffscreenWrapperPhase;
     if (Number.isFinite(safePageNumber) && safePageNumber > 0) {
       syncfusionLastPALScaleAppliedPhaseByPageRef.current = {
         ...(syncfusionLastPALScaleAppliedPhaseByPageRef.current || {}),
@@ -10767,22 +10798,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       Number.isFinite(safePageNumber) &&
       safePageNumber > 0 &&
       syncfusionScaleConfirmHiddenPagesRef.current.has(safePageNumber) &&
-      isVisualReadyPhase
+      canReleaseConfirmPending
     ) {
       scheduleSyncfusionScaleConfirmReveal(safePageNumber, scaleAppliedPhase || 'unknown');
-    } else if (Number.isFinite(safePageNumber) && safePageNumber > 0 && isVisualReadyPhase) {
+    } else if (Number.isFinite(safePageNumber) && safePageNumber > 0 && canReleaseConfirmPending) {
       syncfusionLastPALRevealPhaseByPageRef.current = {
         ...(syncfusionLastPALRevealPhaseByPageRef.current || {}),
         [safePageNumber]: scaleAppliedPhase || 'already_visible'
       };
     }
 
-    // `wrapper_css_ready` only means PAL has its local continuity transform in place.
-    // Keep confirm-pending transforms, hidden-page reveal, and pointer recovery
-    // blocked until a true visual-ready phase arrives from PAL.
-    if (!isVisualReadyPhase) return;
+    // Visible pages still require PAL's visual-ready phases before confirm-pending
+    // releases the outer transform. Off-screen pages may release earlier once
+    // PAL reports wrapper continuity is in place.
+    if (!canReleaseConfirmPending) return;
 
-    // Visual-ready phases may release the per-page confirm-pending transform.
+    // Release the per-page confirm-pending transform once the page is safe.
     const node = syncfusionOverlayContentRefs.current?.[safePageNumber];
     if (node && node.isConnected && node.style) {
       node.style.transform = '';
@@ -10809,7 +10840,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       resetSyncfusionOverlayTransformStyles();
     }
-  }, [resetSyncfusionOverlayTransformStyles, scheduleSyncfusionScaleConfirmReveal, syncSyncfusionZoomPresentationPage]);
+  }, [isSyncfusionPageViewportVisible, resetSyncfusionOverlayTransformStyles, scheduleSyncfusionScaleConfirmReveal, syncSyncfusionZoomPresentationPage]);
 
   const runSyncfusionCommitQueue = useCallback(() => {
     if (syncfusionInteractionPhaseRef.current !== 'committing') {
