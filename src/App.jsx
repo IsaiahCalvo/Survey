@@ -21387,8 +21387,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           beginSyncfusionScaleConfirmPending('keyboard_toolbar_settle');
         }, 1000);
       }
-      scaleRef.current = safeScale;
-      setScale(safeScale);
+      // Do not push the React scale into PAL ahead of Syncfusion's own
+      // zoomChange callback. Pre-committing here lets PAL redraw before the
+      // App-level settle/confirm-pending handoff starts, which recreates the
+      // visible freeze-after-redraw flicker the Phase 4 contract is trying to remove.
+      syncfusionPendingZoomScaleRef.current = safeScale;
 
       if (viewer?.magnificationModule) {
         const zoomPercent = safeScale * 100;
@@ -24595,8 +24598,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                       const resolvedPageSize = pageSize;
 
-                      // Phase 3: live scale. CSS transforms handle visual scaling during zoom.
-                      const layerScale = syncfusionViewerScale > 0 ? syncfusionViewerScale : 1;
+                      const committedPageScale = Number(syncfusionCommittedPageScales[pageNumber]);
+                      const hasCommittedPageScale = Number.isFinite(committedPageScale) && committedPageScale > 0;
+                      // Keep PAL on the last committed page scale while the outer
+                      // overlay CSS transform is active. Letting PAL consume the
+                      // live Syncfusion scale mid-zoom starts its redraw before the
+                      // App settle/confirm-pending handoff begins, which recreates
+                      // the visible flicker the user is reporting.
+                      const layerScale = zoomOverlayTransformActiveRef.current && hasCommittedPageScale
+                        ? committedPageScale
+                        : (syncfusionViewerScale > 0 ? syncfusionViewerScale : 1);
 
                       // [DEBUG] Log props being passed to PAL
                       if (pageNumber === 6) {
@@ -24724,7 +24735,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onInsertBlankPage={handleInsertBlankPage}
                                 pageClipboard={pageClipboardPayload}
                                 onPastePageHere={handlePastePageHere}
-                                isInteracting={syncfusionInteractionPhase === 'interacting'}
+                                isInteracting={syncfusionInteractionPhase === 'interacting' || zoomOverlayTransformActiveRef.current}
                                 isZooming={isZooming}
                                 onScaleApplied={handlePALScaleApplied}
                               />
