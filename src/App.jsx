@@ -64,6 +64,7 @@ import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarning
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
+import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
@@ -11215,6 +11216,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     clearSyncfusionOverlayTransformSyncRaf,
     resetSyncfusionOverlayTransformStyles
   ]);
+
+  // Renderer toggle state (SVG vs Canvas display mode)
+  const [rendererMode, setRendererMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('renderer') || 'canvas';
+  });
+
+  // Keyboard shortcut: Ctrl+Shift+V toggles renderer mode
+  useEffect(() => {
+    const handleRendererToggle = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'V') {
+        e.preventDefault();
+        setRendererMode(prev => {
+          const next = prev === 'svg' ? 'canvas' : 'svg';
+          console.log(`[Renderer] Switched to ${next} mode`);
+          return next;
+        });
+      }
+    };
+    window.addEventListener('keydown', handleRendererToggle);
+    return () => window.removeEventListener('keydown', handleRendererToggle);
+  }, []);
 
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
@@ -24739,6 +24762,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
                               />
                             )}
+                            {rendererMode !== 'svg' && (
                             <div style={shouldHideFullLayer ? { visibility: 'hidden' } : undefined}>
                               <PageAnnotationLayer
                                 pageNumber={pageNumber}
@@ -24796,6 +24820,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 presentationApiRegistry={syncfusionPagePresentationApisRef}
                               />
                             </div>
+                            )}
                             {shouldRenderLightweightAnnotations ? (
                               <LightweightAnnotationOverlay
                                 pageNumber={pageNumber}
@@ -24814,6 +24839,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onRenderReady={markSyncfusionProxyPageReady}
                               />
                             ) : null}
+                            {rendererMode === 'svg' && (
+                              <SVGAnnotationLayer
+                                pageNumber={pageNumber}
+                                width={resolvedPageSize.width}
+                                height={resolvedPageSize.height}
+                                annotations={pageAnnotations}
+                                callouts={callouts}
+                                selectedModuleId={selectedModuleId}
+                                showSurveyPanel={showSurveyPanel}
+                                selectedSpaceId={annotationSpaceId}
+                                activeSpaceId={activeSpaceId}
+                                activeRegions={pageRegions}
+                                activeRegionId={activeRegionId}
+                                spaces={spaces}
+                                getRegionLightbulbState={getRegionLightbulbState}
+                                isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                layerVisibility={annotationLayerVisibility}
+                              />
+                            )}
                             {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
                               const space = spaces.find(s => s.id === activeSpaceId);
                               const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
@@ -24933,7 +24977,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
                                   />
                                 )}
-                                {pageSizes[pageNumber] && (
+                                {pageSizes[pageNumber] && rendererMode !== 'svg' && (
                                   <PageAnnotationLayer
                                     pageNumber={pageNumber}
                                     width={pageSizes[pageNumber].width}
@@ -24985,6 +25029,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     onInsertBlankPage={handleInsertBlankPage}
                                     pageClipboard={pageClipboardPayload}
                                     onPastePageHere={handlePastePageHere}
+                                  />
+                                )}
+                                {pageSizes[pageNumber] && rendererMode === 'svg' && (
+                                  <SVGAnnotationLayer
+                                    pageNumber={pageNumber}
+                                    width={pageSizes[pageNumber].width}
+                                    height={pageSizes[pageNumber].height}
+                                    annotations={annotationsByPage[pageNumber]}
+                                    callouts={callouts}
+                                    selectedModuleId={selectedModuleId}
+                                    showSurveyPanel={showSurveyPanel}
+                                    selectedSpaceId={annotationSpaceId}
+                                    activeSpaceId={activeSpaceId}
+                                    activeRegions={pageRegions}
+                                    activeRegionId={activeRegionId}
+                                    spaces={spaces}
+                                    getRegionLightbulbState={getRegionLightbulbState}
+                                    isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                    layerVisibility={annotationLayerVisibility}
                                   />
                                 )}
                                 {/* Space Region Dimming Overlay */}
@@ -31947,6 +32010,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }}
         fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
       />
+
+      {/* Renderer toggle badge (developer tool) */}
+      <div
+        onClick={() => setRendererMode(prev => {
+          const next = prev === 'svg' ? 'canvas' : 'svg';
+          console.log(`[Renderer] Switched to ${next} mode`);
+          return next;
+        })}
+        style={{
+          position: 'fixed',
+          bottom: 8,
+          right: 8,
+          padding: '4px 8px',
+          borderRadius: 4,
+          fontSize: '12px',
+          fontWeight: 600,
+          fontFamily: 'monospace',
+          lineHeight: 1,
+          zIndex: 99999,
+          opacity: 0.85,
+          pointerEvents: 'auto',
+          cursor: 'pointer',
+          color: '#FFFFFF',
+          backgroundColor: rendererMode === 'svg' ? '#10B981' : '#6366F1',
+          userSelect: 'none',
+        }}
+      >
+        {rendererMode === 'svg' ? 'SVG' : 'CANVAS'}
+      </div>
     </>
   );
 }
