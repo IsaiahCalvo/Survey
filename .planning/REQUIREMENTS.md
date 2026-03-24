@@ -9,17 +9,17 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 
 ### SVG Display
 
-- [ ] **DISP-01**: All 7 annotation types (pen strokes, highlights, lines, arrows, callouts, shapes, text) render as SVG elements inside an SVGAnnotationLayer component
-- [ ] **DISP-02**: SVG viewBox matches PDF page dimensions (`viewBox="0 0 pageWidth pageHeight"`) and auto-scales with zoom -- no JavaScript zoom coordination needed
-- [ ] **DISP-03**: Fabric.js path objects render with correct pathOffset handling (`translate(-pathOffset.x, -pathOffset.y)`) so pen/highlighter strokes appear at correct positions
-- [ ] **DISP-04**: `strokeUniform: true` renders as SVG `vector-effect="non-scaling-stroke"` so stroke widths stay constant during zoom
-- [ ] **DISP-05**: Highlight annotations render with correct opacity and `mix-blend-mode: multiply` matching Canvas output
+- [x] **DISP-01**: All 7 annotation types (pen strokes, highlights, lines, arrows, callouts, shapes, text) render as SVG elements inside an SVGAnnotationLayer component
+- [x] **DISP-02**: SVG viewBox matches PDF page dimensions (`viewBox="0 0 pageWidth pageHeight"`) and auto-scales with zoom -- no JavaScript zoom coordination needed
+- [x] **DISP-03**: Fabric.js path objects render with correct pathOffset handling (`translate(-pathOffset.x, -pathOffset.y)`) so pen/highlighter strokes appear at correct positions
+- [x] **DISP-04**: `strokeUniform: true` renders as SVG `vector-effect="non-scaling-stroke"` so stroke widths stay constant during zoom
+- [x] **DISP-05**: Highlight annotations render with correct opacity and `mix-blend-mode: multiply` matching Canvas output
 - [ ] **DISP-06**: Eraser clipPaths render correctly using `clip-rule="evenodd"` for hole subtraction
 - [ ] **DISP-07**: Text annotations render via `<foreignObject>` with correct font family, size, weight, color, and word wrap
 - [ ] **DISP-08**: Callout annotations render as SVG lines + rect + text (via `<foreignObject>`) with correct knee/endpoint positions
-- [ ] **DISP-09**: Arrow annotations render with correct arrowhead geometry (SVG `<polygon>` or `<marker>`)
+- [x] **DISP-09**: Arrow annotations render with correct arrowhead geometry (SVG `<polygon>` or `<marker>`)
 - [ ] **DISP-10**: Region/space filtering works in SVG layer -- annotations show/hide based on spaceId, moduleId, regionId metadata
-- [ ] **DISP-11**: SVGAnnotationLayer replaces LightweightAnnotationOverlay as the primary annotation display component
+- [x] **DISP-11**: SVGAnnotationLayer replaces LightweightAnnotationOverlay as the primary annotation display component
 
 ### SVG Interaction
 
@@ -91,17 +91,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DISP-01 | Phase 8 | Pending |
-| DISP-02 | Phase 8 | Pending |
-| DISP-03 | Phase 8 | Pending |
-| DISP-04 | Phase 8 | Pending |
-| DISP-05 | Phase 8 | Pending |
+| DISP-01 | Phase 8 | Complete |
+| DISP-02 | Phase 8 | Complete |
+| DISP-03 | Phase 8 | Complete |
+| DISP-04 | Phase 8 | Complete |
+| DISP-05 | Phase 8 | Complete |
 | DISP-06 | Phase 8 | Pending |
 | DISP-07 | Phase 8 | Pending |
 | DISP-08 | Phase 8 | Pending |
-| DISP-09 | Phase 8 | Pending |
+| DISP-09 | Phase 8 | Complete |
 | DISP-10 | Phase 8 | Pending |
-| DISP-11 | Phase 8 | Pending |
+| DISP-11 | Phase 8 | Complete |
 | INTR-01 | Phase 9 | Pending |
 | INTR-02 | Phase 9 | Pending |
 | INTR-03 | Phase 9 | Pending |
