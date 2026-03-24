@@ -61,11 +61,12 @@ Plans:
   3. User can drag resize handles to scale an annotation, and the annotation renders correctly at the new size
   4. User can select multiple annotations (shift-click), drag them as a group, and delete the group
   5. Double-clicking an annotation transitions to edit mode (the trigger point for Canvas mount in later phases)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 09-01: TBD
-- [ ] 09-02: TBD
+- [ ] 09-01-PLAN.md -- Utility modules + selection hook + SVGSelectionOverlay + wiring into SVGAnnotationLayer
+- [ ] 09-02-PLAN.md -- Drag-to-move + resize handles + rotation handle
+- [ ] 09-03-PLAN.md -- Multi-select (shift-click) + group drag/delete + double-click edit trigger
 
 ### Phase 10: Canvas Mount/Unmount (Pen + Eraser)
 **Goal**: Fabric.js Canvas mounts only when the user activates pen, highlighter, or eraser tools, captures the work, and unmounts cleanly
@@ -113,6 +114,6 @@ Phases execute in numeric order: 8 -> 9 -> 10 -> 11
 | 6. Dead Code Removal | v1.0 | - | Superseded | - |
 | 7. Widen Zoom Range | v1.0 | - | Deferred | - |
 | 8. SVG Display Foundation | v2.0 | 0/2 | Planning complete | - |
-| 9. SVG Selection and Interaction | v2.0 | 0/? | Not started | - |
+| 9. SVG Selection and Interaction | v2.0 | 0/3 | Planning complete | - |
 | 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 0/? | Not started | - |
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 0/? | Not started | - |
