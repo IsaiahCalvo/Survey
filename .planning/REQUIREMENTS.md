@@ -1,69 +1,89 @@
-# Requirements: Zoom Flicker Fix — Direct Child Canvas
+# Requirements: SVG Migration — PDF Annotation App
 
-**Defined:** 2026-03-17
-**Core Value:** Annotations must stay visible and correctly positioned during all zoom operations
+**Defined:** 2026-03-23
+**Core Value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox
 
-## v1 Requirements
+## v2.0 Requirements
 
-Requirements for this milestone. Each maps to roadmap phases.
+Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadmap phases.
 
-### Zoom Stability
+### SVG Display
 
-- [x] **ZOOM-01**: Annotations stay visible during all zoom operations (never disappear or flash out)
-- [x] **ZOOM-02**: Annotations stay positioned correctly during zoom (never jump to wrong location/size)
-- [x] **ZOOM-03**: Ctrl+scroll wheel zoom works without annotation flicker
-- [x] **ZOOM-04**: Toolbar zoom in/out buttons work without annotation flicker
-- [x] **ZOOM-05**: Zoom percentage dropdown works without annotation flicker
-- [x] **ZOOM-06**: Fit-to-page works without annotation flicker
-- [x] **ZOOM-07**: Fit-to-width works without annotation flicker
-- [x] **ZOOM-08**: Pinch-to-zoom (trackpad) works without annotation flicker
-- [ ] **ZOOM-09**: Canvas redraws at correct resolution after zoom settles (crisp, not blurry)
-- [x] **ZOOM-10**: Rapid consecutive zooms handled gracefully (no stuck transforms or stale state)
+- [ ] **DISP-01**: All 7 annotation types (pen strokes, highlights, lines, arrows, callouts, shapes, text) render as SVG elements inside an SVGAnnotationLayer component
+- [ ] **DISP-02**: SVG viewBox matches PDF page dimensions (`viewBox="0 0 pageWidth pageHeight"`) and auto-scales with zoom — no JavaScript zoom coordination needed
+- [ ] **DISP-03**: Fabric.js path objects render with correct pathOffset handling (`translate(-pathOffset.x, -pathOffset.y)`) so pen/highlighter strokes appear at correct positions
+- [ ] **DISP-04**: `strokeUniform: true` renders as SVG `vector-effect="non-scaling-stroke"` so stroke widths stay constant during zoom
+- [ ] **DISP-05**: Highlight annotations render with correct opacity and `mix-blend-mode: multiply` matching Canvas output
+- [ ] **DISP-06**: Eraser clipPaths render correctly using `clip-rule="evenodd"` for hole subtraction
+- [ ] **DISP-07**: Text annotations render via `<foreignObject>` with correct font family, size, weight, color, and word wrap
+- [ ] **DISP-08**: Callout annotations render as SVG lines + rect + text (via `<foreignObject>`) with correct knee/endpoint positions
+- [ ] **DISP-09**: Arrow annotations render with correct arrowhead geometry (SVG `<polygon>` or `<marker>`)
+- [ ] **DISP-10**: Region/space filtering works in SVG layer — annotations show/hide based on spaceId, moduleId, regionId metadata
+- [ ] **DISP-11**: SVGAnnotationLayer replaces LightweightAnnotationOverlay as the primary annotation display component
 
-### Overlay Architecture
+### SVG Interaction
 
-- [x] **OVLY-01**: Canvas overlays are direct children of Syncfusion page divs (not via portal host system)
-- [x] **OVLY-02**: CSS transform: scale(ratio) applied to overlay divs during zoom transition
-- [ ] **OVLY-03**: Overlay divs re-attach when Syncfusion destroys/recreates page divs
-- [ ] **OVLY-04**: Fabric.js pointer events (drawing, selection) work correctly with CSS-transformed parent
-- [ ] **OVLY-05**: Fabric.js calcOffset() called after every overlay div re-attachment
+- [ ] **INTR-01**: User can click an annotation in SVG to select it (visual selection highlight appears)
+- [ ] **INTR-02**: Selected annotation shows resize handles at corners and midpoints, rendered as SVG elements
+- [ ] **INTR-03**: Selection handles remain constant size during zoom (scale-compensated via `vector-effect` or inverse scale)
+- [ ] **INTR-04**: User can drag a selected annotation to reposition it in SVG (pointer events, no Canvas mount)
+- [ ] **INTR-05**: User can drag resize handles to scale an annotation in SVG
+- [ ] **INTR-06**: User can rotate an annotation via rotation handle in SVG
+- [ ] **INTR-07**: User can select multiple annotations (shift-click or marquee) and see group selection highlight
+- [ ] **INTR-08**: User can drag/delete multiple selected annotations as a group
+- [ ] **INTR-09**: Clicking empty space deselects all annotations
+- [ ] **INTR-10**: Double-click on an annotation transitions to Canvas edit mode (mounts Fabric.js Canvas)
 
-### Preservation
+### Canvas Editing
 
-- [ ] **PRES-01**: Drawing tools (pen, shapes, callouts, regions) work correctly after zoom
-- [ ] **PRES-02**: Search highlights visible and positioned correctly at all zoom levels
-- [ ] **PRES-03**: Undo/redo works after zoom
-- [ ] **PRES-04**: Pan/scroll proxy rendering (LightweightAnnotationOverlay) still works
-- [ ] **PRES-05**: No console errors during any zoom operation
+- [ ] **EDIT-01**: Pen/highlighter tool mounts a transparent Fabric.js Canvas over the entire page for stroke capture at 60fps
+- [ ] **EDIT-02**: Completed pen/highlighter strokes are serialized to Fabric.js JSON and committed to the SVG layer
+- [ ] **EDIT-03**: Canvas stays mounted while pen/highlighter tool is active, unmounts on tool switch
+- [ ] **EDIT-04**: Eraser tool mounts Canvas and loads all page annotations for boolean path intersection/subtraction
+- [ ] **EDIT-05**: Eraser results are serialized back to Fabric.js JSON and committed to SVG layer on tool deactivation
+- [ ] **EDIT-06**: Text double-click mounts a targeted Fabric.js Canvas sized to the annotation bounding box for IText editing
+- [ ] **EDIT-07**: Text edit commits on blur (click outside) — Canvas unmounts, SVG updates with new text content
+- [ ] **EDIT-08**: Shape/callout double-click mounts a targeted Canvas for property editing (color, stroke, resize)
+- [ ] **EDIT-09**: Canvas auto-commits unsaved changes before unmounting (no data loss on tool switch or zoom)
+- [ ] **EDIT-10**: Canvas mount/unmount lifecycle uses React state + key prop for clean Fabric.js creation/disposal
 
-### Cleanup
+### Zoom & Integration
 
-- [ ] **CLEN-01**: Freeze/snapshot/confirm-pending refs removed (~30 refs)
-- [ ] **CLEN-02**: Freeze/snapshot/confirm-pending functions removed (~14 functions)
-- [ ] **CLEN-03**: Dead props removed from PageAnnotationLayer (onScaleApplied, presentationApiRegistry, isHidden)
-- [ ] **CLEN-04**: No orphaned code referencing removed refs/functions
+- [ ] **ZOOM-01**: SVG layer zoom is handled entirely by viewBox — zero JavaScript timers for zoom coordination
+- [ ] **ZOOM-02**: If Canvas is mounted during zoom, it receives CSS transform for visual stability (blurry but positioned)
+- [ ] **ZOOM-03**: After zoom settles (200ms debounce), Canvas remounts at new dimensions if still active
+- [ ] **ZOOM-04**: In-progress pen stroke is auto-committed on zoom start, pen resumes after settle
+- [ ] **ZOOM-05**: All 6 zoom methods work (ctrl+scroll, toolbar buttons, dropdown, fit-to-page, fit-to-width, pinch)
+- [ ] **ZOOM-06**: Freeze/snapshot/confirm-pending machinery is removed from App.jsx (~30 refs, ~14 functions)
+- [ ] **ZOOM-07**: Dead props (onScaleApplied, presentationApiRegistry, isHidden) are removed from PageAnnotationLayer
+- [ ] **ZOOM-08**: Old 5-timer zoom system is fully replaced — no PAL settle, App settle, confirm-pending, tier-2 defer, or overlay safety timers remain
 
-## v2 Requirements
+## Future Requirements
 
-Deferred to future release. Tracked but not in current roadmap.
+Deferred to future milestones. Tracked but not in current roadmap.
 
-### Zoom UX Enhancements
+### Performance Optimization
 
-- **ZUXE-01**: Zoom-to-cursor centering (zoom focuses on mouse position)
-- **ZUXE-02**: Animated zoom transitions (smooth scaling animation)
-- **ZUXE-03**: Zoom history/undo (return to previous zoom levels)
-- **ZUXE-04**: Adaptive settle timer (shorter for discrete zoom, longer for gesture zoom)
+- **PERF-01**: SVG virtualization for pages with 500+ annotations (render only visible elements)
+- **PERF-02**: Widen zoom range beyond 50%-500% clamp (deferred from v1.0 Phase 7)
+
+### Advanced Interaction
+
+- **ADVN-01**: Keyboard shortcuts for annotation operations (delete, copy, paste, nudge)
+- **ADVN-02**: Snap-to-grid for annotation positioning
+- **ADVN-03**: Annotation grouping/ungrouping
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| SVG-based annotation rendering | Need Fabric.js for interactive annotation editing |
-| Annotation data model changes | Only overlay attachment and zoom handling change |
-| Syncfusion PDF viewer config changes | Viewer itself is not the problem |
-| LightweightAnnotationOverlay changes | Only re-parented, not modified |
-| SearchHighlightLayer changes | Only re-parented, not modified |
-| Fabric.js canvas rendering optimization | Separate concern from zoom flicker |
+| Data model migration | SVG reads same Fabric.js JSON — no format change needed |
+| Syncfusion viewer changes | Viewer layer is unchanged |
+| SearchHighlightLayer changes | Already DOM-based, independent of annotation layer |
+| Real-time collaborative editing | Future milestone, requires conflict resolution |
+| Mobile touch gestures beyond pinch zoom | Future milestone |
+| SVG.js or interact.js libraries | DOM conflict with React's reconciliation model |
+| Fabric.js toSVG() for rendering | Has documented text positioning bugs, custom JSON-to-SVG is more reliable |
 
 ## Traceability
 
@@ -71,36 +91,51 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ZOOM-01 | Phase 3 | Complete |
-| ZOOM-02 | Phase 3 | Complete |
-| ZOOM-03 | Phase 2 | Complete |
-| ZOOM-04 | Phase 2 | Complete |
-| ZOOM-05 | Phase 2 | Complete |
-| ZOOM-06 | Phase 2 | Complete |
-| ZOOM-07 | Phase 2 | Complete |
-| ZOOM-08 | Phase 2 | Complete |
-| ZOOM-09 | Phase 4 | Pending |
-| ZOOM-10 | Phase 2 | Complete |
-| OVLY-01 | Phase 1 | Complete |
-| OVLY-02 | Phase 2 | Complete |
-| OVLY-03 | Phase 5 | Pending |
-| OVLY-04 | Phase 4 | Pending |
-| OVLY-05 | Phase 5 | Pending |
-| PRES-01 | Phase 4 | Pending |
-| PRES-02 | Phase 4 | Pending |
-| PRES-03 | Phase 4 | Pending |
-| PRES-04 | Phase 4 | Pending |
-| PRES-05 | Phase 4 | Pending |
-| CLEN-01 | Phase 6 | Pending |
-| CLEN-02 | Phase 6 | Pending |
-| CLEN-03 | Phase 6 | Pending |
-| CLEN-04 | Phase 6 | Pending |
+| DISP-01 | TBD | Pending |
+| DISP-02 | TBD | Pending |
+| DISP-03 | TBD | Pending |
+| DISP-04 | TBD | Pending |
+| DISP-05 | TBD | Pending |
+| DISP-06 | TBD | Pending |
+| DISP-07 | TBD | Pending |
+| DISP-08 | TBD | Pending |
+| DISP-09 | TBD | Pending |
+| DISP-10 | TBD | Pending |
+| DISP-11 | TBD | Pending |
+| INTR-01 | TBD | Pending |
+| INTR-02 | TBD | Pending |
+| INTR-03 | TBD | Pending |
+| INTR-04 | TBD | Pending |
+| INTR-05 | TBD | Pending |
+| INTR-06 | TBD | Pending |
+| INTR-07 | TBD | Pending |
+| INTR-08 | TBD | Pending |
+| INTR-09 | TBD | Pending |
+| INTR-10 | TBD | Pending |
+| EDIT-01 | TBD | Pending |
+| EDIT-02 | TBD | Pending |
+| EDIT-03 | TBD | Pending |
+| EDIT-04 | TBD | Pending |
+| EDIT-05 | TBD | Pending |
+| EDIT-06 | TBD | Pending |
+| EDIT-07 | TBD | Pending |
+| EDIT-08 | TBD | Pending |
+| EDIT-09 | TBD | Pending |
+| EDIT-10 | TBD | Pending |
+| ZOOM-01 | TBD | Pending |
+| ZOOM-02 | TBD | Pending |
+| ZOOM-03 | TBD | Pending |
+| ZOOM-04 | TBD | Pending |
+| ZOOM-05 | TBD | Pending |
+| ZOOM-06 | TBD | Pending |
+| ZOOM-07 | TBD | Pending |
+| ZOOM-08 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 24 total
-- Mapped to phases: 24
-- Unmapped: 0
+- v2.0 requirements: 39 total
+- Mapped to phases: 0
+- Unmapped: 39 (pending roadmap creation)
 
 ---
-*Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after roadmap creation*
+*Requirements defined: 2026-03-23*
+*Last updated: 2026-03-23 after initial definition*
