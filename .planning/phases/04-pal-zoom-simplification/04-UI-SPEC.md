@@ -160,17 +160,17 @@ Pan/scroll proxy rendering continues to work at all zoom levels:
 
 ---
 
-## Props Removal Contract
+## Props and Callback Contract
 
-These props are removed from PageAnnotationLayer's component signature in this phase:
+These props/callbacks are treated as follows in this phase:
 
-| Prop | Current Line | Removal Reason | Safe Default |
-|------|-------------|----------------|-------------|
-| `onScaleApplied` | ~3138 | Old confirm-pending callback -- App.jsx no longer needs scale confirmation | `undefined` (already has safe default in destructuring) |
-| `presentationApiRegistry` | ~3139 | No longer needed for zoom coordination | `undefined` (already has safe default) |
-| `isHidden` | ~3135 | Early return logic removed -- overlay div visibility handles this | `false` (component always renders) |
+| Prop / callback | Status in Phase 4 | Why |
+|-----------------|-------------------|-----|
+| `onScaleApplied` | KEEP | This is still the explicit PAL -> App sequencing hook for transform release / reveal timing |
+| `presentationApiRegistry` | Optional cleanup only if proven unused | Not part of the load-bearing zoom path, but should not be removed casually during timing repair |
+| `isHidden` | Optional cleanup only if proven unused | Not part of the load-bearing zoom path, but should not distract from the sequencing repair |
 
-Source: CONTEXT.md decisions -- "Props to remove" section.
+Source: refreshed CONTEXT.md + `CLAUDE.md` repo-level zoom rules.
 
 ---
 
@@ -178,13 +178,16 @@ Source: CONTEXT.md decisions -- "Props to remove" section.
 
 | Signal | Owner | Direction | Mechanism |
 |--------|-------|-----------|-----------|
-| `isZooming` | App.jsx | App -> PAL (prop) | `true` when zoom active, `false` when 1000ms settle timer fires |
-| `inZoomModeRef` | PAL | Internal | Latch set/cleared based on `isZooming` prop transitions (NOT independent timer) |
-| `pendingScaleRef` | PAL | Internal | Stores deferred scale during zoom for post-settle redraw |
+| `isInteracting` | App.jsx | App -> PAL (prop) | Primary guard for expensive canvas work during active zoom / scroll interactions |
+| `isZooming` | App.jsx | App -> PAL (prop) | Secondary signal only; useful context but not reliable enough to be the sole redraw trigger |
+| `inZoomModeRef` | PAL | Internal | Latch for deferred redraw sequencing |
+| `pendingScaleRef` | PAL | Internal | Stores deferred scale until PAL performs the settled redraw |
+| `zoomSettleTimerRef` | PAL | Internal | Existing 300ms redraw debounce; keep while repairing sequencing |
 | `deferredZoomScaleRef` | PAL | Internal | Stores pending scale for delayed/off-screen pages |
-| Settle timer | App.jsx | N/A | 1000ms after last zoom input -- single source of truth, PAL's 300ms timer removed |
+| `onScaleApplied` | PAL -> App | Callback | Explicit callback phases tell App when a page is visually ready versus still waiting |
+| Overlay settle cleanup | App.jsx | N/A | Removes temporary overlay transforms only after the repaired callback sequence says it is safe |
 
-Source: CONTEXT.md -- "Settle timer coordination" and "Post-zoom redraw sequence" decisions.
+Source: refreshed CONTEXT.md decisions and RESEARCH.md timing analysis.
 
 ---
 

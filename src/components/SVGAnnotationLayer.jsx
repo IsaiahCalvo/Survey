@@ -266,12 +266,20 @@ const SVGAnnotationLayer = memo(({
   const objectCount = renderedObjects.length;
   const calloutCount = filteredCallouts.length;
 
-  // Log mount info
+  // Log mount/unmount
   useEffect(() => {
     console.log(
-      `[SVGAnnotationLayer] Mounted for page ${pageNumber} with ${objectCount} annotations, ${calloutCount} callouts`
+      `[SVG p${pageNumber}] MOUNT — ${objectCount} annotations, ${calloutCount} callouts, viewBox=${width}x${height}`
     );
-  }, [pageNumber, objectCount, calloutCount]);
+    return () => {
+      console.log(`[SVG p${pageNumber}] UNMOUNT`);
+    };
+  }, [pageNumber, objectCount, calloutCount, width, height]);
+
+  // Log every render (to detect re-renders during zoom)
+  console.log(
+    `[SVG p${pageNumber}] render — ${objectCount} objs, viewBox=${width}x${height}`
+  );
 
   return (
     <svg

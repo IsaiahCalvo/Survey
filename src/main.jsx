@@ -1,4 +1,27 @@
 // src/main.jsx
+
+// Console log capture — stores all console output for "Save Log" button
+// Writes to /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log
+(() => {
+  const MAX_LINES = 5000;
+  const buffer = [];
+  window.__consoleLogBuffer = buffer;
+  const _log = console.log;
+  const _warn = console.warn;
+  const _error = console.error;
+  const capture = (prefix, origFn, args) => {
+    const line = prefix + args.map(a =>
+      typeof a === 'object' ? JSON.stringify(a) : String(a)
+    ).join(' ');
+    buffer.push(line);
+    if (buffer.length > MAX_LINES) buffer.shift();
+    origFn.apply(console, args);
+  };
+  console.log = (...args) => capture('', _log, args);
+  console.warn = (...args) => capture('console.warn @ ', _warn, args);
+  console.error = (...args) => capture('console.error @ ', _error, args);
+})();
+
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerLicense } from '@syncfusion/ej2-base';

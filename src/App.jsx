@@ -10154,6 +10154,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [resetSyncfusionZoomPresentationPages, syncSyncfusionZoomPresentationPages]);
 
   const beginSyncfusionScaleConfirmPending = useCallback((source = 'unknown') => {
+    // SVG mode: skip freeze/confirm-pending entirely — SVG viewBox auto-scales,
+    // no PAL confirmation needed. Without this guard, the 3000ms safety timeout
+    // fires every zoom because unmounted PAL can never confirm.
+    if (rendererModeRef.current === 'svg') {
+      console.log(`[ConfirmPending] SKIPPED (SVG mode) — source=${source}`);
+      return;
+    }
     cancelAllSyncfusionScaleConfirmReveals({ clearRevealPhases: true });
     syncfusionLastPALScaleAppliedPhaseByPageRef.current = {};
     const frozenPages = captureSyncfusionFrozenOverlayPages();
@@ -11220,8 +11227,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Renderer toggle state (SVG vs Canvas display mode)
   const [rendererMode, setRendererMode] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('renderer') || 'canvas';
+    return params.get('renderer') || 'svg';
   });
+  const rendererModeRef = useRef(rendererMode);
+  rendererModeRef.current = rendererMode;
 
   // Keyboard shortcut: Ctrl+Shift+V toggles renderer mode
   useEffect(() => {
@@ -14012,10 +14021,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [getOverlayLagRecorderDump]);
 
-  const handleSaveOverlayLagLog = useCallback(() => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    return downloadOverlayLagRecorderDump(`overlay-lag-report-${timestamp}.log`);
-  }, [downloadOverlayLagRecorderDump]);
+  const handleSaveOverlayLagLog = useCallback(async () => {
+    const LOG_PATH = '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log';
+    const buffer = window.__consoleLogBuffer;
+    if (!buffer || buffer.length === 0) {
+      console.warn('[SaveLog] No console logs captured yet');
+      return null;
+    }
+    const content = buffer.join('\n');
+    try {
+      await window.electronAPI.writeFile(LOG_PATH, content);
+      console.log(`[SaveLog] ${buffer.length} lines written to ${LOG_PATH}`);
+      return { filename: LOG_PATH, lineCount: buffer.length };
+    } catch (err) {
+      console.error('[SaveLog] Failed to write:', err);
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!useSyncfusionRenderer || !overlayLagAutoRecordEnabled) {
@@ -24839,25 +24861,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onRenderReady={markSyncfusionProxyPageReady}
                               />
                             ) : null}
-                            {rendererMode === 'svg' && (
-                              <SVGAnnotationLayer
-                                pageNumber={pageNumber}
-                                width={resolvedPageSize.width}
-                                height={resolvedPageSize.height}
-                                annotations={pageAnnotations}
-                                callouts={callouts}
-                                selectedModuleId={selectedModuleId}
-                                showSurveyPanel={showSurveyPanel}
-                                selectedSpaceId={annotationSpaceId}
-                                activeSpaceId={activeSpaceId}
-                                activeRegions={pageRegions}
-                                activeRegionId={activeRegionId}
-                                spaces={spaces}
-                                getRegionLightbulbState={getRegionLightbulbState}
-                                isRegionOverlayEnabled={isRegionOverlayEnabled}
-                                layerVisibility={annotationLayerVisibility}
-                              />
-                            )}
+                            {/* SVGAnnotationLayer moved outside this div — see sibling below */}
                             {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
                               const space = spaces.find(s => s.id === activeSpaceId);
                               const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
@@ -24905,6 +24909,39 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               </div>
                             )}
                           </div>
+                          {/* SVG layer: OUTSIDE the transform/freeze div, directly in the portal overlay.
+                              viewBox auto-scales with the Syncfusion page div — no CSS transforms needed. */}
+                          {rendererMode === 'svg' && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '100%',
+                                pointerEvents: 'none',
+                                zIndex: 25,
+                              }}
+                            >
+                              <SVGAnnotationLayer
+                                pageNumber={pageNumber}
+                                width={resolvedPageSize.width}
+                                height={resolvedPageSize.height}
+                                annotations={pageAnnotations}
+                                callouts={callouts}
+                                selectedModuleId={selectedModuleId}
+                                showSurveyPanel={showSurveyPanel}
+                                selectedSpaceId={annotationSpaceId}
+                                activeSpaceId={activeSpaceId}
+                                activeRegions={pageRegions}
+                                activeRegionId={activeRegionId}
+                                spaces={spaces}
+                                getRegionLightbulbState={getRegionLightbulbState}
+                                isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                layerVisibility={annotationLayerVisibility}
+                              />
+                            </div>
+                          )}
                         </div>,
                         portalTarget
                       );
@@ -25794,7 +25831,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               style={{ fontSize: '12px', padding: '6px 10px' }}
               title="Download overlay lag diagnostics (.log JSON payload)"
             >
-              Save Lag Log
+              Save Log
             </button>
 
             <button
@@ -32011,34 +32048,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
       />
 
-      {/* Renderer toggle badge (developer tool) */}
-      <div
-        onClick={() => setRendererMode(prev => {
-          const next = prev === 'svg' ? 'canvas' : 'svg';
-          console.log(`[Renderer] Switched to ${next} mode`);
-          return next;
-        })}
-        style={{
-          position: 'fixed',
-          bottom: 8,
-          right: 8,
-          padding: '4px 8px',
-          borderRadius: 4,
-          fontSize: '12px',
-          fontWeight: 600,
-          fontFamily: 'monospace',
-          lineHeight: 1,
-          zIndex: 99999,
-          opacity: 0.85,
-          pointerEvents: 'auto',
-          cursor: 'pointer',
-          color: '#FFFFFF',
-          backgroundColor: rendererMode === 'svg' ? '#10B981' : '#6366F1',
-          userSelect: 'none',
-        }}
-      >
-        {rendererMode === 'svg' ? 'SVG' : 'CANVAS'}
-      </div>
+      {/* Renderer toggle badge (hidden dev tool — Ctrl+Shift+V to toggle, ?renderer=canvas to force) */}
     </>
   );
 }
