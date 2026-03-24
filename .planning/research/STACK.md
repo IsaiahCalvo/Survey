@@ -1,252 +1,326 @@
 # Technology Stack
 
-**Project:** Zoom Flicker Fix -- Direct Child Canvas
-**Researched:** 2026-03-17
-**Overall confidence:** HIGH (verified against Fabric.js 5.5.2 source code in node_modules)
+**Project:** SVG Migration -- SVG Display + Fabric.js Edit-Only Architecture
+**Researched:** 2026-03-23
+**Overall confidence:** HIGH (native browser APIs + existing Fabric.js 5.5.2, no new runtime dependencies)
 
-## Recommended Stack
+## Recommendation: Zero New Dependencies
 
-This is a refactor of an existing application. No new technologies are introduced. The stack section documents what is already in use, what specifically changes, and the technical mechanisms that make this refactor work.
+The SVG display layer, hit testing, selection handles, and coordinate bridging should all be built with **native SVG + DOM pointer events + React state**, not third-party libraries. The existing `LightweightAnnotationOverlay.jsx` already proves this approach works. Adding SVG.js, interact.js, or similar would introduce a second rendering paradigm competing with React's DOM management -- the exact kind of architectural split that causes bugs in this codebase.
 
-### Core (unchanged)
+---
+
+## Core Stack (Unchanged)
 
 | Technology | Version | Purpose | Status |
 |------------|---------|---------|--------|
-| React | 18.2.x | UI framework, portal rendering | Keep as-is |
-| Fabric.js | 5.5.2 | Canvas annotation drawing/editing | Keep as-is |
+| React | 18.2.x | UI framework, portal rendering, SVG element rendering | Keep as-is |
+| Fabric.js | 5.5.2 | Canvas annotation editing (pen, eraser, text edit only) | Keep -- scope reduced |
 | Syncfusion React PDF Viewer | 32.1.19 (local SDK) | PDF rendering, zoom, page management | Keep as-is |
 | Vite | 5.2.x | Dev server, HMR, build | Keep as-is |
 | Electron | 25.2.x | Desktop wrapper, OAuth, IPC | Keep as-is |
 | Supabase | 2.81.x | Annotation persistence, auth | Keep as-is |
 
-### APIs Used (existing, relevant to this refactor)
+## New Capabilities (No New Dependencies)
 
-| API | Purpose | How It Changes |
-|-----|---------|---------------|
-| `ReactDOM.createPortal(children, container)` | Mount annotation layers into Syncfusion page divs | Container changes from live/snapshot root divs to persistent overlay divs |
-| `element.appendChild(child)` | DOM manipulation | New: used to re-attach overlay divs when Syncfusion recreates page divs |
-| `element.style.transform` | CSS transforms | New: used for visual scaling during zoom (replaces freeze/snapshot approach) |
-| `MutationObserver` (in SyncfusionPDFContainer) | Detect page div creation/destruction | Unchanged, but its output now drives overlay re-attachment |
-| `IntersectionObserver` (in PAL) | Detect when offscreen pages scroll into view | Unchanged, used for deferred canvas redraw |
-| `Fabric.js Canvas.setWidth/setHeight/setZoom/renderAll` | Canvas resize and redraw | Unchanged, called less frequently (only after zoom settles) |
+| Capability | Implementation | Why No Library |
+|------------|---------------|----------------|
+| SVG display layer | React JSX `<svg>` + `<path>`, `<line>`, `<rect>`, `<foreignObject>` | React already manages DOM; adding SVG.js means two systems fighting over the same elements |
+| SVG viewBox zoom | Native `viewBox` attribute on `<svg>` element | Browser handles all scaling automatically -- zero JavaScript needed |
+| Hit testing | Native `pointerEvents` on SVG `<g>` elements + `onClick`/`onPointerDown` | SVG elements ARE DOM nodes; React event handlers work directly on them |
+| Selection handles | React-rendered SVG `<rect>` corner handles with `onPointerDown` | 50-80 lines of code; no library needed for 8 drag handles |
+| Drag/move | `onPointerDown`/`onPointerMove`/`onPointerUp` on SVG elements | Standard DOM events, coordinate math is ~20 lines |
+| Resize | Pointer events on corner/edge handle `<rect>` elements | Same pattern as drag, constrained to handle position |
+| Rotate | Not needed in SVG select mode (rotation only during Canvas edit) | Fabric.js handles rotation when Canvas is mounted for editing |
+| Canvas mount/unmount | React conditional rendering + `useEffect` cleanup | Standard React lifecycle; `fabric.Canvas` in `useEffect`, `canvas.dispose()` in cleanup |
+| SVG-Canvas coordinate bridge | Shared unscaled page coordinate system | Both SVG viewBox and Fabric Canvas use the same coordinate space (page width x height) |
+
+## Why NOT SVG.js
+
+**Confidence: HIGH** (evaluated @svgdotjs/svg.js v3.2.5, 800K weekly downloads)
+
+SVG.js is a solid library for imperative SVG manipulation, but it conflicts with React's declarative rendering model.
+
+| Concern | Detail |
+|---------|--------|
+| **Fights React's DOM management** | SVG.js creates and manages SVG elements imperatively (`SVG().rect(100, 50).move(10, 10)`). React also manages the DOM. Two systems mutating the same SVG tree causes reconciliation bugs, stale references, and unmount chaos. This is the EXACT class of bug that caused v1.0 Phase 4 to fail 4 times. |
+| **Plugin ecosystem fragile** | svg.select.js, svg.resize.js, and svg.draggable.js had documented compatibility breaks between SVG.js v2 and v3. GitHub issues #1031, #65, #61 show users unable to combine plugins reliably. |
+| **Unnecessary abstraction** | React JSX already renders SVG elements. `<rect x={10} y={20} width={100} height={50} />` is more readable and debuggable than `SVG().rect(100, 50).move(10, 20)`, and React handles updates, keys, and unmounting automatically. |
+| **Bundle size** | 2.64MB unpacked. For an app that already has Fabric.js (1.1MB), adding another rendering library is wasteful when native SVG + React does the same job. |
+
+## Why NOT interact.js
+
+**Confidence: HIGH** (evaluated interactjs v1.10.27)
+
+interact.js is excellent for making arbitrary HTML/SVG elements draggable/resizable, but it solves a problem we do not have.
+
+| Concern | Detail |
+|---------|--------|
+| **DOM manipulation outside React** | interact.js modifies element transforms directly via `event.target.style.transform`. In React, position state must flow through React state to trigger re-renders and keep the data model in sync. interact.js's approach bypasses React, causing the visual position to diverge from the data model. |
+| **Coordinate transform complexity with scaled SVG** | interact.js reports deltas in screen coordinates. Inside an SVG with a viewBox, screen pixels do not equal SVG user units. Converting interact.js deltas to SVG coordinates requires manual `getScreenCTM().inverse()` math on every event -- the same math you would write without interact.js, making the library provide zero value. |
+| **Overkill** | interact.js provides inertia, snapping, dropzones, multi-touch gestures. We need: move a rectangle by dragging, resize by dragging corners. That is ~60 lines of pointer event code. |
+| **Last published 2+ years ago** | v1.10.27 was the last release. React wrapper (`react-interactjs`) last updated 10 years ago. |
+
+## Why NOT subjx
+
+**Confidence: MEDIUM** (evaluated subjx v1.1.2, recently updated but low adoption)
+
+subjx provides drag/resize/rotate for SVG elements with a nice API (`subjx('.my-element').drag({})`), but shares the same fundamental problem: imperative DOM manipulation competing with React.
+
+| Concern | Detail |
+|---------|--------|
+| **Imperative API** | Creates its own control handles by injecting DOM elements. React cannot track or manage these injected elements. |
+| **Low adoption** | No weekly download data available; 1 maintainer, ~535 npm dependents. Too risky for a core architectural component. |
+| **Same solution, custom-built, is better** | The selection handle UI we need (8 corner/edge handles + bounding box) is 50-80 lines of React SVG. We get React state management, proper unmounting, and zero external DOM mutation for free. |
 
 ---
 
-## Critical Technical Mechanisms
+## Technical Implementation Details
 
-### 1. CSS Transform Scale on Canvas Parent -- How and Why It Works
+### SVG Display Layer
 
-**Confidence: HIGH** (verified against Fabric.js 5.5.2 source code at `node_modules/fabric/dist/fabric.js` lines 12504-12557)
+**Confidence: HIGH** (validated by LightweightAnnotationOverlay.jsx + reference app at `/Users/isaiahcalvo/Desktop/Syncfusion-PDF-App`)
 
-The design applies `transform: scale(ratio); transform-origin: top left;` to the overlay div that is the **parent** of the Fabric.js canvas. This is the same two-phase approach used by Mozilla's pdf.js viewer (`zoomLayer` in `pdf_page_view.js`):
+```jsx
+// Core pattern: SVG with viewBox in unscaled page coordinates
+<svg
+  viewBox={`0 0 ${pageWidth} ${pageHeight}`}
+  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+  preserveAspectRatio="none"
+>
+  {annotations.map(ann => renderAnnotation(ann))}
+</svg>
+```
 
-**Phase 1 -- Instant visual feedback via CSS:**
-```css
-/* Applied to the overlay div wrapper during zoom */
-.overlay-div {
-  transform: scale(1.5);        /* ratio = newScale / oldScale */
-  transform-origin: top left;   /* anchor to top-left corner */
+Key attributes:
+- `viewBox="0 0 612 792"` (standard US Letter in PDF points)
+- `preserveAspectRatio="none"` -- Syncfusion page div already constrains aspect ratio
+- `width: 100%; height: 100%` -- SVG fills the page div, viewBox handles coordinate mapping
+- All annotation coordinates stored in unscaled PDF page units (same as Fabric.js JSON)
+
+### SVG Hit Testing
+
+**Confidence: HIGH** (native browser APIs, widely available since July 2020)
+
+Two approaches, use both:
+
+1. **React event handlers on `<g>` elements** (primary):
+```jsx
+<g
+  data-annotation-id={ann.id}
+  pointerEvents="auto"         // Enable clicks on this annotation
+  onClick={() => onSelect(ann.id)}
+  style={{ cursor: 'pointer' }}
+>
+  <path d={pathData} ... />
+</g>
+```
+
+2. **`SVGGeometryElement.isPointInFill()` / `isPointInStroke()`** (for precise path hit testing):
+```js
+// Convert screen click to SVG coordinates
+const svgPoint = svgEl.createSVGPoint();
+svgPoint.x = clientX;
+svgPoint.y = clientY;
+const localPoint = svgPoint.matrixTransform(svgEl.getScreenCTM().inverse());
+
+// Test against path geometry
+const pathEl = document.querySelector(`[data-annotation-id="${id}"] path`);
+pathEl.isPointInStroke(localPoint);  // true/false
+```
+
+Browser support: Chrome (all), Firefox 97+, Safari 14.1+, Electron (Chromium-based). Baseline widely available since July 2020.
+
+### SVG Selection Handles
+
+**Confidence: HIGH** (standard React SVG rendering)
+
+Selection handles are React-rendered SVG elements, positioned in viewBox coordinates:
+
+```jsx
+// 8 handles: 4 corners + 4 edge midpoints
+const handles = [
+  { x: bbox.x, y: bbox.y, cursor: 'nwse-resize' },                           // top-left
+  { x: bbox.x + bbox.w / 2, y: bbox.y, cursor: 'ns-resize' },                // top-center
+  { x: bbox.x + bbox.w, y: bbox.y, cursor: 'nesw-resize' },                  // top-right
+  { x: bbox.x + bbox.w, y: bbox.y + bbox.h / 2, cursor: 'ew-resize' },       // right-center
+  { x: bbox.x + bbox.w, y: bbox.y + bbox.h, cursor: 'nwse-resize' },         // bottom-right
+  { x: bbox.x + bbox.w / 2, y: bbox.y + bbox.h, cursor: 'ns-resize' },       // bottom-center
+  { x: bbox.x, y: bbox.y + bbox.h, cursor: 'nesw-resize' },                  // bottom-left
+  { x: bbox.x, y: bbox.y + bbox.h / 2, cursor: 'ew-resize' },                // left-center
+];
+
+{handles.map((h, i) => (
+  <rect
+    key={i}
+    x={h.x - handleHalfSize} y={h.y - handleHalfSize}
+    width={handleSize} height={handleSize}
+    fill="white" stroke="#4A90E2" strokeWidth={1}
+    vectorEffect="non-scaling-stroke"
+    style={{ cursor: h.cursor }}
+    onPointerDown={(e) => startResize(e, i)}
+  />
+))}
+```
+
+Use `vector-effect="non-scaling-stroke"` on handle outlines so they stay visually consistent regardless of zoom. Handle size should be specified in viewBox units but use a constant visual size by dividing by the current scale factor.
+
+### Canvas Mount/Unmount Lifecycle
+
+**Confidence: HIGH** (standard React pattern + Fabric.js 5.5.2 dispose API)
+
+```jsx
+// EditCanvas component -- mounted conditionally based on active tool
+function EditCanvas({ pageWidth, pageHeight, annotationsToLoad, onCommit }) {
+  const canvasRef = useRef(null);
+  const fabricRef = useRef(null);
+
+  useEffect(() => {
+    // Mount: create Fabric canvas (5-15ms)
+    const canvas = new fabric.Canvas(canvasRef.current, {
+      width: pageWidth,
+      height: pageHeight,
+      renderOnAddRemove: false,  // Batch rendering for perf
+      selection: true,
+    });
+    fabricRef.current = canvas;
+
+    // Load annotations if editing existing ones
+    if (annotationsToLoad) {
+      canvas.loadFromJSON(annotationsToLoad, () => canvas.renderAll());
+    }
+
+    // Unmount: dispose canvas
+    return () => {
+      canvas.dispose();  // Note: dispose() is async in Fabric.js 5.5.2
+      fabricRef.current = null;
+    };
+  }, [pageWidth, pageHeight]);
+
+  return <canvas ref={canvasRef} />;
+}
+
+// In parent component:
+{activeToolRequiresCanvas && (
+  <EditCanvas
+    pageWidth={pageWidth}
+    pageHeight={pageHeight}
+    annotationsToLoad={editingAnnotation}
+    onCommit={handleCommit}
+  />
+)}
+```
+
+**Known issue:** `canvas.dispose()` returns a Promise in Fabric.js 5.5.2 but React's `useEffect` cleanup function must be synchronous. The canvas ref is set to null immediately, and the async disposal completes in the background. This is safe because the DOM element is removed by React unmounting, and the dispose just cleans up event listeners and internal state.
+
+### SVG-Canvas Coordinate Bridge
+
+**Confidence: HIGH** (both systems use the same coordinate space)
+
+The bridge is trivially simple because both SVG and Canvas operate in unscaled PDF page coordinates:
+
+| System | Coordinate Space | How Set |
+|--------|-----------------|---------|
+| SVG layer | PDF page units (e.g., 612x792) | `viewBox="0 0 612 792"` |
+| Fabric Canvas | PDF page units (e.g., 612x792) | `new fabric.Canvas(el, { width: 612, height: 792 })` |
+| Fabric JSON | PDF page units | Stored as-is from Canvas |
+
+**Screen-to-SVG conversion** (for pointer events):
+```js
+function screenToSVGCoords(svgElement, clientX, clientY) {
+  const point = svgElement.createSVGPoint();
+  point.x = clientX;
+  point.y = clientY;
+  return point.matrixTransform(svgElement.getScreenCTM().inverse());
 }
 ```
 
-This is essentially free -- it happens on the GPU compositor thread. The canvas pixels are stretched/compressed but never repainted. The image may look blurry (like zooming into a photo) but annotations stay visible and correctly positioned. This is the same behavior as Adobe Acrobat, pdf.js, and every modern PDF viewer.
-
-**Phase 2 -- Full redraw at new resolution:**
-After zoom settles (1000ms debounce), remove the CSS transform and call `setWidth`/`setHeight`/`setZoom`/`renderAll` on the Fabric.js canvas to redraw at the new resolution. The image becomes crisp.
-
-**Why `transform-origin: top left` is mandatory:**
-The default `transform-origin` is `center center`. If you scale from the center, the overlay content shifts position relative to the page div, causing a visible "jump." With `top left`, the top-left corner stays anchored to the page div's top-left corner, and the content grows/shrinks from that anchor point -- matching how Syncfusion resizes its own page divs.
-
-### 2. Fabric.js 5.5.2 Pointer Handling with Parent CSS Transforms
-
-**Confidence: HIGH** (verified by reading actual source code)
-
-A common fear is that CSS transforms on a parent element will break Fabric.js mouse/touch interaction. This is NOT the case for Fabric.js 5.5.2, and here is exactly why.
-
-The `getPointer()` method (line 12504) does two things that make parent CSS transforms transparent:
-
-**Step A -- Position calculation via `getBoundingClientRect()`:**
-```javascript
-// line 12515
-bounds = upperCanvasEl.getBoundingClientRect();
-```
-`getBoundingClientRect()` returns the **visual** bounding box -- it automatically includes all CSS transforms from the element AND all ancestors. If the parent has `transform: scale(1.5)` and the canvas backstore is 800x600, `bounds.width` returns `1200` and `bounds.height` returns `900`. The offset calculation at line 12529 (`calcOffset()`) also uses `getBoundingClientRect()` (line 3478), so `_offset.left` and `_offset.top` are correct in visual space.
-
-**Step B -- CSS scale correction:**
-```javascript
-// lines 12547-12551
-cssScale = {
-  width: upperCanvasEl.width / boundsWidth,    // 800 / 1200 = 0.667
-  height: upperCanvasEl.height / boundsHeight  // 600 / 900 = 0.667
-};
-// lines 12553-12556
-return {
-  x: pointer.x * cssScale.width,   // visual coords -> canvas coords
-  y: pointer.y * cssScale.height
-};
-```
-This maps from visual (screen) coordinates back to canvas (backstore) coordinates. The ratio `backstore / visual` is exactly `1 / parentScale`, which is the correct inverse mapping.
-
-**What this means for the refactor:**
-- Drawing tools will work correctly even while the CSS transform is active on the parent
-- Hit testing (object selection, eraser, region detection) will work correctly
-- `calcOffset()` is called on every pointer event, so offset changes from CSS transforms are always current
-- NO monkey-patching of `getPointer` is needed
-- NO coordinate correction logic is needed in App.jsx or PageAnnotationLayer.jsx
-
-**Caveat -- `isZooming` should still disable drawing during rapid zoom:**
-While the pointer math is correct for a static CSS transform, rapid zoom-scroll generates dozens of zoom events per second. During this window, the Fabric.js canvas should not accept drawing input because: (a) the underlying data scale changes mid-stroke, and (b) the settle timer hasn't fired yet. The existing `isZooming` prop on PAL already handles this correctly.
-
-### 3. Fabric.js `setDimensions` -- When to Use What
-
-**Confidence: HIGH** (verified at `node_modules/fabric/dist/fabric.js` lines 9467-9496)
-
-`setDimensions(dimensions, options)` has two modes:
-
-| Mode | What It Does | When to Use |
-|------|-------------|-------------|
-| Default (no options) | Sets backstore AND CSS dimensions, triggers `requestRenderAll()` | After zoom settles, to redraw at new resolution |
-| `{ cssOnly: true }` | Sets only CSS `style.width` / `style.height`, NO redraw | NOT recommended for this refactor (see below) |
-| `{ backstoreOnly: true }` | Sets only `canvas.width` / `canvas.height`, triggers redraw | Rare, for retina scaling adjustments |
-
-**For this refactor, use `setWidth()` + `setHeight()` + `setZoom()` + `renderAll()` (the existing pattern):**
-The current PAL code already does this correctly at lines 7907-7912. Do not change this. The CSS transform on the parent overlay div handles the visual transition; when it's time to redraw, remove the CSS transform and let Fabric.js do a full resize + render.
-
-**Do NOT use `setDimensions({ cssOnly: true })` as the zoom transition mechanism.** While it changes CSS dimensions without a backstore resize, it triggers `_initRetinaScaling()` and `calcOffset()` (line 9488-9489), which can cause unexpected side effects mid-zoom. The CSS transform on the parent div is simpler, cheaper, and does not touch Fabric.js internals at all.
-
-### 4. Canvas Resize Performance Cost
-
-**Confidence: HIGH** (verified in source code)
-
-When `setWidth(w)` or `setHeight(h)` is called on a Fabric.js canvas:
-1. It sets `canvas.width` on both `lowerCanvasEl` and `upperCanvasEl` (line 9506-9515)
-2. Setting `canvas.width` clears ALL canvas content (browser behavior, not Fabric.js)
-3. `_initRetinaScaling()` re-scales the context for retina displays (line 9488)
-4. `requestRenderAll()` queues a full redraw (line 9492)
-
-**Cost:** The redraw (`renderAll`) is the expensive part. For a page with 50-100 annotations, this is 5-30ms depending on complexity. This is why the design defers it until zoom settles -- running it on every zoom event would cause jank.
-
-**The tiered render strategy in PAL should be preserved:**
-- Center page: immediate render via stagger queue
-- Visible non-center pages: deferred render (800ms delay)
-- Off-screen pages: render when scrolled into view
-
-This tiering already exists in PAL (lines 7920-7938) and should NOT be removed. The only change is removing the `onScaleApplied` callback and `isHidden` prop.
-
-### 5. React Portal Re-parenting -- Why `appendChild` Works
-
-**Confidence: HIGH** (verified against React 18 portal behavior)
-
-When Syncfusion destroys a page div and creates a new one, the overlay div (which was a child of the old page div) becomes detached from the DOM. The fix is:
-
-```javascript
-newPageDiv.appendChild(overlayDiv);  // re-attach the same div object
+**pathOffset handling** (critical for Fabric.js Path objects):
+```jsx
+// Fabric.js stores paths with pathOffset -- the offset from object center to path origin
+// When rendering in SVG, apply negative pathOffset as inner translate
+<g transform={`translate(${obj.left}, ${obj.top}) scale(${obj.scaleX}, ${obj.scaleY})`}>
+  <path
+    d={pathData}
+    transform={`translate(${-(obj.pathOffset?.x || 0)}, ${-(obj.pathOffset?.y || 0)})`}
+  />
+</g>
 ```
 
-React portals render into a container by **reference**, not by DOM tree position. Moving a portal container div to a new parent does NOT cause React to unmount/remount the portal children. The Fabric.js canvas inside the portal stays intact -- no canvas destruction, no state loss, no re-initialization.
-
-This is confirmed by the React docs: "Portals only change the physical placement of the DOM node. In every other way, the JSX you render into a portal acts as a child node of the React component that renders it."
-
-### 6. `will-change: transform` Optimization
-
-**Confidence: MEDIUM** (standard CSS optimization, but test to verify no memory issues)
-
-Adding `will-change: transform` to the overlay div promotes it to its own GPU compositing layer, making subsequent `transform: scale()` changes nearly free:
-
-```css
-.overlay-div {
-  will-change: transform;  /* Promote to compositor layer */
-}
-```
-
-**When to add it:** Set `will-change: transform` when zoom starts (or on the overlay div permanently if memory allows). Remove it after zoom settles and the CSS transform is removed, to free GPU memory.
-
-**Caution for this app:** Each visible page gets its own overlay div with a Fabric.js canvas. On a 5-page visible spread, that is 5 compositor layers + 5 canvas backstore buffers. This is fine for desktop (Electron), but do not add `will-change` to ALL pages -- only visible ones. Fortunately, the existing page virtualization (only rendering overlays for nearby pages) already limits this.
+Without pathOffset correction, paths render at incorrect positions. This is the #1 coordinate mismatch between Canvas and SVG rendering. The existing LightweightAnnotationOverlay does NOT handle pathOffset (listed as a known gap) -- the SVG display layer must.
 
 ---
 
-## What Gets Removed (dead code after refactor)
+## CSS Properties Required
 
-| Category | Count | Examples |
-|----------|-------|---------|
-| Refs in App.jsx | 30+ | `zoomOverlayTransformActiveRef`, `syncfusionStablePortalHostsRef`, `syncfusionScaleConfirmPendingRef`, `syncfusionPendingZoomScaleRef`, `syncfusionFrozenOverlayPagesRef`, etc. |
-| Functions in App.jsx | 14 | `ensureSyncfusionStablePortalChildren`, `beginSyncfusionScaleConfirmPending`, `handlePALScaleApplied`, `syncSyncfusionZoomPresentationPage`, `prepareSyncfusionZoomPresentationSwap`, `queueSyncfusionOverlayTransformSync`, etc. |
-| Props on PAL | 3 | `onScaleApplied`, `presentationApiRegistry`, `isHidden` |
-| Render loop logic | ~200 lines | Frozen page numbers, interaction windows, stable portal host chain, scale computation with fallbacks |
+| Property | Value | Purpose | Support |
+|----------|-------|---------|---------|
+| `vector-effect` | `non-scaling-stroke` | Stroke width stays constant regardless of zoom | Chrome all, Firefox 15+, Safari 5.1+, Electron |
+| `pointer-events` | `auto` on `<g>`, `none` on `<svg>` root | Enable click-through on SVG root, clicks on individual annotations | Universal |
+| `touch-action` | `none` on interactive SVG elements | Prevent browser interpreting drags as scroll/zoom on touch devices | Universal |
+| `contain` | `layout style paint` on SVG wrapper div | Performance isolation from rest of page | Chrome 52+, Firefox 69+, Safari 15.4+ |
 
-## What Gets Added
+## Browser APIs Used (No Polyfills Needed)
 
-| Addition | Size | Purpose |
-|----------|------|---------|
-| `overlayDivsRef` | 1 ref | Stores persistent overlay divs per page |
-| `attachOverlayToPageDiv()` | ~15 lines | Creates/reuses/attaches overlay divs to Syncfusion page divs |
-| Re-attachment `useEffect` | ~10 lines | Watches `syncfusionPageContainers`, re-attaches overlay divs when page divs are recreated |
-| Simplified zoom handler | ~30 lines | CSS `transform: scale(ratio)` on overlay divs during zoom + settle timer |
-| Simplified render loop | ~50 lines | Direct portal creation without freeze/snapshot logic |
-
----
-
-## What NOT to Do (and Why)
-
-### Do NOT apply CSS transform to the Fabric.js canvas element directly
-Apply it to the **parent overlay div**. If you set `transform: scale()` on the canvas element itself, Fabric.js's wrapper div (`.canvas-container`) will not scale, causing a mismatch between the canvas visual size and the wrapper's click area. The wrapper clips overflow, so scaled-up content gets cut off.
-
-### Do NOT use `canvas.setDimensions({ cssOnly: true })` as the zoom transition
-This calls `_initRetinaScaling()` and `calcOffset()` internally (line 9488-9489), which modifies the canvas context's scale transform. Mid-zoom, this causes Fabric.js internal state to diverge from the visual state. Use a plain CSS transform on the parent div instead -- it does not touch Fabric.js internals at all.
-
-### Do NOT call `canvas.setWidth()`/`setHeight()` during rapid zoom events
-Each call clears the canvas backstore (browser behavior), triggers retina re-scaling, and queues a full redraw. At 10-20 zoom events per second, this causes severe jank. Only call these after the zoom settle timer fires.
-
-### Do NOT use CSS `zoom` property instead of `transform: scale()`
-The CSS `zoom` property changes the element's layout box, affecting `offsetWidth`/`offsetHeight`. Fabric.js uses `getBoundingClientRect()` for pointer calculations, which correctly accounts for `transform: scale()`. But `zoom` interacts differently with layout calculations and can cause incorrect object positioning. Stick with `transform: scale()`.
-
-### Do NOT remove the `isZooming` prop from PageAnnotationLayer
-While Fabric.js pointer math works correctly with a static CSS transform, the `isZooming` prop serves a different purpose: it latches a "zoom mode" that defers expensive canvas resizes until zoom settles. Removing it would cause canvas resizes on every intermediate zoom event.
-
-### Do NOT remove the tiered render strategy in PAL
-The center-page-first, visible-deferred, offscreen-lazy strategy (PAL lines 7920-7938) prevents jank when zooming multi-page documents. The refactor removes the `onScaleApplied` callback but keeps the tiering logic intact.
-
-### Do NOT use `requestAnimationFrame` loops for CSS transform application
-The current code uses `queueSyncfusionOverlayTransformSync()` with a RAF loop to apply transforms. The new approach is simpler: apply the transform directly in the zoom handler (which fires on main thread from Syncfusion's event). No RAF loop needed.
-
-### Do NOT add `transition` CSS to the overlay div's transform
-Adding `transition: transform 300ms ease` would create a smooth animation, but it causes the overlay to lag behind Syncfusion's page resize. Syncfusion resizes instantly; the overlay must match instantly. The transform should be applied synchronously, not animated.
+| API | Purpose | Baseline |
+|-----|---------|----------|
+| `SVGSVGElement.createSVGPoint()` | Create point for coordinate transforms | Universal |
+| `SVGElement.getScreenCTM()` | Get screen coordinate transform matrix | Universal |
+| `DOMMatrix.inverse()` | Invert transform matrix for screen-to-SVG conversion | Universal |
+| `SVGGeometryElement.isPointInFill()` | Precise hit testing on paths | July 2020+ |
+| `SVGGeometryElement.isPointInStroke()` | Hit testing on strokes (unfilled paths) | July 2020+ |
+| `PointerEvent` | Unified mouse/touch/pen events | Universal in target browsers |
 
 ---
+
+## What NOT to Add
+
+| Do NOT add | Why |
+|------------|-----|
+| SVG.js (`@svgdotjs/svg.js`) | Fights React DOM management; plugin ecosystem fragile across versions |
+| interact.js (`interactjs`) | Bypasses React state; coordinate conversion in scaled SVG negates its value |
+| subjx | Imperative DOM injection; low adoption; same code is trivial in React |
+| D3.js (for drag) | Massive dependency for a feature that is 20 lines of pointer event code |
+| react-draggable | HTML-focused; does not handle SVG coordinate systems |
+| @dnd-kit (for SVG) | Already in deps for list DnD; NOT designed for SVG spatial manipulation |
+| Snap.svg / Raphael | Legacy libraries, no React integration, abandoned |
 
 ## Alternatives Considered
 
-| Decision | Recommended | Alternative | Why Not Alternative |
-|----------|-------------|-------------|---------------------|
-| Canvas overlay approach | Direct child canvas (Option 3) | SVG display + Fabric.js editing (Option 2) | Option 2 requires a dual-mode system (SVG for display, Fabric.js for editing) which adds complexity. Option 3 preserves the existing Fabric.js system entirely. |
-| Zoom visual bridge | CSS `transform: scale()` on parent div | Canvas snapshot (`toDataURL`) | Snapshot capture is 100-200ms per page and must happen synchronously before zoom. CSS transforms are free (GPU compositor thread). |
-| Pointer handling | Rely on Fabric.js 5.5.2 built-in `getBoundingClientRect` | Monkey-patch `getPointer` | Not needed. Verified in source (line 12515) that `getBoundingClientRect()` on the upper canvas already accounts for all ancestor CSS transforms. |
-| Portal reparenting | `appendChild` persistent div | React reverse-portal library | No new dependency needed. `appendChild` is a 1-line DOM operation. React portals render by container reference, not DOM position. |
-| Re-attachment trigger | `useEffect` on `syncfusionPageContainers` | New `MutationObserver` on viewer root | `MutationObserver` already exists in `SyncfusionPDFContainer` and surfaces results as React state. Adding another would duplicate detection. |
-| Scale source during render | `syncfusionViewerScale` with `scale` state fallback | Complex frozen/committed/fallback scale chain | The 20-line scale computation in the current render loop exists because of the freeze mechanism. With no freeze, just use the live viewer scale. |
+| Category | Recommended | Alternative | Why Not |
+|----------|-------------|-------------|---------|
+| SVG rendering | React JSX (native) | SVG.js v3.2.5 | Imperative API fights React reconciliation; plugin compat issues |
+| Drag/resize | Pointer events + React state | interact.js v1.10.27 | Screen-coord deltas useless inside scaled viewBox; stale maintenance |
+| Hit testing | Native SVG pointer events + isPointInFill | Custom spatial index (quadtree) | Overkill for <500 annotations per page; native browser hit testing is faster |
+| Selection handles | React-rendered SVG rects | subjx v1.1.2 | Injects own DOM; 50 lines of React code replaces entire library |
+| Coordinate bridge | Shared viewBox coordinate space | Matrix transform library | Both systems already use same units; no conversion needed |
+
+---
 
 ## Installation
 
-No new packages. No `package.json` changes.
-
 ```bash
-# Nothing to install. This is a refactor using existing dependencies.
+# No new packages needed. Zero npm install commands.
+# All capabilities come from native browser APIs + existing React + existing Fabric.js.
 ```
 
 ## Sources
 
-### Verified (HIGH confidence)
-- Fabric.js 5.5.2 source: `node_modules/fabric/dist/fabric.js` -- `getPointer()` at line 12504, `setDimensions()` at line 9467, `calcOffset()` at line 9149, `getElementOffset()` at line 3455, `_initRetinaScaling()` at line 9125
-- Project `package.json` for current versions
-- Reference app: `/Users/isaiahcalvo/Desktop/Syncfusion-PDF-App/packages/client/src/pages/Viewer.tsx` -- SVG overlay pattern at lines 144-285
-- Design spec: `docs/superpowers/specs/2026-03-17-option3-direct-child-canvas-design.md`
-- MDN `getBoundingClientRect()`: returns visual bounding box including all CSS transforms from element and ancestors
-
-### Research (MEDIUM confidence)
-- [Fabric.js CSS-scale issue #868](https://github.com/fabricjs/fabric.js/issues/868) -- Historical discussion of CSS scaling support, confirmed `getPointer` uses `getBoundingClientRect`
-- [Fabric.js `setDimensions` PR #1420](https://github.com/fabricjs/fabric.js/pull/1420) -- `cssOnly` option implementation
-- [pdf.js smooth zoom bug 1659492](https://bugzilla.mozilla.org/show_bug.cgi?id=1659492) -- Two-phase zoom approach (CSS transform then re-render)
-- [Performant Drag and Zoom with Fabric.js (2025)](https://medium.com/@Fjonan/performant-drag-and-zoom-using-fabric-js-3f320492f24b) -- CSS transform scale + Fabric.js redraw pattern
-- [MDN getBoundingClientRect](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect) -- Confirms visual bounding box includes CSS transforms
-- [MDN CSS transform-origin](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/transform-origin) -- Anchor point for scale transforms
-- [GPU acceleration with will-change (2025)](https://www.lexo.ch/blog/2025/01/boost-css-performance-with-will-change-and-transform-translate3d-why-gpu-acceleration-matters/) -- Compositor layer promotion for transform performance
+- [SVG.js official docs](https://svgjs.dev/docs/3.2/manipulating/) -- evaluated v3.2.5 manipulating API
+- [SVG.js plugin compatibility issues](https://github.com/svgdotjs/svg.js/issues/1031) -- select/resize plugin v3 problems
+- [interact.js official site](https://interactjs.io/) -- evaluated drag/resize/gesture API
+- [interact.js SVG coordinate issues](https://github.com/taye/interact.js/issues/202) -- drag after resize SVG bug
+- [subjx GitHub](https://github.com/nichollascarter/subjx) -- evaluated drag/resize/rotate for SVG
+- [MDN isPointInFill](https://developer.mozilla.org/en-US/docs/Web/API/SVGGeometryElement/isPointInFill) -- browser compat baseline July 2020
+- [MDN isPointInStroke](https://developer.mozilla.org/en-US/docs/Web/API/SVGGeometryElement/isPointInStroke) -- browser compat baseline July 2020
+- [MDN vector-effect](https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/vector-effect) -- non-scaling-stroke support
+- [Scaling SVGs without scaling strokes (2025)](https://wildfirestudios.ca/blog/scaling-svgs-without-scaling-their-strokes-2025-edition/) -- practical non-scaling-stroke guide
+- [Fabric.js pathOffset PR #5668](https://github.com/fabricjs/fabric.js/pull/5668/files) -- path coordinate handling
+- [Fabric.js toSVG Part 3](https://fabricjs.com/docs/old-docs/fabric-intro-part-3/) -- SVG serialization docs
+- [Fabric.js dispose in React issue #8899](https://github.com/fabricjs/fabric.js/issues/8899) -- unmount cleanup pattern
+- [Fabric.js performance wiki](https://github.com/fabricjs/fabric.js/wiki/Optimizing-performance) -- renderOnAddRemove optimization
+- [SVG viewBox zoom tutorial](https://thecompetentdev.com/weeklyjstips/tips/47_svg_viewbox_zoom/) -- viewBox scaling mechanics
+- [Peter Collingridge SVG dragging tutorial](https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/) -- native SVG drag pattern
+- [SVG drag with React hooks gist](https://gist.github.com/hashrock/0e8f10d9a233127c5e33b09ca6883ff4) -- React + SVG pointer events
+- Reference app at `/Users/isaiahcalvo/Desktop/Syncfusion-PDF-App` -- confirms SVG overlay + viewBox pattern with Syncfusion
+- Obsidian vault research: `CC-SVG Migration Research.md`, `CC-Architecture Overview.md` -- prior analysis
