@@ -256,28 +256,180 @@ export const renderEllipse = (obj, index) => {
 
 /**
  * Render a Fabric.js text object as an SVG <foreignObject> element.
- * Stub for Plan 02 -- returns null for now.
+ * Uses foreignObject with an inner HTML div to support full CSS text layout
+ * including word-wrap, font properties, and text alignment.
  *
  * @param {object} obj - Fabric.js textbox/i-text/text JSON object
  * @param {number} index - Array index for key fallback
- * @returns {null}
+ * @returns {React.ReactElement}
  */
 export const renderText = (obj, index) => {
-  // Plan 02: implement foreignObject text rendering
-  return null;
+  const effectiveWidth = Math.abs((obj.width || 100) * (obj.scaleX || 1));
+  const effectiveHeight = Math.abs((obj.height || 30) * (obj.scaleY || 1));
+  const left = obj.left || 0;
+  const top = obj.top || 0;
+  const angle = obj.angle || 0;
+
+  const key = `text-${obj.id || index}`;
+
+  return (
+    <foreignObject
+      key={key}
+      x={left}
+      y={top}
+      width={effectiveWidth}
+      height={effectiveHeight}
+      transform={angle !== 0 ? `rotate(${angle}, ${left}, ${top})` : undefined}
+      opacity={obj.opacity ?? 1}
+    >
+      <div
+        xmlns="http://www.w3.org/1999/xhtml"
+        style={{
+          width: '100%',
+          height: '100%',
+          fontSize: `${obj.fontSize || 16}px`,
+          fontFamily: obj.fontFamily || 'sans-serif',
+          fontWeight: obj.fontWeight || 'normal',
+          color: obj.fill || '#000',
+          textAlign: obj.textAlign || 'left',
+          lineHeight: obj.lineHeight || 1.16,
+          overflow: 'hidden',
+          wordWrap: 'break-word',
+          whiteSpace: 'pre-wrap',
+          boxSizing: 'border-box',
+          padding: 0,
+        }}
+      >
+        {obj.text || ''}
+      </div>
+    </foreignObject>
+  );
 };
 
 /**
  * Render a callout annotation as SVG elements (lines + circle + rect + text).
- * Stub for Plan 02 -- returns null for now.
+ * Converts normalized (0-1) coordinates to page coordinates, computes connection
+ * geometry via calculateCalloutConnection, and renders connection lines, arrowhead
+ * circle, text box rect, and optional text via foreignObject.
  *
  * @param {object} callout - Callout data object with normalized coordinates
  * @param {number} index - Array index for key fallback
  * @param {number} pageWidth - Unscaled PDF page width
  * @param {number} pageHeight - Unscaled PDF page height
- * @returns {null}
+ * @param {Function} calculateConnection - The calculateCalloutConnection function
+ * @returns {React.ReactElement|null}
  */
-export const renderCallout = (callout, index, pageWidth, pageHeight) => {
-  // Plan 02: implement callout SVG rendering
-  return null;
+export const renderCallout = (callout, index, pageWidth, pageHeight, calculateConnection) => {
+  if (!callout || !callout.arrowTip || !callout.knee) return null;
+
+  // Convert normalized (0-1) coordinates to page coordinates
+  const arrowTip = {
+    x: callout.arrowTip.x * pageWidth,
+    y: callout.arrowTip.y * pageHeight,
+  };
+  const knee = {
+    x: callout.knee.x * pageWidth,
+    y: callout.knee.y * pageHeight,
+  };
+  const textBox = {
+    x: (callout.textBoxPosition?.x ?? callout.textBox?.x ?? 0) * pageWidth,
+    y: (callout.textBoxPosition?.y ?? callout.textBox?.y ?? 0) * pageHeight,
+    width: Math.max(18, (callout.textBoxWidth ?? callout.textBox?.width ?? 0.1) * pageWidth),
+    height: Math.max(18, (callout.textBoxHeight ?? callout.textBox?.height ?? 0.05) * pageHeight),
+  };
+
+  // Style extraction
+  const lineColor = callout.style?.borderColor || callout.style?.lineColor || '#4A90E2';
+  const lineThickness = Math.max(1, callout.style?.lineThickness || 2);
+  const fillColor = callout.style?.fillColor || 'rgba(255, 255, 255, 0.22)';
+  const fillOpacity = Math.max(0.08, Math.min(1, callout.style?.fillOpacity || 0.4));
+  const borderOpacity = Math.max(0.2, Math.min(1, callout.style?.borderOpacity || 1));
+
+  // Calculate connection geometry
+  const connection = calculateConnection(
+    textBox.x, textBox.y, textBox.width, textBox.height,
+    knee, arrowTip, lineThickness
+  );
+
+  const key = `callout-${callout.id || index}`;
+
+  const lineStyle = {
+    stroke: lineColor,
+    strokeWidth: lineThickness,
+    strokeLinecap: 'round',
+    vectorEffect: 'non-scaling-stroke',
+  };
+
+  return (
+    <g key={key} opacity={borderOpacity}>
+      {/* Line 1: knee to border (skip if shouldHideLine1) */}
+      {!connection.shouldHideLine1 && (
+        <line
+          x1={connection.line1Start.x}
+          y1={connection.line1Start.y}
+          x2={connection.effectiveKnee.x}
+          y2={connection.effectiveKnee.y}
+          {...lineStyle}
+        />
+      )}
+      {/* Line 2: knee to arrowTip */}
+      <line
+        x1={connection.line2Start.x}
+        y1={connection.line2Start.y}
+        x2={arrowTip.x}
+        y2={arrowTip.y}
+        {...lineStyle}
+      />
+      {/* ArrowTip circle */}
+      <circle
+        cx={arrowTip.x}
+        cy={arrowTip.y}
+        r={Math.max(2, lineThickness + 0.4)}
+        fill={lineColor}
+      />
+      {/* Text box rect */}
+      <rect
+        x={textBox.x}
+        y={textBox.y}
+        width={textBox.width}
+        height={textBox.height}
+        fill={fillColor}
+        fillOpacity={fillOpacity}
+        stroke={lineColor}
+        strokeWidth={Math.max(1, lineThickness * 0.7)}
+        rx={4}
+        ry={4}
+        vectorEffect="non-scaling-stroke"
+      />
+      {/* Text box text (if callout has text) */}
+      {callout.text && (
+        <foreignObject
+          x={textBox.x}
+          y={textBox.y}
+          width={textBox.width}
+          height={textBox.height}
+        >
+          <div
+            xmlns="http://www.w3.org/1999/xhtml"
+            style={{
+              width: '100%',
+              height: '100%',
+              fontSize: `${callout.style?.fontSize || 12}px`,
+              fontFamily: callout.style?.fontFamily || 'sans-serif',
+              color: callout.style?.textColor || '#000',
+              overflow: 'hidden',
+              wordWrap: 'break-word',
+              whiteSpace: 'pre-wrap',
+              boxSizing: 'border-box',
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {callout.text}
+          </div>
+        </foreignObject>
+      )}
+    </g>
+  );
 };
