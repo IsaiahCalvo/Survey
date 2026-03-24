@@ -1,12 +1,24 @@
-# Zoom Flicker Fix — Direct Child Canvas
+# SVG Migration — PDF Annotation App
 
 ## What This Is
 
-A refactor of the annotation overlay system in the BetaSafe PDF annotation app. Currently, annotations flicker during zoom — appearing at wrong sizes and positions before settling — because the canvas attachment uses a complex freeze/snapshot/confirm-pending portal system. This project replaces that with a simpler approach where annotation canvases are direct children of Syncfusion's page divs, scaling naturally with CSS transforms during zoom.
+A PDF annotation application for mechanical/electrical engineers at mid-size firms. Currently uses Fabric.js canvases for all annotation rendering, which causes a 3-second annotation disappearance during zoom due to a 5-timer coordination system. This milestone migrates to SVG display + Fabric.js edit-only, eliminating zoom bugs as a category by letting the browser handle scaling via SVG viewBox.
 
 ## Core Value
 
-Annotations must stay visible and correctly positioned during all zoom operations. They may look briefly blurry (like zooming into a photo) but must never disappear, jump, or render at the wrong size/position.
+Annotations must render correctly at all zoom levels with zero disappearance, zero flicker, and zero timer coordination — the browser handles zoom scaling automatically via SVG viewBox.
+
+## Current Milestone: v2.0 SVG Migration
+
+**Goal:** Replace Fabric.js-everywhere with SVG display + Fabric.js edit-only architecture
+
+**Target features:**
+- SVG display layer renders all committed annotations (viewBox handles zoom automatically)
+- Fabric.js Canvas mounts only during active editing/drawing (transparent overlay)
+- Select tool works entirely in SVG (click handlers, selection handles)
+- Pen/highlighter/eraser tools mount Canvas temporarily
+- Text/shape editing mounts targeted Canvas over annotation bounding box
+- Zoom works with zero timers — SVG scales via viewBox, Canvas gets CSS transform if mounted
 
 ## Requirements
 
@@ -18,48 +30,57 @@ Annotations must stay visible and correctly positioned during all zoom operation
 - ✓ Search highlights overlay — existing
 - ✓ Lightweight proxy rendering during pan/scroll — existing
 - ✓ Undo/redo for annotations — existing
+- ✓ Overlay divs as direct children of Syncfusion page divs — v1.0 Phase 1
+- ✓ CSS transform zoom handling on overlay divs — v1.0 Phase 2
+- ✓ React portals render into persistent overlay divs — v1.0 Phase 3
 
 ### Active
 
-- [ ] Annotation canvases are direct children of Syncfusion page divs (not via complex portal host system)
-- [ ] All 6 zoom methods work without annotation flicker (ctrl+scroll, toolbar buttons, dropdown, fit-to-page, fit-to-width, pinch)
-- [ ] CSS transform scaling during zoom transition (blurry but stable)
-- [ ] Canvas redraws at correct resolution after zoom settles
-- [ ] Rapid consecutive zooms handled gracefully
-- [ ] Overlay re-attachment when Syncfusion recreates page divs
-- [ ] Dead code removal (freeze/snapshot/confirm-pending machinery)
+- [ ] SVG layer renders all committed annotations with viewBox auto-scaling
+- [ ] Fabric.js Canvas mounts/unmounts per tool activation (not permanently mounted)
+- [ ] Select tool works in SVG with click-to-edit flow
+- [ ] Pen/highlighter captures strokes in Canvas, commits to SVG
+- [ ] Eraser loads annotations into Canvas for boolean path ops
+- [ ] Text editing via targeted Canvas mount on annotation bbox
+- [ ] Shape/callout editing via targeted Canvas mount
+- [ ] Zoom during active tools handled gracefully (CSS transform + remount)
+- [ ] All annotation types render correctly in SVG (paths, highlights, lines, arrows, callouts, shapes, text)
+- [ ] pathOffset handling for correct SVG path positioning
 
 ### Out of Scope
 
-- SVG-based annotation rendering — we need Fabric.js for interactive annotation editing
-- Changes to the annotation data model or drawing tools
-- Changes to Syncfusion PDF viewer configuration
-- Changes to LightweightAnnotationOverlay or SearchHighlightLayer (beyond re-parenting)
-- Performance optimization of Fabric.js canvas rendering itself
+- Changes to annotation data model or Supabase storage format — SVG reads same Fabric.js JSON
+- Changes to Syncfusion PDF viewer configuration — viewer layer unchanged
+- Real-time collaborative editing — future milestone
+- Mobile/touch gesture support beyond basic pinch zoom — future milestone
+- Phase 7 widen zoom range — deferred
 
 ## Context
 
-- Reference app at `/Users/isaiahcalvo/Desktop/Syncfusion-PDF-App` avoids flicker by making SVG overlays direct children of page divs with `width: 100%; height: 100%` and a viewBox. We adapt this for Fabric.js canvas using CSS transforms instead of viewBox.
-- Design spec: `docs/superpowers/specs/2026-03-17-option3-direct-child-canvas-design.md`
-- Fallback spec (if this doesn't work): `docs/superpowers/specs/2026-03-17-option2-svg-display-fabric-edit-design.md`
-- App.jsx is ~25,000+ lines — the main orchestrator with zoom logic, render loop, and refs
-- PageAnnotationLayer.jsx is ~9,750 lines — the per-page Fabric.js annotation component
+- Reference app at `/Users/isaiahcalvo/Desktop/Syncfusion-PDF-App` uses SVG overlays with viewBox, zero zoom timers
+- `LightweightAnnotationOverlay.jsx` (505 lines) already renders 5 annotation types as SVG — 80% of the display layer
+- Industry standard: Nutrient/PSPDFKit, PDF.js, pdf-annotate.js, Hypothesis all use SVG for annotations
+- Only Apryse/PDFTron uses Canvas like current approach (full-time team maintaining custom engine)
+- v1.0 Phases 1-3 established overlay div foundation (still valid, SVG layer will use these)
+- v1.0 Phase 4 failed 4 times — 5-timer coordination system proved intractable
+- Canvas memory: one Fabric canvas per visible page (~44MB each at retina 2x) → zero canvases during display mode
 
 ## Constraints
 
-- **Branch**: Work on new branch `option3-direct-child-canvas` — keep `Layer-Revamp` intact
-- **Incremental**: Get Steps 1-3 working before Steps 4-6. Verify after each step.
-- **Fabric.js**: Must keep Fabric.js 5.5.2 canvas for annotation editing (SVG is display-only)
-- **Compatibility**: All 6 zoom methods must work. Drawing tools must work after zoom.
+- **Fabric.js**: Must keep Fabric.js 5.5.2 for pen/eraser/text editing (SVG is display-only, Canvas is edit-only)
+- **Data model**: Same Fabric.js JSON format — no migration needed, SVG reads it directly
+- **Browser support**: SVG `vector-effect: non-scaling-stroke` supported in Chrome, Firefox 15+, Safari 5.1+, Electron
+- **Estimated effort**: ~80 hours / 4 sessions across ~2 calendar weeks
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Direct child canvas (Option 3) over SVG display (Option 2) | Simpler refactor, preserves existing Fabric.js system entirely | — Pending |
-| New feature branch | Preserve current working state on Layer-Revamp as safety net | — Pending |
-| Study reference app | Understand exactly how the flicker-free approach works before implementing | — Pending |
-| CSS transform during zoom | Fabric.js can't use SVG viewBox; CSS transform achieves similar visual stability | — Pending |
+| SVG display + Fabric.js edit-only (v2.0) | 5-timer system intractable after 4 failed fixes; industry standard is SVG | — Pending |
+| Keep same Fabric.js JSON data model | Zero migration, SVG reads same format, undo/redo unchanged | — Pending |
+| Use `<foreignObject>` for text annotations | Fabric's toSVG has text positioning bugs | — Pending |
+| Mount/unmount Canvas per edit session | 5-15ms creation cost negligible, massive memory savings | — Pending |
+| v1.0 overlay divs remain valid | SVG layer uses same direct-child-of-page-div pattern | ✓ Good |
 
 ---
-*Last updated: 2026-03-17 after initialization*
+*Last updated: 2026-03-23 after milestone v2.0 initialization*
