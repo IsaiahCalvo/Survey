@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SVG Migration
-status: executing
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-03-24T21:19:30.764Z"
-last_activity: 2026-03-24 -- Completed 08-01 SVG display foundation plan
+status: planning
+stopped_at: Phase 9 context gathered
+last_updated: "2026-03-24T22:55:03.161Z"
+last_activity: 2026-03-24 -- Phase 8 complete, SVG is default display mode
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 2
   completed_plans: 1
-  percent: 0
+  percent: 25
 ---
 
 # Project State
@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox
-**Current focus:** Phase 8 -- SVG Display Foundation
+**Current focus:** Phase 9 -- SVG Selection and Interaction
 
 ## Current Position
 
-Phase: 8 of 11 (SVG Display Foundation) -- first phase of v2.0
-Plan: 1 of 2 complete
-Status: Executing
-Last activity: 2026-03-24 -- Completed 08-01 SVG display foundation plan
+Phase: 9 of 11 (SVG Selection and Interaction) -- needs planning
+Plan: 0 of ? (not yet planned)
+Status: Ready to plan
+Last activity: 2026-03-24 -- Phase 8 complete, SVG is default display mode
 
-Progress: [█████░░░░░] 50%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Total execution time: 6 min
+- Total plans completed: 2
+- Phase 8: 2 plans across 2 sessions
 
 ## Accumulated Context
 
@@ -49,6 +49,10 @@ Progress: [█████░░░░░] 50%
 - [v2.0]: Zero new runtime dependencies -- React SVG + native pointer events + existing Fabric.js
 - [08-01]: SVGAnnotationLayer is new component (not evolved from LightweightAnnotationOverlay) -- keeps fallback intact
 - [08-01]: Renderer toggle uses .jsx extension for svgAnnotationRenderers due to Vite JSX requirement
+- [08-02]: SVG layer MUST sit outside syncfusionOverlayContentRefs div (CSS transforms fight viewBox)
+- [08-02]: Portal freeze (beginSyncfusionScaleConfirmPending) completely skipped in SVG mode
+- [08-02]: SVG set as default display mode -- Canvas mode available via Ctrl+Shift+V or ?renderer=canvas
+- [08-02]: Canvas mode zoom not worth fixing -- SVG eliminates the problem category
 
 ### Roadmap Evolution
 
@@ -67,6 +71,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T21:18:16Z
-Stopped at: Completed 08-01-PLAN.md
-Resume file: .planning/phases/08-svg-display-foundation/08-02-PLAN.md
+Last session: 2026-03-24T22:55:03.154Z
+Stopped at: Phase 9 context gathered
+Resume file: .planning/phases/09-svg-selection-interaction/09-CONTEXT.md
