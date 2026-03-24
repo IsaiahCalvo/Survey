@@ -4,9 +4,9 @@ milestone: v2.0
 milestone_name: SVG Migration
 status: not_started
 last_updated: "2026-03-23"
-last_activity: 2026-03-23 -- Milestone v2.0 started
+last_activity: 2026-03-23 -- Roadmap created for v2.0 SVG Migration
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox
-**Current focus:** Defining requirements for SVG migration
+**Current focus:** Phase 8 -- SVG Display Foundation
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-23 — Milestone v2.0 started
+Phase: 8 of 11 (SVG Display Foundation) -- first phase of v2.0
+Plan: --
+Status: Ready to plan
+Last activity: 2026-03-23 -- Roadmap created for v2.0 milestone
+
+Progress: [..........] 0%
 
 ## Performance Metrics
 
@@ -40,14 +42,16 @@ Last activity: 2026-03-23 — Milestone v2.0 started
 ### Decisions
 
 - [v1.0]: Phases 1-3 shipped overlay div foundation (valid for v2.0)
-- [v1.0]: Phase 4 PAL zoom simplification failed 4 times — motivated SVG migration
+- [v1.0]: Phase 4 PAL zoom simplification failed 4 times -- motivated SVG migration
 - [v2.0]: SVG display + Fabric.js edit-only architecture chosen over continued timer fixes
-- [v2.0]: Same Fabric.js JSON data model — no data migration
+- [v2.0]: Same Fabric.js JSON data model -- no data migration
+- [v2.0]: Zero new runtime dependencies -- React SVG + native pointer events + existing Fabric.js
 
 ### Roadmap Evolution
 
 - v1.0 Phases 4-6 superseded by SVG migration
 - v1.0 Phase 7 (widen zoom range) deferred
+- v2.0 Phases 8-11 created from 39 requirements across DISP/INTR/EDIT/ZOOM
 
 ### Pending Todos
 
@@ -55,4 +59,11 @@ None yet.
 
 ### Blockers/Concerns
 
-None yet.
+- Phase 10: Validate async dispose() + React StrictMode rapid tool switching (spike recommended)
+- Phase 11: foreignObject text rendering pixel tolerance needs product decision before planning
+
+## Session Continuity
+
+Last session: 2026-03-23
+Stopped at: Roadmap created, ready to plan Phase 8
+Resume file: None

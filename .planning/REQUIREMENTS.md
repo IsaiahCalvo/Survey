@@ -1,4 +1,4 @@
-# Requirements: SVG Migration — PDF Annotation App
+# Requirements: SVG Migration -- PDF Annotation App
 
 **Defined:** 2026-03-23
 **Core Value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox
@@ -10,7 +10,7 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 ### SVG Display
 
 - [ ] **DISP-01**: All 7 annotation types (pen strokes, highlights, lines, arrows, callouts, shapes, text) render as SVG elements inside an SVGAnnotationLayer component
-- [ ] **DISP-02**: SVG viewBox matches PDF page dimensions (`viewBox="0 0 pageWidth pageHeight"`) and auto-scales with zoom — no JavaScript zoom coordination needed
+- [ ] **DISP-02**: SVG viewBox matches PDF page dimensions (`viewBox="0 0 pageWidth pageHeight"`) and auto-scales with zoom -- no JavaScript zoom coordination needed
 - [ ] **DISP-03**: Fabric.js path objects render with correct pathOffset handling (`translate(-pathOffset.x, -pathOffset.y)`) so pen/highlighter strokes appear at correct positions
 - [ ] **DISP-04**: `strokeUniform: true` renders as SVG `vector-effect="non-scaling-stroke"` so stroke widths stay constant during zoom
 - [ ] **DISP-05**: Highlight annotations render with correct opacity and `mix-blend-mode: multiply` matching Canvas output
@@ -18,7 +18,7 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 - [ ] **DISP-07**: Text annotations render via `<foreignObject>` with correct font family, size, weight, color, and word wrap
 - [ ] **DISP-08**: Callout annotations render as SVG lines + rect + text (via `<foreignObject>`) with correct knee/endpoint positions
 - [ ] **DISP-09**: Arrow annotations render with correct arrowhead geometry (SVG `<polygon>` or `<marker>`)
-- [ ] **DISP-10**: Region/space filtering works in SVG layer — annotations show/hide based on spaceId, moduleId, regionId metadata
+- [ ] **DISP-10**: Region/space filtering works in SVG layer -- annotations show/hide based on spaceId, moduleId, regionId metadata
 - [ ] **DISP-11**: SVGAnnotationLayer replaces LightweightAnnotationOverlay as the primary annotation display component
 
 ### SVG Interaction
@@ -42,21 +42,21 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 - [ ] **EDIT-04**: Eraser tool mounts Canvas and loads all page annotations for boolean path intersection/subtraction
 - [ ] **EDIT-05**: Eraser results are serialized back to Fabric.js JSON and committed to SVG layer on tool deactivation
 - [ ] **EDIT-06**: Text double-click mounts a targeted Fabric.js Canvas sized to the annotation bounding box for IText editing
-- [ ] **EDIT-07**: Text edit commits on blur (click outside) — Canvas unmounts, SVG updates with new text content
+- [ ] **EDIT-07**: Text edit commits on blur (click outside) -- Canvas unmounts, SVG updates with new text content
 - [ ] **EDIT-08**: Shape/callout double-click mounts a targeted Canvas for property editing (color, stroke, resize)
 - [ ] **EDIT-09**: Canvas auto-commits unsaved changes before unmounting (no data loss on tool switch or zoom)
 - [ ] **EDIT-10**: Canvas mount/unmount lifecycle uses React state + key prop for clean Fabric.js creation/disposal
 
 ### Zoom & Integration
 
-- [ ] **ZOOM-01**: SVG layer zoom is handled entirely by viewBox — zero JavaScript timers for zoom coordination
+- [ ] **ZOOM-01**: SVG layer zoom is handled entirely by viewBox -- zero JavaScript timers for zoom coordination
 - [ ] **ZOOM-02**: If Canvas is mounted during zoom, it receives CSS transform for visual stability (blurry but positioned)
 - [ ] **ZOOM-03**: After zoom settles (200ms debounce), Canvas remounts at new dimensions if still active
 - [ ] **ZOOM-04**: In-progress pen stroke is auto-committed on zoom start, pen resumes after settle
 - [ ] **ZOOM-05**: All 6 zoom methods work (ctrl+scroll, toolbar buttons, dropdown, fit-to-page, fit-to-width, pinch)
 - [ ] **ZOOM-06**: Freeze/snapshot/confirm-pending machinery is removed from App.jsx (~30 refs, ~14 functions)
 - [ ] **ZOOM-07**: Dead props (onScaleApplied, presentationApiRegistry, isHidden) are removed from PageAnnotationLayer
-- [ ] **ZOOM-08**: Old 5-timer zoom system is fully replaced — no PAL settle, App settle, confirm-pending, tier-2 defer, or overlay safety timers remain
+- [ ] **ZOOM-08**: Old 5-timer zoom system is fully replaced -- no PAL settle, App settle, confirm-pending, tier-2 defer, or overlay safety timers remain
 
 ## Future Requirements
 
@@ -77,7 +77,7 @@ Deferred to future milestones. Tracked but not in current roadmap.
 
 | Feature | Reason |
 |---------|--------|
-| Data model migration | SVG reads same Fabric.js JSON — no format change needed |
+| Data model migration | SVG reads same Fabric.js JSON -- no format change needed |
 | Syncfusion viewer changes | Viewer layer is unchanged |
 | SearchHighlightLayer changes | Already DOM-based, independent of annotation layer |
 | Real-time collaborative editing | Future milestone, requires conflict resolution |
@@ -91,51 +91,51 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DISP-01 | TBD | Pending |
-| DISP-02 | TBD | Pending |
-| DISP-03 | TBD | Pending |
-| DISP-04 | TBD | Pending |
-| DISP-05 | TBD | Pending |
-| DISP-06 | TBD | Pending |
-| DISP-07 | TBD | Pending |
-| DISP-08 | TBD | Pending |
-| DISP-09 | TBD | Pending |
-| DISP-10 | TBD | Pending |
-| DISP-11 | TBD | Pending |
-| INTR-01 | TBD | Pending |
-| INTR-02 | TBD | Pending |
-| INTR-03 | TBD | Pending |
-| INTR-04 | TBD | Pending |
-| INTR-05 | TBD | Pending |
-| INTR-06 | TBD | Pending |
-| INTR-07 | TBD | Pending |
-| INTR-08 | TBD | Pending |
-| INTR-09 | TBD | Pending |
-| INTR-10 | TBD | Pending |
-| EDIT-01 | TBD | Pending |
-| EDIT-02 | TBD | Pending |
-| EDIT-03 | TBD | Pending |
-| EDIT-04 | TBD | Pending |
-| EDIT-05 | TBD | Pending |
-| EDIT-06 | TBD | Pending |
-| EDIT-07 | TBD | Pending |
-| EDIT-08 | TBD | Pending |
-| EDIT-09 | TBD | Pending |
-| EDIT-10 | TBD | Pending |
-| ZOOM-01 | TBD | Pending |
-| ZOOM-02 | TBD | Pending |
-| ZOOM-03 | TBD | Pending |
-| ZOOM-04 | TBD | Pending |
-| ZOOM-05 | TBD | Pending |
-| ZOOM-06 | TBD | Pending |
-| ZOOM-07 | TBD | Pending |
-| ZOOM-08 | TBD | Pending |
+| DISP-01 | Phase 8 | Pending |
+| DISP-02 | Phase 8 | Pending |
+| DISP-03 | Phase 8 | Pending |
+| DISP-04 | Phase 8 | Pending |
+| DISP-05 | Phase 8 | Pending |
+| DISP-06 | Phase 8 | Pending |
+| DISP-07 | Phase 8 | Pending |
+| DISP-08 | Phase 8 | Pending |
+| DISP-09 | Phase 8 | Pending |
+| DISP-10 | Phase 8 | Pending |
+| DISP-11 | Phase 8 | Pending |
+| INTR-01 | Phase 9 | Pending |
+| INTR-02 | Phase 9 | Pending |
+| INTR-03 | Phase 9 | Pending |
+| INTR-04 | Phase 9 | Pending |
+| INTR-05 | Phase 9 | Pending |
+| INTR-06 | Phase 9 | Pending |
+| INTR-07 | Phase 9 | Pending |
+| INTR-08 | Phase 9 | Pending |
+| INTR-09 | Phase 9 | Pending |
+| INTR-10 | Phase 9 | Pending |
+| EDIT-01 | Phase 10 | Pending |
+| EDIT-02 | Phase 10 | Pending |
+| EDIT-03 | Phase 10 | Pending |
+| EDIT-04 | Phase 10 | Pending |
+| EDIT-05 | Phase 10 | Pending |
+| EDIT-06 | Phase 11 | Pending |
+| EDIT-07 | Phase 11 | Pending |
+| EDIT-08 | Phase 11 | Pending |
+| EDIT-09 | Phase 10 | Pending |
+| EDIT-10 | Phase 10 | Pending |
+| ZOOM-01 | Phase 11 | Pending |
+| ZOOM-02 | Phase 11 | Pending |
+| ZOOM-03 | Phase 11 | Pending |
+| ZOOM-04 | Phase 11 | Pending |
+| ZOOM-05 | Phase 11 | Pending |
+| ZOOM-06 | Phase 11 | Pending |
+| ZOOM-07 | Phase 11 | Pending |
+| ZOOM-08 | Phase 11 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 39 total
-- Mapped to phases: 0
-- Unmapped: 39 (pending roadmap creation)
+- Mapped to phases: 39
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-23*
-*Last updated: 2026-03-23 after initial definition*
+*Last updated: 2026-03-23 after roadmap creation -- traceability updated*
