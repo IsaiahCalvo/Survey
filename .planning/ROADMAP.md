@@ -45,11 +45,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Pen and highlighter strokes appear at exactly the correct position (pathOffset handling verified) -- no 50-200px offset errors
   4. Stroke widths on lines, shapes, and arrows remain constant thickness regardless of zoom level (non-scaling-stroke)
   5. Region/space filtering still works -- toggling a space or module shows/hides the correct annotations
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+- [ ] 08-01-PLAN.md -- SVGAnnotationLayer core + renderer toggle + tier 1 types (pen, highlights, lines, arrows)
+- [ ] 08-02-PLAN.md -- Tier 2 types (shapes, text, callouts) + eraser rendering + full PAL-level filtering
 
 ### Phase 9: SVG Selection and Interaction
 **Goal**: Users can select, move, and resize annotations entirely in SVG without mounting a Canvas
@@ -112,7 +112,7 @@ Phases execute in numeric order: 8 -> 9 -> 10 -> 11
 | 5. Page Container Re-attachment | v1.0 | - | Superseded | - |
 | 6. Dead Code Removal | v1.0 | - | Superseded | - |
 | 7. Widen Zoom Range | v1.0 | - | Deferred | - |
-| 8. SVG Display Foundation | v2.0 | 0/? | Not started | - |
+| 8. SVG Display Foundation | v2.0 | 0/2 | Planning complete | - |
 | 9. SVG Selection and Interaction | v2.0 | 0/? | Not started | - |
 | 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 0/? | Not started | - |
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 0/? | Not started | - |
