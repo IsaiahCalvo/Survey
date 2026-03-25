@@ -24919,7 +24919,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 left: 0,
                                 width: '100%',
                                 height: '100%',
-                                pointerEvents: 'none',
+                                pointerEvents: 'auto',
                                 zIndex: 25,
                               }}
                             >
@@ -24939,6 +24939,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 getRegionLightbulbState={getRegionLightbulbState}
                                 isRegionOverlayEnabled={isRegionOverlayEnabled}
                                 layerVisibility={annotationLayerVisibility}
+                                onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
+                                onRequestEditMode={(annotationIndex, annotationType) => {
+                                  console.log(`[SVG p${pageNumber}] Edit mode requested for annotation ${annotationIndex} (${annotationType})`);
+                                  // Phase 10/11 will implement actual Canvas mount here
+                                }}
+                                activeTool={activeTool}
                               />
                             </div>
                           )}
@@ -25085,6 +25091,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     getRegionLightbulbState={getRegionLightbulbState}
                                     isRegionOverlayEnabled={isRegionOverlayEnabled}
                                     layerVisibility={annotationLayerVisibility}
+                                    onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
+                                    onRequestEditMode={(annotationIndex, annotationType) => {
+                                      console.log(`[SVG p${pageNumber}] Edit mode requested for annotation ${annotationIndex} (${annotationType})`);
+                                      // Phase 10/11 will implement actual Canvas mount here
+                                    }}
+                                    activeTool={activeTool}
                                   />
                                 )}
                                 {/* Space Region Dimming Overlay */}

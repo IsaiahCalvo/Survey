@@ -1,9 +1,9 @@
 /**
  * SVGAnnotationLayer
  *
- * Display-only SVG annotation layer that renders Fabric.js JSON annotations
- * as SVG elements using viewBox-based auto-scaling. Replaces Canvas-based
- * display when SVG renderer mode is active.
+ * SVG annotation layer that renders Fabric.js JSON annotations
+ * as SVG elements using viewBox-based auto-scaling. Supports click-to-select,
+ * hover feedback, and selection overlays (bounding box + handles).
  *
  * Key architecture:
  * - Single <svg viewBox="0 0 pageWidth pageHeight"> per page
@@ -12,11 +12,13 @@
  * - vector-effect="non-scaling-stroke" keeps stroke widths constant
  * - mix-blend-mode: multiply for highlight annotations
  * - pathOffset transform chain for correct pen stroke positioning
+ * - Selection handles use inverseScale for constant visual pixel size
  *
  * Phase 8 Plan 01: Tier 1 types (paths, rects, lines, arrows) + stubs for tier 2
  * Phase 8 Plan 02: Tier 2 types (ellipse, text, callouts) + full three-layer filtering
+ * Phase 9 Plan 01: Click-to-select, hover feedback, selection overlay with handles
  */
-import React, { memo, useMemo, useEffect } from 'react';
+import React, { memo, useMemo, useEffect, useRef } from 'react';
 import {
   renderPath,
   renderRect,
@@ -27,6 +29,9 @@ import {
   renderCallout,
 } from '../utils/svgAnnotationRenderers';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
+import { useSVGInteraction } from '../hooks/useSVGInteraction';
+import SVGSelectionOverlay from './SVGSelectionOverlay';
+import { getAnnotationBBox } from '../utils/svgBoundingBox';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -56,7 +61,32 @@ const SVGAnnotationLayer = memo(({
   getRegionLightbulbState,
   isRegionOverlayEnabled,
   layerVisibility,
+  // Selection / interaction props (Phase 9)
+  onSaveAnnotations,   // (updatedJSON, saveContext) => void
+  onRequestEditMode,   // (annotationIndex, annotationType) => void
+  activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
 }) => {
+  // ---------------------------------------------------------------------------
+  // Refs
+  // ---------------------------------------------------------------------------
+  const svgRef = useRef(null);
+
+  // ---------------------------------------------------------------------------
+  // Interaction hook (Phase 9)
+  // ---------------------------------------------------------------------------
+  const {
+    selectedIds, hoveredId, inverseScale, interactionState, visualTransform,
+    handleAnnotationPointerDown, handleAnnotationPointerEnter,
+    handleAnnotationPointerLeave, handleAnnotationDoubleClick,
+    handleSvgPointerDown, handleHandlePointerDown, isSelected,
+  } = useSVGInteraction({
+    svgRef, annotations, pageWidth: width, pageHeight: height,
+    onSaveAnnotations, onRequestEditMode,
+  });
+
+  // Determine pointer events mode: interactive when not using drawing tools
+  const isInteractive = !activeTool || activeTool === 'pan' || activeTool === 'select' || activeTool === 'text-select';
+
   // ---------------------------------------------------------------------------
   // Helper: derive spaceId from regionId by searching through spaces data
   // ---------------------------------------------------------------------------
@@ -75,9 +105,11 @@ const SVGAnnotationLayer = memo(({
   }, [spaces]);
 
   // ---------------------------------------------------------------------------
-  // Filter and render annotation objects with full three-layer visibility
+  // Filter annotation objects — returns { obj, index, element }[] for wrapping
+  // (Selection wrapping happens in render body to avoid useMemo invalidation
+  //  on every selection/hover change)
   // ---------------------------------------------------------------------------
-  const renderedObjects = useMemo(() => {
+  const filteredAnnotations = useMemo(() => {
     const objects = Array.isArray(annotations?.objects)
       ? annotations.objects
       : [];
@@ -101,7 +133,7 @@ const SVGAnnotationLayer = memo(({
       activeRegions.length > 0 &&
       isOverlayEnabledForThisPage;
 
-    const elements = [];
+    const results = [];
     let count = 0;
 
     for (let i = 0; i < objects.length; i++) {
@@ -122,7 +154,6 @@ const SVGAnnotationLayer = memo(({
       // 1. Space matching
       let matchesSpace = true;
       if (hasActiveRegions && !isScopedRegionAnnotation) {
-        // Background annotations pass space filter when regions active
         matchesSpace = true;
       } else if (isScopedRegionAnnotation && derivedSpaceId !== null) {
         matchesSpace = activeSpaceId !== null && derivedSpaceId === activeSpaceId;
@@ -136,10 +167,8 @@ const SVGAnnotationLayer = memo(({
         surveyAnnotationVisible =
           showSurveyPanel && selectedModuleId !== null && obj.moduleId === selectedModuleId;
       } else if (!isScopedRegionAnnotation) {
-        // Base layer: hidden when survey mode active with module selected
         surveyAnnotationVisible = !(showSurveyPanel && selectedModuleId !== null);
       }
-      // Region-scoped annotations always pass survey check
 
       // 3. Scoped region visibility
       let scopedRegionAnnotationVisible = true;
@@ -189,7 +218,6 @@ const SVGAnnotationLayer = memo(({
         Array.isArray(obj.objects) &&
         obj.objects.length > 0
       ) {
-        // Groups with a line child are arrows
         const hasLineChild = obj.objects.some(
           (o) => o && (o.type === 'line' || o.type === 'polyline' || o.type === 'path')
         );
@@ -207,12 +235,12 @@ const SVGAnnotationLayer = memo(({
       }
 
       if (element) {
-        elements.push(element);
+        results.push({ obj, index: i, element });
         count++;
       }
     }
 
-    return elements;
+    return results;
   }, [
     annotations?.objects,
     pageNumber,
@@ -263,7 +291,7 @@ const SVGAnnotationLayer = memo(({
     return elements;
   }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height]);
 
-  const objectCount = renderedObjects.length;
+  const objectCount = filteredAnnotations.length;
   const calloutCount = filteredCallouts.length;
 
   // Log mount/unmount
@@ -281,8 +309,65 @@ const SVGAnnotationLayer = memo(({
     `[SVG p${pageNumber}] render — ${objectCount} objs, viewBox=${width}x${height}`
   );
 
+  // ---------------------------------------------------------------------------
+  // Render: wrap each annotation with hit-area, hover, and interaction handlers
+  // ---------------------------------------------------------------------------
+  const wrappedAnnotations = filteredAnnotations.map(({ obj, index: i, element }) => {
+    const bbox = getAnnotationBBox(obj);
+    const annotationIsSelected = selectedIds.has(i);
+    const annotationIsHovered = hoveredId === i && !annotationIsSelected;
+
+    return (
+      <g
+        key={`wrapper-${obj.id || i}`}
+        data-annotation-index={i}
+        data-annotation-id={obj.id || ''}
+        style={{
+          cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
+        }}
+        transform={
+          visualTransform && visualTransform.id === i
+            ? `translate(${visualTransform.dx}, ${visualTransform.dy})`
+            : undefined
+        }
+      >
+        {/* Invisible hit-area rect for easier clicking */}
+        <rect
+          x={bbox.left}
+          y={bbox.top}
+          width={Math.max(bbox.width, 10)}
+          height={Math.max(bbox.height, 10)}
+          fill="transparent"
+          stroke="none"
+          style={{ pointerEvents: isInteractive ? 'fill' : 'none' }}
+          onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+          onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+          onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+          onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+        />
+        {/* Hover outline (shown before click, not when already selected) */}
+        {annotationIsHovered && (
+          <rect
+            x={bbox.left}
+            y={bbox.top}
+            width={bbox.width}
+            height={bbox.height}
+            fill="none"
+            stroke="#4a90e2"
+            strokeOpacity={0.4}
+            strokeWidth={2 * inverseScale}
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
+        {/* Actual annotation render */}
+        {element}
+      </g>
+    );
+  });
+
   return (
     <svg
+      ref={svgRef}
       viewBox={`0 0 ${width} ${height}`}
       width="100%"
       height="100%"
@@ -290,13 +375,29 @@ const SVGAnnotationLayer = memo(({
         position: 'absolute',
         top: 0,
         left: 0,
-        pointerEvents: 'none',
+        pointerEvents: isInteractive ? 'auto' : 'none',
         overflow: 'hidden',
       }}
       preserveAspectRatio="none"
+      onPointerDown={isInteractive ? handleSvgPointerDown : undefined}
     >
-      {renderedObjects}
+      {wrappedAnnotations}
       {filteredCallouts}
+      {/* Selection overlays — rendered on top of all annotations */}
+      {Array.from(selectedIds).map((selectedIndex) => {
+        const obj = annotations?.objects?.[selectedIndex];
+        if (!obj) return null;
+        const bbox = getAnnotationBBox(obj);
+        return (
+          <SVGSelectionOverlay
+            key={`selection-${selectedIndex}`}
+            bbox={bbox}
+            inverseScale={inverseScale}
+            onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
+            isGroupSelection={selectedIds.size > 1}
+          />
+        );
+      })}
     </svg>
   );
 });
