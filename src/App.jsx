@@ -24911,7 +24911,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           </div>
                           {/* SVG layer: OUTSIDE the transform/freeze div, directly in the portal overlay.
                               viewBox auto-scales with the Syncfusion page div — no CSS transforms needed. */}
-                          {rendererMode === 'svg' && (
+                          {rendererMode === 'svg' && (() => {
+                            const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
+                            return (
                             <div
                               style={{
                                 position: 'absolute',
@@ -24919,9 +24921,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 left: 0,
                                 width: '100%',
                                 height: '100%',
-                                pointerEvents: 'auto',
-                                zIndex: 25,
+                                pointerEvents: svgInteractive ? 'auto' : 'none',
+                                zIndex: 100,
                               }}
+                              onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
+                              onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
                             >
                               <SVGAnnotationLayer
                                 pageNumber={pageNumber}
@@ -24947,7 +24951,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 activeTool={activeTool}
                               />
                             </div>
-                          )}
+                            );
+                          })()}
                         </div>,
                         portalTarget
                       );
@@ -25074,7 +25079,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     onPastePageHere={handlePastePageHere}
                                   />
                                 )}
-                                {pageSizes[pageNumber] && rendererMode === 'svg' && (
+                                {pageSizes[pageNumber] && rendererMode === 'svg' && (() => {
+                                  const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
+                                  return (
+                                  <div
+                                    style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: svgInteractive ? 'auto' : 'none', zIndex: 100 }}
+                                    onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
+                                    onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
+                                  >
                                   <SVGAnnotationLayer
                                     pageNumber={pageNumber}
                                     width={pageSizes[pageNumber].width}
@@ -25098,7 +25110,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     }}
                                     activeTool={activeTool}
                                   />
-                                )}
+                                  </div>
+                                  );
+                                })()}
                                 {/* Space Region Dimming Overlay */}
                                 {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates AND overlay is enabled */}
                                 {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {

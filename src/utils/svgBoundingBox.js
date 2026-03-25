@@ -112,13 +112,46 @@ export function getHandlePositions(bbox, padding = 6) {
 // ---------------------------------------------------------------------------
 
 function getPathBBox(obj) {
-  return {
-    left: obj.left ?? 0,
-    top: obj.top ?? 0,
-    width: (obj.width ?? 0) * Math.abs(obj.scaleX ?? 1),
-    height: (obj.height ?? 0) * Math.abs(obj.scaleY ?? 1),
-    angle: obj.angle ?? 0,
-  };
+  const left = obj.left;
+  const top = obj.top;
+  const w = obj.width;
+  const h = obj.height;
+
+  // If standard Fabric.js properties exist, use them (center-origin for pathOffset paths)
+  if (left != null && top != null && w != null && h != null) {
+    const sw = w * Math.abs(obj.scaleX ?? 1);
+    const sh = h * Math.abs(obj.scaleY ?? 1);
+    return {
+      left: left - sw / 2,
+      top: top - sh / 2,
+      width: sw,
+      height: sh,
+      angle: obj.angle ?? 0,
+    };
+  }
+
+  // Imported PDF paths: no left/top/width/height — compute bbox from path commands
+  if (Array.isArray(obj.path) && obj.path.length > 0) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const seg of obj.path) {
+      // Extract all numeric pairs (skip command letter at index 0)
+      for (let j = 1; j < seg.length; j += 2) {
+        const x = seg[j];
+        const y = seg[j + 1];
+        if (typeof x === 'number' && typeof y === 'number') {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (minX !== Infinity) {
+      return { left: minX, top: minY, width: maxX - minX, height: maxY - minY, angle: 0 };
+    }
+  }
+
+  return { left: 0, top: 0, width: 0, height: 0, angle: 0 };
 }
 
 function getRectBBox(obj) {

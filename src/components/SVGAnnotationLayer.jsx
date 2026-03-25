@@ -89,7 +89,7 @@ const SVGAnnotationLayer = memo(({
   });
 
   // Determine pointer events mode: interactive when not using drawing tools
-  const isInteractive = !activeTool || activeTool === 'pan' || activeTool === 'select' || activeTool === 'text-select';
+  const isInteractive = activeTool === 'select' || activeTool === 'text-select';
 
   // ---------------------------------------------------------------------------
   // Helper: derive spaceId from regionId by searching through spaces data
@@ -382,20 +382,10 @@ const SVGAnnotationLayer = memo(({
         }}
         transform={computedTransform}
       >
-        {/* Invisible hit-area rect for easier clicking */}
-        <rect
-          x={bbox.left}
-          y={bbox.top}
-          width={Math.max(bbox.width, 10)}
-          height={Math.max(bbox.height, 10)}
-          fill="transparent"
-          stroke="none"
-          style={{ pointerEvents: isInteractive ? 'fill' : 'none' }}
-          onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
-          onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
-          onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
-          onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
-        />
+        {/* Actual annotation render — pointerEvents none so clicks pass to hit rect */}
+        <g style={{ pointerEvents: 'none' }}>
+          {renderElement}
+        </g>
         {/* Hover outline (shown before click, not when already selected) */}
         {annotationIsHovered && (
           <rect
@@ -410,8 +400,20 @@ const SVGAnnotationLayer = memo(({
             style={{ pointerEvents: 'none' }}
           />
         )}
-        {/* Actual annotation render */}
-        {renderElement}
+        {/* Invisible hit-area rect ON TOP for easier clicking */}
+        <rect
+          x={bbox.left}
+          y={bbox.top}
+          width={Math.max(bbox.width, 10)}
+          height={Math.max(bbox.height, 10)}
+          fill="transparent"
+          stroke="none"
+          pointerEvents={isInteractive ? 'all' : 'none'}
+          onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+          onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+          onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+          onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+        />
       </g>
     );
   });
@@ -433,7 +435,13 @@ const SVGAnnotationLayer = memo(({
               : undefined,
       }}
       preserveAspectRatio="none"
-      onPointerDown={isInteractive ? handleSvgPointerDown : undefined}
+      onPointerDown={(e) => {
+        console.log(`[SVG p${pageNumber}] POINTER DOWN on svg root — isInteractive=${isInteractive}, target=${e.target.tagName}, activeTool=${activeTool}`);
+        if (isInteractive) {
+          e.stopPropagation(); // Prevent Syncfusion from seeing SVG events (SVGAnimatedString crash)
+          handleSvgPointerDown(e);
+        }
+      }}
       onPointerMove={isInteractive ? handlePointerMove : undefined}
       onPointerUp={isInteractive ? handlePointerUp : undefined}
     >
