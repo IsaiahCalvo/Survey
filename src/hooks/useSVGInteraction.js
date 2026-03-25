@@ -155,29 +155,65 @@ export function useSVGInteraction({
       const ctmInverse = ctm ? ctm.inverse() : null;
       const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
 
-      dragStateRef.current = {
-        active: true,
-        mode: 'move',
-        handleId: null,
-        startSVGPoint: svgPoint,
-        originalProps: {
-          left: obj.left ?? 0,
-          top: obj.top ?? 0,
-          scaleX: obj.scaleX ?? 1,
-          scaleY: obj.scaleY ?? 1,
-          angle: obj.angle ?? 0,
-          width: obj.width ?? 0,
-          height: obj.height ?? 0,
-        },
-        annotationIndex: index,
-        ctmInverse,
-        anchorX: null,
-        anchorY: null,
-        centerX: null,
-        centerY: null,
-        currentResize: null,
-        currentAngle: undefined,
-      };
+      // Group drag: when multiple annotations are selected and clicking
+      // on one that's already selected, initiate group-move (Plan 03).
+      // CRITICAL per RESEARCH.md Pitfall 6: record ALL selected annotations'
+      // original positions so we compute position as original + totalDelta
+      // (not current + frameDelta) to prevent floating-point drift.
+      if (selectedIds.size > 1 && selectedIds.has(index)) {
+        const originals = {};
+        for (const selIdx of selectedIds) {
+          const selObj = annotations?.objects?.[selIdx];
+          if (selObj) {
+            originals[selIdx] = {
+              left: selObj.left ?? 0,
+              top: selObj.top ?? 0,
+            };
+          }
+        }
+        dragStateRef.current = {
+          active: true,
+          mode: 'group-move',
+          handleId: null,
+          startSVGPoint: svgPoint,
+          originalProps: null,
+          annotationIndex: index,
+          ctmInverse,
+          anchorX: null,
+          anchorY: null,
+          centerX: null,
+          centerY: null,
+          currentResize: null,
+          currentAngle: undefined,
+          groupOriginals: originals,
+        };
+      } else {
+        // Single annotation drag
+        dragStateRef.current = {
+          active: true,
+          mode: 'move',
+          handleId: null,
+          startSVGPoint: svgPoint,
+          originalProps: {
+            left: obj.left ?? 0,
+            top: obj.top ?? 0,
+            scaleX: obj.scaleX ?? 1,
+            scaleY: obj.scaleY ?? 1,
+            angle: obj.angle ?? 0,
+            width: obj.width ?? 0,
+            height: obj.height ?? 0,
+          },
+          annotationIndex: index,
+          ctmInverse,
+          anchorX: null,
+          anchorY: null,
+          centerX: null,
+          centerY: null,
+          currentResize: null,
+          currentAngle: undefined,
+          groupOriginals: null,
+        };
+      }
     }
   }, [selectedIds, selectAnnotation, annotations, svgRef]);
 
@@ -234,6 +270,16 @@ export function useSVGInteraction({
       const dy = svgPoint.y - ds.startSVGPoint.y;
       // Visual-only update via state (no annotation data mutation during drag)
       setVisualTransform({ id: ds.annotationIndex, dx, dy });
+      setInteractionState('dragging');
+    } else if (ds.mode === 'group-move') {
+      // Group drag: compute totalDelta from start (not frameDelta) to prevent drift
+      const dx = svgPoint.x - ds.startSVGPoint.x;
+      const dy = svgPoint.y - ds.startSVGPoint.y;
+      setVisualTransform({
+        id: 'group', // special sentinel for group drag
+        dx, dy,
+        affectedIds: new Set(Object.keys(ds.groupOriginals).map(Number)),
+      });
       setInteractionState('dragging');
     } else if (ds.mode === 'resize') {
       // Determine which axes this handle affects
@@ -340,6 +386,39 @@ export function useSVGInteraction({
           });
         }
       }
+    } else if (ds.mode === 'group-move' && ds.groupOriginals) {
+      // Group drag commit: apply totalDelta from ORIGINAL positions (prevents drift)
+      const pt = new DOMPoint(e.clientX, e.clientY);
+      const svgPoint = ds.ctmInverse
+        ? pt.matrixTransform(ds.ctmInverse)
+        : screenToSVG(svgRef.current, e.clientX, e.clientY);
+
+      const dx = svgPoint.x - ds.startSVGPoint.x;
+      const dy = svgPoint.y - ds.startSVGPoint.y;
+
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+
+        for (const [idxStr, orig] of Object.entries(ds.groupOriginals)) {
+          const idx = Number(idxStr);
+          const obj = updatedAnnotations.objects[idx];
+          if (!obj) continue;
+          const bbox = getAnnotationBBox(obj);
+          // Constrain each annotation individually to page bounds
+          const constrained = constrainToPage(
+            orig.left + dx, orig.top + dy,
+            bbox.width, bbox.height, pageWidth, pageHeight
+          );
+          obj.left = constrained.left;
+          obj.top = constrained.top;
+        }
+
+        onSaveAnnotations(updatedAnnotations, {
+          source: 'object:modified',
+          action: 'group-move',
+          checkpointPolicy: 'normal',
+        });
+      }
     } else if (ds.mode === 'resize' && ds.currentResize) {
       const { newScaleX, newScaleY, newLeft, newTop } = ds.currentResize;
 
@@ -371,7 +450,7 @@ export function useSVGInteraction({
       active: false, mode: null, handleId: null, startSVGPoint: null,
       originalProps: null, annotationIndex: null, ctmInverse: null,
       anchorX: null, anchorY: null, centerX: null, centerY: null,
-      currentResize: null, currentAngle: undefined,
+      currentResize: null, currentAngle: undefined, groupOriginals: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
@@ -439,6 +518,28 @@ export function useSVGInteraction({
   }, [selectedIds, annotations, svgRef]);
 
   // ---------------------------------------------------------------------------
+  // Group delete (Plan 03): remove all selected annotations
+  // ---------------------------------------------------------------------------
+  const deleteSelected = useCallback(() => {
+    if (selectedIds.size === 0) return;
+
+    const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+    // Iterate indices in reverse (highest first) to avoid index shifting during splice
+    const indicesToDelete = Array.from(selectedIds).sort((a, b) => b - a);
+    for (const idx of indicesToDelete) {
+      updatedAnnotations.objects.splice(idx, 1);
+    }
+
+    onSaveAnnotations(updatedAnnotations, {
+      source: 'object:modified',
+      action: 'delete',
+      checkpointPolicy: 'normal',
+    });
+
+    deselectAll();
+  }, [selectedIds, annotations, onSaveAnnotations, deselectAll]);
+
+  // ---------------------------------------------------------------------------
   // Return API
   // ---------------------------------------------------------------------------
   return {
@@ -464,5 +565,8 @@ export function useSVGInteraction({
     selectAnnotation,
     deselectAll,
     isSelected,
+
+    // Group operations (Plan 03)
+    deleteSelected,
   };
 }

@@ -18,6 +18,7 @@
  * Phase 8 Plan 02: Tier 2 types (ellipse, text, callouts) + full three-layer filtering
  * Phase 9 Plan 01: Click-to-select, hover feedback, selection overlay with handles
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation visual + pointer wiring
+ * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
 import React, { memo, useMemo, useEffect, useRef } from 'react';
 import {
@@ -32,7 +33,7 @@ import {
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
-import { getAnnotationBBox } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getGroupBBox } from '../utils/svgBoundingBox';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -81,7 +82,7 @@ const SVGAnnotationLayer = memo(({
     handleAnnotationPointerLeave, handleAnnotationDoubleClick,
     handleSvgPointerDown, handleHandlePointerDown,
     handlePointerMove, handlePointerUp,
-    isSelected,
+    isSelected, deleteSelected,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
@@ -350,17 +351,25 @@ const SVGAnnotationLayer = memo(({
 
     // Compute transform attribute based on interaction mode
     const computedTransform = (() => {
-      if (!visualTransform || visualTransform.id !== i) return undefined;
-      if (visualTransform.resize) {
-        // Resize: element is re-rendered at new scale, no transform needed
-        return undefined;
+      if (!visualTransform) return undefined;
+      // Single annotation visual transform (from Plan 02)
+      if (typeof visualTransform.id === 'number' && visualTransform.id === i) {
+        if (visualTransform.resize) {
+          // Resize: element is re-rendered at new scale, no transform needed
+          return undefined;
+        }
+        if (visualTransform.rotate) {
+          const { angle, cx, cy } = visualTransform.rotate;
+          return `rotate(${angle}, ${cx}, ${cy})`;
+        }
+        // Move: simple translate
+        return `translate(${visualTransform.dx}, ${visualTransform.dy})`;
       }
-      if (visualTransform.rotate) {
-        const { angle, cx, cy } = visualTransform.rotate;
-        return `rotate(${angle}, ${cx}, ${cy})`;
+      // Group visual transform (Plan 03)
+      if (visualTransform.id === 'group' && visualTransform.affectedIds?.has(i)) {
+        return `translate(${visualTransform.dx}, ${visualTransform.dy})`;
       }
-      // Move: simple translate
-      return `translate(${visualTransform.dx}, ${visualTransform.dy})`;
+      return undefined;
     })();
 
     return (
@@ -431,7 +440,8 @@ const SVGAnnotationLayer = memo(({
       {wrappedAnnotations}
       {filteredCallouts}
       {/* Selection overlays — rendered on top of all annotations */}
-      {Array.from(selectedIds).map((selectedIndex) => {
+      {/* Single selection: individual bounding box with handles */}
+      {selectedIds.size === 1 && Array.from(selectedIds).map((selectedIndex) => {
         const obj = annotations?.objects?.[selectedIndex];
         if (!obj) return null;
         const bbox = getAnnotationBBox(obj);
@@ -441,10 +451,49 @@ const SVGAnnotationLayer = memo(({
             bbox={bbox}
             inverseScale={inverseScale}
             onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
-            isGroupSelection={selectedIds.size > 1}
+            isGroupSelection={false}
           />
         );
       })}
+      {/* Multi-select: individual dashed boxes (no handles) + group union box with handles */}
+      {selectedIds.size > 1 && (
+        <>
+          {/* Individual dashed boxes for each selected annotation (no handles) */}
+          {Array.from(selectedIds).map((selectedIndex) => {
+            const obj = annotations?.objects?.[selectedIndex];
+            if (!obj) return null;
+            const bbox = getAnnotationBBox(obj);
+            return (
+              <SVGSelectionOverlay
+                key={`selection-${selectedIndex}`}
+                bbox={bbox}
+                inverseScale={inverseScale}
+                onHandleDrag={() => {}}
+                isGroupSelection={true}
+              />
+            );
+          })}
+          {/* Group union bounding box with handles */}
+          {(() => {
+            const bboxes = Array.from(selectedIds)
+              .map(idx => annotations?.objects?.[idx])
+              .filter(Boolean)
+              .map(obj => getAnnotationBBox(obj));
+            if (bboxes.length === 0) return null;
+            const groupBBox = getGroupBBox(bboxes);
+            return (
+              <SVGSelectionOverlay
+                key="group-selection"
+                bbox={groupBBox}
+                inverseScale={inverseScale}
+                onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
+                isGroupSelection={false}
+                strokeOpacity={0.6}
+              />
+            );
+          })()}
+        </>
+      )}
     </svg>
   );
 });

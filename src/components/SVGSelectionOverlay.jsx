@@ -25,6 +25,7 @@ const SVGSelectionOverlay = memo(({
   inverseScale,     // number -- for constant-size handles
   onHandleDrag,     // (e, handleId) => void
   isGroupSelection, // boolean -- true for multi-select (hides individual handles)
+  strokeOpacity = 1.0, // number -- opacity for bounding box stroke (Plan 03: group union box uses 0.6)
 }) => {
   if (!bbox) return null;
 
@@ -71,6 +72,7 @@ const SVGSelectionOverlay = memo(({
         height={boxH}
         fill="none"
         stroke="#4a90e2"
+        strokeOpacity={strokeOpacity}
         strokeWidth={2 * is}
         strokeDasharray={`${4 * is},${4 * is}`}
         style={{ pointerEvents: 'none' }}
