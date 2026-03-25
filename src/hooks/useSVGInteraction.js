@@ -6,10 +6,10 @@
  *
  * Phase 9 Plan 01: Click-to-select, hover feedback, deselect-on-empty-space.
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation.
- * Phase 9 Plan 03 will add multi-select (shift-click, rubber-band).
+ * Phase 9 Plan 03: Multi-select group ops (group-move, group-delete), double-click edit trigger.
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { screenToSVG, getInverseScale, constrainToPage } from '../utils/svgTransformMath';
+import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage } from '../utils/svgTransformMath';
 import { getAnnotationBBox } from '../utils/svgBoundingBox';
 
 /**
@@ -43,7 +43,7 @@ export function useSVGInteraction({
   // Mutable refs for drag state
   const dragStateRef = useRef({
     active: false,
-    mode: null,      // 'move' | 'resize' | 'rotate'
+    mode: null,      // 'move' | 'resize' | 'rotate' | 'group-move'
     handleId: null,
     startSVGPoint: null,  // { x, y } in viewBox coords at drag start
     originalProps: null,  // { left, top, scaleX, scaleY, angle, width, height } snapshot
@@ -55,6 +55,7 @@ export function useSVGInteraction({
     centerY: null,        // rotate: annotation center Y
     currentResize: null,  // resize: { newScaleX, newScaleY, newLeft, newTop } during drag
     currentAngle: undefined, // rotate: current angle during drag
+    groupOriginals: null, // group-move: { [idx]: { left, top } } for all selected annotations
   });
   const interactionStateRef = useRef('idle');
 
@@ -234,8 +235,69 @@ export function useSVGInteraction({
       // Visual-only update via state (no annotation data mutation during drag)
       setVisualTransform({ id: ds.annotationIndex, dx, dy });
       setInteractionState('dragging');
+    } else if (ds.mode === 'resize') {
+      // Determine which axes this handle affects
+      const affectsX = !['mt', 'mb'].includes(ds.handleId);
+      const affectsY = !['ml', 'mr'].includes(ds.handleId);
+
+      let newScaleX = ds.originalProps.scaleX;
+      let newScaleY = ds.originalProps.scaleY;
+
+      if (affectsX && ds.originalProps.width !== 0) {
+        const currentWidth = Math.abs(svgPoint.x - ds.anchorX);
+        newScaleX = currentWidth / ds.originalProps.width;
+      }
+      if (affectsY && ds.originalProps.height !== 0) {
+        const currentHeight = Math.abs(svgPoint.y - ds.anchorY);
+        newScaleY = currentHeight / ds.originalProps.height;
+      }
+
+      // Shift-lock aspect ratio (per CONTEXT.md: free resize default, Shift locks)
+      if (e.shiftKey) {
+        const avgScale = (newScaleX + newScaleY) / 2;
+        newScaleX = avgScale;
+        newScaleY = avgScale;
+      }
+
+      // Minimum scale to prevent zero-size
+      newScaleX = Math.max(0.1, newScaleX);
+      newScaleY = Math.max(0.1, newScaleY);
+
+      // Compute new left/top based on anchor and new dimensions
+      let newLeft = ds.originalProps.left;
+      let newTop = ds.originalProps.top;
+
+      // For handles that resize from left/top side, adjust position
+      if (['tl', 'ml', 'bl'].includes(ds.handleId)) {
+        newLeft = ds.anchorX - (ds.originalProps.width * newScaleX);
+      }
+      if (['tl', 'mt', 'tr'].includes(ds.handleId)) {
+        newTop = ds.anchorY - (ds.originalProps.height * newScaleY);
+      }
+
+      // Store resize state for commit on pointerup
+      dragStateRef.current.currentResize = { newScaleX, newScaleY, newLeft, newTop };
+      setInteractionState('resizing');
+      setVisualTransform({
+        id: ds.annotationIndex,
+        dx: 0, dy: 0,
+        resize: { scaleX: newScaleX, scaleY: newScaleY, left: newLeft, top: newTop },
+      });
+    } else if (ds.mode === 'rotate') {
+      // Compute angle from center of annotation to current pointer position
+      const dx = svgPoint.x - ds.centerX;
+      const dy = svgPoint.y - ds.centerY;
+      const radians = Math.atan2(dy, dx);
+      const newAngle = normalizeAngle(radians);
+
+      dragStateRef.current.currentAngle = newAngle;
+      setInteractionState('rotating');
+      setVisualTransform({
+        id: ds.annotationIndex,
+        dx: 0, dy: 0,
+        rotate: { angle: newAngle, cx: ds.centerX, cy: ds.centerY },
+      });
     }
-    // resize and rotate modes handled in Task 2
   }, [svgRef]);
 
   /**
@@ -278,8 +340,31 @@ export function useSVGInteraction({
           });
         }
       }
+    } else if (ds.mode === 'resize' && ds.currentResize) {
+      const { newScaleX, newScaleY, newLeft, newTop } = ds.currentResize;
+
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const obj = updatedAnnotations.objects[ds.annotationIndex];
+      obj.scaleX = newScaleX;
+      obj.scaleY = newScaleY;
+      obj.left = newLeft;
+      obj.top = newTop;
+
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'object:modified',
+        action: 'scale',
+        checkpointPolicy: 'normal',
+      });
+    } else if (ds.mode === 'rotate' && ds.currentAngle !== undefined) {
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      updatedAnnotations.objects[ds.annotationIndex].angle = ds.currentAngle;
+
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'object:modified',
+        action: 'rotate',
+        checkpointPolicy: 'normal',
+      });
     }
-    // resize and rotate commit handled in Task 2
 
     // Reset drag state
     dragStateRef.current = {
@@ -294,11 +379,64 @@ export function useSVGInteraction({
 
   /**
    * Handle pointer down on a selection handle (resize/rotate).
-   * Stub -- Task 2 implements resize and rotation logic.
+   * Sets up drag state for resize (corner/edge handles) or rotation (mtr handle).
    */
   const handleHandlePointerDown = useCallback((e, handleId) => {
-    // Task 2 will implement this
-  }, []);
+    e.stopPropagation();
+    e.target.setPointerCapture(e.pointerId);
+
+    const selectedIndex = Array.from(selectedIds)[0]; // Single-select resize only
+    if (selectedIndex === undefined) return;
+    const obj = annotations?.objects?.[selectedIndex];
+    if (!obj) return;
+
+    const ctm = svgRef.current?.getScreenCTM();
+    const ctmInverse = ctm ? ctm.inverse() : null;
+    const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+    const bbox = getAnnotationBBox(obj);
+
+    const mode = handleId === 'mtr' ? 'rotate' : 'resize';
+    const cx = bbox.left + bbox.width / 2;
+    const cy = bbox.top + bbox.height / 2;
+
+    // Anchor: opposite corner/edge from the dragged handle
+    const anchorMap = {
+      tl: { x: bbox.left + bbox.width, y: bbox.top + bbox.height },
+      tr: { x: bbox.left, y: bbox.top + bbox.height },
+      bl: { x: bbox.left + bbox.width, y: bbox.top },
+      br: { x: bbox.left, y: bbox.top },
+      mt: { x: cx, y: bbox.top + bbox.height },
+      mb: { x: cx, y: bbox.top },
+      ml: { x: bbox.left + bbox.width, y: cy },
+      mr: { x: bbox.left, y: cy },
+      mtr: { x: cx, y: cy }, // not used for rotation, but set for completeness
+    };
+    const anchor = anchorMap[handleId] || { x: cx, y: cy };
+
+    dragStateRef.current = {
+      active: true,
+      mode,
+      handleId,
+      startSVGPoint: svgPoint,
+      originalProps: {
+        left: obj.left ?? 0,
+        top: obj.top ?? 0,
+        scaleX: obj.scaleX ?? 1,
+        scaleY: obj.scaleY ?? 1,
+        angle: obj.angle ?? 0,
+        width: obj.width ?? 0,
+        height: obj.height ?? 0,
+      },
+      annotationIndex: selectedIndex,
+      ctmInverse,
+      anchorX: anchor.x,
+      anchorY: anchor.y,
+      centerX: cx,
+      centerY: cy,
+      currentResize: null,
+      currentAngle: undefined,
+    };
+  }, [selectedIds, annotations, svgRef]);
 
   // ---------------------------------------------------------------------------
   // Return API

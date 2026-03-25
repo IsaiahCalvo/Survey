@@ -17,6 +17,7 @@
  * Phase 8 Plan 01: Tier 1 types (paths, rects, lines, arrows) + stubs for tier 2
  * Phase 8 Plan 02: Tier 2 types (ellipse, text, callouts) + full three-layer filtering
  * Phase 9 Plan 01: Click-to-select, hover feedback, selection overlay with handles
+ * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation visual + pointer wiring
  */
 import React, { memo, useMemo, useEffect, useRef } from 'react';
 import {
@@ -78,7 +79,9 @@ const SVGAnnotationLayer = memo(({
     selectedIds, hoveredId, inverseScale, interactionState, visualTransform,
     handleAnnotationPointerDown, handleAnnotationPointerEnter,
     handleAnnotationPointerLeave, handleAnnotationDoubleClick,
-    handleSvgPointerDown, handleHandlePointerDown, isSelected,
+    handleSvgPointerDown, handleHandlePointerDown,
+    handlePointerMove, handlePointerUp,
+    isSelected,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
@@ -313,9 +316,52 @@ const SVGAnnotationLayer = memo(({
   // Render: wrap each annotation with hit-area, hover, and interaction handlers
   // ---------------------------------------------------------------------------
   const wrappedAnnotations = filteredAnnotations.map(({ obj, index: i, element }) => {
-    const bbox = getAnnotationBBox(obj);
+    // During resize, create a temporary modified copy for rendering
+    let renderObj = obj;
+    let renderElement = element;
+    if (visualTransform?.resize && visualTransform.id === i) {
+      renderObj = {
+        ...obj,
+        scaleX: visualTransform.resize.scaleX,
+        scaleY: visualTransform.resize.scaleY,
+        left: visualTransform.resize.left,
+        top: visualTransform.resize.top,
+      };
+      // Re-render the element with modified props
+      const objectType = String(renderObj.type || '').toLowerCase();
+      if (objectType === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
+        renderElement = renderPath(renderObj, i);
+      } else if (objectType === 'rect') {
+        renderElement = renderRect(renderObj, i);
+      } else if (objectType === 'line') {
+        renderElement = renderLine(renderObj, i);
+      } else if (objectType === 'group' && Array.isArray(renderObj.objects) && renderObj.objects.length > 0) {
+        renderElement = renderArrow(renderObj, i);
+      } else if (objectType === 'circle' || objectType === 'ellipse') {
+        renderElement = renderEllipse(renderObj, i);
+      } else if (objectType === 'textbox' || objectType === 'i-text' || objectType === 'text') {
+        renderElement = renderText(renderObj, i);
+      }
+    }
+
+    const bbox = getAnnotationBBox(renderObj);
     const annotationIsSelected = selectedIds.has(i);
     const annotationIsHovered = hoveredId === i && !annotationIsSelected;
+
+    // Compute transform attribute based on interaction mode
+    const computedTransform = (() => {
+      if (!visualTransform || visualTransform.id !== i) return undefined;
+      if (visualTransform.resize) {
+        // Resize: element is re-rendered at new scale, no transform needed
+        return undefined;
+      }
+      if (visualTransform.rotate) {
+        const { angle, cx, cy } = visualTransform.rotate;
+        return `rotate(${angle}, ${cx}, ${cy})`;
+      }
+      // Move: simple translate
+      return `translate(${visualTransform.dx}, ${visualTransform.dy})`;
+    })();
 
     return (
       <g
@@ -325,11 +371,7 @@ const SVGAnnotationLayer = memo(({
         style={{
           cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
         }}
-        transform={
-          visualTransform && visualTransform.id === i
-            ? `translate(${visualTransform.dx}, ${visualTransform.dy})`
-            : undefined
-        }
+        transform={computedTransform}
       >
         {/* Invisible hit-area rect for easier clicking */}
         <rect
@@ -360,7 +402,7 @@ const SVGAnnotationLayer = memo(({
           />
         )}
         {/* Actual annotation render */}
-        {element}
+        {renderElement}
       </g>
     );
   });
@@ -377,9 +419,14 @@ const SVGAnnotationLayer = memo(({
         left: 0,
         pointerEvents: isInteractive ? 'auto' : 'none',
         overflow: 'hidden',
+        cursor: interactionState === 'dragging' ? 'grabbing'
+              : interactionState === 'rotating' ? 'crosshair'
+              : undefined,
       }}
       preserveAspectRatio="none"
       onPointerDown={isInteractive ? handleSvgPointerDown : undefined}
+      onPointerMove={isInteractive ? handlePointerMove : undefined}
+      onPointerUp={isInteractive ? handlePointerUp : undefined}
     >
       {wrappedAnnotations}
       {filteredCallouts}
