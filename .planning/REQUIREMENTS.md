@@ -23,15 +23,15 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 
 ### SVG Interaction
 
-- [ ] **INTR-01**: User can click an annotation in SVG to select it (visual selection highlight appears)
-- [ ] **INTR-02**: Selected annotation shows resize handles at corners and midpoints, rendered as SVG elements
-- [ ] **INTR-03**: Selection handles remain constant size during zoom (scale-compensated via `vector-effect` or inverse scale)
+- [x] **INTR-01**: User can click an annotation in SVG to select it (visual selection highlight appears)
+- [x] **INTR-02**: Selected annotation shows resize handles at corners and midpoints, rendered as SVG elements
+- [x] **INTR-03**: Selection handles remain constant size during zoom (scale-compensated via `vector-effect` or inverse scale)
 - [ ] **INTR-04**: User can drag a selected annotation to reposition it in SVG (pointer events, no Canvas mount)
 - [ ] **INTR-05**: User can drag resize handles to scale an annotation in SVG
 - [ ] **INTR-06**: User can rotate an annotation via rotation handle in SVG
 - [ ] **INTR-07**: User can select multiple annotations (shift-click or marquee) and see group selection highlight
 - [ ] **INTR-08**: User can drag/delete multiple selected annotations as a group
-- [ ] **INTR-09**: Clicking empty space deselects all annotations
+- [x] **INTR-09**: Clicking empty space deselects all annotations
 - [ ] **INTR-10**: Double-click on an annotation transitions to Canvas edit mode (mounts Fabric.js Canvas)
 
 ### Canvas Editing
@@ -102,15 +102,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DISP-09 | Phase 8 | Complete |
 | DISP-10 | Phase 8 | Pending |
 | DISP-11 | Phase 8 | Complete |
-| INTR-01 | Phase 9 | Pending |
-| INTR-02 | Phase 9 | Pending |
-| INTR-03 | Phase 9 | Pending |
+| INTR-01 | Phase 9 | Complete |
+| INTR-02 | Phase 9 | Complete |
+| INTR-03 | Phase 9 | Complete |
 | INTR-04 | Phase 9 | Pending |
 | INTR-05 | Phase 9 | Pending |
 | INTR-06 | Phase 9 | Pending |
 | INTR-07 | Phase 9 | Pending |
 | INTR-08 | Phase 9 | Pending |
-| INTR-09 | Phase 9 | Pending |
+| INTR-09 | Phase 9 | Complete |
 | INTR-10 | Phase 9 | Pending |
 | EDIT-01 | Phase 10 | Pending |
 | EDIT-02 | Phase 10 | Pending |
