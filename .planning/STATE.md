@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SVG Migration
 status: executing
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-03-25T00:10:05.904Z"
-last_activity: 2026-03-25 -- Phase 9 Plan 01 complete, SVG selection foundation
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-03-25T00:16:49Z"
+last_activity: 2026-03-25 -- Phase 9 Plan 02 complete, drag/resize/rotate
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 5
-  completed_plans: 3
-  percent: 40
+  completed_plans: 4
+  percent: 60
 ---
 
 # Project State
@@ -26,18 +26,19 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 9 of 11 (SVG Selection and Interaction)
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: Executing
-Last activity: 2026-03-25 -- Phase 9 Plan 01 complete, SVG selection foundation
+Last activity: 2026-03-25 -- Phase 9 Plan 02 complete, drag/resize/rotate
 
-Progress: [████░░░░░░] 40%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Phase 8: 2 plans across 2 sessions
 - Phase 9: Plan 01 in 11 min (3 tasks, 6 files)
+- Phase 9: Plan 02 in 4 min (2 tasks, 2 files)
 
 ## Accumulated Context
 
@@ -57,6 +58,10 @@ Progress: [████░░░░░░] 40%
 - [09-01]: useMemo refactored to filter-only; wrapping in render body prevents re-render on selection change
 - [09-01]: inverseScale via ResizeObserver on SVG clientWidth -- container-aware per CLAUDE.md
 - [09-01]: Selection auto-clears on annotations prop identity change
+- [09-02]: Cached CTM inverse at drag start for entire drag duration (CTM stable during single drag)
+- [09-02]: Resize updates scaleX/scaleY (not width/height) to match Fabric.js Canvas mode serialization
+- [09-02]: Anchor-point resize -- opposite corner stays fixed, dragged handle determines scale
+- [09-02]: Resize visual re-renders annotation element (not SVG transform) because scale changes affect geometry
 
 ### Roadmap Evolution
 
@@ -75,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T00:09:06Z
-Stopped at: Completed 09-01-PLAN.md
-Resume file: .planning/phases/09-svg-selection-interaction/09-02-PLAN.md
+Last session: 2026-03-25T00:16:49Z
+Stopped at: Completed 09-02-PLAN.md
+Resume file: .planning/phases/09-svg-selection-interaction/09-03-PLAN.md

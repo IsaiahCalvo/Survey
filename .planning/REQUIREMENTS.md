@@ -26,9 +26,9 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 - [x] **INTR-01**: User can click an annotation in SVG to select it (visual selection highlight appears)
 - [x] **INTR-02**: Selected annotation shows resize handles at corners and midpoints, rendered as SVG elements
 - [x] **INTR-03**: Selection handles remain constant size during zoom (scale-compensated via `vector-effect` or inverse scale)
-- [ ] **INTR-04**: User can drag a selected annotation to reposition it in SVG (pointer events, no Canvas mount)
-- [ ] **INTR-05**: User can drag resize handles to scale an annotation in SVG
-- [ ] **INTR-06**: User can rotate an annotation via rotation handle in SVG
+- [x] **INTR-04**: User can drag a selected annotation to reposition it in SVG (pointer events, no Canvas mount)
+- [x] **INTR-05**: User can drag resize handles to scale an annotation in SVG
+- [x] **INTR-06**: User can rotate an annotation via rotation handle in SVG
 - [ ] **INTR-07**: User can select multiple annotations (shift-click or marquee) and see group selection highlight
 - [ ] **INTR-08**: User can drag/delete multiple selected annotations as a group
 - [x] **INTR-09**: Clicking empty space deselects all annotations
@@ -105,9 +105,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INTR-01 | Phase 9 | Complete |
 | INTR-02 | Phase 9 | Complete |
 | INTR-03 | Phase 9 | Complete |
-| INTR-04 | Phase 9 | Pending |
-| INTR-05 | Phase 9 | Pending |
-| INTR-06 | Phase 9 | Pending |
+| INTR-04 | Phase 9 | Complete |
+| INTR-05 | Phase 9 | Complete |
+| INTR-06 | Phase 9 | Complete |
 | INTR-07 | Phase 9 | Pending |
 | INTR-08 | Phase 9 | Pending |
 | INTR-09 | Phase 9 | Complete |
