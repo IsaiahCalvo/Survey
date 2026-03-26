@@ -108,6 +108,64 @@ export function getHandlePositions(bbox, padding = 6) {
 
 
 // ---------------------------------------------------------------------------
+// Imported path detection and coordinate manipulation
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if an annotation is an imported PDF path (no Fabric.js positioning properties).
+ * These annotations have absolute coordinates in path data, not left/top/scaleX/scaleY.
+ * Standard Fabric.js paths have left/top/width/height/pathOffset; imported ones don't.
+ *
+ * @param {object} obj - Fabric.js JSON object
+ * @returns {boolean}
+ */
+export function isImportedPath(obj) {
+  return obj?.type === 'path' && obj.left == null && Array.isArray(obj.path);
+}
+
+/**
+ * Translate all coordinates in path data by (dx, dy).
+ * For imported paths that store absolute coordinates.
+ *
+ * @param {Array} pathData - Fabric.js path array (e.g. [["M", 100, 200], ["L", 300, 400]])
+ * @param {number} dx - Horizontal translation
+ * @param {number} dy - Vertical translation
+ * @returns {Array} New path data with translated coordinates
+ */
+export function translatePathData(pathData, dx, dy) {
+  return pathData.map(seg => {
+    const newSeg = [seg[0]]; // keep command letter
+    for (let j = 1; j < seg.length; j += 2) {
+      newSeg.push(seg[j] + dx);
+      if (j + 1 < seg.length) newSeg.push(seg[j + 1] + dy);
+    }
+    return newSeg;
+  });
+}
+
+/**
+ * Scale all coordinates in path data around an anchor point.
+ * For imported paths during resize.
+ *
+ * @param {Array} pathData - Fabric.js path array
+ * @param {number} scaleX - Horizontal scale factor
+ * @param {number} scaleY - Vertical scale factor
+ * @param {number} anchorX - Anchor X (fixed point during scale)
+ * @param {number} anchorY - Anchor Y (fixed point during scale)
+ * @returns {Array} New path data with scaled coordinates
+ */
+export function scalePathData(pathData, scaleX, scaleY, anchorX, anchorY) {
+  return pathData.map(seg => {
+    const newSeg = [seg[0]]; // keep command letter
+    for (let j = 1; j < seg.length; j += 2) {
+      newSeg.push(anchorX + (seg[j] - anchorX) * scaleX);
+      if (j + 1 < seg.length) newSeg.push(anchorY + (seg[j + 1] - anchorY) * scaleY);
+    }
+    return newSeg;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Internal bbox helpers per annotation type
 // ---------------------------------------------------------------------------
 

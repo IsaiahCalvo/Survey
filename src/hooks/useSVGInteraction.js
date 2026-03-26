@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage } from '../utils/svgTransformMath';
-import { getAnnotationBBox } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, isImportedPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
 
 /**
  * @param {object} options
@@ -165,10 +165,13 @@ export function useSVGInteraction({
         for (const selIdx of selectedIds) {
           const selObj = annotations?.objects?.[selIdx];
           if (selObj) {
-            originals[selIdx] = {
-              left: selObj.left ?? 0,
-              top: selObj.top ?? 0,
-            };
+            // Imported paths: use bbox position (from path data), not obj.left/top
+            if (isImportedPath(selObj)) {
+              const selBBox = getAnnotationBBox(selObj);
+              originals[selIdx] = { left: selBBox.left, top: selBBox.top };
+            } else {
+              originals[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0 };
+            }
           }
         }
         dragStateRef.current = {
@@ -189,19 +192,22 @@ export function useSVGInteraction({
         };
       } else {
         // Single annotation drag
+        // Imported paths: derive position/size from path data bbox
+        const imported = isImportedPath(obj);
+        const bbox = imported ? getAnnotationBBox(obj) : null;
         dragStateRef.current = {
           active: true,
           mode: 'move',
           handleId: null,
           startSVGPoint: svgPoint,
           originalProps: {
-            left: obj.left ?? 0,
-            top: obj.top ?? 0,
-            scaleX: obj.scaleX ?? 1,
-            scaleY: obj.scaleY ?? 1,
+            left: imported ? bbox.left : (obj.left ?? 0),
+            top: imported ? bbox.top : (obj.top ?? 0),
+            scaleX: imported ? 1 : (obj.scaleX ?? 1),
+            scaleY: imported ? 1 : (obj.scaleY ?? 1),
             angle: obj.angle ?? 0,
-            width: obj.width ?? 0,
-            height: obj.height ?? 0,
+            width: imported ? bbox.width : (obj.width ?? 0),
+            height: imported ? bbox.height : (obj.height ?? 0),
           },
           annotationIndex: index,
           ctmInverse,
@@ -327,7 +333,7 @@ export function useSVGInteraction({
       setVisualTransform({
         id: ds.annotationIndex,
         dx: 0, dy: 0,
-        resize: { scaleX: newScaleX, scaleY: newScaleY, left: newLeft, top: newTop },
+        resize: { scaleX: newScaleX, scaleY: newScaleY, left: newLeft, top: newTop, anchorX: ds.anchorX, anchorY: ds.anchorY },
       });
     } else if (ds.mode === 'rotate') {
       // Compute angle from center of annotation to current pointer position
@@ -375,8 +381,17 @@ export function useSVGInteraction({
 
           // Deep clone annotations and apply position update
           const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
-          updatedAnnotations.objects[ds.annotationIndex].left = constrained.left;
-          updatedAnnotations.objects[ds.annotationIndex].top = constrained.top;
+          const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+
+          if (isImportedPath(obj)) {
+            // Imported paths: translate all path coordinates by the constrained delta
+            const actualDx = constrained.left - ds.originalProps.left;
+            const actualDy = constrained.top - ds.originalProps.top;
+            targetObj.path = translatePathData(targetObj.path, actualDx, actualDy);
+          } else {
+            targetObj.left = constrained.left;
+            targetObj.top = constrained.top;
+          }
 
           // Save through existing pipeline
           onSaveAnnotations(updatedAnnotations, {
@@ -409,8 +424,16 @@ export function useSVGInteraction({
             orig.left + dx, orig.top + dy,
             bbox.width, bbox.height, pageWidth, pageHeight
           );
-          obj.left = constrained.left;
-          obj.top = constrained.top;
+
+          if (isImportedPath(obj)) {
+            // Imported paths: translate path coordinates by constrained delta
+            const actualDx = constrained.left - orig.left;
+            const actualDy = constrained.top - orig.top;
+            obj.path = translatePathData(obj.path, actualDx, actualDy);
+          } else {
+            obj.left = constrained.left;
+            obj.top = constrained.top;
+          }
         }
 
         onSaveAnnotations(updatedAnnotations, {
@@ -424,10 +447,17 @@ export function useSVGInteraction({
 
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const obj = updatedAnnotations.objects[ds.annotationIndex];
-      obj.scaleX = newScaleX;
-      obj.scaleY = newScaleY;
-      obj.left = newLeft;
-      obj.top = newTop;
+
+      if (isImportedPath(obj)) {
+        // Imported paths: scale path coordinates around the anchor point
+        // newScaleX/newScaleY are ratios of new size to original bbox size (originalProps.scaleX was 1)
+        obj.path = scalePathData(obj.path, newScaleX, newScaleY, ds.anchorX, ds.anchorY);
+      } else {
+        obj.scaleX = newScaleX;
+        obj.scaleY = newScaleY;
+        obj.left = newLeft;
+        obj.top = newTop;
+      }
 
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
@@ -492,19 +522,21 @@ export function useSVGInteraction({
     };
     const anchor = anchorMap[handleId] || { x: cx, y: cy };
 
+    // Imported paths: derive position/size from bbox
+    const imported = isImportedPath(obj);
     dragStateRef.current = {
       active: true,
       mode,
       handleId,
       startSVGPoint: svgPoint,
       originalProps: {
-        left: obj.left ?? 0,
-        top: obj.top ?? 0,
-        scaleX: obj.scaleX ?? 1,
-        scaleY: obj.scaleY ?? 1,
+        left: imported ? bbox.left : (obj.left ?? 0),
+        top: imported ? bbox.top : (obj.top ?? 0),
+        scaleX: imported ? 1 : (obj.scaleX ?? 1),
+        scaleY: imported ? 1 : (obj.scaleY ?? 1),
         angle: obj.angle ?? 0,
-        width: obj.width ?? 0,
-        height: obj.height ?? 0,
+        width: imported ? bbox.width : (obj.width ?? 0),
+        height: imported ? bbox.height : (obj.height ?? 0),
       },
       annotationIndex: selectedIndex,
       ctmInverse,

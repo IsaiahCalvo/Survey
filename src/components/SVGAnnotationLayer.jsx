@@ -33,7 +33,7 @@ import {
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
-import { getAnnotationBBox, getGroupBBox } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getGroupBBox, isImportedPath } from '../utils/svgBoundingBox';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -304,7 +304,7 @@ const SVGAnnotationLayer = memo(({
       `[SVG p${pageNumber}] MOUNT — ${objectCount} annotations, ${calloutCount} callouts, viewBox=${width}x${height}`
     );
     return () => {
-      console.log(`[SVG p${pageNumber}] UNMOUNT`);
+      // Cleanup on unmount
     };
   }, [pageNumber, objectCount, calloutCount, width, height]);
 
@@ -318,9 +318,10 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   const wrappedAnnotations = filteredAnnotations.map(({ obj, index: i, element }) => {
     // During resize, create a temporary modified copy for rendering
+    // (Imported paths use SVG transform instead — handled in computedTransform below)
     let renderObj = obj;
     let renderElement = element;
-    if (visualTransform?.resize && visualTransform.id === i) {
+    if (visualTransform?.resize && visualTransform.id === i && !isImportedPath(obj)) {
       renderObj = {
         ...obj,
         scaleX: visualTransform.resize.scaleX,
@@ -355,7 +356,12 @@ const SVGAnnotationLayer = memo(({
       // Single annotation visual transform (from Plan 02)
       if (typeof visualTransform.id === 'number' && visualTransform.id === i) {
         if (visualTransform.resize) {
-          // Resize: element is re-rendered at new scale, no transform needed
+          // Imported paths: use SVG transform to scale around anchor point
+          if (isImportedPath(obj)) {
+            const { scaleX, scaleY, anchorX, anchorY } = visualTransform.resize;
+            return `translate(${anchorX}, ${anchorY}) scale(${scaleX}, ${scaleY}) translate(${-anchorX}, ${-anchorY})`;
+          }
+          // Standard objects: element is re-rendered at new scale, no transform needed
           return undefined;
         }
         if (visualTransform.rotate) {
@@ -436,7 +442,6 @@ const SVGAnnotationLayer = memo(({
       }}
       preserveAspectRatio="none"
       onPointerDown={(e) => {
-        console.log(`[SVG p${pageNumber}] POINTER DOWN on svg root — isInteractive=${isInteractive}, target=${e.target.tagName}, activeTool=${activeTool}`);
         if (isInteractive) {
           e.stopPropagation(); // Prevent Syncfusion from seeing SVG events (SVGAnimatedString crash)
           handleSvgPointerDown(e);
