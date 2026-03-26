@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SVG Migration
 status: executing
-stopped_at: Completed 09-02-PLAN.md
-last_updated: "2026-03-25T00:16:49Z"
-last_activity: 2026-03-25 -- Phase 9 Plan 02 complete, drag/resize/rotate
+stopped_at: Phase 9 complete — all 3 plans done
+last_updated: "2026-03-26T20:01:00Z"
+last_activity: 2026-03-26 -- Phase 9 complete, imported path support added
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
-  percent: 60
+  completed_plans: 5
+  percent: 71
 ---
 
 # Project State
@@ -21,24 +21,25 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox
-**Current focus:** Phase 9 -- SVG Selection and Interaction
+**Current focus:** Phase 10 -- Canvas Mount/Unmount (Pen + Eraser)
 
 ## Current Position
 
-Phase: 9 of 11 (SVG Selection and Interaction)
-Plan: 2 of 3 complete
-Status: Executing
-Last activity: 2026-03-25 -- Phase 9 Plan 02 complete, drag/resize/rotate
+Phase: 10 of 11 (Canvas Mount/Unmount — Pen + Eraser)
+Plan: 0 of ? (not yet planned)
+Status: Ready to plan
+Last activity: 2026-03-26 -- Phase 9 closed out, imported path interaction support committed
 
-Progress: [██████░░░░] 60%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Phase 8: 2 plans across 2 sessions
 - Phase 9: Plan 01 in 11 min (3 tasks, 6 files)
 - Phase 9: Plan 02 in 4 min (2 tasks, 2 files)
+- Phase 9: Plan 03 + bug fixes across 2 sessions (imported path compat layer)
 
 ## Accumulated Context
 
@@ -62,6 +63,10 @@ Progress: [██████░░░░] 60%
 - [09-02]: Resize updates scaleX/scaleY (not width/height) to match Fabric.js Canvas mode serialization
 - [09-02]: Anchor-point resize -- opposite corner stays fixed, dragged handle determines scale
 - [09-02]: Resize visual re-renders annotation element (not SVG transform) because scale changes affect geometry
+- [09-03]: Wrapper div pointerEvents is tool-dependent: 'auto' for select/text-select, 'none' for all others
+- [09-03]: Hit rect uses SVG attribute pointerEvents="all" (not CSS style) for cross-browser reliability
+- [09-03]: Imported paths use SVG transform for resize visual (not re-rendering)
+- [09-03]: isImportedPath + translatePathData + scalePathData added for imported PDF annotation compat
 
 ### Roadmap Evolution
 
@@ -71,7 +76,8 @@ Progress: [██████░░░░] 60%
 
 ### Pending Todos
 
-None yet.
+- Selection overlay bbox slightly oversized at high zoom (padding visible) — deferred to post-Phase 11
+- Selection overlay does not follow annotation during drag (visual transform not applied to overlay) — deferred to post-Phase 11
 
 ### Blockers/Concerns
 
@@ -80,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T00:16:49Z
-Stopped at: Completed 09-02-PLAN.md
-Resume file: .planning/phases/09-svg-selection-interaction/09-03-PLAN.md
+Last session: 2026-03-26T20:01:00Z
+Stopped at: Phase 9 complete, ready to plan Phase 10
+Resume file: none — start with /gsd:plan-phase 10
