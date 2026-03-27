@@ -60,9 +60,8 @@ The font used inside IText comes from the annotation's own Fabric.js JSON data (
 |------|------|--------|-------------|------|
 | Label | 12px | 500 | 1.3 | var(--font-primary) |
 | Value readout | 12px | 400 | 1.3 | var(--font-primary) |
-| Section header | 13px | 600 | 1.2 | var(--font-primary) |
 
-**Source:** Matches existing toolbar label sizes in App.css (12px labels at line 226-227, 14-15px body text). Mini-toolbar uses the smaller end of the scale because it is a floating overlay that must not dominate the editing area.
+**Source:** Matches existing toolbar label sizes in App.css (12px labels at line 226-227). Mini-toolbar uses the smaller end of the scale because it is a floating overlay that must not dominate the editing area. Two weights provide visual contrast between interactive values (regular 400) and their descriptive labels (medium 500).
 
 ### Cursor Feedback During Text Editing
 
