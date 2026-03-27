@@ -332,7 +332,6 @@ const FabricEraserCanvas = memo(({
 
     // mouse:down
     canvas.on('mouse:down', (opt) => {
-      console.log('[Eraser] mouse:down — isLoading:', isLoadingRef.current, 'objects:', canvas.getObjects().length);
       // MUST check the ref, NOT the state variable, because this handler is
       // bound in useEffect([]) and the state value would be stale (always true).
       if (isLoadingRef.current) return;
@@ -351,7 +350,6 @@ const FabricEraserCanvas = memo(({
 
     // mouse:up
     canvas.on('mouse:up', () => {
-      console.log('[Eraser] mouse:up — isErasing:', isErasingRef.current, 'pathLen:', eraserPathRef.current.length);
       if (!isErasingRef.current) return;
       isErasingRef.current = false;
 
