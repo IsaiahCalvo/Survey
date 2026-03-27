@@ -65,6 +65,7 @@ import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
+import FabricDrawingCanvas from './components/FabricDrawingCanvas';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
@@ -10154,6 +10155,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [resetSyncfusionZoomPresentationPages, syncSyncfusionZoomPresentationPages]);
 
   const beginSyncfusionScaleConfirmPending = useCallback((source = 'unknown') => {
+    // Signal zoom-start to mounted Canvas components (FabricDrawingCanvas).
+    // This is a read-only annotation-layer signal -- it does NOT affect zoom behavior.
+    setZoomGeneration(prev => prev + 1);
     // SVG mode: skip freeze/confirm-pending entirely — SVG viewBox auto-scales,
     // no PAL confirmation needed. Without this guard, the 3000ms safety timeout
     // fires every zoom because unmounted PAL can never confirm.
@@ -11259,6 +11263,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [fillColor, setFillColor] = useState('#ff0000');
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
+  const [zoomGeneration, setZoomGeneration] = useState(0);
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
 
   // Callout overlay state
@@ -24909,48 +24914,75 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               </div>
                             )}
                           </div>
-                          {/* SVG layer: OUTSIDE the transform/freeze div, directly in the portal overlay.
+                          {/* SVG layer + Drawing Canvas: OUTSIDE the transform/freeze div, directly in the portal overlay.
                               viewBox auto-scales with the Syncfusion page div — no CSS transforms needed. */}
                           {rendererMode === 'svg' && (() => {
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
+                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter';
+                            const isEraserTool = activeTool === 'eraser';
+
                             return (
-                            <div
-                              style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                width: '100%',
-                                height: '100%',
-                                pointerEvents: svgInteractive ? 'auto' : 'none',
-                                zIndex: 100,
-                              }}
-                              onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
-                              onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
-                            >
-                              <SVGAnnotationLayer
-                                pageNumber={pageNumber}
-                                width={resolvedPageSize.width}
-                                height={resolvedPageSize.height}
-                                annotations={pageAnnotations}
-                                callouts={callouts}
-                                selectedModuleId={selectedModuleId}
-                                showSurveyPanel={showSurveyPanel}
-                                selectedSpaceId={annotationSpaceId}
-                                activeSpaceId={activeSpaceId}
-                                activeRegions={pageRegions}
-                                activeRegionId={activeRegionId}
-                                spaces={spaces}
-                                getRegionLightbulbState={getRegionLightbulbState}
-                                isRegionOverlayEnabled={isRegionOverlayEnabled}
-                                layerVisibility={annotationLayerVisibility}
-                                onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
-                                onRequestEditMode={(annotationIndex, annotationType) => {
-                                  console.log(`[SVG p${pageNumber}] Edit mode requested for annotation ${annotationIndex} (${annotationType})`);
-                                  // Phase 10/11 will implement actual Canvas mount here
+                            <>
+                              {/* SVG layer -- hidden when eraser is mounted (Phase 10 Plan 02) */}
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  width: '100%',
+                                  height: '100%',
+                                  pointerEvents: svgInteractive ? 'auto' : 'none',
+                                  zIndex: 100,
+                                  visibility: isEraserTool ? 'hidden' : 'visible',
                                 }}
-                                activeTool={activeTool}
-                              />
-                            </div>
+                                onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
+                                onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
+                              >
+                                <SVGAnnotationLayer
+                                  pageNumber={pageNumber}
+                                  width={resolvedPageSize.width}
+                                  height={resolvedPageSize.height}
+                                  annotations={pageAnnotations}
+                                  callouts={callouts}
+                                  selectedModuleId={selectedModuleId}
+                                  showSurveyPanel={showSurveyPanel}
+                                  selectedSpaceId={annotationSpaceId}
+                                  activeSpaceId={activeSpaceId}
+                                  activeRegions={pageRegions}
+                                  activeRegionId={activeRegionId}
+                                  spaces={spaces}
+                                  getRegionLightbulbState={getRegionLightbulbState}
+                                  isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                  layerVisibility={annotationLayerVisibility}
+                                  onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
+                                  onRequestEditMode={(annotationIndex, annotationType) => {
+                                    console.log(`[SVG p${pageNumber}] Edit mode requested for annotation ${annotationIndex} (${annotationType})`);
+                                  }}
+                                  activeTool={activeTool}
+                                />
+                              </div>
+
+                              {/* Drawing Canvas -- transparent overlay for pen + highlighter */}
+                              {isDrawingTool && (
+                                <FabricDrawingCanvas
+                                  key={`draw-${pageNumber}`}
+                                  pageNumber={pageNumber}
+                                  pageWidth={resolvedPageSize.width}
+                                  pageHeight={resolvedPageSize.height}
+                                  activeTool={activeTool}
+                                  strokeColor={strokeColor}
+                                  highlightColor="rgba(255, 193, 7, 0.3)"
+                                  strokeWidth={strokeWidth}
+                                  annotations={pageAnnotations}
+                                  onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
+                                  selectedModuleId={selectedModuleId}
+                                  activeRegionId={activeRegionId}
+                                  zoomGeneration={zoomGeneration}
+                                />
+                              )}
+
+                              {/* Eraser Canvas placeholder -- Phase 10 Plan 02 */}
+                            </>
                             );
                           })()}
                         </div>,
@@ -25081,36 +25113,62 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 )}
                                 {pageSizes[pageNumber] && rendererMode === 'svg' && (() => {
                                   const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
+                                  const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter';
+                                  const isEraserTool = activeTool === 'eraser';
+
                                   return (
-                                  <div
-                                    style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: svgInteractive ? 'auto' : 'none', zIndex: 100 }}
-                                    onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
-                                    onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
-                                  >
-                                  <SVGAnnotationLayer
-                                    pageNumber={pageNumber}
-                                    width={pageSizes[pageNumber].width}
-                                    height={pageSizes[pageNumber].height}
-                                    annotations={annotationsByPage[pageNumber]}
-                                    callouts={callouts}
-                                    selectedModuleId={selectedModuleId}
-                                    showSurveyPanel={showSurveyPanel}
-                                    selectedSpaceId={annotationSpaceId}
-                                    activeSpaceId={activeSpaceId}
-                                    activeRegions={pageRegions}
-                                    activeRegionId={activeRegionId}
-                                    spaces={spaces}
-                                    getRegionLightbulbState={getRegionLightbulbState}
-                                    isRegionOverlayEnabled={isRegionOverlayEnabled}
-                                    layerVisibility={annotationLayerVisibility}
-                                    onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
-                                    onRequestEditMode={(annotationIndex, annotationType) => {
-                                      console.log(`[SVG p${pageNumber}] Edit mode requested for annotation ${annotationIndex} (${annotationType})`);
-                                      // Phase 10/11 will implement actual Canvas mount here
-                                    }}
-                                    activeTool={activeTool}
-                                  />
-                                  </div>
+                                  <>
+                                    {/* SVG layer -- hidden when eraser is mounted (Phase 10 Plan 02) */}
+                                    <div
+                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: svgInteractive ? 'auto' : 'none', zIndex: 100, visibility: isEraserTool ? 'hidden' : 'visible' }}
+                                      onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
+                                      onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
+                                    >
+                                    <SVGAnnotationLayer
+                                      pageNumber={pageNumber}
+                                      width={pageSizes[pageNumber].width}
+                                      height={pageSizes[pageNumber].height}
+                                      annotations={annotationsByPage[pageNumber]}
+                                      callouts={callouts}
+                                      selectedModuleId={selectedModuleId}
+                                      showSurveyPanel={showSurveyPanel}
+                                      selectedSpaceId={annotationSpaceId}
+                                      activeSpaceId={activeSpaceId}
+                                      activeRegions={pageRegions}
+                                      activeRegionId={activeRegionId}
+                                      spaces={spaces}
+                                      getRegionLightbulbState={getRegionLightbulbState}
+                                      isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                      layerVisibility={annotationLayerVisibility}
+                                      onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
+                                      onRequestEditMode={(annotationIndex, annotationType) => {
+                                        console.log(`[SVG p${pageNumber}] Edit mode requested for annotation ${annotationIndex} (${annotationType})`);
+                                      }}
+                                      activeTool={activeTool}
+                                    />
+                                    </div>
+
+                                    {/* Drawing Canvas -- transparent overlay for pen + highlighter */}
+                                    {isDrawingTool && (
+                                      <FabricDrawingCanvas
+                                        key={`draw-${pageNumber}`}
+                                        pageNumber={pageNumber}
+                                        pageWidth={pageSizes[pageNumber].width}
+                                        pageHeight={pageSizes[pageNumber].height}
+                                        activeTool={activeTool}
+                                        strokeColor={strokeColor}
+                                        highlightColor="rgba(255, 193, 7, 0.3)"
+                                        strokeWidth={strokeWidth}
+                                        annotations={annotationsByPage[pageNumber]}
+                                        onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
+                                        selectedModuleId={selectedModuleId}
+                                        activeRegionId={activeRegionId}
+                                        zoomGeneration={zoomGeneration}
+                                      />
+                                    )}
+
+                                    {/* Eraser Canvas placeholder -- Phase 10 Plan 02 */}
+                                  </>
                                   );
                                 })()}
                                 {/* Space Region Dimming Overlay */}
