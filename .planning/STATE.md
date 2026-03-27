@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SVG Migration
 status: executing
-stopped_at: Completed 10-01-PLAN.md
-last_updated: "2026-03-27T01:07:49.517Z"
-last_activity: 2026-03-27 -- Phase 10 Plan 01 complete (FabricDrawingCanvas + App.jsx wiring)
+stopped_at: Completed 10-02-PLAN.md (Phase 10 complete)
+last_updated: "2026-03-27T18:07:41Z"
+last_activity: 2026-03-27 -- Phase 10 Plan 02 complete (FabricEraserCanvas + verification bug fixes)
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -25,22 +25,23 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 
 ## Current Position
 
-Phase: 10 of 11 (Canvas Mount/Unmount — Pen + Eraser)
-Plan: 1 of 2 (10-01-PLAN.md complete)
-Status: Executing Phase 10
-Last activity: 2026-03-27 -- Phase 10 Plan 01 complete (FabricDrawingCanvas + App.jsx wiring)
+Phase: 10 of 11 (Canvas Mount/Unmount — Pen + Eraser) -- COMPLETE
+Plan: 2 of 2 (10-02-PLAN.md complete)
+Status: Phase 10 complete, ready for Phase 11
+Last activity: 2026-03-27 -- Phase 10 Plan 02 complete (FabricEraserCanvas + verification bug fixes)
 
-Progress: [████████░░] 86%
+Progress: [██████████] 100% (Phases 8-10 complete, Phase 11 remaining)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Phase 8: 2 plans across 2 sessions
 - Phase 9: Plan 01 in 11 min (3 tasks, 6 files)
 - Phase 9: Plan 02 in 4 min (2 tasks, 2 files)
 - Phase 9: Plan 03 + bug fixes across 2 sessions (imported path compat layer)
 - Phase 10: Plan 01 in 6 min (2 tasks, 3 files)
+- Phase 10: Plan 02 multi-session (3 tasks, 5 files, 10 bugs fixed during verification)
 
 ## Accumulated Context
 
@@ -72,6 +73,11 @@ Progress: [████████░░] 86%
 - [10-01]: setZoomGeneration placed at top of beginSyncfusionScaleConfirmPending before SVG guard
 - [10-01]: Canvas key uses pageNumber only (not activeTool) -- pen<->highlighter reconfigures brush without remount
 - [10-01]: Container-aware canvas sizing via setZoom(effectiveScale) puts paths in SVG viewBox space
+- [10-02]: isLoadingRef mirrors isLoading state to avoid stale closure in eraser mouse:down handler
+- [10-02]: Eraser precision: viewerScale/effectiveScale ratio corrects radius mismatch between cursor overlay and canvas
+- [10-02]: flushSync during dispose forces synchronous SVG re-render before Canvas DOM removal (prevents flicker)
+- [10-02]: SVG wrapper cursor: 'default' when svgInteractive for instant cursor change on tool switch
+- [10-02]: Zoom while drawing fragment is expected behavior (ResizeObserver flush commits stroke, new stroke starts fresh)
 
 ### Roadmap Evolution
 
@@ -83,6 +89,7 @@ Progress: [████████░░] 86%
 
 - Selection overlay bbox slightly oversized at high zoom (padding visible) — deferred to post-Phase 11
 - Selection overlay does not follow annotation during drag (visual transform not applied to overlay) — deferred to post-Phase 11
+- Zoom while drawing creates disconnected fragment (stroke committed on zoom, new stroke starts fresh) — documented as expected behavior
 
 ### Blockers/Concerns
 
@@ -91,6 +98,6 @@ Progress: [████████░░] 86%
 
 ## Session Continuity
 
-Last session: 2026-03-27T01:07:49.514Z
-Stopped at: Completed 10-01-PLAN.md
+Last session: 2026-03-27T18:07:41Z
+Stopped at: Completed 10-02-PLAN.md (Phase 10 complete)
 Resume file: None

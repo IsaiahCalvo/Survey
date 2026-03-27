@@ -39,8 +39,8 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 - [x] **EDIT-01**: Pen/highlighter tool mounts a transparent Fabric.js Canvas over the entire page for stroke capture at 60fps
 - [x] **EDIT-02**: Completed pen/highlighter strokes are serialized to Fabric.js JSON and committed to the SVG layer
 - [x] **EDIT-03**: Canvas stays mounted while pen/highlighter tool is active, unmounts on tool switch
-- [ ] **EDIT-04**: Eraser tool mounts Canvas and loads all page annotations for boolean path intersection/subtraction
-- [ ] **EDIT-05**: Eraser results are serialized back to Fabric.js JSON and committed to SVG layer on tool deactivation
+- [x] **EDIT-04**: Eraser tool mounts Canvas and loads all page annotations for boolean path intersection/subtraction
+- [x] **EDIT-05**: Eraser results are serialized back to Fabric.js JSON and committed to SVG layer on tool deactivation
 - [ ] **EDIT-06**: Text double-click mounts a targeted Fabric.js Canvas sized to the annotation bounding box for IText editing
 - [ ] **EDIT-07**: Text edit commits on blur (click outside) -- Canvas unmounts, SVG updates with new text content
 - [ ] **EDIT-08**: Shape/callout double-click mounts a targeted Canvas for property editing (color, stroke, resize)
@@ -115,8 +115,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EDIT-01 | Phase 10 | Complete |
 | EDIT-02 | Phase 10 | Complete |
 | EDIT-03 | Phase 10 | Complete |
-| EDIT-04 | Phase 10 | Pending |
-| EDIT-05 | Phase 10 | Pending |
+| EDIT-04 | Phase 10 | Complete |
+| EDIT-05 | Phase 10 | Complete |
 | EDIT-06 | Phase 11 | Pending |
 | EDIT-07 | Phase 11 | Pending |
 | EDIT-08 | Phase 11 | Pending |

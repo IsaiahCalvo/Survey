@@ -80,8 +80,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 10-01-PLAN.md -- useFabricCanvas hook + FabricDrawingCanvas (pen/highlighter) + App.jsx wiring
-- [ ] 10-02-PLAN.md -- FabricEraserCanvas (annotation loading + boolean path subtraction) + App.jsx wiring + full verification
+- [x] 10-01-PLAN.md -- useFabricCanvas hook + FabricDrawingCanvas (pen/highlighter) + App.jsx wiring
+- [x] 10-02-PLAN.md -- FabricEraserCanvas (annotation loading + boolean path subtraction) + App.jsx wiring + full verification
 
 ### Phase 11: Text/Shape Editing + Zoom Cleanup
 **Goal**: Text and shape annotations are editable via targeted Canvas mount, and all old zoom timer machinery is removed
@@ -115,5 +115,5 @@ Phases execute in numeric order: 8 -> 9 -> 10 -> 11
 | 7. Widen Zoom Range | v1.0 | - | Deferred | - |
 | 8. SVG Display Foundation | v2.0 | 0/2 | Planning complete | - |
 | 9. SVG Selection and Interaction | v2.0 | 0/3 | Planning complete | - |
-| 10. Canvas Mount/Unmount (Pen + Eraser) | 1/2 | In Progress|  | - |
+| 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 2/2 | Complete | 2026-03-27 |
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 0/? | Not started | - |
