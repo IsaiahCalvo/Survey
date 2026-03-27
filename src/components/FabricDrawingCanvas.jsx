@@ -127,8 +127,13 @@ const FabricDrawingCanvas = memo(({
         e.path.set({ regionId: activeRegionIdRef.current });
       }
 
-      // Serialize just this path with all custom properties
+      // Serialize path with custom properties, then normalize for SVG rendering.
+      // Fabric.js setZoom makes path data absolute page-space coordinates.
+      // SVG renderPath does translate(left, top) + path data, so left/top must
+      // be 0 to avoid double-counting the position already in the path data.
       const pathJSON = e.path.toJSON(CUSTOM_PROPS);
+      pathJSON.left = 0;
+      pathJSON.top = 0;
 
       // Track session path for undo sync
       sessionPathsRef.current.push(e.path);
