@@ -77,11 +77,11 @@ Plans:
   2. User selects the eraser tool, erases part of an existing annotation, switches tools, and the erased result persists in SVG correctly
   3. User switches tools rapidly (pen -> select -> eraser -> pen) and no strokes are lost, no stale Canvas elements remain in the DOM, and no console errors appear
   4. User is mid-stroke when zoom occurs, and the in-progress stroke is auto-committed before Canvas unmounts -- no data loss
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 10-01: TBD
-- [ ] 10-02: TBD
+- [ ] 10-01-PLAN.md -- useFabricCanvas hook + FabricDrawingCanvas (pen/highlighter) + App.jsx wiring
+- [ ] 10-02-PLAN.md -- FabricEraserCanvas (annotation loading + boolean path subtraction) + App.jsx wiring + full verification
 
 ### Phase 11: Text/Shape Editing + Zoom Cleanup
 **Goal**: Text and shape annotations are editable via targeted Canvas mount, and all old zoom timer machinery is removed
@@ -115,5 +115,5 @@ Phases execute in numeric order: 8 -> 9 -> 10 -> 11
 | 7. Widen Zoom Range | v1.0 | - | Deferred | - |
 | 8. SVG Display Foundation | v2.0 | 0/2 | Planning complete | - |
 | 9. SVG Selection and Interaction | v2.0 | 0/3 | Planning complete | - |
-| 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 0/? | Not started | - |
+| 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 0/2 | Planning complete | - |
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 0/? | Not started | - |
