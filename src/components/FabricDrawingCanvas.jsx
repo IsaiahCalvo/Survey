@@ -58,11 +58,24 @@ const FabricDrawingCanvas = memo(({
   const onStrokeCommitRef = useRef(onStrokeCommit);
   const initialZoomGenRef = useRef(zoomGeneration);
 
+  // Pre-dispose callback: flush in-progress stroke before canvas.off()/dispose()
+  // so that the path:created handler is still bound when the flush fires it.
+  const onBeforeDisposeRef = useRef((canvas) => {
+    if (canvas._isCurrentlyDrawing && canvas.freeDrawingBrush) {
+      try {
+        canvas.freeDrawingBrush.onMouseUp({ e: new MouseEvent('mouseup') });
+      } catch (err) {
+        console.error('Pre-unmount stroke flush error:', err);
+      }
+    }
+  });
+
   // -------------------------------------------------------------------------
   // Canvas lifecycle (useFabricCanvas hook)
   // -------------------------------------------------------------------------
   const { fabricRef } = useFabricCanvas({
     canvasElRef,
+    onBeforeDisposeRef,
     options: {
       backgroundColor: 'transparent',
       isDrawingMode: true,
@@ -108,7 +121,10 @@ const FabricDrawingCanvas = memo(({
       if (!e.path) return;
 
       e.path.set({
-        strokeUniform: true,
+        // strokeUniform deliberately NOT set for pen/highlighter paths.
+        // In SVG, strokeUniform triggers non-scaling-stroke which keeps
+        // stroke width constant in screen pixels — wrong for ink strokes
+        // that should scale with the page like real ink on paper.
         perPixelTargetFind: true,
         uniformScaling: false,
         centeredRotation: true,
@@ -131,12 +147,20 @@ const FabricDrawingCanvas = memo(({
       // Fabric.js setZoom makes path data absolute page-space coordinates.
       // SVG renderPath does translate(left, top) + path data, so left/top must
       // be 0 to avoid double-counting the position already in the path data.
+      // pathOffset is NOT serialized by toJSON(), so it defaults to 0 in the
+      // SVG renderer — this means the path data's absolute coords render directly.
       const pathJSON = e.path.toJSON(CUSTOM_PROPS);
       pathJSON.left = 0;
       pathJSON.top = 0;
 
-      // Track session path for undo sync
+      // Track session path for undo sync (count-based, object not needed on Canvas)
       sessionPathsRef.current.push(e.path);
+
+      // Remove committed path from Canvas — SVG layer is the display source.
+      // Without this, the Canvas path and SVG path overlap at initial zoom but
+      // diverge after zoom (Canvas doesn't resize, SVG viewBox auto-scales),
+      // causing visible stroke duplication.
+      canvas.remove(e.path);
 
       // Build updated annotations by appending new path
       const currentAnnotations = annotationsRef.current;
@@ -149,16 +173,8 @@ const FabricDrawingCanvas = memo(({
       onStrokeCommitRef.current(updated);
     });
 
-    // Pre-unmount commit: flush in-progress stroke on cleanup
-    return () => {
-      if (canvas._isCurrentlyDrawing && canvas.freeDrawingBrush) {
-        try {
-          canvas.freeDrawingBrush.onMouseUp({ e: new MouseEvent('mouseup') });
-        } catch (err) {
-          console.error('Pre-unmount stroke flush error:', err);
-        }
-      }
-    };
+    // Pre-unmount flush is handled by onBeforeDisposeRef (runs before canvas.off()).
+    // No cleanup needed here.
   }, []); // Mount only
 
   // -------------------------------------------------------------------------
@@ -183,6 +199,40 @@ const FabricDrawingCanvas = memo(({
   useEffect(() => {
     annotationsRef.current = annotations;
   }, [annotations]);
+
+  // -------------------------------------------------------------------------
+  // Container-aware resize: keep Canvas sized to container after zoom changes.
+  // Without this, strokes drawn after zoom are captured at the old scale.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = fabricRef.current;
+    if (!container || !canvas) return;
+
+    const observer = new ResizeObserver(() => {
+      const containerWidth = container.offsetWidth;
+      if (containerWidth > 0 && pageWidth > 0) {
+        // Flush in-progress stroke BEFORE resizing to prevent erratic points.
+        // During zoom, mouse:move events between resize and flush would capture
+        // coordinates with the wrong viewport transform, creating stray lines.
+        if (canvas._isCurrentlyDrawing && canvas.freeDrawingBrush) {
+          try {
+            canvas.freeDrawingBrush.onMouseUp({ e: new MouseEvent('mouseup') });
+          } catch (err) {
+            console.error('Resize-triggered stroke flush error:', err);
+          }
+        }
+        const effectiveScale = containerWidth / pageWidth;
+        canvas.setZoom(effectiveScale);
+        canvas.setWidth(Math.floor(pageWidth * effectiveScale));
+        canvas.setHeight(Math.floor(pageHeight * effectiveScale));
+        canvas.renderAll();
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [pageWidth, pageHeight]);
 
   // -------------------------------------------------------------------------
   // Brush configuration (reconfigure on tool/color/width change, no remount)
@@ -252,6 +302,7 @@ const FabricDrawingCanvas = memo(({
         height: '100%',
         pointerEvents: 'auto',
         zIndex: 101,
+        cursor: 'crosshair',
       }}
     >
       <canvas ref={canvasElRef} />

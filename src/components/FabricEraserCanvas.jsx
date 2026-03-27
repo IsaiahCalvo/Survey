@@ -66,11 +66,26 @@ const FabricEraserCanvas = memo(({
   const eraserSizeRef = useRef(eraserSize);
   const initialZoomGenRef = useRef(zoomGeneration);
 
+  // Pre-dispose callback: flush in-progress erase gesture before canvas.off()/dispose()
+  const onBeforeDisposeRef = useRef((canvas) => {
+    if (isErasingRef.current) {
+      isErasingRef.current = false;
+      try {
+        applyEraserAndCommit(canvas);
+      } catch (err) {
+        console.error('Pre-unmount eraser flush error:', err);
+      }
+      eraserPathRef.current = [];
+    }
+    mountedRef.current = false;
+  });
+
   // ---------------------------------------------------------------------------
   // Canvas lifecycle (useFabricCanvas hook)
   // ---------------------------------------------------------------------------
   const { fabricRef } = useFabricCanvas({
     canvasElRef,
+    onBeforeDisposeRef,
     options: {
       backgroundColor: 'transparent',
       isDrawingMode: false,
@@ -328,23 +343,8 @@ const FabricEraserCanvas = memo(({
       eraserPathRef.current = [];
     });
 
-    // -----------------------------------------------------------------------
-    // Cleanup: pre-unmount commit + disposal
-    // -----------------------------------------------------------------------
-    return () => {
-      // Pre-unmount commit: flush in-progress erase gesture (EDIT-09)
-      if (isErasingRef.current) {
-        isErasingRef.current = false;
-        try {
-          applyEraserAndCommit(canvas);
-        } catch (err) {
-          console.error('Pre-unmount eraser flush error:', err);
-        }
-        eraserPathRef.current = [];
-      }
-
-      mountedRef.current = false;
-    };
+    // Pre-unmount flush is handled by onBeforeDisposeRef (runs before canvas.off()).
+    // No cleanup needed here.
   }, []); // Mount only
 
   // ---------------------------------------------------------------------------

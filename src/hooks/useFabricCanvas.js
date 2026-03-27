@@ -13,16 +13,13 @@ import { fabric } from 'fabric';
  * @param {object} params
  * @param {React.RefObject<HTMLCanvasElement>} params.canvasElRef - Ref to the <canvas> DOM element
  * @param {object} params.options - Fabric.js Canvas constructor options
- * @param {number} [params.options.width]
- * @param {number} [params.options.height]
- * @param {string} [params.options.backgroundColor]
- * @param {boolean} [params.options.isDrawingMode]
- * @param {boolean} [params.options.selection]
- * @param {boolean} [params.options.enableRetinaScaling]
- * @param {boolean} [params.options.stopContextMenu]
+ * @param {React.MutableRefObject<Function|null>} [params.onBeforeDisposeRef] - Ref to a callback invoked
+ *   before canvas.off()/dispose(). Allows the consumer to flush in-progress work (e.g., commit a
+ *   mid-stroke pen path) while event listeners are still bound. Set the ref's .current in your
+ *   component; the hook reads it at cleanup time.
  * @returns {{ fabricRef: React.MutableRefObject<fabric.Canvas|null> }}
  */
-export function useFabricCanvas({ canvasElRef, options }) {
+export function useFabricCanvas({ canvasElRef, options, onBeforeDisposeRef }) {
   const fabricRef = useRef(null);
 
   useEffect(() => {
@@ -33,6 +30,17 @@ export function useFabricCanvas({ canvasElRef, options }) {
 
     return () => {
       if (fabricRef.current) {
+        // Run consumer cleanup BEFORE unbinding listeners / disposing.
+        // This lets FabricDrawingCanvas flush mid-stroke paths while
+        // path:created is still bound, and FabricEraserCanvas flush
+        // mid-erase gestures while the canvas is still alive.
+        if (onBeforeDisposeRef?.current) {
+          try {
+            onBeforeDisposeRef.current(fabricRef.current);
+          } catch (e) {
+            console.error('onBeforeDispose error:', e);
+          }
+        }
         fabricRef.current.off();
         try {
           fabricRef.current.dispose();

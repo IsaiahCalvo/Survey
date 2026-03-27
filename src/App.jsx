@@ -11253,11 +11253,50 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => window.removeEventListener('keydown', handleRendererToggle);
   }, []);
 
+  // Keyboard shortcut: Ctrl+Z / Cmd+Z for undo, Ctrl+Shift+Z / Cmd+Shift+Z for redo
+  useEffect(() => {
+    const handleUndoRedoKey = (e) => {
+      if (e.key !== 'z' && e.key !== 'Z') return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+
+      // Skip if user is typing in an input
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+
+      e.preventDefault();
+      if (e.shiftKey) {
+        handleRedoRef.current?.();
+      } else {
+        handleUndoRef.current?.();
+      }
+    };
+    window.addEventListener('keydown', handleUndoRedoKey);
+    return () => window.removeEventListener('keydown', handleUndoRedoKey);
+  }, []);
+
+  // Force cursor re-evaluation on tool switch.
+  // Browsers only re-evaluate CSS cursor on pointer movement. When the user
+  // switches tools via keyboard without moving the mouse, the old cursor stays
+  // until the next mousemove. Dispatching a synthetic pointermove at the current
+  // pointer position forces the browser to pick up the new cursor style.
+  const lastPointerPosRef = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    const trackPointer = (e) => { lastPointerPosRef.current = { x: e.clientX, y: e.clientY }; };
+    window.addEventListener('pointermove', trackPointer, { passive: true });
+    return () => window.removeEventListener('pointermove', trackPointer);
+  }, []);
+
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
   const activeToolRef = useRef('pan');
   useEffect(() => {
     activeToolRef.current = activeTool;
+    // Force cursor re-evaluation (see lastPointerPosRef comment above)
+    const { x, y } = lastPointerPosRef.current;
+    const el = document.elementFromPoint(x, y);
+    if (el) {
+      el.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+    }
   }, [activeTool]);
   const [strokeColor, setStrokeColor] = useState('#ff0000');
   const [strokeOpacity, setStrokeOpacity] = useState(100);
@@ -15119,6 +15158,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       isUndoingRef.current = false;
     }, 150);
   }, [createHistoryMeta, getHistoryFingerprint, getHistorySnapshot, pushHistoryDebugEvent, redoHistory, restoreHistoryState, summarizeHistoryDelta, summarizeHistorySnapshot]);
+
+  // Refs for undo/redo to avoid stale closures in keyboard shortcut handler
+  const handleUndoRef = useRef(handleUndo);
+  const handleRedoRef = useRef(handleRedo);
+  useEffect(() => { handleUndoRef.current = handleUndo; }, [handleUndo]);
+  useEffect(() => { handleRedoRef.current = handleRedo; }, [handleRedo]);
 
   // Check if undo is possible
   const canUndo = undoHistory.length > 0;

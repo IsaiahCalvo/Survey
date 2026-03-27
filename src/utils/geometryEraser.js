@@ -370,9 +370,17 @@ export const booleanErasePath = (pathObj, eraserPath, eraserRadius) => {
             if (outline) subjectPolys.push(outline);
         }
     } else {
-        // It's a filled shape or 0 width? behavior undefined for ink. 
-        // Assume ink has width.
-        return null;
+        // strokeWidth=0: path is already a filled polygon (e.g., after a previous
+        // erase converted stroke→outline). Use the path data directly as the
+        // subject polygon for boolean subtraction.
+        for (const poly of polylines) {
+            if (poly.length >= 3) {
+                const ring = poly.map(p => [p.x, p.y]);
+                ring.push([ring[0][0], ring[0][1]]); // close ring
+                subjectPolys.push([ring]);
+            }
+        }
+        if (subjectPolys.length === 0) return null;
     }
 
     // Iterate eraser circles and subtract from subjectPolys
@@ -436,7 +444,7 @@ export const booleanErasePath = (pathObj, eraserPath, eraserRadius) => {
 
     return {
         pathData: newPathCommands,
-        isConvertedToOutline: true // Flag to tell consumer to switch stroke->fill
+        isConvertedToOutline: strokeWidth > 0 // Only flag conversion if this was originally a stroked path
     };
 };
 
