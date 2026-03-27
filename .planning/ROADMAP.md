@@ -115,5 +115,5 @@ Phases execute in numeric order: 8 -> 9 -> 10 -> 11
 | 7. Widen Zoom Range | v1.0 | - | Deferred | - |
 | 8. SVG Display Foundation | v2.0 | 0/2 | Planning complete | - |
 | 9. SVG Selection and Interaction | v2.0 | 0/3 | Planning complete | - |
-| 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 0/2 | Planning complete | - |
+| 10. Canvas Mount/Unmount (Pen + Eraser) | 1/2 | In Progress|  | - |
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 0/? | Not started | - |

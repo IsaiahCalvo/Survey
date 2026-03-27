@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SVG Migration
-status: planning
-stopped_at: Phase 10 context gathered
-last_updated: "2026-03-26T19:25:06.078Z"
-last_activity: 2026-03-26 -- Phase 9 closed out, imported path interaction support committed
+status: executing
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-03-27T01:07:49.517Z"
+last_activity: 2026-03-27 -- Phase 10 Plan 01 complete (FabricDrawingCanvas + App.jsx wiring)
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 4
-  percent: 71
+  total_plans: 7
+  completed_plans: 6
+  percent: 86
 ---
 
 # Project State
@@ -26,20 +26,21 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 10 of 11 (Canvas Mount/Unmount — Pen + Eraser)
-Plan: 0 of ? (not yet planned)
-Status: Ready to plan
-Last activity: 2026-03-26 -- Phase 9 closed out, imported path interaction support committed
+Plan: 1 of 2 (10-01-PLAN.md complete)
+Status: Executing Phase 10
+Last activity: 2026-03-27 -- Phase 10 Plan 01 complete (FabricDrawingCanvas + App.jsx wiring)
 
-Progress: [███████░░░] 71%
+Progress: [████████░░] 86%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Phase 8: 2 plans across 2 sessions
 - Phase 9: Plan 01 in 11 min (3 tasks, 6 files)
 - Phase 9: Plan 02 in 4 min (2 tasks, 2 files)
 - Phase 9: Plan 03 + bug fixes across 2 sessions (imported path compat layer)
+- Phase 10: Plan 01 in 6 min (2 tasks, 3 files)
 
 ## Accumulated Context
 
@@ -67,6 +68,10 @@ Progress: [███████░░░] 71%
 - [09-03]: Hit rect uses SVG attribute pointerEvents="all" (not CSS style) for cross-browser reliability
 - [09-03]: Imported paths use SVG transform for resize visual (not re-rendering)
 - [09-03]: isImportedPath + translatePathData + scalePathData added for imported PDF annotation compat
+- [10-01]: useFabricCanvas hook extracted as shared Canvas lifecycle for reuse by FabricEraserCanvas
+- [10-01]: setZoomGeneration placed at top of beginSyncfusionScaleConfirmPending before SVG guard
+- [10-01]: Canvas key uses pageNumber only (not activeTool) -- pen<->highlighter reconfigures brush without remount
+- [10-01]: Container-aware canvas sizing via setZoom(effectiveScale) puts paths in SVG viewBox space
 
 ### Roadmap Evolution
 
@@ -81,11 +86,11 @@ Progress: [███████░░░] 71%
 
 ### Blockers/Concerns
 
-- Phase 10: Validate async dispose() + React StrictMode rapid tool switching (spike recommended)
+- Phase 10: ~~Validate async dispose() + React StrictMode rapid tool switching~~ RESOLVED -- Fabric.js 5.5.2 dispose() is synchronous, project does not use StrictMode
 - Phase 11: foreignObject text rendering pixel tolerance needs product decision before planning
 
 ## Session Continuity
 
-Last session: 2026-03-26T19:25:06.070Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-canvas-mount-unmount-pen-eraser/10-CONTEXT.md
+Last session: 2026-03-27T01:07:49.514Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: None

@@ -36,16 +36,16 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 
 ### Canvas Editing
 
-- [ ] **EDIT-01**: Pen/highlighter tool mounts a transparent Fabric.js Canvas over the entire page for stroke capture at 60fps
-- [ ] **EDIT-02**: Completed pen/highlighter strokes are serialized to Fabric.js JSON and committed to the SVG layer
-- [ ] **EDIT-03**: Canvas stays mounted while pen/highlighter tool is active, unmounts on tool switch
+- [x] **EDIT-01**: Pen/highlighter tool mounts a transparent Fabric.js Canvas over the entire page for stroke capture at 60fps
+- [x] **EDIT-02**: Completed pen/highlighter strokes are serialized to Fabric.js JSON and committed to the SVG layer
+- [x] **EDIT-03**: Canvas stays mounted while pen/highlighter tool is active, unmounts on tool switch
 - [ ] **EDIT-04**: Eraser tool mounts Canvas and loads all page annotations for boolean path intersection/subtraction
 - [ ] **EDIT-05**: Eraser results are serialized back to Fabric.js JSON and committed to SVG layer on tool deactivation
 - [ ] **EDIT-06**: Text double-click mounts a targeted Fabric.js Canvas sized to the annotation bounding box for IText editing
 - [ ] **EDIT-07**: Text edit commits on blur (click outside) -- Canvas unmounts, SVG updates with new text content
 - [ ] **EDIT-08**: Shape/callout double-click mounts a targeted Canvas for property editing (color, stroke, resize)
-- [ ] **EDIT-09**: Canvas auto-commits unsaved changes before unmounting (no data loss on tool switch or zoom)
-- [ ] **EDIT-10**: Canvas mount/unmount lifecycle uses React state + key prop for clean Fabric.js creation/disposal
+- [x] **EDIT-09**: Canvas auto-commits unsaved changes before unmounting (no data loss on tool switch or zoom)
+- [x] **EDIT-10**: Canvas mount/unmount lifecycle uses React state + key prop for clean Fabric.js creation/disposal
 
 ### Zoom & Integration
 
@@ -112,16 +112,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INTR-08 | Phase 9 | Pending |
 | INTR-09 | Phase 9 | Complete |
 | INTR-10 | Phase 9 | Pending |
-| EDIT-01 | Phase 10 | Pending |
-| EDIT-02 | Phase 10 | Pending |
-| EDIT-03 | Phase 10 | Pending |
+| EDIT-01 | Phase 10 | Complete |
+| EDIT-02 | Phase 10 | Complete |
+| EDIT-03 | Phase 10 | Complete |
 | EDIT-04 | Phase 10 | Pending |
 | EDIT-05 | Phase 10 | Pending |
 | EDIT-06 | Phase 11 | Pending |
 | EDIT-07 | Phase 11 | Pending |
 | EDIT-08 | Phase 11 | Pending |
-| EDIT-09 | Phase 10 | Pending |
-| EDIT-10 | Phase 10 | Pending |
+| EDIT-09 | Phase 10 | Complete |
+| EDIT-10 | Phase 10 | Complete |
 | ZOOM-01 | Phase 11 | Pending |
 | ZOOM-02 | Phase 11 | Pending |
 | ZOOM-03 | Phase 11 | Pending |
