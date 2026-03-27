@@ -10156,8 +10156,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [resetSyncfusionZoomPresentationPages, syncSyncfusionZoomPresentationPages]);
 
   const beginSyncfusionScaleConfirmPending = useCallback((source = 'unknown') => {
-    // Signal zoom-start to mounted Canvas components (FabricDrawingCanvas).
-    // This is a read-only annotation-layer signal -- it does NOT affect zoom behavior.
+    // Signal zoom-start to mounted Canvas components (FabricDrawingCanvas/FabricEraserCanvas).
+    // zoomGeneration change flushes any in-progress stroke before canvas resizes.
     setZoomGeneration(prev => prev + 1);
     // SVG mode: skip freeze/confirm-pending entirely — SVG viewBox auto-scales,
     // no PAL confirmation needed. Without this guard, the 3000ms safety timeout
@@ -11291,11 +11291,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const activeToolRef = useRef('pan');
   useEffect(() => {
     activeToolRef.current = activeTool;
-    // Force cursor re-evaluation (see lastPointerPosRef comment above)
+    // Force cursor re-evaluation on tool switch.
+    // Browsers only recalculate CSS cursor on real mouse movement. Directly
+    // set cursor on the element under the pointer as an inline override, then
+    // clear it on the next real mousemove so normal CSS takes back over.
+    // Note: this works for tools whose cursor element is already in the DOM
+    // (pan, select) but NOT for eraser where a new Canvas mounts — the browser
+    // won't pick up the new element's cursor until mouse movement.
     const { x, y } = lastPointerPosRef.current;
     const el = document.elementFromPoint(x, y);
     if (el) {
-      el.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+      let forcedCursor = 'default';
+      if (activeTool === 'pen' || activeTool === 'highlighter') forcedCursor = 'crosshair';
+      else if (activeTool === 'eraser') forcedCursor = 'none';
+      else if (activeTool === 'pan') forcedCursor = 'grab';
+      el.style.cursor = forcedCursor;
+      const clearOverride = () => {
+        el.style.cursor = '';
+        window.removeEventListener('mousemove', clearOverride);
+      };
+      window.addEventListener('mousemove', clearOverride, { once: true });
     }
   }, [activeTool]);
   const [strokeColor, setStrokeColor] = useState('#ff0000');
@@ -12785,6 +12800,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (!useSyncfusionRenderer) return;
     if (syncfusionInteractionListenersRef.current?.container) return;
     if (event.ctrlKey || event.metaKey) {
+      // If drawing/eraser tool is active, switch to pan immediately on zoom start.
+      // The Canvas ResizeObserver will flush any in-progress stroke before resize.
+      const tool = activeToolRef.current;
+      if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
+        setActiveTool('pan');
+      }
       bumpOverlayLagEventTotal('overlayWheelZoom');
       markInteractionPerfActive('overlay-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
       markSyncfusionInteractionActive('overlay-wheel-zoom');
@@ -21982,6 +22003,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const isZoomOut = (e.ctrlKey || e.metaKey) && e.key === '-';
       if (!isZoomIn && !isZoomOut) return;
 
+      // If drawing/eraser tool is active, switch to pan immediately on zoom start.
+      const tool = activeToolRef.current;
+      if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
+        setActiveTool('pan');
+      }
+
       const prevScale = scaleRef.current || 1.0;
       if (!zoomOverlayTransformActiveRef.current) {
         zoomOverlayBaseScaleRef.current = prevScale;
@@ -22168,6 +22195,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (activeTool !== 'eraser') {
       setEraserCursorPos({ visible: false });
       return;
+    }
+
+    // Immediately check if pointer is within viewport so cursor hides
+    // without waiting for the first real mousemove event.
+    const { x, y } = lastPointerPosRef.current;
+    const elUnder = document.elementFromPoint(x, y);
+    if (elUnder && elUnder.closest('[data-testid="pdf-container"]')) {
+      setEraserCursorPos({ visible: true });
+      if (eraserCursorRef.current) {
+        const radius = eraserSize * scale;
+        eraserCursorRef.current.style.transform = `translate3d(${x - radius}px, ${y - radius}px, 0)`;
+      }
     }
 
     const handleMouseMove = (e) => {
@@ -22555,8 +22594,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     // Determine cursor style
     let cursorStyle = 'default';
-    if (activeTool === 'eraser' && eraserCursorPos.visible) {
-      cursorStyle = 'none'; // Hide native cursor for eraser
+    if (activeTool === 'eraser') {
+      cursorStyle = 'none'; // Hide native cursor for eraser (circle overlay provides visual cursor)
     } else if (shouldShowGrabCursor) {
       cursorStyle = isPanning ? 'grabbing' : (canPan ? 'grab' : 'default');
     }
