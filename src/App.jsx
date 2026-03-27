@@ -66,6 +66,7 @@ import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import FabricDrawingCanvas from './components/FabricDrawingCanvas';
+import FabricEraserCanvas from './components/FabricEraserCanvas';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
@@ -24981,7 +24982,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 />
                               )}
 
-                              {/* Eraser Canvas placeholder -- Phase 10 Plan 02 */}
+                              {/* Eraser Canvas -- loads all annotations, SVG hidden via wrapper visibility above */}
+                              {isEraserTool && (
+                                <FabricEraserCanvas
+                                  key={`erase-${pageNumber}`}
+                                  pageNumber={pageNumber}
+                                  pageWidth={resolvedPageSize.width}
+                                  pageHeight={resolvedPageSize.height}
+                                  annotations={pageAnnotations}
+                                  onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
+                                  eraserSize={eraserSize}
+                                  zoomGeneration={zoomGeneration}
+                                />
+                              )}
                             </>
                             );
                           })()}
@@ -25167,7 +25180,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       />
                                     )}
 
-                                    {/* Eraser Canvas placeholder -- Phase 10 Plan 02 */}
+                                    {/* Eraser Canvas -- loads all annotations, SVG hidden via wrapper visibility above */}
+                                    {isEraserTool && (
+                                      <FabricEraserCanvas
+                                        key={`erase-${pageNumber}`}
+                                        pageNumber={pageNumber}
+                                        pageWidth={pageSizes[pageNumber].width}
+                                        pageHeight={pageSizes[pageNumber].height}
+                                        annotations={annotationsByPage[pageNumber]}
+                                        onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
+                                        eraserSize={eraserSize}
+                                        zoomGeneration={zoomGeneration}
+                                      />
+                                    )}
                                   </>
                                   );
                                 })()}
