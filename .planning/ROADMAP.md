@@ -93,11 +93,11 @@ Plans:
   3. User zooms while Canvas is mounted for editing, and the Canvas receives a CSS transform for visual stability then remounts at correct dimensions after settle
   4. All 6 zoom methods work with zero timer coordination -- no freeze, snapshot, confirm-pending, or settle timers remain in the codebase
   5. Dead props (onScaleApplied, presentationApiRegistry, isHidden) and the old 5-timer zoom system functions are fully removed from App.jsx and PageAnnotationLayer
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 11-01: TBD
-- [ ] 11-02: TBD
+- [ ] 11-01-PLAN.md -- FabricEditCanvas component (text/shape/callout editing) + App.jsx edit mode wiring
+- [ ] 11-02-PLAN.md -- Old 5-timer zoom system removal from App.jsx + dead prop cleanup from PAL + CLAUDE.md update
 
 ## Progress
 
@@ -116,4 +116,4 @@ Phases execute in numeric order: 8 -> 9 -> 10 -> 11
 | 8. SVG Display Foundation | v2.0 | 0/2 | Planning complete | - |
 | 9. SVG Selection and Interaction | v2.0 | 0/3 | Planning complete | - |
 | 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 2/2 | Complete | 2026-03-27 |
-| 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 0/? | Not started | - |
+| 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 0/2 | Planning complete | - |
