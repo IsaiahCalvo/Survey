@@ -147,14 +147,17 @@ const FabricEraserCanvas = memo(({
             // Recalculate dimensions and offsets for the new path
             if (obj._calcDimensions) {
               const dims = obj._calcDimensions();
+              const newPathOffsetX = dims.left + dims.width / 2;
+              const newPathOffsetY = dims.top + dims.height / 2;
               obj.set({
                 width: dims.width,
                 height: dims.height,
-                pathOffset: {
-                  x: dims.left + dims.width / 2,
-                  y: dims.top + dims.height / 2,
-                },
+                pathOffset: { x: newPathOffsetX, y: newPathOffsetY },
               });
+              // Use setPositionByOrigin to correctly position the erased path,
+              // accounting for strokeWidth and scale (same as PencilBrush internals).
+              const newPos = new fabric.Point(newPathOffsetX, newPathOffsetY);
+              obj.setPositionByOrigin(newPos, 'center', 'center');
             }
 
             obj.setCoords();
@@ -186,9 +189,19 @@ const FabricEraserCanvas = memo(({
       canvas.renderAll();
     }
 
-    // Serialize the entire canvas and commit
+    // Serialize the entire canvas and commit.
+    // Normalize path left/top back to 0 for SVG renderer compatibility.
+    // Canvas uses left=pathOffset for display, but SVG expects left=0 with
+    // absolute path data (translate(0,0) is a no-op, path coords render directly).
     const canvasObjects = canvas.getObjects();
-    const serializedObjects = canvasObjects.map((obj) => obj.toJSON(CUSTOM_PROPS));
+    const serializedObjects = canvasObjects.map((obj) => {
+      const json = obj.toJSON(CUSTOM_PROPS);
+      if (json.type === 'path') {
+        json.left = 0;
+        json.top = 0;
+      }
+      return json;
+    });
     const updatedJSON = { objects: serializedObjects };
     onEraseCommitRef.current(updatedJSON);
   }).current;
@@ -256,6 +269,16 @@ const FabricEraserCanvas = memo(({
           }
 
           canvas.add(obj);
+
+          // Fix coordinate space for Canvas rendering.
+          // Annotations are stored with left=0, top=0 (absolute page-space path data).
+          // Use Fabric's setPositionByOrigin (same method PencilBrush uses internally)
+          // which accounts for strokeWidth, scale, and skew in the offset calculation.
+          if (obj.type === 'path' && obj.pathOffset) {
+            const pos = new fabric.Point(obj.pathOffset.x, obj.pathOffset.y);
+            obj.setPositionByOrigin(pos, 'center', 'center');
+            obj.setCoords();
+          }
         });
 
         canvas.renderAll();
@@ -278,6 +301,7 @@ const FabricEraserCanvas = memo(({
 
     // mouse:down
     canvas.on('mouse:down', (opt) => {
+      console.log('[Eraser] mouse:down — isLoading:', isLoadingRef.current, 'objects:', canvas.getObjects().length);
       // MUST check the ref, NOT the state variable, because this handler is
       // bound in useEffect([]) and the state value would be stale (always true).
       if (isLoadingRef.current) return;
@@ -296,6 +320,7 @@ const FabricEraserCanvas = memo(({
 
     // mouse:up
     canvas.on('mouse:up', () => {
+      console.log('[Eraser] mouse:up — isErasing:', isErasingRef.current, 'pathLen:', eraserPathRef.current.length);
       if (!isErasingRef.current) return;
       isErasingRef.current = false;
 
@@ -336,6 +361,32 @@ const FabricEraserCanvas = memo(({
   useEffect(() => {
     eraserSizeRef.current = eraserSize;
   }, [eraserSize]);
+
+  // ---------------------------------------------------------------------------
+  // Container-aware resize: keep Canvas sized to container after zoom changes.
+  // Without this, the Canvas stays at its initial dimensions when zooming,
+  // causing annotations to shift relative to the SVG/page (same pattern as
+  // FabricDrawingCanvas).
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = fabricRef.current;
+    if (!container || !canvas) return;
+
+    const observer = new ResizeObserver(() => {
+      const containerWidth = container.offsetWidth;
+      if (containerWidth > 0 && pageWidth > 0) {
+        const effectiveScale = containerWidth / pageWidth;
+        canvas.setZoom(effectiveScale);
+        canvas.setWidth(Math.floor(pageWidth * effectiveScale));
+        canvas.setHeight(Math.floor(pageHeight * effectiveScale));
+        canvas.renderAll();
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [pageWidth, pageHeight]);
 
   // ---------------------------------------------------------------------------
   // Zoom-triggered flush: force-complete in-progress erase gesture on zoom start
