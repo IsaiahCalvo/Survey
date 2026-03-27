@@ -37,6 +37,7 @@ const FabricEraserCanvas = memo(({
   annotations,
   onEraseCommit,
   eraserSize = 20,
+  viewerScale,
   zoomGeneration,
 }) => {
   // ---------------------------------------------------------------------------
@@ -64,6 +65,8 @@ const FabricEraserCanvas = memo(({
   const annotationsRef = useRef(annotations);
   const onEraseCommitRef = useRef(onEraseCommit);
   const eraserSizeRef = useRef(eraserSize);
+  const viewerScaleRef = useRef(viewerScale);
+  const effectiveScaleRef = useRef(1);
   const initialZoomGenRef = useRef(zoomGeneration);
 
   // Pre-dispose callback: flush in-progress erase gesture before canvas.off()/dispose()
@@ -101,9 +104,21 @@ const FabricEraserCanvas = memo(({
   // ---------------------------------------------------------------------------
   const applyEraserAndCommit = useRef((canvas) => {
     const eraserPathData = eraserPathRef.current;
-    if (!eraserPathData || eraserPathData.length < 2) return;
+    if (!eraserPathData || eraserPathData.length === 0) return;
 
-    const currentEraserSize = eraserSizeRef.current;
+    // Single-click (only M, no L): duplicate the point so geometry eraser
+    // treats it as a zero-length segment (eraser radius still applies)
+    if (eraserPathData.length === 1 && (eraserPathData[0][0] === 'M')) {
+      eraserPathData.push(['L', eraserPathData[0][1], eraserPathData[0][2]]);
+    }
+
+    // Adjust eraser radius to match the visual cursor overlay.
+    // Cursor overlay uses: eraserSize * viewerScale (screen px).
+    // Canvas operates at effectiveScale (container-aware), so page-space radius
+    // maps to eraserSize * effectiveScale on screen. Compensate for the difference.
+    const vs = viewerScaleRef.current || 1;
+    const es = effectiveScaleRef.current || 1;
+    const currentEraserSize = eraserSizeRef.current * (vs / es);
 
     // Build eraser path object compatible with geometryEraser.js
     // Both splitPathDataByEraser and booleanErasePath expect:
@@ -232,6 +247,7 @@ const FabricEraserCanvas = memo(({
     const containerWidth = containerRef.current.offsetWidth;
     if (containerWidth > 0 && pageWidth > 0) {
       const effectiveScale = containerWidth / pageWidth;
+      effectiveScaleRef.current = effectiveScale;
       canvas.setZoom(effectiveScale);
       canvas.setWidth(Math.floor(pageWidth * effectiveScale));
       canvas.setHeight(Math.floor(pageHeight * effectiveScale));
@@ -362,6 +378,10 @@ const FabricEraserCanvas = memo(({
     eraserSizeRef.current = eraserSize;
   }, [eraserSize]);
 
+  useEffect(() => {
+    viewerScaleRef.current = viewerScale;
+  }, [viewerScale]);
+
   // ---------------------------------------------------------------------------
   // Container-aware resize: keep Canvas sized to container after zoom changes.
   // Without this, the Canvas stays at its initial dimensions when zooming,
@@ -377,6 +397,7 @@ const FabricEraserCanvas = memo(({
       const containerWidth = container.offsetWidth;
       if (containerWidth > 0 && pageWidth > 0) {
         const effectiveScale = containerWidth / pageWidth;
+        effectiveScaleRef.current = effectiveScale;
         canvas.setZoom(effectiveScale);
         canvas.setWidth(Math.floor(pageWidth * effectiveScale));
         canvas.setHeight(Math.floor(pageHeight * effectiveScale));

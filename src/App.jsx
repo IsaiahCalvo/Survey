@@ -24980,6 +24980,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   pointerEvents: svgInteractive ? 'auto' : 'none',
                                   zIndex: 100,
                                   visibility: isEraserTool ? 'hidden' : 'visible',
+                                  cursor: svgInteractive ? 'default' : undefined,
                                 }}
                                 onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
                                 onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
@@ -25037,6 +25038,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   annotations={pageAnnotations}
                                   onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
                                   eraserSize={eraserSize}
+                                  viewerScale={scale}
                                   zoomGeneration={zoomGeneration}
                                 />
                               )}
@@ -25178,7 +25180,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   <>
                                     {/* SVG layer -- hidden when eraser is mounted (Phase 10 Plan 02) */}
                                     <div
-                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: svgInteractive ? 'auto' : 'none', zIndex: 100, visibility: isEraserTool ? 'hidden' : 'visible' }}
+                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: svgInteractive ? 'auto' : 'none', zIndex: 100, visibility: isEraserTool ? 'hidden' : 'visible', cursor: svgInteractive ? 'default' : undefined }}
                                       onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
                                       onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
                                     >
@@ -25235,6 +25237,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         annotations={annotationsByPage[pageNumber]}
                                         onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
                                         eraserSize={eraserSize}
+                                        viewerScale={scale}
                                         zoomGeneration={zoomGeneration}
                                       />
                                     )}

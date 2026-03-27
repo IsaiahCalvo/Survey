@@ -17,6 +17,7 @@
  * Phase 10 Plan 01: Core drawing Canvas mount/unmount mechanism.
  */
 import React, { memo, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
 
@@ -57,11 +58,15 @@ const FabricDrawingCanvas = memo(({
   const activeRegionIdRef = useRef(activeRegionId);
   const onStrokeCommitRef = useRef(onStrokeCommit);
   const initialZoomGenRef = useRef(zoomGeneration);
+  const isDisposingRef = useRef(false);
 
   // Pre-dispose callback: flush in-progress stroke before canvas.off()/dispose()
   // so that the path:created handler is still bound when the flush fires it.
+  // isDisposingRef flag tells path:created to keep the path on canvas (visual bridge
+  // until React removes the DOM) instead of removing it.
   const onBeforeDisposeRef = useRef((canvas) => {
     if (canvas._isCurrentlyDrawing && canvas.freeDrawingBrush) {
+      isDisposingRef.current = true;
       try {
         canvas.freeDrawingBrush.onMouseUp({ e: new MouseEvent('mouseup') });
       } catch (err) {
@@ -169,8 +174,14 @@ const FabricDrawingCanvas = memo(({
         objects: [...(currentAnnotations?.objects || []), pathJSON],
       };
 
-      // Commit per-stroke
-      onStrokeCommitRef.current(updated);
+      // During dispose: flushSync forces synchronous SVG re-render so the
+      // stroke is visible before Canvas DOM is removed (prevents 1-frame flicker).
+      // Dev-mode React warns about flushSync in lifecycle — harmless, no-op in prod.
+      if (isDisposingRef.current) {
+        flushSync(() => onStrokeCommitRef.current(updated));
+      } else {
+        onStrokeCommitRef.current(updated);
+      }
     });
 
     // Pre-unmount flush is handled by onBeforeDisposeRef (runs before canvas.off()).
