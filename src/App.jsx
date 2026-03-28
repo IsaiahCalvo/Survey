@@ -67,6 +67,7 @@ import LightweightAnnotationOverlay from './components/LightweightAnnotationOver
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import FabricDrawingCanvas from './components/FabricDrawingCanvas';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
+import FabricEditCanvas from './components/FabricEditCanvas';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
@@ -11313,12 +11314,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       window.addEventListener('mousemove', clearOverride, { once: true });
     }
   }, [activeTool]);
+
+  // Clear edit state when switching to drawing/eraser tools
+  useEffect(() => {
+    if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'eraser') {
+      setEditingAnnotation(null);
+      setNewTextPlacement(null);
+    }
+  }, [activeTool]);
+
   const [strokeColor, setStrokeColor] = useState('#ff0000');
   const [strokeOpacity, setStrokeOpacity] = useState(100);
   const [fillColor, setFillColor] = useState('#ff0000');
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [zoomGeneration, setZoomGeneration] = useState(0);
+  // Edit mode state: tracks which annotation is being edited via double-click
+  // { pageNumber, index, type, editType ('text'|'shape'|'callout'), data }
+  const [editingAnnotation, setEditingAnnotation] = useState(null);
+  // New text creation: tracks click-to-place position when text tool is active
+  // { pageNumber, x, y } -- page coordinates where new text should appear
+  const [newTextPlacement, setNewTextPlacement] = useState(null);
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
 
   // Callout overlay state
@@ -25005,10 +25021,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                             const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter';
                             const isEraserTool = activeTool === 'eraser';
+                            const isEditMode = editingAnnotation?.pageNumber === pageNumber;
+                            const isNewTextMode = newTextPlacement?.pageNumber === pageNumber;
 
                             return (
                             <>
-                              {/* SVG layer -- hidden when eraser is mounted (Phase 10 Plan 02) */}
+                              {/* SVG layer -- hidden when eraser or callout edit is mounted */}
                               <div
                                 style={{
                                   position: 'absolute',
@@ -25018,7 +25036,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   height: '100%',
                                   pointerEvents: svgInteractive ? 'auto' : 'none',
                                   zIndex: 100,
-                                  visibility: isEraserTool ? 'hidden' : 'visible',
+                                  visibility: (isEraserTool || (isEditMode && editingAnnotation?.editType === 'callout')) ? 'hidden' : 'visible',
                                   cursor: svgInteractive ? 'default' : undefined,
                                 }}
                                 onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
@@ -25042,7 +25060,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   layerVisibility={annotationLayerVisibility}
                                   onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
                                   onRequestEditMode={(annotationIndex, annotationType) => {
-                                    console.log(`[SVG p${pageNumber}] Edit mode requested for annotation ${annotationIndex} (${annotationType})`);
+                                    const annotationData = pageAnnotations?.objects?.[annotationIndex];
+                                    if (!annotationData) return;
+                                    let editType;
+                                    if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
+                                      editType = 'text';
+                                    } else if (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle') {
+                                      editType = 'shape';
+                                    } else {
+                                      editType = 'callout';
+                                    }
+                                    setEditingAnnotation({
+                                      pageNumber,
+                                      index: annotationIndex,
+                                      type: annotationType,
+                                      editType,
+                                      data: annotationData,
+                                    });
                                   }}
                                   activeTool={activeTool}
                                 />
@@ -25079,6 +25113,38 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   eraserSize={eraserSize}
                                   viewerScale={scale}
                                   zoomGeneration={zoomGeneration}
+                                />
+                              )}
+
+                              {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
+                              {(isEditMode || isNewTextMode) && (
+                                <FabricEditCanvas
+                                  key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}`}
+                                  pageNumber={pageNumber}
+                                  pageWidth={resolvedPageSize.width}
+                                  pageHeight={resolvedPageSize.height}
+                                  editType={isNewTextMode ? 'text' : editingAnnotation.editType}
+                                  annotationData={isNewTextMode ? null : editingAnnotation.data}
+                                  annotationIndex={isNewTextMode ? -1 : editingAnnotation.index}
+                                  annotations={pageAnnotations}
+                                  onEditCommit={(updatedJSON) => {
+                                    handleSaveAnnotations(pageNumber, updatedJSON, {
+                                      source: 'edit:commit',
+                                      action: isNewTextMode ? 'text:new' : editingAnnotation.editType,
+                                      checkpointPolicy: 'normal',
+                                    });
+                                    setEditingAnnotation(null);
+                                    setNewTextPlacement(null);
+                                  }}
+                                  onEditCancel={() => {
+                                    setEditingAnnotation(null);
+                                    setNewTextPlacement(null);
+                                  }}
+                                  strokeColor={strokeColor}
+                                  zoomGeneration={zoomGeneration}
+                                  viewerScale={scale}
+                                  isNewText={isNewTextMode}
+                                  clickPosition={isNewTextMode ? { x: newTextPlacement.x, y: newTextPlacement.y } : null}
                                 />
                               )}
                             </>
@@ -25214,12 +25280,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                                   const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter';
                                   const isEraserTool = activeTool === 'eraser';
+                                  const isEditMode = editingAnnotation?.pageNumber === pageNumber;
+                                  const isNewTextMode = newTextPlacement?.pageNumber === pageNumber;
+                                  const pageAnnotationsCS = annotationsByPage[pageNumber];
 
                                   return (
                                   <>
-                                    {/* SVG layer -- hidden when eraser is mounted (Phase 10 Plan 02) */}
+                                    {/* SVG layer -- hidden when eraser or callout edit is mounted */}
                                     <div
-                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: svgInteractive ? 'auto' : 'none', zIndex: 100, visibility: isEraserTool ? 'hidden' : 'visible', cursor: svgInteractive ? 'default' : undefined }}
+                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: svgInteractive ? 'auto' : 'none', zIndex: 100, visibility: (isEraserTool || (isEditMode && editingAnnotation?.editType === 'callout')) ? 'hidden' : 'visible', cursor: svgInteractive ? 'default' : undefined }}
                                       onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
                                       onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
                                     >
@@ -25227,7 +25296,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       pageNumber={pageNumber}
                                       width={pageSizes[pageNumber].width}
                                       height={pageSizes[pageNumber].height}
-                                      annotations={annotationsByPage[pageNumber]}
+                                      annotations={pageAnnotationsCS}
                                       callouts={callouts}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
@@ -25241,7 +25310,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       layerVisibility={annotationLayerVisibility}
                                       onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
                                       onRequestEditMode={(annotationIndex, annotationType) => {
-                                        console.log(`[SVG p${pageNumber}] Edit mode requested for annotation ${annotationIndex} (${annotationType})`);
+                                        const annotationData = pageAnnotationsCS?.objects?.[annotationIndex];
+                                        if (!annotationData) return;
+                                        let editType;
+                                        if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
+                                          editType = 'text';
+                                        } else if (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle') {
+                                          editType = 'shape';
+                                        } else {
+                                          editType = 'callout';
+                                        }
+                                        setEditingAnnotation({
+                                          pageNumber,
+                                          index: annotationIndex,
+                                          type: annotationType,
+                                          editType,
+                                          data: annotationData,
+                                        });
                                       }}
                                       activeTool={activeTool}
                                     />
@@ -25258,7 +25343,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         strokeColor={strokeColor}
                                         highlightColor="rgba(255, 193, 7, 0.3)"
                                         strokeWidth={strokeWidth}
-                                        annotations={annotationsByPage[pageNumber]}
+                                        annotations={pageAnnotationsCS}
                                         onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
                                         selectedModuleId={selectedModuleId}
                                         activeRegionId={activeRegionId}
@@ -25273,11 +25358,43 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         pageNumber={pageNumber}
                                         pageWidth={pageSizes[pageNumber].width}
                                         pageHeight={pageSizes[pageNumber].height}
-                                        annotations={annotationsByPage[pageNumber]}
+                                        annotations={pageAnnotationsCS}
                                         onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
                                         eraserSize={eraserSize}
                                         viewerScale={scale}
                                         zoomGeneration={zoomGeneration}
+                                      />
+                                    )}
+
+                                    {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
+                                    {(isEditMode || isNewTextMode) && (
+                                      <FabricEditCanvas
+                                        key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}`}
+                                        pageNumber={pageNumber}
+                                        pageWidth={pageSizes[pageNumber].width}
+                                        pageHeight={pageSizes[pageNumber].height}
+                                        editType={isNewTextMode ? 'text' : editingAnnotation.editType}
+                                        annotationData={isNewTextMode ? null : editingAnnotation.data}
+                                        annotationIndex={isNewTextMode ? -1 : editingAnnotation.index}
+                                        annotations={pageAnnotationsCS}
+                                        onEditCommit={(updatedJSON) => {
+                                          handleSaveAnnotations(pageNumber, updatedJSON, {
+                                            source: 'edit:commit',
+                                            action: isNewTextMode ? 'text:new' : editingAnnotation.editType,
+                                            checkpointPolicy: 'normal',
+                                          });
+                                          setEditingAnnotation(null);
+                                          setNewTextPlacement(null);
+                                        }}
+                                        onEditCancel={() => {
+                                          setEditingAnnotation(null);
+                                          setNewTextPlacement(null);
+                                        }}
+                                        strokeColor={strokeColor}
+                                        zoomGeneration={zoomGeneration}
+                                        viewerScale={scale}
+                                        isNewText={isNewTextMode}
+                                        clickPosition={isNewTextMode ? { x: newTextPlacement.x, y: newTextPlacement.y } : null}
                                       />
                                     )}
                                   </>
