@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SVG Migration
 status: completed
-stopped_at: Phase 11 context gathered
-last_updated: "2026-03-27T20:21:37.614Z"
+stopped_at: Phase 11 UI-SPEC approved
+last_updated: "2026-03-28T00:18:10.928Z"
 last_activity: 2026-03-27 -- Phase 10 Plan 02 complete (FabricEraserCanvas + verification bug fixes)
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 6
+  total_plans: 9
+  completed_plans: 7
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox
-**Current focus:** Phase 10 -- Canvas Mount/Unmount (Pen + Eraser)
+**Current focus:** Phase 11 -- Text/Shape Editing + Zoom Cleanup
 
 ## Current Position
 
-Phase: 10 of 11 (Canvas Mount/Unmount — Pen + Eraser) -- COMPLETE
-Plan: 2 of 2 (10-02-PLAN.md complete)
-Status: Phase 10 complete, ready for Phase 11
-Last activity: 2026-03-27 -- Phase 10 Plan 02 complete (FabricEraserCanvas + verification bug fixes)
+Phase: 11 of 11 (Text/Shape Editing + Zoom Cleanup)
+Plan: 1 of 2 (11-01-PLAN.md complete)
+Status: Plan 01 complete, ready for Plan 02 (zoom cleanup)
+Last activity: 2026-03-28 -- Phase 11 Plan 01 complete (FabricEditCanvas + App.jsx edit state)
 
-Progress: [██████████] 100% (Phases 8-10 complete, Phase 11 remaining)
+Progress: [████████░░] 78% (Phases 8-10 complete, Phase 11 Plan 01 done)
 
 ## Performance Metrics
 
@@ -42,6 +42,7 @@ Progress: [██████████] 100% (Phases 8-10 complete, Phase 11 
 - Phase 9: Plan 03 + bug fixes across 2 sessions (imported path compat layer)
 - Phase 10: Plan 01 in 6 min (2 tasks, 3 files)
 - Phase 10: Plan 02 multi-session (3 tasks, 5 files, 10 bugs fixed during verification)
+- Phase 11: Plan 01 in 7 min (2 tasks, 2 files)
 
 ## Accumulated Context
 
@@ -78,6 +79,11 @@ Progress: [██████████] 100% (Phases 8-10 complete, Phase 11 
 - [10-02]: flushSync during dispose forces synchronous SVG re-render before Canvas DOM removal (prevents flicker)
 - [10-02]: SVG wrapper cursor: 'default' when svgInteractive for instant cursor change on tool switch
 - [10-02]: Zoom while drawing fragment is expected behavior (ResizeObserver flush commits stroke, new stroke starts fresh)
+- [11-01]: FabricEditCanvas handles text/shape/callout via editType prop (one component, three modes)
+- [11-01]: Canvas key excludes zoomGeneration -- zoom handled via CSS transform + 200ms ResizeObserver settle, not remount
+- [11-01]: Click-outside commits edit (100ms delay to avoid initial double-click), Escape cancels
+- [11-01]: Callout edit hides SVG layer (eraser pattern), text/shape keep SVG visible
+- [11-01]: Mini-toolbar for shape editing positioned 8px above bbox Canvas with fill/stroke/width controls
 
 ### Roadmap Evolution
 
@@ -98,6 +104,6 @@ Progress: [██████████] 100% (Phases 8-10 complete, Phase 11 
 
 ## Session Continuity
 
-Last session: 2026-03-27T20:21:37.611Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-text-shape-editing-zoom-cleanup/11-CONTEXT.md
+Last session: 2026-03-28T00:16:56Z
+Stopped at: Completed 11-01-PLAN.md
+Resume file: .planning/phases/11-text-shape-editing-zoom-cleanup/11-02-PLAN.md

@@ -41,18 +41,18 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 - [x] **EDIT-03**: Canvas stays mounted while pen/highlighter tool is active, unmounts on tool switch
 - [x] **EDIT-04**: Eraser tool mounts Canvas and loads all page annotations for boolean path intersection/subtraction
 - [x] **EDIT-05**: Eraser results are serialized back to Fabric.js JSON and committed to SVG layer on tool deactivation
-- [ ] **EDIT-06**: Text double-click mounts a targeted Fabric.js Canvas sized to the annotation bounding box for IText editing
-- [ ] **EDIT-07**: Text edit commits on blur (click outside) -- Canvas unmounts, SVG updates with new text content
-- [ ] **EDIT-08**: Shape/callout double-click mounts a targeted Canvas for property editing (color, stroke, resize)
+- [x] **EDIT-06**: Text double-click mounts a targeted Fabric.js Canvas sized to the annotation bounding box for IText editing
+- [x] **EDIT-07**: Text edit commits on blur (click outside) -- Canvas unmounts, SVG updates with new text content
+- [x] **EDIT-08**: Shape/callout double-click mounts a targeted Canvas for property editing (color, stroke, resize)
 - [x] **EDIT-09**: Canvas auto-commits unsaved changes before unmounting (no data loss on tool switch or zoom)
 - [x] **EDIT-10**: Canvas mount/unmount lifecycle uses React state + key prop for clean Fabric.js creation/disposal
 
 ### Zoom & Integration
 
 - [ ] **ZOOM-01**: SVG layer zoom is handled entirely by viewBox -- zero JavaScript timers for zoom coordination
-- [ ] **ZOOM-02**: If Canvas is mounted during zoom, it receives CSS transform for visual stability (blurry but positioned)
-- [ ] **ZOOM-03**: After zoom settles (200ms debounce), Canvas remounts at new dimensions if still active
-- [ ] **ZOOM-04**: In-progress pen stroke is auto-committed on zoom start, pen resumes after settle
+- [x] **ZOOM-02**: If Canvas is mounted during zoom, it receives CSS transform for visual stability (blurry but positioned)
+- [x] **ZOOM-03**: After zoom settles (200ms debounce), Canvas remounts at new dimensions if still active
+- [x] **ZOOM-04**: In-progress pen stroke is auto-committed on zoom start, pen resumes after settle
 - [ ] **ZOOM-05**: All 6 zoom methods work (ctrl+scroll, toolbar buttons, dropdown, fit-to-page, fit-to-width, pinch)
 - [ ] **ZOOM-06**: Freeze/snapshot/confirm-pending machinery is removed from App.jsx (~30 refs, ~14 functions)
 - [ ] **ZOOM-07**: Dead props (onScaleApplied, presentationApiRegistry, isHidden) are removed from PageAnnotationLayer
@@ -117,15 +117,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EDIT-03 | Phase 10 | Complete |
 | EDIT-04 | Phase 10 | Complete |
 | EDIT-05 | Phase 10 | Complete |
-| EDIT-06 | Phase 11 | Pending |
-| EDIT-07 | Phase 11 | Pending |
-| EDIT-08 | Phase 11 | Pending |
+| EDIT-06 | Phase 11 | Complete |
+| EDIT-07 | Phase 11 | Complete |
+| EDIT-08 | Phase 11 | Complete |
 | EDIT-09 | Phase 10 | Complete |
 | EDIT-10 | Phase 10 | Complete |
 | ZOOM-01 | Phase 11 | Pending |
-| ZOOM-02 | Phase 11 | Pending |
-| ZOOM-03 | Phase 11 | Pending |
-| ZOOM-04 | Phase 11 | Pending |
+| ZOOM-02 | Phase 11 | Complete |
+| ZOOM-03 | Phase 11 | Complete |
+| ZOOM-04 | Phase 11 | Complete |
 | ZOOM-05 | Phase 11 | Pending |
 | ZOOM-06 | Phase 11 | Pending |
 | ZOOM-07 | Phase 11 | Pending |
