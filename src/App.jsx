@@ -10855,6 +10855,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Edit mode state: tracks which annotation is being edited via double-click
   // { pageNumber, index, type, editType ('text'|'shape'|'callout'), data }
   const [editingAnnotation, setEditingAnnotation] = useState(null);
+  const editModeCooldownRef = useRef(0); // timestamp — prevents re-entering edit mode immediately after dismiss
   // New text creation: tracks click-to-place position when text tool is active
   // { pageNumber, x, y } -- page coordinates where new text should appear
   const [newTextPlacement, setNewTextPlacement] = useState(null);
@@ -24546,6 +24547,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   layerVisibility={annotationLayerVisibility}
                                   onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
                                   onRequestEditMode={(annotationIndex, annotationType) => {
+                                    // Cooldown: prevent re-entering edit mode within 300ms of dismissal
+                                    if (Date.now() - editModeCooldownRef.current < 300) return;
                                     const annotationData = pageAnnotations?.objects?.[annotationIndex];
                                     if (!annotationData) return;
                                     let editType;
@@ -24565,6 +24568,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     });
                                   }}
                                   activeTool={activeTool}
+                                  editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
                                 />
                               </div>
 
@@ -24619,10 +24623,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       action: isNewTextMode ? 'text:new' : editingAnnotation.editType,
                                       checkpointPolicy: 'normal',
                                     });
+                                    editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
                                     setNewTextPlacement(null);
                                   }}
                                   onEditCancel={() => {
+                                    editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
                                     setNewTextPlacement(null);
                                   }}
@@ -24796,6 +24802,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       layerVisibility={annotationLayerVisibility}
                                       onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
                                       onRequestEditMode={(annotationIndex, annotationType) => {
+                                        if (Date.now() - editModeCooldownRef.current < 300) return;
                                         const annotationData = pageAnnotationsCS?.objects?.[annotationIndex];
                                         if (!annotationData) return;
                                         let editType;
@@ -24815,6 +24822,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         });
                                       }}
                                       activeTool={activeTool}
+                                      editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
                                     />
                                     </div>
 
@@ -24869,10 +24877,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                             action: isNewTextMode ? 'text:new' : editingAnnotation.editType,
                                             checkpointPolicy: 'normal',
                                           });
+                                          editModeCooldownRef.current = Date.now();
                                           setEditingAnnotation(null);
                                           setNewTextPlacement(null);
                                         }}
                                         onEditCancel={() => {
+                                          editModeCooldownRef.current = Date.now();
                                           setEditingAnnotation(null);
                                           setNewTextPlacement(null);
                                         }}

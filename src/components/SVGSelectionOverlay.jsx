@@ -17,8 +17,8 @@ import { getCursorForHandle } from '../utils/svgTransformMath';
 import { getHandlePositions } from '../utils/svgBoundingBox';
 import rotateIconSvg from '../assets/rotate-icon.svg';
 
-// Padding around the bounding box (matches fabricCustomization.js padding: 6)
-const PADDING = 6;
+// Padding around the bounding box — minimal to keep selection tight to the annotation
+const PADDING = 2;
 
 const SVGSelectionOverlay = memo(({
   bbox,             // { left, top, width, height, angle }

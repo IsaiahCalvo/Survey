@@ -450,8 +450,6 @@ const FabricEditCanvas = memo(({
         height: (annHeight + BBOX_PADDING * 2) * effectiveScale,
         zIndex: 101,
         pointerEvents: 'auto',
-        border: '1px solid rgba(74, 144, 226, 0.4)',
-        borderRadius: 2,
       };
     }
 
@@ -530,6 +528,10 @@ const FabricEditCanvas = memo(({
       };
       originalAnnotationRef.current = null;
 
+      // Hide outer selection border — only the IText editing cursor box should be visible
+      textObj.hasBorders = false;
+      textObj.hasControls = false;
+
       canvas.add(textObj);
       canvas.setActiveObject(textObj);
       canvas.renderAll();
@@ -547,12 +549,27 @@ const FabricEditCanvas = memo(({
         if (!mountedRef.current || objects.length === 0) return;
         const textObj = objects[0];
 
+        // Sanitize styles — Fabric.js 5.x enlivenObjects can leave undefined line entries
+        // in the styles object, which causes "Cannot read properties of undefined" errors
+        // in removeStyleFromTo (delete) and stylesToArray (serialize).
+        if (textObj.styles) {
+          const lineCount = (textObj.text || '').split('\n').length;
+          for (let i = 0; i < lineCount; i++) {
+            if (!textObj.styles[i]) textObj.styles[i] = {};
+          }
+        } else {
+          textObj.styles = {};
+        }
+
         textObj.set({
           left: BBOX_PADDING,
           top: BBOX_PADDING,
           editable: true,
           selectable: true,
           evented: true,
+          // Hide outer selection border — only the IText editing cursor box should be visible
+          hasBorders: false,
+          hasControls: false,
         });
 
         canvas.add(textObj);
@@ -721,7 +738,7 @@ const FabricEditCanvas = memo(({
       const toolbar = document.querySelector('[data-mini-toolbar]');
       if (toolbar && toolbar.contains(e.target)) return;
 
-      // Click is outside -- commit and close
+      // Click is outside -- commit and close.
       commitAndClose();
     };
 
@@ -862,8 +879,6 @@ const FabricEditCanvas = memo(({
               height: (annHeight + BBOX_PADDING * 2) * effectiveScale,
               zIndex: 101,
               pointerEvents: 'auto',
-              border: '1px solid rgba(74, 144, 226, 0.4)',
-              borderRadius: 2,
             });
           }
         }

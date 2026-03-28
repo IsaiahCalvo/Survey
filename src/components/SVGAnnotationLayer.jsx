@@ -67,6 +67,7 @@ const SVGAnnotationLayer = memo(({
   onSaveAnnotations,   // (updatedJSON, saveContext) => void
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
+  editingAnnotationIndex, // number | null — index of annotation currently being edited in FabricEditCanvas (hidden in SVG)
 }) => {
   // ---------------------------------------------------------------------------
   // Refs
@@ -316,7 +317,9 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   // Render: wrap each annotation with hit-area, hover, and interaction handlers
   // ---------------------------------------------------------------------------
-  const wrappedAnnotations = filteredAnnotations.map(({ obj, index: i, element }) => {
+  const wrappedAnnotations = filteredAnnotations
+    .filter(({ index: i }) => editingAnnotationIndex == null || i !== editingAnnotationIndex)
+    .map(({ obj, index: i, element }) => {
     // During resize, create a temporary modified copy for rendering
     // (Imported paths use SVG transform instead — handled in computedTransform below)
     let renderObj = obj;
