@@ -2,9 +2,11 @@
 
 ## CRITICAL — DO NOT BREAK (Enforced Rules)
 
-- **NEVER modify the zoom/scale system in App.jsx or PageAnnotationLayer.jsx without explicit user approval of the EXACT changes BEFORE applying them.** The zoom system (beginSyncfusionScaleConfirmPending, handlePALScaleApplied, the 300ms settle timer, onScaleApplied callback, container-aware sizing) is extremely fragile and interconnected. THREE separate attempts to simplify it (plan 04-02) all broke annotation positioning. The working state is commit 951164e. Any zoom-related change MUST be presented as a diff for user review BEFORE editing files. No exceptions.
+- **Canvas sizing MUST use container-aware measurement, not pageSize * scale.** The Electron/browser zoom factor creates a mismatch. Always measure `containerEl.offsetWidth / pageSize.width` to get `effectiveScale`. This applies to FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas, and any future Canvas component. See Gotchas section for details.
 
-- **NEVER remove beginSyncfusionScaleConfirmPending, onScaleApplied, the 300ms settle timer, or container-aware sizing.** These are load-bearing. Removing any one causes annotations to lose correct size/position after zoom. The confirm-pending timing issue (PAL fires before App) is a KNOWN bug — the fix must not involve removing the system, but fixing the timing coordination.
+- **SVG viewBox handles all zoom scaling.** The old 5-timer zoom system (beginSyncfusionScaleConfirmPending, onScaleApplied, 300ms settle, freeze/snapshot/confirm-pending) was removed in Phase 11 of the v2.0 SVG Migration. SVG annotations scale via `viewBox="0 0 pageWidth pageHeight"` with zero JavaScript coordination. Canvas components (pen, eraser, edit) use `zoomGeneration` signal for auto-commit during zoom.
+
+- **NEVER remove the zoomGeneration signal.** `setZoomGeneration(prev => prev + 1)` fires at zoom-start inside `beginSyncfusionScaleConfirmPending`. All mounted Canvas components (FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas) watch this signal to auto-commit in-progress work before the container resizes.
 
 ## Gotchas & Lessons Learned
 
