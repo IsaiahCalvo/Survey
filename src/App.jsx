@@ -9845,121 +9845,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionScaleConfirmHiddenPagesRef.current = targetPages;
   }, [setSyncfusionStablePortalHostHidden]);
 
-  const cancelSyncfusionScaleConfirmReveal = useCallback((pageNumber, { clearRevealPhase = false } = {}) => {
-    const safePageNumber = Number(pageNumber);
-    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
-      return false;
-    }
-    const revealRafByPage = { ...(syncfusionScaleConfirmRevealRafByPageRef.current || {}) };
-    const revealEntry = revealRafByPage[safePageNumber];
-    if (revealEntry?.rafId != null) {
-      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(revealEntry.rafId);
-      } else {
-        clearTimeout(revealEntry.rafId);
-      }
-    }
-    delete revealRafByPage[safePageNumber];
-    syncfusionScaleConfirmRevealRafByPageRef.current = revealRafByPage;
-    const revealPendingPages = new Set(syncfusionScaleConfirmRevealPendingPagesRef.current || []);
-    revealPendingPages.delete(safePageNumber);
-    syncfusionScaleConfirmRevealPendingPagesRef.current = revealPendingPages;
-    if (clearRevealPhase) {
-      const revealPhaseByPage = { ...(syncfusionLastPALRevealPhaseByPageRef.current || {}) };
-      delete revealPhaseByPage[safePageNumber];
-      syncfusionLastPALRevealPhaseByPageRef.current = revealPhaseByPage;
-    }
-    return !!revealEntry;
-  }, []);
-
-  const cancelAllSyncfusionScaleConfirmReveals = useCallback(({ clearRevealPhases = false } = {}) => {
-    const revealRafByPage = syncfusionScaleConfirmRevealRafByPageRef.current || {};
-    Object.keys(revealRafByPage).forEach((pageKey) => {
-      cancelSyncfusionScaleConfirmReveal(pageKey, { clearRevealPhase: clearRevealPhases });
-    });
-    syncfusionScaleConfirmRevealRafByPageRef.current = {};
-    syncfusionScaleConfirmRevealPendingPagesRef.current = new Set();
-    if (clearRevealPhases) {
-      syncfusionLastPALRevealPhaseByPageRef.current = {};
-    }
-  }, [cancelSyncfusionScaleConfirmReveal]);
-
-  const scheduleSyncfusionScaleConfirmReveal = useCallback((pageNumber, phase = 'unknown') => {
-    const safePageNumber = Number(pageNumber);
-    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
-      return false;
-    }
-    cancelSyncfusionScaleConfirmReveal(safePageNumber);
-    const revealPendingPages = new Set(syncfusionScaleConfirmRevealPendingPagesRef.current || []);
-    revealPendingPages.add(safePageNumber);
-    syncfusionScaleConfirmRevealPendingPagesRef.current = revealPendingPages;
-    const requestFrame =
-      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
-        ? window.requestAnimationFrame.bind(window)
-        : (callback) => setTimeout(callback, 16);
-
-    const rafId = requestFrame(() => {
-      const currentEntry = syncfusionScaleConfirmRevealRafByPageRef.current?.[safePageNumber];
-      if (!currentEntry) {
-        return;
-      }
-      const nextRevealRafByPage = { ...(syncfusionScaleConfirmRevealRafByPageRef.current || {}) };
-      delete nextRevealRafByPage[safePageNumber];
-      syncfusionScaleConfirmRevealRafByPageRef.current = nextRevealRafByPage;
-      const nextRevealPendingPages = new Set(syncfusionScaleConfirmRevealPendingPagesRef.current || []);
-      nextRevealPendingPages.delete(safePageNumber);
-      syncfusionScaleConfirmRevealPendingPagesRef.current = nextRevealPendingPages;
-      const presentationState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber];
-      if (presentationState) {
-        syncfusionZoomPresentationByPageRef.current = {
-          ...(syncfusionZoomPresentationByPageRef.current || {}),
-          [safePageNumber]: {
-            ...presentationState,
-            snapshotUrl: null,
-            snapshotVisible: false,
-            liveHidden: false,
-            paintReady: true
-          }
-        };
-      }
-      const hiddenPages = new Set(syncfusionScaleConfirmHiddenPagesRef.current || []);
-      hiddenPages.delete(safePageNumber);
-      syncScaleConfirmHiddenPages(Array.from(hiddenPages));
-      syncfusionLastPALRevealPhaseByPageRef.current = {
-        ...(syncfusionLastPALRevealPhaseByPageRef.current || {}),
-        [safePageNumber]: phase
-      };
-    });
-    syncfusionScaleConfirmRevealRafByPageRef.current = {
-      ...(syncfusionScaleConfirmRevealRafByPageRef.current || {}),
-      [safePageNumber]: { rafId, phase }
-    };
-    return true;
-  }, [cancelSyncfusionScaleConfirmReveal, syncScaleConfirmHiddenPages]);
-
-  const cancelSyncfusionScaleConfirmPending = useCallback((reason = 'unknown', { reveal = true } = {}) => {
-    const wasPending = syncfusionScaleConfirmPendingRef.current === true;
-    if (syncfusionScaleConfirmTimerRef.current) {
-      clearTimeout(syncfusionScaleConfirmTimerRef.current);
-      syncfusionScaleConfirmTimerRef.current = null;
-    }
-    cancelAllSyncfusionScaleConfirmReveals({ clearRevealPhases: true });
-    syncfusionScaleConfirmPendingRef.current = false;
-    syncfusionScaleConfirmPendingPagesRef.current = new Set();
-    syncfusionFrozenOverlayPagesRef.current = [];
-    syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set();
-    syncfusionOverlayTransformRatioByPageRef.current = {};
-    syncfusionOverlayTransformNodeByPageRef.current = {};
-    syncfusionLastPALScaleAppliedPhaseByPageRef.current = {};
-    resetSyncfusionZoomPresentationPages(null, { revealLive: reveal });
-    if (reveal) {
-      syncScaleConfirmHiddenPages([]);
-    }
-    if (wasPending) {
-      debugMark('portal_unfreeze', { reason });
-    }
-    return wasPending;
-  }, [cancelAllSyncfusionScaleConfirmReveals, resetSyncfusionZoomPresentationPages, syncScaleConfirmHiddenPages]);
+  // [Phase 11] Removed: old Canvas-mode zoom confirm-pending / reveal system (4 functions), inert in SVG mode.
 
   const resetSyncfusionOverlayTransformStyles = useCallback(() => {
     const overlayContentRefs = syncfusionOverlayContentRefs.current || {};
@@ -9973,11 +9859,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
     syncfusionOverlayTransformRatioByPageRef.current = {};
     syncfusionOverlayTransformNodeByPageRef.current = {};
-    syncfusionScaleConfirmPendingPagesRef.current = new Set();
-    syncfusionFrozenOverlayPagesRef.current = [];
-    syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set();
-    cancelAllSyncfusionScaleConfirmReveals({ clearRevealPhases: true });
-    syncfusionLastPALScaleAppliedPhaseByPageRef.current = {};
     resetSyncfusionZoomPresentationPages(null, { revealLive: true });
     syncScaleConfirmHiddenPages([]);
     // Clean up any fallback portal hosts created during zoom
@@ -9987,282 +9868,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (fb?.isConnected) fb.remove();
       delete fallbacks[pageKey];
     });
-  }, [cancelAllSyncfusionScaleConfirmReveals, resetSyncfusionZoomPresentationPages, syncScaleConfirmHiddenPages]);
+  }, [resetSyncfusionZoomPresentationPages, syncScaleConfirmHiddenPages]);
 
-  const captureSyncfusionFrozenOverlayPages = useCallback((fallbackPages = null) => {
-    const currentOverlayPages = Object.keys(syncfusionOverlayContentRefs.current || {})
-      .map((pageKey) => Number(pageKey))
-      .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
+  // [Phase 11] Removed: old frozen overlay page caching function, inert in SVG mode.
 
-    const fallbackList = Array.isArray(fallbackPages)
-      ? fallbackPages
-      : syncfusionLastNonEmptyOverlayPagesRef.current;
-
-    const resolvedPages = Array.from(new Set(
-      (currentOverlayPages.length > 0 ? currentOverlayPages : (fallbackList || []))
-        .map((pageNumber) => Number(pageNumber))
-        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
-    )).sort((a, b) => a - b);
-
-    if (resolvedPages.length > 0) {
-      syncfusionFrozenOverlayPagesRef.current = resolvedPages;
-    }
-
-    return resolvedPages;
-  }, []);
-
-  const applySyncfusionPendingOverlayTransformToNode = useCallback((pageNumber, node) => {
-    if (!node || !node.isConnected || !node.style) {
-      return false;
-    }
-
-    const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
-    let ratio = Number(ratioByPage[pageNumber]);
-
-    if (!(Number.isFinite(ratio) && ratio > 0)) {
-      const baseScale = zoomOverlayBaseScaleRef.current;
-      if (baseScale > 0) {
-        const fallbackRatio = scaleRef.current / baseScale;
-        if (Number.isFinite(fallbackRatio) && fallbackRatio > 0) {
-          ratio = fallbackRatio;
-          ratioByPage[pageNumber] = fallbackRatio;
-          syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
-        }
-      }
-    }
-
-    if (!(Number.isFinite(ratio) && ratio > 0)) {
-      return false;
-    }
-
-    if (Math.abs(ratio - 1) <= 0.001) {
-      node.style.transform = '';
-      node.style.transformOrigin = '';
-      node.style.willChange = '';
-      node.style.backfaceVisibility = '';
-      return false;
-    }
-
-    node.style.transform = `scale(${ratio})`;
-    node.style.transformOrigin = 'top left';
-    node.style.willChange = 'transform';
-    node.style.backfaceVisibility = 'hidden';
-    return true;
-  }, []);
-
-  const getSyncfusionVisibleSwapPages = useCallback((pendingPages) => {
-    const pendingSet = pendingPages instanceof Set
-      ? pendingPages
-      : new Set(
-          (Array.isArray(pendingPages) ? pendingPages : [])
-            .map((pageNumber) => Number(pageNumber))
-            .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
-        );
-    if (pendingSet.size === 0) {
-      return [];
-    }
-
-    const frozenPageSet = new Set(
-      (syncfusionFrozenOverlayPagesRef.current || [])
-        .map((pageNumber) => Number(pageNumber))
-        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
-    );
-    const visiblePageCandidates = Array.from(syncfusionVisiblePagesRef.current || [])
-      .map((pageNumber) => Number(pageNumber))
-      .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
-      .filter((pageNumber) => pendingSet.has(pageNumber) && (frozenPageSet.size === 0 || frozenPageSet.has(pageNumber)));
-
-    if (visiblePageCandidates.length > 0) {
-      return visiblePageCandidates;
-    }
-
-    const currentPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY);
-    if (Number.isFinite(currentPage) && currentPage > 0 && pendingSet.has(currentPage)) {
-      return [currentPage];
-    }
-
-    return Array.from(pendingSet).sort((left, right) => Math.abs(left - (currentPage || 1)) - Math.abs(right - (currentPage || 1))).slice(0, 1);
-  }, []);
-
-  const prepareSyncfusionZoomPresentationSwap = useCallback((pendingPages, source = 'unknown') => {
-    const pendingList = Array.from(
-      pendingPages instanceof Set
-        ? pendingPages
-        : new Set(
-            (Array.isArray(pendingPages) ? pendingPages : [])
-              .map((pageNumber) => Number(pageNumber))
-              .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
-          )
-    );
-    if (pendingList.length === 0) {
-      syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set();
-      resetSyncfusionZoomPresentationPages(null, { revealLive: true });
-      return { swapGroupId: 0, visibleSwapPages: [] };
-    }
-
-    resetSyncfusionZoomPresentationPages(null, { revealLive: true });
-    const swapGroupId = syncfusionScaleConfirmSwapGroupIdRef.current + 1;
-    syncfusionScaleConfirmSwapGroupIdRef.current = swapGroupId;
-    const nextPresentationStateByPage = { ...(syncfusionZoomPresentationByPageRef.current || {}) };
-    const visibleSwapPages = [];
-    pendingList.forEach((pageNumber) => {
-      let snapshotUrl = null;
-      let snapshotStatus = 'no_api';
-      let snapshotFailureReason = null;
-      const presentationApi = syncfusionPagePresentationApisRef.current?.[pageNumber] || null;
-      if (typeof presentationApi?.captureSnapshot === 'function') {
-        try {
-          const snapshotResult = presentationApi.captureSnapshot();
-          if (typeof snapshotResult === 'string') {
-            snapshotUrl = snapshotResult || null;
-            snapshotStatus = snapshotUrl ? 'captured' : 'empty';
-          } else if (snapshotResult && typeof snapshotResult === 'object') {
-            snapshotUrl = typeof snapshotResult.url === 'string' && snapshotResult.url.length > 0
-              ? snapshotResult.url
-              : null;
-            snapshotStatus = typeof snapshotResult.status === 'string' && snapshotResult.status.trim()
-              ? snapshotResult.status.trim()
-              : (snapshotUrl ? 'captured' : 'empty');
-            snapshotFailureReason = typeof snapshotResult.reason === 'string' && snapshotResult.reason.trim()
-              ? snapshotResult.reason.trim()
-              : null;
-          } else {
-            snapshotStatus = 'empty';
-          }
-        } catch (error) {
-          snapshotStatus = 'error';
-          snapshotFailureReason = error instanceof Error ? error.message : String(error || 'Unknown snapshot error');
-          console.warn(`[AnnotPerf] Failed to capture zoom snapshot for page ${pageNumber} during ${source}:`, error);
-        }
-      }
-      const snapshotVisible = !!snapshotUrl;
-      if (snapshotVisible) {
-        visibleSwapPages.push(pageNumber);
-      }
-      nextPresentationStateByPage[pageNumber] = {
-        snapshotUrl,
-        snapshotVisible,
-        snapshotStatus,
-        snapshotFailureReason,
-        liveHidden: true,
-        paintReady: false,
-        swapGroupId
-      };
-    });
-
-    syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set(visibleSwapPages);
-    syncfusionZoomPresentationByPageRef.current = nextPresentationStateByPage;
-    syncSyncfusionZoomPresentationPages(pendingList);
-    return { swapGroupId, visibleSwapPages };
-  }, [resetSyncfusionZoomPresentationPages, syncSyncfusionZoomPresentationPages]);
+  // [Phase 11] Removed: old Canvas-mode confirm-pending helper functions (3 functions), inert in SVG mode.
 
   const beginSyncfusionScaleConfirmPending = useCallback((source = 'unknown') => {
-    // Signal zoom-start to mounted Canvas components (FabricDrawingCanvas/FabricEraserCanvas).
-    // zoomGeneration change flushes any in-progress stroke before canvas resizes.
+    // Signal zoom-start to mounted Canvas components (FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas).
+    // zoomGeneration change flushes any in-progress work before canvas resizes.
     setZoomGeneration(prev => prev + 1);
-    // SVG mode: skip freeze/confirm-pending entirely — SVG viewBox auto-scales,
-    // no PAL confirmation needed. Without this guard, the 3000ms safety timeout
-    // fires every zoom because unmounted PAL can never confirm.
-    if (rendererModeRef.current === 'svg') {
-      console.log(`[ConfirmPending] SKIPPED (SVG mode) — source=${source}`);
-      return;
-    }
-    cancelAllSyncfusionScaleConfirmReveals({ clearRevealPhases: true });
-    syncfusionLastPALScaleAppliedPhaseByPageRef.current = {};
-    const frozenPages = captureSyncfusionFrozenOverlayPages();
-    const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
-    const nodeByPage = syncfusionOverlayTransformNodeByPageRef.current || {};
-    const overlayContentRefs = syncfusionOverlayContentRefs.current || {};
-    const pendingPages = new Set();
 
-    Object.keys(ratioByPage).forEach((pageKey) => {
-      const pageNumber = Number(pageKey);
-      const ratio = Number(ratioByPage[pageKey]);
-      if (
-        Number.isFinite(pageNumber) &&
-        pageNumber > 0 &&
-        Number.isFinite(ratio) &&
-        Math.abs(ratio - 1) > 0.001
-      ) {
-        pendingPages.add(pageNumber);
-      }
-    });
+    // SVG mode: viewBox auto-scales, no JavaScript coordination needed.
+    // Canvas mode: legacy timer system was here — removed in Phase 11 (v2.0 SVG migration complete).
+    if (rendererModeRef.current === 'svg') return;
 
-    Object.keys(overlayContentRefs).forEach((pageKey) => {
-      const pageNumber = Number(pageKey);
-      const node = overlayContentRefs[pageKey];
-      if (!Number.isFinite(pageNumber) || pageNumber <= 0) {
-        return;
-      }
-      if (applySyncfusionPendingOverlayTransformToNode(pageNumber, node)) {
-        pendingPages.add(pageNumber);
-      }
-    });
-
-    if (pendingPages.size === 0) {
-      frozenPages.forEach((pageNumber) => pendingPages.add(pageNumber));
-    }
-
-    if (pendingPages.size === 0) {
-      Object.keys(syncfusionInteractionPortalHostsRef.current || {}).forEach((pageKey) => {
-        const pageNumber = Number(pageKey);
-        if (Number.isFinite(pageNumber) && pageNumber > 0) {
-          pendingPages.add(pageNumber);
-        }
-      });
-    }
-
-    const visiblePendingPages = new Set(getSyncfusionVisibleSwapPages(pendingPages));
-    pendingPages.forEach((pageNumber) => {
-      if (visiblePendingPages.has(pageNumber)) {
-        return;
-      }
-      const node = overlayContentRefs[pageNumber] || nodeByPage[pageNumber];
-      if (node && node.isConnected && node.style) {
-        node.style.transform = '';
-        node.style.transformOrigin = '';
-        node.style.willChange = '';
-        node.style.backfaceVisibility = '';
-      }
-      delete ratioByPage[pageNumber];
-      delete nodeByPage[pageNumber];
-    });
-    syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
-    syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
-
-    syncfusionScaleConfirmPendingPagesRef.current = visiblePendingPages;
-    syncfusionScaleConfirmPendingRef.current = visiblePendingPages.size > 0;
-
-    if (syncfusionScaleConfirmTimerRef.current) {
-      clearTimeout(syncfusionScaleConfirmTimerRef.current);
-      syncfusionScaleConfirmTimerRef.current = null;
-    }
-
-    if (visiblePendingPages.size === 0) {
-      syncScaleConfirmHiddenPages([]);
-      zoomOverlayBaseScaleRef.current = 1;
-      resetSyncfusionOverlayTransformStyles();
-      return false;
-    }
-
-    prepareSyncfusionZoomPresentationSwap(visiblePendingPages, source);
-    syncScaleConfirmHiddenPages(Array.from(visiblePendingPages));
-    debugMark('portal_freeze', { reason: 'confirm_pending_start', source });
-    syncfusionScaleConfirmTimerRef.current = setTimeout(() => {
-      syncfusionScaleConfirmTimerRef.current = null;
-      if (syncfusionScaleConfirmPendingRef.current) {
-        console.warn('[AnnotPerf] 3000ms safety timeout — PAL never confirmed, forcing CSS transform removal');
-        syncfusionScaleConfirmPendingRef.current = false;
-        syncfusionScaleConfirmPendingPagesRef.current = new Set();
-        zoomOverlayTransformActiveRef.current = false;
-        debugMark('zoom_end', { source: 'safety_timeout_3000ms' });
-        zoomOverlayBaseScaleRef.current = 1;
-        resetSyncfusionOverlayTransformStyles();
-      }
-    }, 3000);
-
-    return true;
-  }, [applySyncfusionPendingOverlayTransformToNode, cancelAllSyncfusionScaleConfirmReveals, captureSyncfusionFrozenOverlayPages, getSyncfusionVisibleSwapPages, prepareSyncfusionZoomPresentationSwap, resetSyncfusionOverlayTransformStyles, syncScaleConfirmHiddenPages]);
+    // Canvas mode is deprecated — no zoom coordination provided.
+    // Users can still toggle to Canvas mode via Ctrl+Shift+V but zoom behavior
+    // is intentionally degraded (Phase 8 decision: "Canvas mode zoom not worth fixing").
+    console.warn('[Zoom] Canvas mode zoom coordination removed in Phase 11. Use SVG mode for correct zoom behavior.');
+  }, []);
 
   const clearSyncfusionInteractionTimer = useCallback(() => {
     if (!syncfusionInteractionTimerRef.current) return;
@@ -10758,103 +10383,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return visibleWidth > 0 && visibleHeight > 0;
   }, []);
 
-  const handlePALScaleApplied = useCallback((pageNumber, appliedScale, _meta = null) => {
-    const safePageNumber = Number(pageNumber);
-    const scaleAppliedPhase = typeof _meta?.phase === 'string' ? _meta.phase : null;
-    const isVisualReadyPhase =
-      scaleAppliedPhase === 'fabric_rendered' ||
-      scaleAppliedPhase === 'paint_committed' ||
-      scaleAppliedPhase === 'already_current';
-    const pageViewportVisible = isSyncfusionPageViewportVisible(safePageNumber);
-    const canReleaseOffscreenWrapperPhase =
-      scaleAppliedPhase === 'wrapper_css_ready' &&
-      !pageViewportVisible;
-    const canReleaseConfirmPending =
-      isVisualReadyPhase ||
-      canReleaseOffscreenWrapperPhase;
-    if (Number.isFinite(safePageNumber) && safePageNumber > 0) {
-      syncfusionLastPALScaleAppliedPhaseByPageRef.current = {
-        ...(syncfusionLastPALScaleAppliedPhaseByPageRef.current || {}),
-        [safePageNumber]: scaleAppliedPhase || 'unknown'
-      };
-      const presentationState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber];
-      if (presentationState) {
-        syncfusionZoomPresentationByPageRef.current = {
-          ...(syncfusionZoomPresentationByPageRef.current || {}),
-          [safePageNumber]: {
-            ...presentationState,
-            paintReady: isVisualReadyPhase
-          }
-        };
-        syncSyncfusionZoomPresentationPage(safePageNumber);
-      }
-    }
-    // PAL reports that this page can safely release the outer overlay CSS transform.
-    // For delayed/off-screen pages this can happen once wrapper CSS compensation is
-    // in place, before the expensive Fabric render completes.
-    if (zoomOverlayTransformActiveRef.current && appliedScale > 0) {
-      const currentAppScale = scaleRef.current;
-      const ratio = currentAppScale / appliedScale;
-      const node = syncfusionOverlayContentRefs.current?.[pageNumber];
-      if (node && node.isConnected && node.style) {
-        if (Math.abs(ratio - 1) <= 0.001) {
-          node.style.transform = '';
-          node.style.transformOrigin = '';
-        } else {
-          node.style.transform = `scale(${ratio})`;
-          node.style.transformOrigin = 'top left';
-        }
-      }
-    }
-
-    if (!syncfusionScaleConfirmPendingRef.current) return;
-    if (
-      Number.isFinite(safePageNumber) &&
-      safePageNumber > 0 &&
-      syncfusionScaleConfirmHiddenPagesRef.current.has(safePageNumber) &&
-      canReleaseConfirmPending
-    ) {
-      scheduleSyncfusionScaleConfirmReveal(safePageNumber, scaleAppliedPhase || 'unknown');
-    } else if (Number.isFinite(safePageNumber) && safePageNumber > 0 && canReleaseConfirmPending) {
-      syncfusionLastPALRevealPhaseByPageRef.current = {
-        ...(syncfusionLastPALRevealPhaseByPageRef.current || {}),
-        [safePageNumber]: scaleAppliedPhase || 'already_visible'
-      };
-    }
-
-    // Visible pages still require PAL's visual-ready phases before confirm-pending
-    // releases the outer transform. Off-screen pages may release earlier once
-    // PAL reports wrapper continuity is in place.
-    if (!canReleaseConfirmPending) return;
-
-    // Release the per-page confirm-pending transform once the page is safe.
-    const node = syncfusionOverlayContentRefs.current?.[safePageNumber];
-    if (node && node.isConnected && node.style) {
-      node.style.transform = '';
-      node.style.transformOrigin = '';
-      node.style.willChange = '';
-      node.style.backfaceVisibility = '';
-    }
-    const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
-    delete ratioByPage[safePageNumber];
-    syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
-
-    const pendingPages = new Set(syncfusionScaleConfirmPendingPagesRef.current || []);
-    pendingPages.delete(safePageNumber);
-    syncfusionScaleConfirmPendingPagesRef.current = pendingPages;
-
-    if (pendingPages.size === 0) {
-      console.log(`[AnnotPerf] All pages confirmed scale — removing remaining CSS transforms`);
-      syncfusionScaleConfirmPendingRef.current = false;
-      debugMark('portal_unfreeze', { reason: 'all_pages_confirmed' });
-      zoomOverlayBaseScaleRef.current = 1;
-      if (syncfusionScaleConfirmTimerRef.current) {
-        clearTimeout(syncfusionScaleConfirmTimerRef.current);
-        syncfusionScaleConfirmTimerRef.current = null;
-      }
-      resetSyncfusionOverlayTransformStyles();
-    }
-  }, [isSyncfusionPageViewportVisible, resetSyncfusionOverlayTransformStyles, scheduleSyncfusionScaleConfirmReveal, syncSyncfusionZoomPresentationPage]);
+  // [Phase 11] Removed: old Canvas-mode PAL scale confirmation handler, inert in SVG mode.
 
   const runSyncfusionCommitQueue = useCallback(() => {
     if (syncfusionInteractionPhaseRef.current !== 'committing') {
@@ -11032,12 +10561,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setSyncfusionProxyReadyPages(new Set());
     syncfusionProxyReadyPagesRef.current = new Set();
     syncfusionOverlayTransformRatioByPageRef.current = {};
-    syncfusionScaleConfirmPendingPagesRef.current = new Set();
-    syncfusionFrozenOverlayPagesRef.current = [];
-    syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set();
     syncfusionInteractionPortalHostsRef.current = {};
-    cancelAllSyncfusionScaleConfirmReveals({ clearRevealPhases: true });
-    syncfusionLastPALScaleAppliedPhaseByPageRef.current = {};
     resetSyncfusionZoomPresentationPages(null, { revealLive: true });
     syncScaleConfirmHiddenPages([]);
     if (syncfusionScaleConfirmPendingRef.current) {
@@ -11117,7 +10641,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     scheduleSyncfusionInteractionSettleCheck();
   }, [
     applySyncfusionOverlayTransformSync,
-    cancelAllSyncfusionScaleConfirmReveals,
     computeSyncfusionInteractionResidentPages,
     freezeSyncfusionSessionPages,
     getSyncfusionViewerScale,
@@ -12660,9 +12183,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const nextScale = clampScale(rawZoomValue / 100);
     const prevScale = scaleRef.current;
     scaleRef.current = nextScale;
-    const cancelledConfirmPending = syncfusionScaleConfirmPendingRef.current
-      ? cancelSyncfusionScaleConfirmPending('zoom_restart', { reveal: false })
-      : false;
 
     // ── Activate zoom overlay transform on first zoom event ──
     // MUST happen BEFORE shouldDeferScaleCommit check so that
@@ -12695,7 +12215,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (Object.keys(existingHosts).length === 0) {
         syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
       }
-      captureSyncfusionFrozenOverlayPages(Object.keys(portalHostSnapshot).map(Number));
     }
     // Now that zoomOverlayTransformActiveRef is set, check whether to defer scale
     const shouldDeferScaleCommit =
@@ -12748,43 +12267,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     applyOverlayZoomTransform(nextScale);
     startOverlayZoomSettleTimer();
-    if (cancelledConfirmPending) {
-      syncScaleConfirmHiddenPages([]);
-    }
-    // (Re)start safety settle timer — PAL's onScaleApplied is the primary cleanup,
-    // this is a fallback if PAL never confirms (e.g., error, hidden page).
+    // (Re)start safety settle timer — releases zoom overlay transform after 1000ms.
     if (zoomOverlaySettleTimerRef.current) {
       clearTimeout(zoomOverlaySettleTimerRef.current);
     }
     zoomOverlaySettleTimerRef.current = setTimeout(() => {
       zoomOverlaySettleTimerRef.current = null;
-      // Populate ratioByPage for all pages that currently have CSS transforms.
-      // The inline CSS transforms applied during zoom don't update ratioByPage,
-      // so seed the per-page ratios before entering confirm-pending. The
-      // explicit pending page set uses these ratios when portal nodes remount.
-      const baseScale = zoomOverlayBaseScaleRef.current;
-      if (baseScale > 0) {
-        const currentScale = scaleRef.current;
-        const ratio = currentScale / baseScale;
-        if (Math.abs(ratio - 1) > 0.001) {
-          const overlayRefs = syncfusionOverlayContentRefs.current || {};
-          const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
-          Object.keys(overlayRefs).forEach((pageKey) => {
-            const ref = overlayRefs[pageKey];
-            if (ref && ref.isConnected) {
-              ratioByPage[pageKey] = ratio;
-            }
-          });
-          syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
-        }
-      }
       // Zoom has settled. Release the layerScale freeze so the next render
-      // passes the final scale to PAL, triggering a crisp canvas rebuild.
-      // CSS transforms remain — handlePALScaleApplied removes them per-page
-      // as each canvas rebuilds, preventing a visible gap.
+      // passes the final scale, triggering Canvas resize via ResizeObserver.
       zoomOverlayTransformActiveRef.current = false;
       debugMark('zoom_end', { source: 'zoomChange_settle' });
-      // Flush deferred scale so PAL starts rebuilding at final zoom level.
+      // Flush deferred scale so components rebuild at final zoom level.
       const pendingScale = syncfusionPendingZoomScaleRef.current;
       if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
         syncfusionPendingZoomScaleRef.current = null;
@@ -12792,16 +12285,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
         setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
       }
-      // Use confirm-pending so handlePALScaleApplied removes CSS transforms
-      // per-page as each canvas rebuilds (prevents flash at wrong scale).
+      // Signal zoom-start to Canvas components (increments zoomGeneration).
       beginSyncfusionScaleConfirmPending('zoomChange_settle');
     }, 1000);
   }, [
     applyOverlayZoomTransform,
     beginSyncfusionScaleConfirmPending,
     bumpOverlayLagEventTotal,
-    cancelSyncfusionScaleConfirmPending,
-    captureSyncfusionFrozenOverlayPages,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
     queueSyncfusionOverlayTransformSync,
@@ -21545,7 +21035,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (Object.keys(existingHosts).length === 0) {
             syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
           }
-          captureSyncfusionFrozenOverlayPages(Object.keys(portalHostSnapshot).map(Number));
         }
         // Phase 2: Pre-activate overlay div zoom protection (parallel to old system above)
         if (!overlayZoomActiveRef.current) {
@@ -21652,7 +21141,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       isZoomingRef.current = false;
       perfZoom.end(safeScale);
     });
-  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionFrozenOverlayPages, markSyncfusionInteractionActive, setScale, setAnchor, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, markSyncfusionInteractionActive, setScale, setAnchor, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index) => {
@@ -22048,7 +21537,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         if (Object.keys(existingHosts).length === 0) {
           syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
         }
-        captureSyncfusionFrozenOverlayPages(Object.keys(portalHostSnapshot).map(Number));
       }
       // Phase 2: Pre-activate overlay div zoom protection (parallel to old system above)
       if (!overlayZoomActiveRef.current) {
@@ -22080,7 +21568,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => {
       document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
     };
-  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionFrozenOverlayPages, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
@@ -24944,8 +24432,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onPastePageHere={handlePastePageHere}
                                 isInteracting={syncfusionInteractionPhase === 'interacting' || zoomOverlayTransformActiveRef.current}
                                 isZooming={isZooming}
-                                onScaleApplied={handlePALScaleApplied}
-                                presentationApiRegistry={syncfusionPagePresentationApisRef}
                               />
                             </div>
                             )}
