@@ -105,5 +105,5 @@ Progress: [████████░░] 78% (Phases 8-10 complete, Phase 11 P
 ## Session Continuity
 
 Last session: 2026-03-31
-Stopped at: Session resumed, reviewing state — rotation text-wrap commit jump bug active
+Stopped at: Shape edit mini-toolbar click-through fix — portal to document.body applied, needs testing
 Resume file: .planning/phases/11-text-shape-editing-zoom-cleanup/.continue-here.md
