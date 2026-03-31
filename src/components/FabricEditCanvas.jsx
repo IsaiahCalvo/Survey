@@ -12,7 +12,7 @@
  *
  * Key behaviors:
  * - Container-aware sizing via effectiveScale = container.offsetWidth / pageWidth (CLAUDE.md)
- * - CSS transform zoom bridge (ZOOM-02): visual stability during zoom transition
+ * - Direct-DOM CSS transform zoom bridge (ZOOM-02): scale + reposition via DOM (not React state)
  * - 200ms ResizeObserver settle debounce (ZOOM-03): Canvas resize after zoom settles
  * - Click-outside commits edit, Escape cancels
  * - flushSync during dispose for synchronous SVG re-render before Canvas DOM removal
@@ -295,7 +295,6 @@ const FabricEditCanvas = memo(({
   // State
   // -------------------------------------------------------------------------
   const [isLoading, setIsLoading] = useState(true);
-  const [zoomTransformStyle, setZoomTransformStyle] = useState(null);
   const [containerStyle, setContainerStyle] = useState({ visibility: 'hidden' });
 
   // -------------------------------------------------------------------------
@@ -994,7 +993,7 @@ const FabricEditCanvas = memo(({
   }, [cancelAndClose]);
 
   // -------------------------------------------------------------------------
-  // Zoom handling -- CSS transform bridge (ZOOM-02) + zoomGeneration detection
+  // Zoom handling -- direct-DOM CSS transform bridge (ZOOM-02) + zoomGeneration detection
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (zoomGeneration === initialZoomGenRef.current) return;
@@ -1066,20 +1065,34 @@ const FabricEditCanvas = memo(({
         return; // Skip screen-space logic
       }
 
+      // During zoom: apply CSS transform + reposition via DIRECT DOM (not React state).
+      // Both operations in same synchronous block = same paint frame = no jump.
+      // Previous attempts failed because React state batching caused frame mismatches.
       const lastSize = lastContainerSizeRef.current;
       if (lastSize.width > 0) {
-        // During zoom: apply CSS transform as visual bridge (ZOOM-02)
         const oldEffectiveScale = editTypeRef.current === 'callout'
           ? lastSize.width / pageWidth
-          : (lastSize.width > 0 ? lastSize.width / ((annotationDataRef.current?.width * (annotationDataRef.current?.scaleX || 1) + BBOX_PADDING * 2) || pageWidth) : 1);
+          : lastSize.width / ((annotationDataRef.current?.width * (annotationDataRef.current?.scaleX || 1) + BBOX_PADDING * 2) || pageWidth);
         const newEffectiveScale = newParentWidth / pageWidth;
         const transformRatio = newEffectiveScale / oldEffectiveScale;
 
-        if (Math.abs(transformRatio - 1) > 0.001) {
-          setZoomTransformStyle({
-            transform: `scale(${transformRatio})`,
-            transformOrigin: 'top left',
-          });
+        // Skip tiny changes from initial mount ResizeObserver (prevents blurry flash)
+        if (Math.abs(transformRatio - 1) > 0.01) {
+          const containerEl = containerRef.current;
+          if (containerEl) {
+            // Scale canvas content via CSS (GPU-composited, no Fabric repaint)
+            containerEl.style.transform = `scale(${transformRatio})`;
+            containerEl.style.transformOrigin = 'top left';
+
+            // Reposition container to match new zoom level — synchronous with scale
+            if (editTypeRef.current !== 'callout') {
+              const annData = annotationDataRef.current;
+              if (annData) {
+                containerEl.style.left = ((annData.left || 0) - BBOX_PADDING) * newEffectiveScale + 'px';
+                containerEl.style.top = ((annData.top || 0) - BBOX_PADDING) * newEffectiveScale + 'px';
+              }
+            }
+          }
         }
       }
 
@@ -1112,6 +1125,30 @@ const FabricEditCanvas = memo(({
           newHeight = Math.floor(bboxH * effectiveScale);
         }
 
+        // Clear CSS transform bridge and reposition/resize via direct DOM
+        // BEFORE canvas resize — all synchronous to avoid 1-frame glitch.
+        const containerEl = containerRef.current;
+        if (containerEl) {
+          containerEl.style.transform = '';
+          containerEl.style.transformOrigin = '';
+          if (editTypeRef.current === 'callout') {
+            containerEl.style.width = newWidth + 'px';
+            containerEl.style.height = newHeight + 'px';
+          } else {
+            const annData = annotationDataRef.current;
+            if (annData) {
+              const annLeft = annData.left || 0;
+              const annTop = annData.top || 0;
+              const annWidth2 = (annData.width || 100) * (annData.scaleX || 1);
+              const annHeight2 = (annData.height || 30) * (annData.scaleY || 1);
+              containerEl.style.left = ((annLeft - BBOX_PADDING) * effectiveScale) + 'px';
+              containerEl.style.top = ((annTop - BBOX_PADDING) * effectiveScale) + 'px';
+              containerEl.style.width = ((annWidth2 + BBOX_PADDING * 2) * effectiveScale) + 'px';
+              containerEl.style.height = ((annHeight2 + BBOX_PADDING * 2) * effectiveScale) + 'px';
+            }
+          }
+        }
+
         canvas.setZoom(effectiveScale);
         canvas.setWidth(newWidth);
         canvas.setHeight(newHeight);
@@ -1119,10 +1156,7 @@ const FabricEditCanvas = memo(({
 
         lastContainerSizeRef.current = { width: newWidth, height: newHeight };
 
-        // Clear CSS transform -- Canvas is now properly sized
-        setZoomTransformStyle(null);
-
-        // Update container style for repositioning
+        // Sync React state to match DOM (prevents React re-render from reverting DOM)
         if (editTypeRef.current === 'callout') {
           setContainerStyle((prev) => ({
             ...prev,
@@ -1134,14 +1168,14 @@ const FabricEditCanvas = memo(({
           if (annData) {
             const annLeft = annData.left || 0;
             const annTop = annData.top || 0;
-            const annWidth = (annData.width || 100) * (annData.scaleX || 1);
-            const annHeight = (annData.height || 30) * (annData.scaleY || 1);
+            const annWidth2 = (annData.width || 100) * (annData.scaleX || 1);
+            const annHeight2 = (annData.height || 30) * (annData.scaleY || 1);
             setContainerStyle({
               position: 'absolute',
               left: (annLeft - BBOX_PADDING) * effectiveScale,
               top: (annTop - BBOX_PADDING) * effectiveScale,
-              width: (annWidth + BBOX_PADDING * 2) * effectiveScale,
-              height: (annHeight + BBOX_PADDING * 2) * effectiveScale,
+              width: (annWidth2 + BBOX_PADDING * 2) * effectiveScale,
+              height: (annHeight2 + BBOX_PADDING * 2) * effectiveScale,
               zIndex: 101,
               pointerEvents: 'auto',
             });
@@ -1252,10 +1286,7 @@ const FabricEditCanvas = memo(({
       )}
       <div
         ref={containerRef}
-        style={{
-          ...containerStyle,
-          ...zoomTransformStyle,
-        }}
+        style={containerStyle}
       >
         <canvas ref={canvasElRef} />
       </div>

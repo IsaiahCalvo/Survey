@@ -6,6 +6,8 @@ const fs = require('fs');
 const { exec, spawn } = require('child_process');
 const os = require('os');
 
+const DEV_PORT = process.env.DEV_PORT || '5173';
+
 // Suppress security warnings in development
 if (process.env.NODE_ENV === 'development') {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
@@ -56,7 +58,20 @@ function createWindow() {
       contextIsolation: true,
       preload: preloadPath,
       webSecurity: true, // Keep web security enabled for OAuth
+      zoomFactor: 1.0,
     },
+  });
+
+  // Intercept Ctrl/Cmd+Plus/Minus/0 — prevent Electron UI zoom, forward to in-app PDF zoom
+  win.webContents.on('before-input-event', (event, input) => {
+    if ((input.control || input.meta) && (input.key === '+' || input.key === '-' || input.key === '=' || input.key === '0')) {
+      event.preventDefault();
+      // Forward zoom intent to renderer via custom DOM event
+      const direction = (input.key === '+' || input.key === '=') ? 'in' : (input.key === '-' ? 'out' : 'reset');
+      win.webContents.executeJavaScript(
+        `window.dispatchEvent(new CustomEvent('pdf-zoom', { detail: { direction: '${direction}' } }))`
+      ).catch(() => {});
+    }
   });
 
   // Handle OAuth redirects - Supabase redirects back to the app
@@ -70,7 +85,7 @@ function createWindow() {
         
         // Reload the app to process the OAuth token
         if (process.env.NODE_ENV === 'development') {
-          win.loadURL('http://localhost:5173' + parsedUrl.hash);
+          win.loadURL(`http://localhost:${DEV_PORT}` + parsedUrl.hash);
         } else {
           const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
           win.loadFile(distPath).then(() => {
@@ -122,20 +137,7 @@ function createWindow() {
   });
 
   if (process.env.NODE_ENV === 'development') {
-    // Try port 5173 first, then 5174 if that fails
-    const tryLoadDev = async () => {
-      try {
-        await win.loadURL('http://localhost:5173');
-      } catch (err) {
-        try {
-          await win.loadURL('http://localhost:5174');
-        } catch (err2) {
-          console.error('Could not connect to dev server on either port');
-          win.loadURL('http://localhost:5173'); // Fallback
-        }
-      }
-    };
-    tryLoadDev();
+    win.loadURL(`http://localhost:${DEV_PORT}`);
   } else {
     // In production, __dirname is app.asar/src, so we need to go up one level to app.asar
     // then into dist. Use app.getAppPath() which gives us the app.asar directory

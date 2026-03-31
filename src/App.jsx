@@ -9023,22 +9023,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Phase 1: created and attached but inert (not used for rendering).
   // Phase 2+: zoom handler applies CSS transforms; render loop creates portals into these.
   const overlayDivsRef = useRef({});
-  // Phase 2: Overlay div zoom transform state (parallel to old zoomOverlay* refs on lines 9004-9006)
-  const overlayZoomBaseScaleRef = useRef(1);
-  const overlayZoomActiveRef = useRef(false);
-  const overlayZoomSettleTimerRef = useRef(null);
-  const overlayZoomSafetyTimerRef = useRef(null);
-  const syncfusionPagePresentationApisRef = useRef({});
   const syncfusionLastNonEmptyOverlayPagesRef = useRef([]);
-  const syncfusionFrozenOverlayPagesRef = useRef([]);
   const syncfusionScaleConfirmHiddenPagesRef = useRef(new Set());
   const syncfusionScaleConfirmVisibleSwapPagesRef = useRef(new Set());
-  const syncfusionScaleConfirmSwapGroupIdRef = useRef(0);
   const syncfusionZoomPresentationByPageRef = useRef({});
-  const syncfusionScaleConfirmRevealRafByPageRef = useRef({});
-  const syncfusionScaleConfirmRevealPendingPagesRef = useRef(new Set());
-  const syncfusionLastPALScaleAppliedPhaseByPageRef = useRef({});
-  const syncfusionLastPALRevealPhaseByPageRef = useRef({});
   const syncfusionCachedPageRectsRef = useRef({});
   const overlayLagRecorderRef = useRef({
     active: false,
@@ -9187,9 +9175,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [syncfusionInteractionModeFlipCount, setSyncfusionInteractionModeFlipCount] = useState(0);
   const [syncfusionInteractionResidentPages, setSyncfusionInteractionResidentPages] = useState(new Set());
   const [syncfusionInteractionPageModes, setSyncfusionInteractionPageModes] = useState({});
-  const syncfusionScaleConfirmPendingRef = useRef(false);
-  const syncfusionScaleConfirmPendingPagesRef = useRef(new Set());
-  const syncfusionScaleConfirmTimerRef = useRef(null);
   const [syncfusionInteractionProxyPayloads, setSyncfusionInteractionProxyPayloads] = useState({});
   const [syncfusionCommittingProxyPages, setSyncfusionCommittingProxyPages] = useState(new Set());
   const [syncfusionProxyReadyPages, setSyncfusionProxyReadyPages] = useState(new Set());
@@ -10309,7 +10294,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // During active overlay zoom transforms, don't flush the deferred pending scale
     // or start confirm-pending. The zoom settle timer (zoomOverlaySettleTimerRef)
     // owns that lifecycle and will flush/confirm when zoom activity stops.
-    const overlayZoomInProgress = zoomOverlayTransformActiveRef.current || overlayZoomActiveRef.current;
+    const overlayZoomInProgress = zoomOverlayTransformActiveRef.current;
     if (!overlayZoomInProgress) {
       const pendingScaleRaw = Number(syncfusionPendingZoomScaleRef.current);
       if (Number.isFinite(pendingScaleRaw) && pendingScaleRaw > 0) {
@@ -10326,8 +10311,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionInteractionPageModesRef.current = {};
     setSyncfusionInteractionProxyPayloads({});
     syncfusionInteractionProxyPayloadsRef.current = {};
-    // DON'T clear portal hosts cache here — we're about to set
-    // syncfusionScaleConfirmPendingRef=true, and the render loop needs the
+    // DON'T clear portal hosts cache here — the render loop may need the
     // cached hosts to create fallback portals during Syncfusion post-zoom
     // DOM reconstruction. The cache gets overwritten when the next
     // interaction starts (markSyncfusionInteractionActive).
@@ -10565,15 +10549,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionInteractionPortalHostsRef.current = {};
     resetSyncfusionZoomPresentationPages(null, { revealLive: true });
     syncScaleConfirmHiddenPages([]);
-    if (syncfusionScaleConfirmPendingRef.current) {
-      console.log(`[AnnotPerf] new interaction (${reason}) — cancelling pending scale confirmation`);
-    }
-    syncfusionScaleConfirmPendingRef.current = false;
-    if (syncfusionScaleConfirmTimerRef.current) {
-      clearTimeout(syncfusionScaleConfirmTimerRef.current);
-      syncfusionScaleConfirmTimerRef.current = null;
-    }
-
     const seededResidentPages = computeSyncfusionInteractionResidentPages();
     const fallbackPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || 1;
     const residentPages = seededResidentPages.size > 0
@@ -10742,10 +10717,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     interactionPerfRef.current.active = false;
     interactionPerfRef.current.until = 0;
-    if (syncfusionScaleConfirmTimerRef.current) {
-      clearTimeout(syncfusionScaleConfirmTimerRef.current);
-      syncfusionScaleConfirmTimerRef.current = null;
-    }
   }, [
     clearSyncfusionCommitRaf,
     clearInteractionPerfTimer,
@@ -11765,100 +11736,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return overlayDiv;
   }, []);
 
-  // Phase 2: Centralized CSS transform application for overlay divs.
-  // Called from all zoom entry points. Operates ONLY on overlayDivsRef nodes,
-  // never on syncfusionOverlayContentRefs (old system).
-  const applyOverlayZoomTransform = useCallback((newScale) => {
-    const baseScale = overlayZoomBaseScaleRef.current;
-    if (!(baseScale > 0)) return;
-
-    const ratio = newScale / baseScale;
-    const overlayDivs = overlayDivsRef.current;
-    const keys = Object.keys(overlayDivs);
-    for (let i = 0; i < keys.length; i++) {
-      const div = overlayDivs[keys[i]];
-      if (div && div.isConnected) {
-        // Lock to base-scale pixel dimensions on first transform to prevent
-        // double-scaling. The overlay div is 100% of its parent page div, which
-        // Syncfusion already resized to the new zoom. We need the div at the
-        // BASE zoom pixel size so scale(ratio) gives the correct visual result.
-        if (!div.dataset.overlayLocked) {
-          const w = div.offsetWidth * (baseScale / newScale);
-          const h = div.offsetHeight * (baseScale / newScale);
-          if (w > 0 && h > 0) {
-            div.style.width = `${Math.round(w)}px`;
-            div.style.height = `${Math.round(h)}px`;
-            div.dataset.overlayLocked = '1';
-          }
-        }
-        div.style.transform = `scale(${ratio})`;
-        div.style.transformOrigin = 'top left';
-      }
-    }
-  }, []);
-
-  // Phase 2: Debounce settle timer for overlay zoom transforms.
-  // Resets on every zoom event. Fires 1000ms after last zoom event.
-  // On settle: removes CSS transforms from all overlay divs.
-  const startOverlayZoomSettleTimer = useCallback(() => {
-    // Clear existing settle timer (debounce reset)
-    if (overlayZoomSettleTimerRef.current) {
-      clearTimeout(overlayZoomSettleTimerRef.current);
-    }
-    // Clear existing safety timer (will restart below)
-    if (overlayZoomSafetyTimerRef.current) {
-      clearTimeout(overlayZoomSafetyTimerRef.current);
-    }
-
-    // Primary settle timer: 1000ms after last zoom event
-    overlayZoomSettleTimerRef.current = setTimeout(() => {
-      overlayZoomSettleTimerRef.current = null;
-      overlayZoomActiveRef.current = false;
-
-      // Remove CSS transforms and unlock dimensions on all connected overlay divs
-      const overlayDivs = overlayDivsRef.current;
-      const keys = Object.keys(overlayDivs);
-      for (let i = 0; i < keys.length; i++) {
-        const div = overlayDivs[keys[i]];
-        if (div && div.isConnected) {
-          div.style.transform = '';
-          div.style.transformOrigin = '';
-          div.style.width = '100%';
-          div.style.height = '100%';
-          delete div.dataset.overlayLocked;
-        }
-      }
-
-      // Clear safety timer since settle completed normally
-      if (overlayZoomSafetyTimerRef.current) {
-        clearTimeout(overlayZoomSafetyTimerRef.current);
-        overlayZoomSafetyTimerRef.current = null;
-      }
-
-      // Phase 3+ will add: update layerScale for canvas redraw here
-    }, 1000);
-
-    // Safety timeout: 5000ms forcibly clears transforms regardless of zoom state.
-    // Fallback if settle timer fails to fire (e.g., error, edge case).
-    overlayZoomSafetyTimerRef.current = setTimeout(() => {
-      overlayZoomSafetyTimerRef.current = null;
-      if (overlayZoomActiveRef.current) {
-        overlayZoomActiveRef.current = false;
-        const overlayDivs = overlayDivsRef.current;
-        const keys = Object.keys(overlayDivs);
-        for (let i = 0; i < keys.length; i++) {
-          const div = overlayDivs[keys[i]];
-          if (div && div.isConnected) {
-            div.style.transform = '';
-            div.style.transformOrigin = '';
-            div.style.width = '100%';
-            div.style.height = '100%';
-            delete div.dataset.overlayLocked;
-          }
-        }
-      }
-    }, 5000);
-  }, []);
+  // [Phase 11] Removed: applyOverlayZoomTransform, startOverlayZoomSettleTimer (old Phase 2 overlay div zoom — dead in SVG mode)
 
   const sanitizeSyncfusionPageContainerMap = useCallback((containerMap) => {
     const next = {};
@@ -12259,14 +12137,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       }
     }
-    // ── Phase 2: Parallel CSS transform for NEW overlay divs ──
-    // Operates on overlayDivsRef (Phase 1 direct-child divs), NOT syncfusionOverlayContentRefs.
-    if (!overlayZoomActiveRef.current) {
-      overlayZoomBaseScaleRef.current = prevScale;
-      overlayZoomActiveRef.current = true;
-    }
-    applyOverlayZoomTransform(nextScale);
-    startOverlayZoomSettleTimer();
     // (Re)start safety settle timer — releases zoom overlay transform after 1000ms.
     if (zoomOverlaySettleTimerRef.current) {
       clearTimeout(zoomOverlaySettleTimerRef.current);
@@ -12289,13 +12159,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       beginSyncfusionScaleConfirmPending('zoomChange_settle');
     }, 1000);
   }, [
-    applyOverlayZoomTransform,
     beginSyncfusionScaleConfirmPending,
     bumpOverlayLagEventTotal,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
     queueSyncfusionOverlayTransformSync,
-    startOverlayZoomSettleTimer,
     syncScaleConfirmHiddenPages,
     syncfusionDualLayerEnabled,
     syncfusionLiveStableOverlayEnabled,
@@ -13149,9 +13017,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const pageContainerMap = syncfusionPageContainersStateRef.current || {};
     const residentPages = syncfusionInteractionResidentPagesRef.current;
     const visiblePages = syncfusionVisiblePagesRef.current || new Set();
-    const confirmPendingPages = syncfusionScaleConfirmPendingPagesRef.current || new Set();
     const hiddenPendingPages = syncfusionScaleConfirmHiddenPagesRef.current || new Set();
-    const revealPendingPages = syncfusionScaleConfirmRevealPendingPagesRef.current || new Set();
     const containerRect = container?.getBoundingClientRect?.() || null;
 
     const viewerScale = clampScale(
@@ -13165,7 +13031,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const shouldCapturePageMetrics =
       syncfusionInteractionActiveRef.current ||
       zoomOverlayTransformActiveRef.current ||
-      syncfusionScaleConfirmPendingRef.current ||
       (Number(interactionEventDeltas.syncfusionZoomChange) || 0) > 0 ||
       recorder.options?.captureIdlePageMetrics === true;
     const candidatePages = shouldCapturePageMetrics
@@ -13181,11 +13046,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (leftVisibleRank !== rightVisibleRank) {
         return leftVisibleRank - rightVisibleRank;
       }
-      const leftPendingRank = confirmPendingPages.has(left) ? 0 : 1;
-      const rightPendingRank = confirmPendingPages.has(right) ? 0 : 1;
-      if (leftPendingRank !== rightPendingRank) {
-        return leftPendingRank - rightPendingRank;
-      }
       return Math.abs(left - pageNumRef.current) - Math.abs(right - pageNumRef.current);
     });
 
@@ -13193,8 +13053,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const pageDetails = [];
     const missingOverlayPages = [];
     const missingHostPages = [];
-    const visiblePresentationGapPages = [];
-    const viewportPresentationGapPages = [];
     let worstDriftPx = 0;
     let worstScaleMismatch = 0;
     let worstDriftPage = null;
@@ -13224,8 +13082,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const widthRatio = overlayRect.width / pageRect.width;
       const heightRatio = overlayRect.height / pageRect.height;
       const ratioMismatch = Math.max(Math.abs(widthRatio - 1), Math.abs(heightRatio - 1));
-      const lastScaleAppliedPhase = syncfusionLastPALScaleAppliedPhaseByPageRef.current?.[pageNumber] || null;
-      const lastRevealPhase = syncfusionLastPALRevealPhaseByPageRef.current?.[pageNumber] || null;
       const presentationState = syncfusionZoomPresentationByPageRef.current?.[pageNumber] || null;
       const snapshotVisible = presentationState?.snapshotVisible === true;
       const snapshotAvailable = typeof presentationState?.snapshotUrl === 'string' && presentationState.snapshotUrl.length > 0;
@@ -13252,13 +13108,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const viewportOverlapPct = viewportVisible
         ? (viewportVisibleArea / pageArea) * 100
         : 0;
-      if (confirmPendingPages.has(pageNumber) && visiblePages.has(pageNumber) && presentationMode === 'none') {
-        visiblePresentationGapPages.push(pageNumber);
-      }
-      if (confirmPendingPages.has(pageNumber) && viewportVisible && presentationMode === 'none') {
-        viewportPresentationGapPages.push(pageNumber);
-      }
-
       const innerLayer = overlayContentRefs[pageNumber];
       let observedScale = 1;
       if (innerLayer && innerLayer.isConnected) {
@@ -13305,9 +13154,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         observedScale: roundOverlayRecorderValue(observedScale, 5),
         expectedScale: roundOverlayRecorderValue(expectedScale, 5),
         scaleMismatch: roundOverlayRecorderValue(scaleMismatch, 5),
-        confirmPending: confirmPendingPages.has(pageNumber),
         scalePendingHidden: hiddenPendingPages.has(pageNumber),
-        scaleRevealPending: revealPendingPages.has(pageNumber),
         viewportVisible,
         viewportOverlapPct: roundOverlayRecorderValue(viewportOverlapPct, 2),
         snapshotAvailable,
@@ -13316,9 +13163,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         snapshotFailureReason,
         paintReady,
         presentationMode,
-        swapGroupId: Number.isFinite(Number(presentationState?.swapGroupId)) ? Number(presentationState.swapGroupId) : null,
-        lastScaleAppliedPhase,
-        lastRevealPhase
+        swapGroupId: Number.isFinite(Number(presentationState?.swapGroupId)) ? Number(presentationState.swapGroupId) : null
       });
     });
 
@@ -13341,9 +13186,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       interactionSessionId: syncfusionInteractionSessionIdRef.current,
       interactionReason: syncfusionInteractionReasonRef.current,
       zoomOverlayTransformActive: zoomOverlayTransformActiveRef.current,
-      scaleConfirmPending: syncfusionScaleConfirmPendingRef.current,
-      frozenOverlayPageCount: syncfusionFrozenOverlayPagesRef.current.length,
-      revealPendingPageCount: syncfusionScaleConfirmRevealPendingPagesRef.current.size,
       lightweightPages: syncfusionLightweightPagesRef.current.size,
       residentPages: syncfusionInteractionResidentPagesRef.current.size,
       pageModeCounts,
@@ -13376,10 +13218,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       snapshotAvailablePageCount: pageDetails.filter((page) => page.snapshotAvailable).length,
       snapshotVisiblePageCount: pageDetails.filter((page) => page.snapshotVisible).length,
       paintReadyPageCount: pageDetails.filter((page) => page.paintReady).length,
-      visiblePresentationGapCount: visiblePresentationGapPages.length,
-      visiblePresentationGapPages: visiblePresentationGapPages.slice(0, 8),
-      viewportPresentationGapCount: viewportPresentationGapPages.length,
-      viewportPresentationGapPages: viewportPresentationGapPages.slice(0, 8),
       worstDriftPage,
       worstDriftPx: roundOverlayRecorderValue(worstDriftPx, 3),
       worstScalePage,
@@ -14367,7 +14205,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       register({
         refs: {
           zoomOverlayTransformActive: zoomOverlayTransformActiveRef,
-          scaleConfirmPending: syncfusionScaleConfirmPendingRef,
           portalHosts: syncfusionInteractionPortalHostsRef,
           lastNonEmptyOverlayPages: syncfusionLastNonEmptyOverlayPagesRef,
           scale: scaleRef
@@ -21007,7 +20844,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Syncfusion destroys/recreates page DOM during zoomTo(). Without this,
       // keyboard/toolbar zoom race: zoomTo() fires before
       // handleSyncfusionZoomChange sets the ref, leaving a gap where
-      // shouldFreezePortalHost is false and canvas containers drop to 0.
+      // overlay containers drop to 0.
       if (Math.abs(safeScale - previousScale) > 0.0005) {
         if (!zoomOverlayTransformActiveRef.current) {
           zoomOverlayBaseScaleRef.current = previousScale;
@@ -21036,12 +20873,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
           }
         }
-        // Phase 2: Pre-activate overlay div zoom protection (parallel to old system above)
-        if (!overlayZoomActiveRef.current) {
-          overlayZoomBaseScaleRef.current = previousScale;
-          overlayZoomActiveRef.current = true;
-        }
-        startOverlayZoomSettleTimer();
         // Restart settle timer on every zoom step so rapid keyboard/toolbar
         // presses don't leave a stale timer that releases the ref mid-sequence.
         if (zoomOverlaySettleTimerRef.current) {
@@ -21141,7 +20972,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       isZoomingRef.current = false;
       perfZoom.end(safeScale);
     });
-  }, [beginSyncfusionScaleConfirmPending, markSyncfusionInteractionActive, setScale, setAnchor, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, markSyncfusionInteractionActive, setScale, setAnchor, useSyncfusionRenderer]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index) => {
@@ -21538,12 +21369,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
         }
       }
-      // Phase 2: Pre-activate overlay div zoom protection (parallel to old system above)
-      if (!overlayZoomActiveRef.current) {
-        overlayZoomBaseScaleRef.current = prevScale;
-        overlayZoomActiveRef.current = true;
-      }
-      startOverlayZoomSettleTimer();
       // Restart settle timer (same as setScaleWithViewportPreservation)
       if (zoomOverlaySettleTimerRef.current) {
         clearTimeout(zoomOverlaySettleTimerRef.current);
@@ -21568,7 +21393,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => {
       document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
     };
-  }, [beginSyncfusionScaleConfirmPending, startOverlayZoomSettleTimer, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, useSyncfusionRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
@@ -22067,6 +21892,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode]);
+
+  // Electron: listen for pdf-zoom custom events forwarded from main process
+  // (Ctrl/Cmd+Plus/Minus are intercepted by electron-main.js to prevent UI zoom)
+  useEffect(() => {
+    const handlePdfZoom = (e) => {
+      const { direction } = e.detail || {};
+      if (direction === 'in') zoomIn();
+      else if (direction === 'out') zoomOut();
+      else if (direction === 'reset') resetZoom();
+    };
+    window.addEventListener('pdf-zoom', handlePdfZoom);
+    return () => window.removeEventListener('pdf-zoom', handlePdfZoom);
+  }, [zoomIn, zoomOut, resetZoom]);
 
   // Enforce continuous mode
   useEffect(() => {
@@ -23462,10 +23300,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       if (changed) {
         syncfusionVisiblePagesRef.current = new Set(visiblePages);
-        if (
-          syncfusionInteractionPhaseRef.current === 'interacting' ||
-          syncfusionScaleConfirmPendingRef.current
-        ) {
+        if (syncfusionInteractionPhaseRef.current === 'interacting') {
           setSyncfusionVisiblePagesVersion((prev) => prev + 1);
         }
         applyWindowPages();
@@ -23503,47 +23338,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionPageContainers,
     useSyncfusionRenderer
   ]);
-
-  useEffect(() => {
-    if (!syncfusionScaleConfirmPendingRef.current) {
-      return;
-    }
-    const visiblePendingPages = Array.from(syncfusionVisiblePagesRef.current || [])
-      .map((pageNumber) => Number(pageNumber))
-      .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
-      .filter((pageNumber) => syncfusionScaleConfirmPendingPagesRef.current.has(pageNumber));
-    if (visiblePendingPages.length === 0) {
-      return;
-    }
-
-    const nextPresentationStateByPage = { ...(syncfusionZoomPresentationByPageRef.current || {}) };
-    const nextVisibleSwapPages = new Set(syncfusionScaleConfirmVisibleSwapPagesRef.current || []);
-    const changedPages = [];
-
-    visiblePendingPages.forEach((pageNumber) => {
-      const presentationState = nextPresentationStateByPage[pageNumber];
-      if (!presentationState || presentationState.paintReady || !presentationState.liveHidden) {
-        return;
-      }
-      if (!presentationState.snapshotUrl || presentationState.snapshotVisible) {
-        return;
-      }
-      nextPresentationStateByPage[pageNumber] = {
-        ...presentationState,
-        snapshotVisible: true
-      };
-      nextVisibleSwapPages.add(pageNumber);
-      changedPages.push(pageNumber);
-    });
-
-    if (changedPages.length === 0) {
-      return;
-    }
-
-    syncfusionZoomPresentationByPageRef.current = nextPresentationStateByPage;
-    syncfusionScaleConfirmVisibleSwapPagesRef.current = nextVisibleSwapPages;
-    syncSyncfusionZoomPresentationPages(changedPages);
-  }, [syncSyncfusionZoomPresentationPages, syncfusionVisiblePagesVersion]);
 
   useEffect(() => {
     if (!activeSpaceId) {
@@ -24213,56 +24007,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   const useLiveStableOverlay = syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled;
                   const isZoomOnlyInteraction = syncfusionInteractionIsZoomOnlyRef.current;
 
-                  /* Phase 3: Old freeze/window/fallback page filtering bypassed.
-                     Code retained for Phase 6 dead code removal.
-                     --- original lines 24519-24584 ---
-                  const isInInteraction = syncfusionInteractionPhase !== 'idle';
-                  const shouldFreezeOverlayScale = useLiveStableOverlay && isInInteraction;
-                  const shouldFreezePortalHost = ((useLiveStableOverlay || isZoomOnlyInteraction) && isInInteraction) || zoomOverlayTransformActiveRef.current || syncfusionScaleConfirmPendingRef.current;
-                  const useInteractionWindow = shouldFreezeOverlayScale;
-                  const interactionWindowSet = new Set();
-                  if (useInteractionWindow) {
-                    syncfusionInteractionResidentPages.forEach((pageNumber) => interactionWindowSet.add(pageNumber));
-                    syncfusionOverlayWindowPages.forEach((pageNumber) => interactionWindowSet.add(pageNumber));
-                    visiblePagesSet.forEach((pageNumber) => interactionWindowSet.add(pageNumber));
-                    const currentPage = coercePageNumber(pageNum, Number.POSITIVE_INFINITY);
-                    if (Number.isFinite(currentPage) && currentPage > 0) {
-                      interactionWindowSet.add(currentPage);
-                    }
-                  }
-                  const containerPageNumbers_old = Object.keys(syncfusionPageContainers).map((pageKey) => Number(pageKey));
-                  const frozenPageNumbers = shouldFreezePortalHost
-                    ? (() => {
-                        const frozenPages = (syncfusionFrozenOverlayPagesRef.current || [])
-                          .map((pageNumber) => Number(pageNumber))
-                          .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
-                        if (frozenPages.length > 0) return frozenPages;
-                        const currentOverlayPages = Object.keys(syncfusionOverlayContentRefs.current || {})
-                          .map((pageKey) => Number(pageKey))
-                          .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
-                        if (currentOverlayPages.length > 0) return currentOverlayPages;
-                        const lastKnownPages = (syncfusionLastNonEmptyOverlayPagesRef.current || [])
-                          .map((pageNumber) => Number(pageNumber))
-                          .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
-                        if (lastKnownPages.length > 0) return lastKnownPages;
-                        const cachedHosts = syncfusionInteractionPortalHostsRef.current || {};
-                        return Object.keys(cachedHosts)
-                          .map((pageKey) => Number(pageKey))
-                          .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
-                      })()
-                    : containerPageNumbers_old;
-                  const overlayWindowPageNumbers = useInteractionWindow
-                    ? Array.from(interactionWindowSet.size > 0 ? interactionWindowSet : (syncfusionOverlayWindowPages.size > 0 ? syncfusionOverlayWindowPages : syncfusionInteractionResidentPages))
-                    : frozenPageNumbers;
-                  const effectiveOverlayPages = overlayWindowPageNumbers.length > 0
-                    ? overlayWindowPageNumbers
-                    : syncfusionLastNonEmptyOverlayPagesRef.current;
-                  if (effectiveOverlayPages.length > 0) {
-                    syncfusionLastNonEmptyOverlayPagesRef.current = effectiveOverlayPages;
-                  }
-                  --- end original lines 24519-24584 --- */
-
-                  // Phase 3: Simplified page list — container pages filtered by visibility + content
+                  // Simplified page list — container pages filtered by visibility + content
                   const containerPageNumbers = Object.keys(syncfusionPageContainers)
                     .map(k => Number(k))
                     .filter(n => Number.isFinite(n) && n > 0);
