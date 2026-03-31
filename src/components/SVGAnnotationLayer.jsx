@@ -318,7 +318,6 @@ const SVGAnnotationLayer = memo(({
   // Render: wrap each annotation with hit-area, hover, and interaction handlers
   // ---------------------------------------------------------------------------
   const wrappedAnnotations = filteredAnnotations
-    .filter(({ index: i }) => editingAnnotationIndex == null || i !== editingAnnotationIndex)
     .map(({ obj, index: i, element }) => {
     // During resize, create a temporary modified copy for rendering
     // (Imported paths use SVG transform instead — handled in computedTransform below)
@@ -368,8 +367,10 @@ const SVGAnnotationLayer = memo(({
           return undefined;
         }
         if (visualTransform.rotate) {
-          const { angle, cx, cy } = visualTransform.rotate;
-          return `rotate(${angle}, ${cx}, ${cy})`;
+          // Use deltaAngle for the wrapper — the annotation renderer already applies
+          // its committed angle internally, so we only add the change to avoid double-rotation.
+          const { deltaAngle, cx, cy } = visualTransform.rotate;
+          return `rotate(${deltaAngle}, ${cx}, ${cy})`;
         }
         // Move: simple translate
         return `translate(${visualTransform.dx}, ${visualTransform.dy})`;
@@ -381,6 +382,8 @@ const SVGAnnotationLayer = memo(({
       return undefined;
     })();
 
+    const isBeingEdited = editingAnnotationIndex != null && i === editingAnnotationIndex;
+
     return (
       <g
         key={`wrapper-${obj.id || i}`}
@@ -388,6 +391,12 @@ const SVGAnnotationLayer = memo(({
         data-annotation-id={obj.id || ''}
         style={{
           cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
+          // Hide SVG annotation during edit — FabricEditCanvas renders the annotation
+          // at the same position via CSS rotation. Hiding avoids visible text rendering
+          // differences between SVG foreignObject and Fabric.js canvas (especially
+          // for rotated text where the difference is amplified).
+          opacity: isBeingEdited ? 0 : undefined,
+          pointerEvents: isBeingEdited ? 'none' : undefined,
         }}
         transform={computedTransform}
       >
@@ -395,34 +404,37 @@ const SVGAnnotationLayer = memo(({
         <g style={{ pointerEvents: 'none' }}>
           {renderElement}
         </g>
-        {/* Hover outline (shown before click, not when already selected) */}
-        {annotationIsHovered && (
+        {/* Hover outline + hit rect — rotated to match annotation angle */}
+        <g transform={bbox.angle ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})` : undefined}>
+          {/* Hover outline (shown before click, not when already selected) */}
+          {annotationIsHovered && (
+            <rect
+              x={bbox.left}
+              y={bbox.top}
+              width={bbox.width}
+              height={bbox.height}
+              fill="none"
+              stroke="#4a90e2"
+              strokeOpacity={0.4}
+              strokeWidth={2 * inverseScale}
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
+          {/* Invisible hit-area rect ON TOP for easier clicking */}
           <rect
             x={bbox.left}
             y={bbox.top}
-            width={bbox.width}
-            height={bbox.height}
-            fill="none"
-            stroke="#4a90e2"
-            strokeOpacity={0.4}
-            strokeWidth={2 * inverseScale}
-            style={{ pointerEvents: 'none' }}
+            width={Math.max(bbox.width, 10)}
+            height={Math.max(bbox.height, 10)}
+            fill="transparent"
+            stroke="none"
+            pointerEvents={isInteractive ? 'all' : 'none'}
+            onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+            onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+            onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+            onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
           />
-        )}
-        {/* Invisible hit-area rect ON TOP for easier clicking */}
-        <rect
-          x={bbox.left}
-          y={bbox.top}
-          width={Math.max(bbox.width, 10)}
-          height={Math.max(bbox.height, 10)}
-          fill="transparent"
-          stroke="none"
-          pointerEvents={isInteractive ? 'all' : 'none'}
-          onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
-          onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
-          onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
-          onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
-        />
+        </g>
       </g>
     );
   });
@@ -458,17 +470,43 @@ const SVGAnnotationLayer = memo(({
       {/* Selection overlays — rendered on top of all annotations */}
       {/* Single selection: individual bounding box with handles */}
       {selectedIds.size === 1 && Array.from(selectedIds).map((selectedIndex) => {
+        // Hide selection overlay while annotation is being edited in FabricEditCanvas
+        if (editingAnnotationIndex != null && selectedIndex === editingAnnotationIndex) return null;
         const obj = annotations?.objects?.[selectedIndex];
         if (!obj) return null;
-        const bbox = getAnnotationBBox(obj);
+
+        // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
+        let bbox = getAnnotationBBox(obj);
+        let overlayTransform;
+        if (visualTransform && typeof visualTransform.id === 'number' && visualTransform.id === selectedIndex) {
+          if (visualTransform.resize) {
+            // During resize: recompute bbox from transformed props
+            bbox = {
+              left: visualTransform.resize.left,
+              top: visualTransform.resize.top,
+              width: bbox.width / Math.abs(obj.scaleX ?? 1) * visualTransform.resize.scaleX,
+              height: bbox.height / Math.abs(obj.scaleY ?? 1) * visualTransform.resize.scaleY,
+              angle: bbox.angle,
+            };
+          } else if (visualTransform.rotate) {
+            // During rotate: update angle on bbox
+            bbox = { ...bbox, angle: visualTransform.rotate.angle };
+          } else {
+            // During move: apply translate to the overlay group
+            overlayTransform = `translate(${visualTransform.dx}, ${visualTransform.dy})`;
+          }
+        }
+
         return (
-          <SVGSelectionOverlay
-            key={`selection-${selectedIndex}`}
-            bbox={bbox}
-            inverseScale={inverseScale}
-            onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
-            isGroupSelection={false}
-          />
+          <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
+            <SVGSelectionOverlay
+              key={`selection-${selectedIndex}`}
+              bbox={bbox}
+              inverseScale={inverseScale}
+              onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
+              isGroupSelection={false}
+            />
+          </g>
         );
       })}
       {/* Multi-select: individual dashed boxes (no handles) + group union box with handles */}
@@ -479,14 +517,20 @@ const SVGAnnotationLayer = memo(({
             const obj = annotations?.objects?.[selectedIndex];
             if (!obj) return null;
             const bbox = getAnnotationBBox(obj);
+            // Apply group drag transform
+            const groupDragTransform = (visualTransform?.id === 'group' && visualTransform.affectedIds?.has(selectedIndex))
+              ? `translate(${visualTransform.dx}, ${visualTransform.dy})`
+              : undefined;
             return (
-              <SVGSelectionOverlay
-                key={`selection-${selectedIndex}`}
-                bbox={bbox}
-                inverseScale={inverseScale}
-                onHandleDrag={() => {}}
-                isGroupSelection={true}
-              />
+              <g key={`selection-wrapper-${selectedIndex}`} transform={groupDragTransform}>
+                <SVGSelectionOverlay
+                  key={`selection-${selectedIndex}`}
+                  bbox={bbox}
+                  inverseScale={inverseScale}
+                  onHandleDrag={() => {}}
+                  isGroupSelection={true}
+                />
+              </g>
             );
           })}
           {/* Group union bounding box with handles */}
@@ -497,15 +541,21 @@ const SVGAnnotationLayer = memo(({
               .map(obj => getAnnotationBBox(obj));
             if (bboxes.length === 0) return null;
             const groupBBox = getGroupBBox(bboxes);
+            // Apply group drag transform to union box
+            const groupDragTransform = (visualTransform?.id === 'group')
+              ? `translate(${visualTransform.dx}, ${visualTransform.dy})`
+              : undefined;
             return (
-              <SVGSelectionOverlay
-                key="group-selection"
-                bbox={groupBBox}
-                inverseScale={inverseScale}
-                onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
-                isGroupSelection={false}
-                strokeOpacity={0.6}
-              />
+              <g key="group-selection-wrapper" transform={groupDragTransform}>
+                <SVGSelectionOverlay
+                  key="group-selection"
+                  bbox={groupBBox}
+                  inverseScale={inverseScale}
+                  onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
+                  isGroupSelection={false}
+                  strokeOpacity={0.6}
+                />
+              </g>
             );
           })()}
         </>

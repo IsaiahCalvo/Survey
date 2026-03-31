@@ -314,11 +314,125 @@ function getEllipseBBox(obj) {
 }
 
 function getTextBBox(obj) {
+  const scaleX = Math.abs(obj.scaleX ?? 1);
+  const scaleY = Math.abs(obj.scaleY ?? 1);
+  const objType = String(obj.type || '').toLowerCase();
+
+  // Textbox type: use stored width/height from Fabric.js (authoritative after edit commit)
+  if (objType === 'textbox' && obj.width && obj.height) {
+    return {
+      left: obj.left ?? 0,
+      top: obj.top ?? 0,
+      width: obj.width * scaleX,
+      height: obj.height * scaleY,
+      angle: obj.angle ?? 0,
+    };
+  }
+
+  // i-text / text: measure tight bounds
+  const measured = measureTextBounds(obj);
   return {
     left: obj.left ?? 0,
     top: obj.top ?? 0,
-    width: Math.abs((obj.width ?? 100) * (obj.scaleX ?? 1)),
-    height: Math.abs((obj.height ?? 30) * (obj.scaleY ?? 1)),
+    width: measured.width,
+    height: measured.height,
     angle: obj.angle ?? 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Text measurement utility — tight bounds from actual content
+// ---------------------------------------------------------------------------
+
+// Shared offscreen canvas for text width measurement (created once, reused)
+let _measureCtx = null;
+function getMeasureCtx() {
+  if (!_measureCtx) {
+    const c = document.createElement('canvas');
+    _measureCtx = c.getContext('2d');
+  }
+  return _measureCtx;
+}
+
+/**
+ * Count how many visual lines a single explicit line produces when word-wrapped
+ * at a given max width. Uses word-boundary splitting for accuracy.
+ */
+function countWrappedLines(ctx, line, maxWidth) {
+  if (!line) return 1;
+  const words = line.split(/\s+/);
+  if (words.length === 0) return 1;
+
+  let currentWidth = 0;
+  let lineCount = 1;
+  const spaceWidth = ctx.measureText(' ').width;
+
+  for (let i = 0; i < words.length; i++) {
+    const wordWidth = ctx.measureText(words[i]).width;
+    const added = i === 0 ? wordWidth : spaceWidth + wordWidth;
+
+    if (currentWidth + added > maxWidth && currentWidth > 0) {
+      lineCount++;
+      currentWidth = wordWidth; // word moves to next line
+    } else {
+      currentWidth += added;
+    }
+  }
+  return lineCount;
+}
+
+/**
+ * Measure tight width and height for a text annotation object.
+ * Uses Canvas 2D measureText with word-level wrapping simulation.
+ *
+ * @param {object} obj - Fabric.js JSON text/textbox/i-text object
+ * @returns {{ width: number, height: number }} Tight bounds (already scaled by scaleX/scaleY)
+ */
+export function measureTextBounds(obj) {
+  const text = obj.text || '';
+  const fontSize = obj.fontSize || 16;
+  const fontFamily = obj.fontFamily || 'sans-serif';
+  const fontWeight = obj.fontWeight || 'normal';
+  const fontStyle = obj.fontStyle || 'normal';
+  const lineHeight = obj.lineHeight || 1.16;
+  const scaleX = Math.abs(obj.scaleX ?? 1);
+  const scaleY = Math.abs(obj.scaleY ?? 1);
+  const containerWidth = obj.width || 100; // base width (before scale)
+  const singleLineH = fontSize * lineHeight;
+
+  // Empty text: minimal box
+  if (!text.trim()) {
+    return { width: 20 * scaleX, height: singleLineH * scaleY };
+  }
+
+  const ctx = getMeasureCtx();
+  ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+
+  const explicitLines = text.split('\n');
+  let maxLineWidth = 0;
+  let totalVisualLines = 0;
+
+  for (const line of explicitLines) {
+    if (line === '') {
+      totalVisualLines += 1;
+      continue;
+    }
+    const naturalWidth = ctx.measureText(line).width;
+
+    if (naturalWidth <= containerWidth) {
+      // Fits in one line
+      maxLineWidth = Math.max(maxLineWidth, naturalWidth);
+      totalVisualLines += 1;
+    } else {
+      // Line wraps — use container width, count wrapped lines
+      maxLineWidth = containerWidth;
+      totalVisualLines += countWrappedLines(ctx, line, containerWidth);
+    }
+  }
+
+  // +4px padding to avoid subpixel clipping
+  const tightWidth = Math.max(maxLineWidth + 4, 20) * scaleX;
+  const tightHeight = Math.max(totalVisualLines * singleLineH + 4, singleLineH) * scaleY;
+
+  return { width: tightWidth, height: tightHeight };
 }

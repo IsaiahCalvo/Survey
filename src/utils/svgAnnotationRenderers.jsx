@@ -8,6 +8,7 @@
  * Each function takes a Fabric.js JSON object and returns a React SVG element.
  */
 import React from 'react';
+import { measureTextBounds } from './svgBoundingBox';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -112,7 +113,7 @@ export const renderRect = (obj, index) => {
       y={obj.top}
       width={effectiveWidth}
       height={effectiveHeight}
-      transform={obj.angle ? `rotate(${obj.angle}, ${obj.left}, ${obj.top})` : undefined}
+      transform={obj.angle ? `rotate(${obj.angle}, ${obj.left + effectiveWidth / 2}, ${obj.top + effectiveHeight / 2})` : undefined}
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
@@ -244,6 +245,7 @@ export const renderEllipse = (obj, index) => {
       cy={cy}
       rx={rx}
       ry={ry}
+      transform={obj.angle ? `rotate(${obj.angle}, ${cx}, ${cy})` : undefined}
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
@@ -264,8 +266,20 @@ export const renderEllipse = (obj, index) => {
  * @returns {React.ReactElement}
  */
 export const renderText = (obj, index) => {
-  const effectiveWidth = Math.abs((obj.width || 100) * (obj.scaleX || 1));
-  const effectiveHeight = Math.abs((obj.height || 30) * (obj.scaleY || 1));
+  const scaleX = Math.abs(obj.scaleX ?? 1);
+  const scaleY = Math.abs(obj.scaleY ?? 1);
+  const objType = String(obj.type || '').toLowerCase();
+
+  // Textbox type: use stored width/height from Fabric.js (authoritative after edit commit)
+  let effectiveWidth, effectiveHeight;
+  if (objType === 'textbox' && obj.width && obj.height) {
+    effectiveWidth = obj.width * scaleX;
+    effectiveHeight = obj.height * scaleY;
+  } else {
+    const measured = measureTextBounds(obj);
+    effectiveWidth = measured.width;
+    effectiveHeight = measured.height;
+  }
   const left = obj.left || 0;
   const top = obj.top || 0;
   const angle = obj.angle || 0;
@@ -279,7 +293,7 @@ export const renderText = (obj, index) => {
       y={top}
       width={effectiveWidth}
       height={effectiveHeight}
-      transform={angle !== 0 ? `rotate(${angle}, ${left}, ${top})` : undefined}
+      transform={angle !== 0 ? `rotate(${angle}, ${left + effectiveWidth / 2}, ${top + effectiveHeight / 2})` : undefined}
       opacity={obj.opacity ?? 1}
     >
       <div
@@ -290,6 +304,7 @@ export const renderText = (obj, index) => {
           fontSize: `${obj.fontSize || 16}px`,
           fontFamily: obj.fontFamily || 'sans-serif',
           fontWeight: obj.fontWeight || 'normal',
+          fontStyle: obj.fontStyle || 'normal',
           color: obj.fill || '#000',
           textAlign: obj.textAlign || 'left',
           lineHeight: obj.lineHeight || 1.16,
@@ -298,6 +313,8 @@ export const renderText = (obj, index) => {
           whiteSpace: 'pre-wrap',
           boxSizing: 'border-box',
           padding: 0,
+          WebkitFontSmoothing: 'antialiased',
+          MozOsxFontSmoothing: 'grayscale',
         }}
       >
         {obj.text || ''}

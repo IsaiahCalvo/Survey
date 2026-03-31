@@ -341,13 +341,16 @@ export function useSVGInteraction({
       const dy = svgPoint.y - ds.centerY;
       const radians = Math.atan2(dy, dx);
       const newAngle = normalizeAngle(radians);
+      // Delta from original angle — the wrapper <g> already renders the committed angle,
+      // so the visual transform must only apply the change to avoid double-rotation.
+      const deltaAngle = newAngle - (ds.originalProps.angle || 0);
 
       dragStateRef.current.currentAngle = newAngle;
       setInteractionState('rotating');
       setVisualTransform({
         id: ds.annotationIndex,
         dx: 0, dy: 0,
-        rotate: { angle: newAngle, cx: ds.centerX, cy: ds.centerY },
+        rotate: { angle: newAngle, deltaAngle, cx: ds.centerX, cy: ds.centerY },
       });
     }
   }, [svgRef]);
@@ -453,10 +456,23 @@ export function useSVGInteraction({
         // newScaleX/newScaleY are ratios of new size to original bbox size (originalProps.scaleX was 1)
         obj.path = scalePathData(obj.path, newScaleX, newScaleY, ds.anchorX, ds.anchorY);
       } else {
-        obj.scaleX = newScaleX;
-        obj.scaleY = newScaleY;
-        obj.left = newLeft;
-        obj.top = newTop;
+        const objType = String(obj.type || '').toLowerCase();
+        if (objType === 'textbox' || objType === 'i-text' || objType === 'text') {
+          // Text: absorb scale into width/height so text reflows instead of stretching
+          obj.width = (obj.width || 100) * (newScaleX / (ds.originalProps.scaleX || 1));
+          if (obj.height) {
+            obj.height = obj.height * (newScaleY / (ds.originalProps.scaleY || 1));
+          }
+          obj.scaleX = 1;
+          obj.scaleY = 1;
+          obj.left = newLeft;
+          obj.top = newTop;
+        } else {
+          obj.scaleX = newScaleX;
+          obj.scaleY = newScaleY;
+          obj.left = newLeft;
+          obj.top = newTop;
+        }
       }
 
       onSaveAnnotations(updatedAnnotations, {

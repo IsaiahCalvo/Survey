@@ -68,6 +68,7 @@ import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import FabricDrawingCanvas from './components/FabricDrawingCanvas';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FabricEditCanvas from './components/FabricEditCanvas';
+import FabricTextCanvas from './components/FabricTextCanvas';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
@@ -10829,6 +10830,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (activeTool === 'pen' || activeTool === 'highlighter') forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
+      else if (activeTool === 'text') forcedCursor = 'text';
       el.style.cursor = forcedCursor;
       const clearOverride = () => {
         el.style.cursor = '';
@@ -10842,7 +10844,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   useEffect(() => {
     if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'eraser') {
       setEditingAnnotation(null);
-      setNewTextPlacement(null);
     }
   }, [activeTool]);
 
@@ -10856,9 +10857,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // { pageNumber, index, type, editType ('text'|'shape'|'callout'), data }
   const [editingAnnotation, setEditingAnnotation] = useState(null);
   const editModeCooldownRef = useRef(0); // timestamp — prevents re-entering edit mode immediately after dismiss
-  // New text creation: tracks click-to-place position when text tool is active
-  // { pageNumber, x, y } -- page coordinates where new text should appear
-  const [newTextPlacement, setNewTextPlacement] = useState(null);
+  // newTextPlacement removed — FabricTextCanvas handles text creation directly
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
 
   // Callout overlay state
@@ -24506,10 +24505,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               viewBox auto-scales with the Syncfusion page div — no CSS transforms needed. */}
                           {rendererMode === 'svg' && (() => {
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
+                            const isTextTool = activeTool === 'text';
                             const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
-                            const isNewTextMode = newTextPlacement?.pageNumber === pageNumber;
 
                             return (
                             <>
@@ -24551,6 +24550,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     if (Date.now() - editModeCooldownRef.current < 300) return;
                                     const annotationData = pageAnnotations?.objects?.[annotationIndex];
                                     if (!annotationData) return;
+                                    // Non-editable types: pen strokes, highlights, lines, imported paths
+                                    if (annotationType === 'path' || annotationType === 'line') return;
                                     let editType;
                                     if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
                                       editType = 'text';
@@ -24606,37 +24607,49 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 />
                               )}
 
+                              {/* Text Canvas -- full-page overlay for text creation (cursor-correct via native zoom) */}
+                              {isTextTool && (
+                                <FabricTextCanvas
+                                  key={`text-${pageNumber}`}
+                                  pageNumber={pageNumber}
+                                  pageWidth={resolvedPageSize.width}
+                                  pageHeight={resolvedPageSize.height}
+                                  strokeColor={strokeColor}
+                                  annotations={pageAnnotations}
+                                  onTextCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'text:commit', tool: 'text' })}
+                                  selectedModuleId={selectedModuleId}
+                                  activeRegionId={activeRegionId}
+                                  zoomGeneration={zoomGeneration}
+                                />
+                              )}
+
                               {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
-                              {(isEditMode || isNewTextMode) && (
+                              {isEditMode && (
                                 <FabricEditCanvas
                                   key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}`}
                                   pageNumber={pageNumber}
                                   pageWidth={resolvedPageSize.width}
                                   pageHeight={resolvedPageSize.height}
-                                  editType={isNewTextMode ? 'text' : editingAnnotation.editType}
-                                  annotationData={isNewTextMode ? null : editingAnnotation.data}
-                                  annotationIndex={isNewTextMode ? -1 : editingAnnotation.index}
+                                  editType={editingAnnotation.editType}
+                                  annotationData={editingAnnotation.data}
+                                  annotationIndex={editingAnnotation.index}
                                   annotations={pageAnnotations}
                                   onEditCommit={(updatedJSON) => {
                                     handleSaveAnnotations(pageNumber, updatedJSON, {
                                       source: 'edit:commit',
-                                      action: isNewTextMode ? 'text:new' : editingAnnotation.editType,
+                                      action: editingAnnotation.editType,
                                       checkpointPolicy: 'normal',
                                     });
                                     editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
-                                    setNewTextPlacement(null);
                                   }}
                                   onEditCancel={() => {
                                     editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
-                                    setNewTextPlacement(null);
                                   }}
                                   strokeColor={strokeColor}
                                   zoomGeneration={zoomGeneration}
                                   viewerScale={scale}
-                                  isNewText={isNewTextMode}
-                                  clickPosition={isNewTextMode ? { x: newTextPlacement.x, y: newTextPlacement.y } : null}
                                 />
                               )}
                             </>
@@ -24770,10 +24783,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 )}
                                 {pageSizes[pageNumber] && rendererMode === 'svg' && (() => {
                                   const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
+                                  const isTextTool = activeTool === 'text';
                                   const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter';
                                   const isEraserTool = activeTool === 'eraser';
                                   const isEditMode = editingAnnotation?.pageNumber === pageNumber;
-                                  const isNewTextMode = newTextPlacement?.pageNumber === pageNumber;
                                   const pageAnnotationsCS = annotationsByPage[pageNumber];
 
                                   return (
@@ -24805,6 +24818,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         if (Date.now() - editModeCooldownRef.current < 300) return;
                                         const annotationData = pageAnnotationsCS?.objects?.[annotationIndex];
                                         if (!annotationData) return;
+                                        // Non-editable types: pen strokes, highlights, lines, imported paths
+                                        if (annotationType === 'path' || annotationType === 'line') return;
                                         let editType;
                                         if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
                                           editType = 'text';
@@ -24860,37 +24875,49 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       />
                                     )}
 
+                                    {/* Text Canvas -- full-page overlay for text creation (cursor-correct via native zoom) */}
+                                    {isTextTool && (
+                                      <FabricTextCanvas
+                                        key={`text-${pageNumber}`}
+                                        pageNumber={pageNumber}
+                                        pageWidth={pageSizes[pageNumber].width}
+                                        pageHeight={pageSizes[pageNumber].height}
+                                        strokeColor={strokeColor}
+                                        annotations={pageAnnotationsCS}
+                                        onTextCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'text:commit', tool: 'text' })}
+                                        selectedModuleId={selectedModuleId}
+                                        activeRegionId={activeRegionId}
+                                        zoomGeneration={zoomGeneration}
+                                      />
+                                    )}
+
                                     {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
-                                    {(isEditMode || isNewTextMode) && (
+                                    {isEditMode && (
                                       <FabricEditCanvas
                                         key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}`}
                                         pageNumber={pageNumber}
                                         pageWidth={pageSizes[pageNumber].width}
                                         pageHeight={pageSizes[pageNumber].height}
-                                        editType={isNewTextMode ? 'text' : editingAnnotation.editType}
-                                        annotationData={isNewTextMode ? null : editingAnnotation.data}
-                                        annotationIndex={isNewTextMode ? -1 : editingAnnotation.index}
+                                        editType={editingAnnotation.editType}
+                                        annotationData={editingAnnotation.data}
+                                        annotationIndex={editingAnnotation.index}
                                         annotations={pageAnnotationsCS}
                                         onEditCommit={(updatedJSON) => {
                                           handleSaveAnnotations(pageNumber, updatedJSON, {
                                             source: 'edit:commit',
-                                            action: isNewTextMode ? 'text:new' : editingAnnotation.editType,
+                                            action: editingAnnotation.editType,
                                             checkpointPolicy: 'normal',
                                           });
                                           editModeCooldownRef.current = Date.now();
                                           setEditingAnnotation(null);
-                                          setNewTextPlacement(null);
                                         }}
                                         onEditCancel={() => {
                                           editModeCooldownRef.current = Date.now();
                                           setEditingAnnotation(null);
-                                          setNewTextPlacement(null);
                                         }}
                                         strokeColor={strokeColor}
                                         zoomGeneration={zoomGeneration}
                                         viewerScale={scale}
-                                        isNewText={isNewTextMode}
-                                        clickPosition={isNewTextMode ? { x: newTextPlacement.x, y: newTextPlacement.y } : null}
                                       />
                                     )}
                                   </>
@@ -25357,6 +25384,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               title="Draw"
             >
               <Icon name="pen" size={22} />
+            </button>
+
+            {/* Shape Category Button */}
+            <button
+              onClick={() => {
+                const isActive = activeCategoryDropdown === 'shape';
+                setActiveCategoryDropdown(isActive ? null : 'shape');
+                if (!isActive) {
+                  if (!['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
+                    setActiveTool(lastShapeTool);
+                  }
+                }
+              }}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setTooltip({ visible: true, text: 'Shapes', x: rect.left + rect.width / 2, y: rect.top - 10 });
+              }}
+              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+              title="Shapes"
+            >
+              <Icon name="rect" size={22} />
+            </button>
+
+            {/* Text Category Button */}
+            <button
+              onClick={() => {
+                const isActive = activeCategoryDropdown === 'review';
+                setActiveCategoryDropdown(isActive ? null : 'review');
+                if (!isActive) {
+                  if (!['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
+                    setActiveTool(lastReviewTool);
+                  }
+                }
+              }}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setTooltip({ visible: true, text: 'Text', x: rect.left + rect.width / 2, y: rect.top - 10 });
+              }}
+              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'review' || ['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+              title="Text"
+            >
+              <Icon name="text" size={22} />
             </button>
 
             {/* Survey Category Button (Conditional) */}

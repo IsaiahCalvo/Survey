@@ -20,10 +20,39 @@
  *
  * Phase 11 Plan 01: Final user-facing feature of v2.0 SVG migration.
  */
-import React, { memo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { memo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
+// measureTextBounds removed — edit canvas uses Textbox wrapping width, not tight text bounds
+
+// Fix Fabric.js 5.x cursor overlap bug: cursor was centered on character boundary
+// with `- cursorWidth / 2`, causing leftward drift at fractional zoom.
+// Patch: place cursor at the right edge of the boundary instead of centering.
+// Ref: fabric.js GitHub issues #5008, #6168, #4479
+const _origRenderCursor = fabric.IText.prototype.renderCursor;
+fabric.IText.prototype.renderCursor = function(boundaries, ctx) {
+  const cursorLocation = this.get2DCursorLocation();
+  const lineIndex = cursorLocation.lineIndex;
+  const charIndex = cursorLocation.charIndex > 0 ? cursorLocation.charIndex - 1 : 0;
+  const charHeight = this.getValueOfPropertyAt(lineIndex, charIndex, 'fontSize');
+  const multiplier = this.scaleX * this.canvas.getZoom();
+  const cursorWidth = this.cursorWidth / multiplier;
+  let topOffset = boundaries.topOffset;
+  const dy = this.getValueOfPropertyAt(lineIndex, charIndex, 'deltaY');
+  topOffset += (1 - this._fontSizeFraction) * this.getHeightOfLine(lineIndex) / this.lineHeight
+    - charHeight * (1 - this._fontSizeFraction);
+  if (this.inCompositionMode) { this.renderSelection(boundaries, ctx); }
+  ctx.fillStyle = this.cursorColor || this.getValueOfPropertyAt(lineIndex, charIndex, 'fill');
+  ctx.globalAlpha = this.__isMousedown ? 1 : this._currentCursorOpacity;
+  // FIX: place cursor at right edge of boundary (removed `- cursorWidth / 2`)
+  ctx.fillRect(
+    boundaries.left + boundaries.leftOffset,
+    topOffset + boundaries.top + dy,
+    cursorWidth,
+    charHeight
+  );
+};
 
 // Custom properties to include in object serialization (matches FabricDrawingCanvas/FabricEraserCanvas)
 const CUSTOM_PROPS = [
@@ -34,6 +63,20 @@ const CUSTOM_PROPS = [
 ];
 
 const BBOX_PADDING = 20;
+
+/**
+ * Build CSS transform chain that replicates SVG's transformation order for rotated annotations.
+ * SVG applies: viewBox non-uniform scale × rotate(angle, center) — rotation in page-space
+ * before screen scaling. CSS must match this order: scale(sx,sy) first, then translate+rotate.
+ * When sx ≠ sy, scale × rotate ≠ rotate × scale, so the order matters.
+ */
+function buildBboxTransform(sx, sy, annLeft, annTop, annWidth, annHeight, annAngle) {
+  const tx = annLeft - BBOX_PADDING;
+  const ty = annTop - BBOX_PADDING;
+  const cx = annWidth / 2 + BBOX_PADDING;
+  const cy = annHeight / 2 + BBOX_PADDING;
+  return `scale(${sx}, ${sy}) translate(${tx}px, ${ty}px) translate(${cx}px, ${cy}px) rotate(${annAngle}deg) translate(${-cx}px, ${-cy}px)`;
+}
 
 const DEFAULT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif';
 
@@ -253,7 +296,7 @@ const FabricEditCanvas = memo(({
   // -------------------------------------------------------------------------
   const [isLoading, setIsLoading] = useState(true);
   const [zoomTransformStyle, setZoomTransformStyle] = useState(null);
-  const [containerStyle, setContainerStyle] = useState({});
+  const [containerStyle, setContainerStyle] = useState({ visibility: 'hidden' });
 
   // -------------------------------------------------------------------------
   // Refs
@@ -274,6 +317,8 @@ const FabricEditCanvas = memo(({
   const initialZoomGenRef = useRef(zoomGeneration);
   const settleTimerRef = useRef(null);
   const committedRef = useRef(false);
+  const newTextScaleRef = useRef(null); // effectiveScale when new text uses zoom=1 pixel coords
+  const pageSpaceModeRef = useRef(false); // true when using page-space CSS transform for rotated annotations
   const annotationDataRef = useRef(annotationData);
 
   // -------------------------------------------------------------------------
@@ -314,10 +359,50 @@ const FabricEditCanvas = memo(({
     // Serialize with custom properties
     const json = activeObj.toJSON(CUSTOM_PROPS);
 
-    // For bbox mode (text/shape): reverse coordinate offset
-    if (editTypeRef.current !== 'callout' && bboxOriginRef.current) {
+    // For new text created at zoom=1 pixel coords: convert back to page-space
+    if (isNewText && newTextScaleRef.current) {
+      const es = newTextScaleRef.current;
+      const pxPad = BBOX_PADDING * es;
+      json.left = (json.left - pxPad) / es;
+      json.top = (json.top - pxPad) / es;
+      json.width = json.width / es;
+      json.fontSize = Math.round(json.fontSize / es);
+      json.scaleX = 1;
+      json.scaleY = 1;
+      // Add page-space origin offset
+      if (bboxOriginRef.current) {
+        json.left += bboxOriginRef.current.left;
+        json.top += bboxOriginRef.current.top;
+      }
+    } else if (editTypeRef.current !== 'callout' && bboxOriginRef.current) {
+      // For bbox mode (text/shape): reverse coordinate offset
       json.left = bboxOriginRef.current.left + (json.left - BBOX_PADDING);
       json.top = bboxOriginRef.current.top + (json.top - BBOX_PADDING);
+      // Restore the original rotation angle (stripped during edit for easier interaction)
+      if (bboxOriginRef.current.angle) {
+        json.angle = bboxOriginRef.current.angle;
+
+        // Compensate for dimension changes on rotated annotations (e.g. text wrapping).
+        // SVG renders: rotate(angle, left+W/2, top+H/2). When height changes, the rotation
+        // center shifts, causing the rotated visual position to jump.
+        // Fix: adjust left/top to keep the ROTATED TOP-LEFT CORNER at its original position.
+        // Math: TL_rotated = rotate_point((left,top), (left+W/2, top+H/2), angle)
+        // Solving for new left/top that preserve TL_rotated when H changes by dH:
+        //   left' = left - dH/2 * sin(angle)
+        //   top'  = top  - dH/2 * (1 - cos(angle))
+        // At angle=0 both deltas are 0 (no adjustment needed — text grows down naturally).
+        if (originalAnnotationRef.current) {
+          const orig = originalAnnotationRef.current;
+          const origH = (orig.height || 0) * (orig.scaleY || 1);
+          const newH = (json.height || 0) * (json.scaleY || 1);
+          const dh = newH - origH;
+          if (dh !== 0) {
+            const rad = json.angle * Math.PI / 180;
+            json.left -= dh / 2 * Math.sin(rad);
+            json.top  -= dh / 2 * (1 - Math.cos(rad));
+          }
+        }
+      }
     }
 
     // For paths: normalize left/top to 0 for SVG renderer compatibility
@@ -398,8 +483,12 @@ const FabricEditCanvas = memo(({
 
   // -------------------------------------------------------------------------
   // Compute container style for bbox vs full-page mode
+  // useLayoutEffect ensures the container is positioned & visible BEFORE the
+  // browser paints. This prevents a 1-frame gap where the SVG annotation is
+  // already removed but the edit container isn't visible yet — which causes a
+  // visible "jump" for rotated annotations.
   // -------------------------------------------------------------------------
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
@@ -428,12 +517,12 @@ const FabricEditCanvas = memo(({
       if (isNewText && clickPosition) {
         annLeft = clickPosition.x;
         annTop = clickPosition.y;
-        annWidth = 200; // default width for new text
-        annHeight = 40;  // default height for new text
+        annWidth = 200; // default width for new text (matches Textbox width + padding)
+        annHeight = 30;  // initial height — auto-resizes as user types
       } else if (annotationData) {
         annLeft = annotationData.left || 0;
         annTop = annotationData.top || 0;
-        annWidth = (annotationData.width || 100) * (annotationData.scaleX || 1);
+        annWidth = (annotationData.width || 200) * (annotationData.scaleX || 1);
         annHeight = (annotationData.height || 30) * (annotationData.scaleY || 1);
       } else {
         annLeft = 0;
@@ -442,17 +531,63 @@ const FabricEditCanvas = memo(({
         annHeight = 40;
       }
 
-      style = {
-        position: 'absolute',
-        left: (annLeft - BBOX_PADDING) * effectiveScale,
-        top: (annTop - BBOX_PADDING) * effectiveScale,
-        width: (annWidth + BBOX_PADDING * 2) * effectiveScale,
-        height: (annHeight + BBOX_PADDING * 2) * effectiveScale,
-        zIndex: 101,
-        pointerEvents: 'auto',
-      };
+      const annAngle = (!isNewText && annotationData?.angle) || 0;
+
+      if (annAngle) {
+        // Page-space CSS transform: replicates SVG's transformation chain to
+        // eliminate rotation mismatch. SVG does scale(sx,sy) × rotate in page-space;
+        // the old CSS approach did rotate × scale (implicit in screen-space positioning).
+        // When sx ≠ sy (preserveAspectRatio="none"), these don't commute.
+        const sx = parentEl.offsetWidth / pageWidth;
+        const sy = parentEl.offsetHeight / pageHeight;
+
+        style = {
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: annWidth + BBOX_PADDING * 2,
+          height: annHeight + BBOX_PADDING * 2,
+          zIndex: 101,
+          pointerEvents: 'auto',
+          transformOrigin: '0 0',
+          transform: buildBboxTransform(sx, sy, annLeft, annTop, annWidth, annHeight, annAngle),
+        };
+        pageSpaceModeRef.current = true;
+      } else {
+        style = {
+          position: 'absolute',
+          left: (annLeft - BBOX_PADDING) * effectiveScale,
+          top: (annTop - BBOX_PADDING) * effectiveScale,
+          width: (annWidth + BBOX_PADDING * 2) * effectiveScale,
+          height: (annHeight + BBOX_PADDING * 2) * effectiveScale,
+          zIndex: 101,
+          pointerEvents: 'auto',
+        };
+        pageSpaceModeRef.current = false;
+      }
     }
 
+    // Apply position/rotation directly to DOM SYNCHRONOUSLY so the container is
+    // pre-positioned before paint. But keep visibility HIDDEN — the canvas loading
+    // code will reveal it after determining actual text dimensions and correcting
+    // transformOrigin. This prevents a jump when stored height differs from actual
+    // text height (the resize with wrong rotation center is never visible).
+    if (container) {
+      container.style.position = style.position || '';
+      container.style.left = (typeof style.left === 'number') ? style.left + 'px' : (style.left || '');
+      container.style.top = (typeof style.top === 'number') ? style.top + 'px' : (style.top || '');
+      container.style.width = (typeof style.width === 'number') ? style.width + 'px' : (style.width || '');
+      container.style.height = (typeof style.height === 'number') ? style.height + 'px' : (style.height || '');
+      container.style.zIndex = style.zIndex || '';
+      container.style.pointerEvents = style.pointerEvents || '';
+      container.style.transform = style.transform || '';
+      container.style.transformOrigin = style.transformOrigin || '';
+      // Callout mode: visible immediately (full-page, no rotation mismatch).
+      // Text/shape bbox: stay hidden until canvas loading corrects size + transformOrigin.
+      if (editType === 'callout') {
+        container.style.visibility = 'visible';
+      }
+    }
     setContainerStyle(style);
   }, [editType, annotationData, isNewText, clickPosition, pageWidth, pageHeight]);
 
@@ -477,20 +612,26 @@ const FabricEditCanvas = memo(({
       let annWidth, annHeight;
       if (isNewText && clickPosition) {
         annWidth = 200;
-        annHeight = 40;
+        annHeight = 30;
       } else if (annotationDataRef.current) {
-        annWidth = (annotationDataRef.current.width || 100) * (annotationDataRef.current.scaleX || 1);
+        annWidth = (annotationDataRef.current.width || 200) * (annotationDataRef.current.scaleX || 1);
         annHeight = (annotationDataRef.current.height || 30) * (annotationDataRef.current.scaleY || 1);
       } else {
         annWidth = 200;
         annHeight = 40;
       }
-      canvasWidth = Math.floor((annWidth + BBOX_PADDING * 2) * effectiveScale);
-      canvasHeight = Math.floor((annHeight + BBOX_PADDING * 2) * effectiveScale);
+      if (pageSpaceModeRef.current) {
+        // Page-space mode: canvas at page-space resolution, CSS transform handles screen mapping
+        canvasWidth = Math.ceil(annWidth + BBOX_PADDING * 2);
+        canvasHeight = Math.ceil(annHeight + BBOX_PADDING * 2);
+      } else {
+        canvasWidth = Math.floor((annWidth + BBOX_PADDING * 2) * effectiveScale);
+        canvasHeight = Math.floor((annHeight + BBOX_PADDING * 2) * effectiveScale);
+      }
     }
 
     // Container-aware sizing (CLAUDE.md rule)
-    canvas.setZoom(effectiveScale);
+    canvas.setZoom(pageSpaceModeRef.current ? 1 : effectiveScale);
     canvas.setDimensions({ width: canvasWidth, height: canvasHeight });
 
     lastContainerSizeRef.current = { width: canvasWidth, height: canvasHeight };
@@ -510,16 +651,30 @@ const FabricEditCanvas = memo(({
   // -------------------------------------------------------------------------
   const loadTextAnnotation = useCallback((canvas, effectiveScale) => {
     if (isNewText) {
-      // New text creation: empty IText at click position
-      const textObj = new fabric.IText('', {
-        left: BBOX_PADDING,
-        top: BBOX_PADDING,
-        fontSize: 16,
-        fill: strokeColor || '#000000',
+      // New text creation: Textbox at click position (wraps text, visible border)
+      // Use canvas zoom=1 with pixel-space coordinates to avoid Fabric.js cursor drift bug at fractional zoom
+      canvas.setZoom(1);
+      const es = effectiveScale;
+      const pxPad = BBOX_PADDING * es;
+      const textObj = new fabric.Textbox('', {
+        left: pxPad,
+        top: pxPad,
+        width: 160 * es, // textbox width in pixels
+        fontSize: Math.round(16 * es),
+        fill: strokeColor || '#007AFF',
         fontFamily: DEFAULT_FONT_FAMILY,
+        charSpacing: 1, // Fabric.js #6168: prevents sub-pixel cursor drift
         editable: true,
         selectable: true,
         evented: true,
+        cursorColor: '#007AFF',
+        editingBorderColor: 'transparent',
+        borderColor: 'transparent',
+        backgroundColor: '',
+        textBackgroundColor: '',
+        padding: 0,
+        hasBorders: false,
+        hasControls: false,
       });
 
       bboxOriginRef.current = {
@@ -527,58 +682,122 @@ const FabricEditCanvas = memo(({
         top: clickPosition?.y ?? 0,
       };
       originalAnnotationRef.current = null;
-
-      // Hide outer selection border — only the IText editing cursor box should be visible
-      textObj.hasBorders = false;
-      textObj.hasControls = false;
+      // Store effectiveScale so commit can convert back to page-space
+      newTextScaleRef.current = es;
 
       canvas.add(textObj);
       canvas.setActiveObject(textObj);
       canvas.renderAll();
 
+      // Container is ready — reveal it
+      if (containerRef.current) containerRef.current.style.visibility = 'visible';
+      setContainerStyle(prev => ({ ...prev, visibility: 'visible' }));
+
       // Enter editing mode
       textObj.enterEditing();
+
+      // Auto-resize container to fit text height
+      const autoResize = () => {
+        if (!mountedRef.current || !containerRef.current) return;
+        const h = textObj.calcTextHeight() + pxPad * 2 + 8;
+        const newH = Math.max(Math.round(30 * es), Math.ceil(h));
+        canvas.setDimensions({ height: newH });
+        containerRef.current.style.height = newH + 'px';
+      };
+      textObj.on('changed', autoResize);
+      autoResize();
       setIsLoading(false);
     } else if (annotationDataRef.current) {
       // Editing existing text annotation
       const annData = annotationDataRef.current;
-      bboxOriginRef.current = { left: annData.left || 0, top: annData.top || 0 };
+      bboxOriginRef.current = { left: annData.left || 0, top: annData.top || 0, angle: annData.angle || 0 };
       originalAnnotationRef.current = JSON.parse(JSON.stringify(annData));
 
       fabric.util.enlivenObjects([annData], (objects) => {
         if (!mountedRef.current || objects.length === 0) return;
-        const textObj = objects[0];
+        let textObj = objects[0];
 
-        // Sanitize styles — Fabric.js 5.x enlivenObjects can leave undefined line entries
-        // in the styles object, which causes "Cannot read properties of undefined" errors
-        // in removeStyleFromTo (delete) and stylesToArray (serialize).
-        if (textObj.styles) {
-          const lineCount = (textObj.text || '').split('\n').length;
-          for (let i = 0; i < lineCount; i++) {
-            if (!textObj.styles[i]) textObj.styles[i] = {};
-          }
-        } else {
-          textObj.styles = {};
+        // Sanitize styles FIRST — Fabric.js 5.x enlivenObjects can leave undefined
+        // line entries that crash toJSON/stylesToArray.
+        textObj.styles = {};
+
+        // Convert to Textbox with character-level wrapping.
+        // IMPORTANT: Set left/top/angle in the constructor to avoid a flash
+        // where the object briefly renders at its original page-space coordinates
+        // before being repositioned to BBOX_PADDING.
+        {
+          const json = textObj.toJSON(CUSTOM_PROPS);
+          const { styles: _s, left: _l, top: _t, angle: _a, ...rest } = json;
+          textObj = new fabric.Textbox(json.text || '', {
+            ...rest,
+            type: 'textbox',
+            left: BBOX_PADDING,
+            top: BBOX_PADDING,
+            angle: 0,
+            width: json.width || 200,
+            splitByGrapheme: true,
+            fontWeight: json.fontWeight || 'normal',
+            styles: {},
+            editable: true,
+            selectable: true,
+            evented: true,
+            charSpacing: 1, // Fabric.js #6168: prevents sub-pixel cursor drift
+            cursorColor: '#007AFF',
+            editingBorderColor: 'transparent',
+            borderColor: 'transparent',
+            backgroundColor: '',
+            textBackgroundColor: '',
+            hasBorders: false,
+            hasControls: false,
+          });
         }
 
-        textObj.set({
-          left: BBOX_PADDING,
-          top: BBOX_PADDING,
-          editable: true,
-          selectable: true,
-          evented: true,
-          // Hide outer selection border — only the IText editing cursor box should be visible
-          hasBorders: false,
-          hasControls: false,
-        });
+        // Clear font cache to ensure fresh character measurements
+        fabric.util.clearFabricFontCache();
+        textObj.initDimensions();
+        textObj._clearCache();
 
+        // Add to canvas WITHOUT rendering yet (renderOnAddRemove: false)
         canvas.add(textObj);
         canvas.setActiveObject(textObj);
-        canvas.renderAll();
 
-        // Enter editing mode
+        // Resize canvas to fit actual text BEFORE first render — prevents flash
+        const actualW = textObj.width * (textObj.scaleX || 1);
+        const actualH = textObj.calcTextHeight ? textObj.calcTextHeight() : textObj.height * (textObj.scaleY || 1);
+        const es = canvas.getZoom();
+        const neededW = Math.ceil((actualW + BBOX_PADDING * 2) * es);
+        const neededH = Math.ceil((actualH + BBOX_PADDING * 2) * es);
+
+        canvas.setDimensions({ width: neededW, height: neededH });
+        if (containerRef.current) {
+          containerRef.current.style.width = neededW + 'px';
+          containerRef.current.style.height = neededH + 'px';
+          containerRef.current.style.visibility = 'visible';
+
+        }
+        // Sync React state so setIsLoading(false) re-render doesn't revert
+        // the container back to stale stored dimensions from useLayoutEffect.
+        setContainerStyle(prev => ({
+          ...prev,
+          width: neededW,
+          height: neededH,
+          visibility: 'visible',
+        }));
+
+        // NOW render and enter editing — canvas is correctly sized
+        canvas.renderAll();
         textObj.enterEditing();
         textObj.selectAll();
+
+        // Auto-resize height as text wraps — width stays fixed for wrapping
+        textObj.on('changed', () => {
+          if (!mountedRef.current || !containerRef.current) return;
+          const h = (textObj.calcTextHeight() + BBOX_PADDING * 2) * es + 8;
+          const newH = Math.max(Math.round(30 * es), Math.ceil(h));
+          canvas.setDimensions({ height: newH });
+          containerRef.current.style.height = newH + 'px';
+        });
+
         setIsLoading(false);
       });
     }
@@ -591,7 +810,7 @@ const FabricEditCanvas = memo(({
     if (!annotationDataRef.current) return;
 
     const annData = annotationDataRef.current;
-    bboxOriginRef.current = { left: annData.left || 0, top: annData.top || 0 };
+    bboxOriginRef.current = { left: annData.left || 0, top: annData.top || 0, angle: annData.angle || 0 };
     originalAnnotationRef.current = JSON.parse(JSON.stringify(annData));
 
     fabric.util.enlivenObjects([annData], (objects) => {
@@ -601,6 +820,8 @@ const FabricEditCanvas = memo(({
       obj.set({
         left: BBOX_PADDING,
         top: BBOX_PADDING,
+        // Strip rotation — CSS transform on the container handles visual rotation
+        angle: 0,
         selectable: true,
         evented: true,
         hasControls: true,
@@ -610,6 +831,9 @@ const FabricEditCanvas = memo(({
       canvas.add(obj);
       canvas.setActiveObject(obj);
       canvas.renderAll();
+      // Container is ready — reveal it
+      if (containerRef.current) containerRef.current.style.visibility = 'visible';
+      setContainerStyle(prev => ({ ...prev, visibility: 'visible' }));
       setIsLoading(false);
     });
   }, []);
@@ -801,6 +1025,47 @@ const FabricEditCanvas = memo(({
       const newParentWidth = parentEl.offsetWidth;
       if (newParentWidth <= 0 || pageWidth <= 0) return;
 
+      // Page-space mode: canvas stays at page-space resolution, only update CSS transform
+      if (pageSpaceModeRef.current) {
+        const newSx = newParentWidth / pageWidth;
+        const newSy = parentEl.offsetHeight / pageHeight;
+        const annData = annotationDataRef.current;
+        const annAngle = bboxOriginRef.current?.angle || 0;
+
+        if (annData && annAngle) {
+          const annLeft = annData.left || 0;
+          const annTop = annData.top || 0;
+          const annWidth = (annData.width || 100) * (annData.scaleX || 1);
+          const annHeight = (annData.height || 30) * (annData.scaleY || 1);
+
+          // Update CSS transform with new scale factors (instant visual feedback)
+          setContainerStyle(prev => ({
+            ...prev,
+            transform: buildBboxTransform(newSx, newSy, annLeft, annTop, annWidth, annHeight, annAngle),
+          }));
+        }
+
+        // Settle timer for cursor restoration only
+        if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = setTimeout(() => {
+          settleTimerRef.current = null;
+          if (editTypeRef.current === 'text') {
+            const canvas = fabricRef.current;
+            if (canvas) {
+              const activeObj = canvas.getActiveObject();
+              if (activeObj && cursorPositionRef.current != null) {
+                if (!activeObj.isEditing) activeObj.enterEditing();
+                activeObj.selectionStart = cursorPositionRef.current;
+                activeObj.selectionEnd = cursorPositionRef.current;
+                canvas.renderAll();
+              }
+            }
+          }
+        }, 200);
+
+        return; // Skip screen-space logic
+      }
+
       const lastSize = lastContainerSizeRef.current;
       if (lastSize.width > 0) {
         // During zoom: apply CSS transform as visual bridge (ZOOM-02)
@@ -916,12 +1181,21 @@ const FabricEditCanvas = memo(({
 
       const parentEl = containerRef.current?.parentElement;
       if (!parentEl || pageWidth <= 0) return;
-      const effectiveScale = parentEl.offsetWidth / pageWidth;
 
-      const neededWidth = (obj.width * (obj.scaleX || 1) + BBOX_PADDING * 2) * effectiveScale;
-      const neededHeight = (obj.height * (obj.scaleY || 1) + BBOX_PADDING * 2) * effectiveScale;
-      const maxWidth = parentEl.offsetWidth;
-      const maxHeight = parentEl.offsetHeight;
+      let neededWidth, neededHeight, maxWidth, maxHeight;
+      if (pageSpaceModeRef.current) {
+        // Page-space mode: dimensions in page-space, CSS transform handles screen mapping
+        neededWidth = obj.width * (obj.scaleX || 1) + BBOX_PADDING * 2;
+        neededHeight = obj.height * (obj.scaleY || 1) + BBOX_PADDING * 2;
+        maxWidth = pageWidth;
+        maxHeight = pageHeight;
+      } else {
+        const effectiveScale = parentEl.offsetWidth / pageWidth;
+        neededWidth = (obj.width * (obj.scaleX || 1) + BBOX_PADDING * 2) * effectiveScale;
+        neededHeight = (obj.height * (obj.scaleY || 1) + BBOX_PADDING * 2) * effectiveScale;
+        maxWidth = parentEl.offsetWidth;
+        maxHeight = parentEl.offsetHeight;
+      }
 
       const currentW = canvas.getWidth();
       const currentH = canvas.getHeight();
@@ -978,7 +1252,10 @@ const FabricEditCanvas = memo(({
       )}
       <div
         ref={containerRef}
-        style={{ ...containerStyle, ...zoomTransformStyle }}
+        style={{
+          ...containerStyle,
+          ...zoomTransformStyle,
+        }}
       >
         <canvas ref={canvasElRef} />
       </div>
