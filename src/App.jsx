@@ -24272,7 +24272,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           {rendererMode === 'svg' && (() => {
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                             const isTextTool = activeTool === 'text';
-                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter';
+                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
 
@@ -24560,7 +24560,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 {pageSizes[pageNumber] && rendererMode === 'svg' && (() => {
                                   const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                                   const isTextTool = activeTool === 'text';
-                                  const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter';
+                                  const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
                                   const isEraserTool = activeTool === 'eraser';
                                   const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                                   const pageAnnotationsCS = annotationsByPage[pageNumber];

@@ -123,6 +123,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
   // This escapes all Syncfusion stacking contexts so clicks actually reach the toolbar.
   const container = containerRef.current;
   const containerRect = container ? container.getBoundingClientRect() : null;
+  console.log('[MiniToolbar] render — containerRect:', containerRect ? { left: containerRect.left, top: containerRect.top, w: containerRect.width, h: containerRect.height } : null);
   const positionStyle = {
     position: 'fixed',
     left: containerRect ? containerRect.left : 0,
@@ -195,13 +196,22 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
         height: 36,
         boxSizing: 'border-box',
       }}
-      onMouseDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => {
+        console.log('[MiniToolbar] mousedown on toolbar root', { target: e.target.tagName, className: e.target.className });
+        e.stopPropagation();
+      }}
+      onClick={(e) => {
+        console.log('[MiniToolbar] click on toolbar root', { target: e.target.tagName, className: e.target.className });
+      }}
+      onPointerDown={(e) => {
+        console.log('[MiniToolbar] pointerdown on toolbar root', { target: e.target.tagName, className: e.target.className });
+      }}
     >
       {/* Fill */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
         <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>Fill:</span>
         <div
-          onClick={() => { setShowFillPicker(!showFillPicker); setShowStrokePicker(false); }}
+          onClick={() => { console.log('[MiniToolbar] FILL swatch clicked'); setShowFillPicker(!showFillPicker); setShowStrokePicker(false); }}
           style={{
             width: 16, height: 16,
             backgroundColor: fill === 'transparent' ? 'transparent' : fill,
@@ -226,7 +236,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
         <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>Stroke:</span>
         <div
-          onClick={() => { setShowStrokePicker(!showStrokePicker); setShowFillPicker(false); }}
+          onClick={() => { console.log('[MiniToolbar] STROKE swatch clicked'); setShowStrokePicker(!showStrokePicker); setShowFillPicker(false); }}
           style={{
             width: 16, height: 16,
             backgroundColor: stroke,
@@ -248,7 +258,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>Width:</span>
         <button
-          onClick={() => handleStrokeWidthChange(-1)}
+          onClick={() => { console.log('[MiniToolbar] WIDTH minus clicked'); handleStrokeWidthChange(-1); }}
           style={{
             width: 20, height: 20,
             background: '#444', border: '1px solid #555', borderRadius: 2,
@@ -261,7 +271,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
           {strokeW}px
         </span>
         <button
-          onClick={() => handleStrokeWidthChange(1)}
+          onClick={() => { console.log('[MiniToolbar] WIDTH plus clicked'); handleStrokeWidthChange(1); }}
           style={{
             width: 20, height: 20,
             background: '#444', border: '1px solid #555', borderRadius: 2,
@@ -983,7 +993,32 @@ const FabricEditCanvas = memo(({
       // Check if click coordinates are inside the mini-toolbar (rect-based — immune to Syncfusion layer interception)
       const toolbar = document.querySelector('[data-mini-toolbar]');
       if (toolbar && isPointInRect(e.clientX, e.clientY, toolbar)) {
-        console.log(`[EditCanvas p${pageNumber}] click INSIDE mini-toolbar (rect) — ignoring`);
+        const targetInToolbar = toolbar.contains(e.target);
+        const toolbarRect = toolbar.getBoundingClientRect();
+        console.log(`[EditCanvas p${pageNumber}] click INSIDE mini-toolbar (rect)`, {
+          targetInToolbar,
+          eventTarget: e.target.tagName + (e.target.className ? '.' + e.target.className : ''),
+          toolbarRect: { l: toolbarRect.left, t: toolbarRect.top, w: toolbarRect.width, h: toolbarRect.height },
+          click: { x: e.clientX, y: e.clientY },
+        });
+        // Browser hit-testing may resolve to a Syncfusion element underneath the toolbar
+        // (z-index stacking context issues). If the target isn't inside the toolbar,
+        // stop the event and manually re-dispatch to the correct toolbar child.
+        if (!targetInToolbar) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          // Find the deepest toolbar child at these coordinates
+          const allChildren = toolbar.querySelectorAll('*');
+          let deepest = toolbar;
+          for (const child of allChildren) {
+            const cr = child.getBoundingClientRect();
+            if (e.clientX >= cr.left && e.clientX <= cr.right && e.clientY >= cr.top && e.clientY <= cr.bottom) {
+              deepest = child;
+            }
+          }
+          console.log(`[EditCanvas p${pageNumber}] re-dispatching click to`, deepest.tagName, deepest.textContent?.substring(0, 20));
+          deepest.click();
+        }
         return;
       }
 

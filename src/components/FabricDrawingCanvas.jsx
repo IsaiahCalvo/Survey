@@ -29,6 +29,8 @@ const CUSTOM_PROPS = [
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType',
 ];
 
+const SHAPE_TOOLS = ['rect', 'ellipse', 'line', 'arrow'];
+
 const FabricDrawingCanvas = memo(({
   pageNumber,
   pageWidth,
@@ -51,6 +53,7 @@ const FabricDrawingCanvas = memo(({
   const sessionPathsRef = useRef([]);
   const annotationsRef = useRef(annotations);
   const previousObjectCountRef = useRef(annotations?.objects?.length ?? 0);
+  const shapeDrawingRef = useRef({ isDrawing: false, startX: 0, startY: 0, shape: null });
 
   // Refs to avoid stale closures in event handlers
   const activeToolRef = useRef(activeTool);
@@ -78,12 +81,13 @@ const FabricDrawingCanvas = memo(({
   // -------------------------------------------------------------------------
   // Canvas lifecycle (useFabricCanvas hook)
   // -------------------------------------------------------------------------
+  const isShapeTool = SHAPE_TOOLS.includes(activeTool);
   const { fabricRef } = useFabricCanvas({
     canvasElRef,
     onBeforeDisposeRef,
     options: {
       backgroundColor: 'transparent',
-      isDrawingMode: true,
+      isDrawingMode: !isShapeTool,
       selection: false,
       enableRetinaScaling: true,
       stopContextMenu: true,
@@ -96,6 +100,7 @@ const FabricDrawingCanvas = memo(({
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas || !containerRef.current) return;
+    console.log(`[DrawCanvas p${pageNumber}] MOUNT — tool=${activeTool}, isShape=${SHAPE_TOOLS.includes(activeTool)}, isDrawingMode=${canvas.isDrawingMode}`);
 
     // Container-aware sizing (CLAUDE.md rule)
     const containerWidth = containerRef.current.offsetWidth;
@@ -106,19 +111,20 @@ const FabricDrawingCanvas = memo(({
       canvas.setHeight(Math.floor(pageHeight * effectiveScale));
     }
 
-    // Set up PencilBrush
-    canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
     canvas.defaultCursor = 'crosshair';
     canvas.freeDrawingCursor = 'crosshair';
 
-    // Configure initial brush settings
-    const brush = canvas.freeDrawingBrush;
-    if (activeToolRef.current === 'highlighter') {
-      brush.color = highlightColor;
-      brush.width = Math.max(strokeWidth, 8);
-    } else {
-      brush.color = strokeColor;
-      brush.width = strokeWidth;
+    // Set up PencilBrush for pen/highlighter (shape tools use mouse handlers instead)
+    if (!SHAPE_TOOLS.includes(activeToolRef.current)) {
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+      const brush = canvas.freeDrawingBrush;
+      if (activeToolRef.current === 'highlighter') {
+        brush.color = highlightColor;
+        brush.width = Math.max(strokeWidth, 8);
+      } else {
+        brush.color = strokeColor;
+        brush.width = strokeWidth;
+      }
     }
 
     // path:created handler -- per-stroke commit
@@ -187,6 +193,137 @@ const FabricDrawingCanvas = memo(({
     // Pre-unmount flush is handled by onBeforeDisposeRef (runs before canvas.off()).
     // No cleanup needed here.
   }, []); // Mount only
+
+  // -------------------------------------------------------------------------
+  // Shape drawing: mouse handlers for rect/ellipse/line/arrow
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const isShape = SHAPE_TOOLS.includes(activeToolRef.current);
+    canvas.isDrawingMode = !isShape;
+    console.log(`[DrawCanvas p${pageNumber}] shape effect — tool=${activeToolRef.current}, isShape=${isShape}, isDrawingMode=${canvas.isDrawingMode}`);
+    if (!isShape) return;
+
+    const getPointer = (e) => canvas.getPointer(e.e);
+
+    const commitShape = (shape) => {
+      const shapeJSON = shape.toJSON(CUSTOM_PROPS);
+      if (selectedModuleIdRef.current) shapeJSON.moduleId = selectedModuleIdRef.current;
+      if (activeRegionIdRef.current) shapeJSON.regionId = activeRegionIdRef.current;
+
+      sessionPathsRef.current.push(shape);
+      canvas.remove(shape);
+
+      const currentAnnotations = annotationsRef.current;
+      const updated = {
+        ...currentAnnotations,
+        objects: [...(currentAnnotations?.objects || []), shapeJSON],
+      };
+      onStrokeCommitRef.current(updated);
+    };
+
+    const onMouseDown = (opt) => {
+      const pointer = getPointer(opt);
+      console.log(`[DrawCanvas p${pageNumber}] shape mousedown at (${pointer.x.toFixed(0)}, ${pointer.y.toFixed(0)}), tool=${activeToolRef.current}`);
+      const state = shapeDrawingRef.current;
+      state.isDrawing = true;
+      state.startX = pointer.x;
+      state.startY = pointer.y;
+
+      const tool = activeToolRef.current;
+      const color = strokeColor;
+      const sw = strokeWidth;
+
+      if (tool === 'rect') {
+        state.shape = new fabric.Rect({
+          left: pointer.x, top: pointer.y, width: 0, height: 0,
+          fill: 'transparent', stroke: color, strokeWidth: sw, strokeUniform: true,
+        });
+      } else if (tool === 'ellipse') {
+        state.shape = new fabric.Ellipse({
+          left: pointer.x, top: pointer.y, rx: 0, ry: 0,
+          fill: 'transparent', stroke: color, strokeWidth: sw, strokeUniform: true,
+        });
+      } else if (tool === 'line' || tool === 'arrow') {
+        state.shape = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
+          stroke: color, strokeWidth: sw, strokeUniform: true,
+        });
+      }
+
+      if (state.shape) {
+        canvas.add(state.shape);
+        canvas.renderAll();
+      }
+    };
+
+    const onMouseMove = (opt) => {
+      const state = shapeDrawingRef.current;
+      if (!state.isDrawing || !state.shape) return;
+      const pointer = getPointer(opt);
+      const tool = activeToolRef.current;
+
+      if (tool === 'rect') {
+        const left = Math.min(state.startX, pointer.x);
+        const top = Math.min(state.startY, pointer.y);
+        state.shape.set({
+          left, top,
+          width: Math.abs(pointer.x - state.startX),
+          height: Math.abs(pointer.y - state.startY),
+        });
+      } else if (tool === 'ellipse') {
+        const left = Math.min(state.startX, pointer.x);
+        const top = Math.min(state.startY, pointer.y);
+        state.shape.set({
+          left, top,
+          rx: Math.abs(pointer.x - state.startX) / 2,
+          ry: Math.abs(pointer.y - state.startY) / 2,
+        });
+      } else if (tool === 'line' || tool === 'arrow') {
+        state.shape.set({ x2: pointer.x, y2: pointer.y });
+      }
+
+      canvas.renderAll();
+    };
+
+    const onMouseUp = () => {
+      const state = shapeDrawingRef.current;
+      if (!state.isDrawing || !state.shape) return;
+      state.isDrawing = false;
+
+      // Only commit if shape has meaningful size
+      const s = state.shape;
+      const tool = activeToolRef.current;
+      let hasSize = false;
+      if (tool === 'rect') hasSize = s.width > 2 && s.height > 2;
+      else if (tool === 'ellipse') hasSize = s.rx > 1 && s.ry > 1;
+      else if (tool === 'line' || tool === 'arrow') {
+        const dx = s.x2 - s.x1, dy = s.y2 - s.y1;
+        hasSize = Math.sqrt(dx * dx + dy * dy) > 3;
+      }
+
+      console.log(`[DrawCanvas p${pageNumber}] shape mouseup — tool=${activeToolRef.current}, hasSize=${hasSize}`, s ? { left: s.left, top: s.top, w: s.width, h: s.height } : null);
+      if (hasSize) {
+        commitShape(s);
+      } else {
+        canvas.remove(s);
+        console.log(`[DrawCanvas p${pageNumber}] shape too small, discarded`);
+      }
+      state.shape = null;
+      canvas.renderAll();
+    };
+
+    canvas.on('mouse:down', onMouseDown);
+    canvas.on('mouse:move', onMouseMove);
+    canvas.on('mouse:up', onMouseUp);
+
+    return () => {
+      canvas.off('mouse:down', onMouseDown);
+      canvas.off('mouse:move', onMouseMove);
+      canvas.off('mouse:up', onMouseUp);
+    };
+  }, [activeTool, strokeColor, strokeWidth]);
 
   // -------------------------------------------------------------------------
   // Sync refs to avoid stale closures
