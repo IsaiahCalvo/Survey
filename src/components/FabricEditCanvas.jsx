@@ -21,6 +21,7 @@
  * Phase 11 Plan 01: Final user-facing feature of v2.0 SVG migration.
  */
 import React, { memo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { flushSync } from 'react-dom';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
@@ -118,17 +119,20 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
     updateProperty('strokeWidth', newW);
   }, [strokeW, updateProperty]);
 
-  // Position: 8px above the edit Canvas container
+  // Position: 8px above the edit Canvas container, using screen coords via portal to document.body
+  // This escapes all Syncfusion stacking contexts so clicks actually reach the toolbar.
+  const container = containerRef.current;
+  const containerRect = container ? container.getBoundingClientRect() : null;
   const positionStyle = {
-    position: 'absolute',
-    left: editCanvasStyle?.left ?? 0,
-    top: (editCanvasStyle?.top ?? 0) - 44,
-    zIndex: 102,
+    position: 'fixed',
+    left: containerRect ? containerRect.left : 0,
+    top: containerRect ? containerRect.top - 44 : 0,
+    zIndex: 999999,
   };
 
   // If not enough space above, position below
-  if (positionStyle.top < 0) {
-    positionStyle.top = (editCanvasStyle?.top ?? 0) + (editCanvasStyle?.height ?? 0) + 8;
+  if (positionStyle.top < 0 && containerRect) {
+    positionStyle.top = containerRect.bottom + 8;
   }
 
   const PRESET_COLORS = [
@@ -172,7 +176,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
     </div>
   );
 
-  return (
+  return createPortal(
     <div
       ref={toolbarRef}
       data-mini-toolbar
@@ -267,7 +271,8 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
           }}
         >+</button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 });
 
@@ -958,27 +963,32 @@ const FabricEditCanvas = memo(({
   // Click-outside detection
   // -------------------------------------------------------------------------
   useEffect(() => {
+    // Helper: check if click coordinates are inside an element's bounding rect.
+    // This works even when Syncfusion layers intercept the event target.
+    const isPointInRect = (x, y, el) => {
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    };
+
     const handleMouseDown = (e) => {
       if (committedRef.current) return;
 
       const container = containerRef.current;
       if (!container) return;
 
-      // Check if click is inside the Canvas container or mini-toolbar
-      if (container.contains(e.target)) return;
+      // Check if click coordinates are inside the Canvas container
+      if (isPointInRect(e.clientX, e.clientY, container)) return;
 
-      // Check if click is inside the mini-toolbar
+      // Check if click coordinates are inside the mini-toolbar (rect-based — immune to Syncfusion layer interception)
       const toolbar = document.querySelector('[data-mini-toolbar]');
-      if (toolbar && toolbar.contains(e.target)) {
-        console.log(`[EditCanvas p${pageNumber}] click INSIDE mini-toolbar — ignoring`);
+      if (toolbar && isPointInRect(e.clientX, e.clientY, toolbar)) {
+        console.log(`[EditCanvas p${pageNumber}] click INSIDE mini-toolbar (rect) — ignoring`);
         return;
       }
 
-      // Click is outside -- commit and close.
-      const toolbarEl = document.querySelector('[data-mini-toolbar]');
-      const svgWrapper = e.target.closest?.('[style*="z-index"]') || e.target.parentElement;
-      const svgWrapperPE = svgWrapper ? getComputedStyle(svgWrapper).pointerEvents : 'N/A';
-      console.log(`[EditCanvas p${pageNumber}] click OUTSIDE — committing (editType=${editTypeRef.current}, target=${e.target.tagName}.${e.target.className?.toString?.().slice(0,30) || ''}, toolbarExists=${!!toolbarEl}, svgWrapperPE=${svgWrapperPE}, targetPE=${getComputedStyle(e.target).pointerEvents})`);
+      // Click is outside both canvas and toolbar — commit and close
+      console.log(`[EditCanvas p${pageNumber}] click OUTSIDE — committing (editType=${editTypeRef.current}, target=${e.target.tagName})`);
       commitAndClose();
     };
 

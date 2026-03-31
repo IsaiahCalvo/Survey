@@ -10828,6 +10828,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // { pageNumber, index, type, editType ('text'|'shape'|'callout'), data }
   const [editingAnnotation, setEditingAnnotation] = useState(null);
   const editModeCooldownRef = useRef(0); // timestamp — prevents re-entering edit mode immediately after dismiss
+
+  // Disable ALL Syncfusion interactive layers during annotation edit mode via injected <style>.
+  // Covers .e-pv-text-layer, .e-pv-annotation-canvas, and any other Syncfusion overlay.
+  // Using a <style> tag instead of querySelectorAll ensures dynamically-added elements are caught.
+  useEffect(() => {
+    if (!editingAnnotation) return;
+    const style = document.createElement('style');
+    style.dataset.editMode = 'true';
+    style.textContent = `
+      .e-pv-text-layer,
+      .e-pv-annotation-canvas,
+      .e-pv-text-selection-layer,
+      .e-pv-hyperlink-layer,
+      .e-pv-page-div > canvas {
+        pointer-events: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { style.remove(); };
+  }, [editingAnnotation]);
+
   // newTextPlacement removed — FabricTextCanvas handles text creation directly
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
 
