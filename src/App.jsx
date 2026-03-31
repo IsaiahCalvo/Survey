@@ -24265,13 +24265,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   left: 0,
                                   width: '100%',
                                   height: '100%',
-                                  pointerEvents: svgInteractive ? 'auto' : 'none',
+                                  pointerEvents: (svgInteractive && !isEditMode) ? 'auto' : 'none',
                                   zIndex: 100,
                                   visibility: (isEraserTool || (isEditMode && editingAnnotation?.editType === 'callout')) ? 'hidden' : 'visible',
-                                  cursor: svgInteractive ? 'default' : undefined,
+                                  cursor: (svgInteractive && !isEditMode) ? 'default' : undefined,
                                 }}
-                                onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
-                                onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
+                                onPointerDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
+                                onMouseDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
                               >
                                 <SVGAnnotationLayer
                                   pageNumber={pageNumber}
@@ -24292,11 +24292,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
                                   onRequestEditMode={(annotationIndex, annotationType) => {
                                     // Cooldown: prevent re-entering edit mode within 300ms of dismissal
-                                    if (Date.now() - editModeCooldownRef.current < 300) return;
+                                    if (Date.now() - editModeCooldownRef.current < 300) {
+                                      console.log(`[App p${pageNumber}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
+                                      return;
+                                    }
                                     const annotationData = pageAnnotations?.objects?.[annotationIndex];
-                                    if (!annotationData) return;
+                                    if (!annotationData) {
+                                      console.warn(`[App p${pageNumber}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
+                                      return;
+                                    }
                                     // Non-editable types: pen strokes, highlights, lines, imported paths
-                                    if (annotationType === 'path' || annotationType === 'line') return;
+                                    if (annotationType === 'path' || annotationType === 'line') {
+                                      console.log(`[App p${pageNumber}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`);
+                                      return;
+                                    }
                                     let editType;
                                     if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
                                       editType = 'text';
@@ -24305,6 +24314,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     } else {
                                       editType = 'callout';
                                     }
+                                    console.log(`[App p${pageNumber}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
                                     setEditingAnnotation({
                                       pageNumber,
                                       index: annotationIndex,
@@ -24538,9 +24548,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   <>
                                     {/* SVG layer -- hidden when eraser or callout edit is mounted */}
                                     <div
-                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: svgInteractive ? 'auto' : 'none', zIndex: 100, visibility: (isEraserTool || (isEditMode && editingAnnotation?.editType === 'callout')) ? 'hidden' : 'visible', cursor: svgInteractive ? 'default' : undefined }}
-                                      onPointerDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
-                                      onMouseDown={svgInteractive ? (e) => e.stopPropagation() : undefined}
+                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: (svgInteractive && !isEditMode) ? 'auto' : 'none', zIndex: 100, visibility: (isEraserTool || (isEditMode && editingAnnotation?.editType === 'callout')) ? 'hidden' : 'visible', cursor: (svgInteractive && !isEditMode) ? 'default' : undefined }}
+                                      onPointerDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
+                                      onMouseDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
                                     >
                                     <SVGAnnotationLayer
                                       pageNumber={pageNumber}
@@ -24560,11 +24570,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       layerVisibility={annotationLayerVisibility}
                                       onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
                                       onRequestEditMode={(annotationIndex, annotationType) => {
-                                        if (Date.now() - editModeCooldownRef.current < 300) return;
+                                        if (Date.now() - editModeCooldownRef.current < 300) {
+                                          console.log(`[App p${pageNumber}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
+                                          return;
+                                        }
                                         const annotationData = pageAnnotationsCS?.objects?.[annotationIndex];
-                                        if (!annotationData) return;
+                                        if (!annotationData) {
+                                          console.warn(`[App p${pageNumber}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
+                                          return;
+                                        }
                                         // Non-editable types: pen strokes, highlights, lines, imported paths
-                                        if (annotationType === 'path' || annotationType === 'line') return;
+                                        if (annotationType === 'path' || annotationType === 'line') {
+                                          console.log(`[App p${pageNumber}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`);
+                                          return;
+                                        }
                                         let editType;
                                         if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
                                           editType = 'text';
@@ -24573,6 +24592,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         } else {
                                           editType = 'callout';
                                         }
+                                        console.log(`[App p${pageNumber}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
                                         setEditingAnnotation({
                                           pageNumber,
                                           index: annotationIndex,

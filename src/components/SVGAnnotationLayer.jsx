@@ -89,8 +89,9 @@ const SVGAnnotationLayer = memo(({
     onSaveAnnotations, onRequestEditMode,
   });
 
-  // Determine pointer events mode: interactive when not using drawing tools
-  const isInteractive = activeTool === 'select' || activeTool === 'text-select';
+  // Determine pointer events mode: interactive when select tool active AND not in edit mode
+  // When editingAnnotationIndex is set, FabricEditCanvas + MiniToolbar need to receive clicks
+  const isInteractive = (activeTool === 'select' || activeTool === 'text-select') && editingAnnotationIndex == null;
 
   // ---------------------------------------------------------------------------
   // Helper: derive spaceId from regionId by searching through spaces data

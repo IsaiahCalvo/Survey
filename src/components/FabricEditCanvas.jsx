@@ -175,6 +175,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
   return (
     <div
       ref={toolbarRef}
+      data-mini-toolbar
       style={{
         ...positionStyle,
         display: 'flex',
@@ -326,9 +327,11 @@ const FabricEditCanvas = memo(({
   const commitAndClose = useCallback((canvas, opts = {}) => {
     if (committedRef.current) return;
     committedRef.current = true;
+    console.log(`[EditCanvas p${pageNumber}] COMMIT — editType=${editTypeRef.current}`);
 
     if (!canvas) canvas = fabricRef.current;
     if (!canvas) {
+      console.warn(`[EditCanvas p${pageNumber}] COMMIT ABORTED — no canvas`);
       committedRef.current = false;
       return;
     }
@@ -432,6 +435,7 @@ const FabricEditCanvas = memo(({
   const cancelAndClose = useCallback((canvas) => {
     if (committedRef.current) return;
     committedRef.current = true;
+    console.log(`[EditCanvas p${pageNumber}] CANCEL — editType=${editTypeRef.current}`);
 
     if (!canvas) canvas = fabricRef.current;
     if (canvas) {
@@ -809,12 +813,17 @@ const FabricEditCanvas = memo(({
     if (!annotationDataRef.current) return;
 
     const annData = annotationDataRef.current;
+    console.log(`[EditCanvas p${pageNumber}] shape LOAD — type=${annData.type}, left=${annData.left?.toFixed(1)}, top=${annData.top?.toFixed(1)}, w=${annData.width?.toFixed(1)}, h=${annData.height?.toFixed(1)}, angle=${annData.angle || 0}, fill=${annData.fill}, stroke=${annData.stroke}`);
     bboxOriginRef.current = { left: annData.left || 0, top: annData.top || 0, angle: annData.angle || 0 };
     originalAnnotationRef.current = JSON.parse(JSON.stringify(annData));
 
     fabric.util.enlivenObjects([annData], (objects) => {
-      if (!mountedRef.current || objects.length === 0) return;
+      if (!mountedRef.current || objects.length === 0) {
+        console.warn(`[EditCanvas p${pageNumber}] shape LOAD FAILED — mountedRef=${mountedRef.current}, objects=${objects.length}`);
+        return;
+      }
       const obj = objects[0];
+      console.log(`[EditCanvas p${pageNumber}] shape ENLIVENED — fabricType=${obj.type}, hasControls=${obj.hasControls}`);
 
       obj.set({
         left: BBOX_PADDING,
@@ -830,12 +839,13 @@ const FabricEditCanvas = memo(({
       canvas.add(obj);
       canvas.setActiveObject(obj);
       canvas.renderAll();
+      console.log(`[EditCanvas p${pageNumber}] shape READY — activeObject=${!!canvas.getActiveObject()}, canvasSize=${canvas.getWidth()}x${canvas.getHeight()}`);
       // Container is ready — reveal it
       if (containerRef.current) containerRef.current.style.visibility = 'visible';
       setContainerStyle(prev => ({ ...prev, visibility: 'visible' }));
       setIsLoading(false);
     });
-  }, []);
+  }, [pageNumber]);
 
   // -------------------------------------------------------------------------
   // Callout loading -- full-page Canvas with all annotations
@@ -959,9 +969,16 @@ const FabricEditCanvas = memo(({
 
       // Check if click is inside the mini-toolbar
       const toolbar = document.querySelector('[data-mini-toolbar]');
-      if (toolbar && toolbar.contains(e.target)) return;
+      if (toolbar && toolbar.contains(e.target)) {
+        console.log(`[EditCanvas p${pageNumber}] click INSIDE mini-toolbar — ignoring`);
+        return;
+      }
 
       // Click is outside -- commit and close.
+      const toolbarEl = document.querySelector('[data-mini-toolbar]');
+      const svgWrapper = e.target.closest?.('[style*="z-index"]') || e.target.parentElement;
+      const svgWrapperPE = svgWrapper ? getComputedStyle(svgWrapper).pointerEvents : 'N/A';
+      console.log(`[EditCanvas p${pageNumber}] click OUTSIDE — committing (editType=${editTypeRef.current}, target=${e.target.tagName}.${e.target.className?.toString?.().slice(0,30) || ''}, toolbarExists=${!!toolbarEl}, svgWrapperPE=${svgWrapperPE}, targetPE=${getComputedStyle(e.target).pointerEvents})`);
       commitAndClose();
     };
 
