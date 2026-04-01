@@ -105,5 +105,5 @@ Progress: [████████░░] 78% (Phases 8-10 complete, Phase 11 P
 ## Session Continuity
 
 Last session: 2026-04-01
-Stopped at: Phase 11 functionally complete — debug logs removed, color picker fix verified, Plan 11-02 confirmed done. Line/arrow/callout deferred to match combined-tools UX. Need to create 11-02-SUMMARY.md and close phase.
+Stopped at: Endpoint drag fixed (selection-clearing guard), SVG callout duplication fixed (SVG defers to CalloutOverlay). Callout UX parity with combined-tools is next — callouts only work via pan (not select), missing drag-to-create preview, knee/arrowhead handles, textbox resize, two-click text editing.
 Resume file: .planning/phases/11-text-shape-editing-zoom-cleanup/.continue-here.md
