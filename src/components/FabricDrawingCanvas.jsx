@@ -213,6 +213,19 @@ const FabricDrawingCanvas = memo(({
       if (selectedModuleIdRef.current) shapeJSON.moduleId = selectedModuleIdRef.current;
       if (activeRegionIdRef.current) shapeJSON.regionId = activeRegionIdRef.current;
 
+      const tool = activeToolRef.current;
+      if (tool === 'line' || tool === 'arrow') {
+        console.log(`[DrawCanvas p${pageNumber}] COMMIT ${tool} — JSON:`, {
+          type: shapeJSON.type,
+          left: shapeJSON.left, top: shapeJSON.top,
+          x1: shapeJSON.x1, y1: shapeJSON.y1, x2: shapeJSON.x2, y2: shapeJSON.y2,
+          width: shapeJSON.width, height: shapeJSON.height,
+          stroke: shapeJSON.stroke, strokeWidth: shapeJSON.strokeWidth,
+          tool: tool,
+          NOTE: tool === 'arrow' ? 'NO ARROWHEAD — FabricDrawingCanvas creates plain Line for both line and arrow' : undefined,
+        });
+      }
+
       sessionPathsRef.current.push(shape);
       canvas.remove(shape);
 
@@ -226,7 +239,7 @@ const FabricDrawingCanvas = memo(({
 
     const onMouseDown = (opt) => {
       const pointer = getPointer(opt);
-      console.log(`[DrawCanvas p${pageNumber}] shape mousedown at (${pointer.x.toFixed(0)}, ${pointer.y.toFixed(0)}), tool=${activeToolRef.current}`);
+      console.log(`[DrawCanvas p${pageNumber}] shape mousedown at (${pointer.x.toFixed(1)}, ${pointer.y.toFixed(1)}), tool=${activeToolRef.current}`);
       const state = shapeDrawingRef.current;
       state.isDrawing = true;
       state.startX = pointer.x;
@@ -250,6 +263,7 @@ const FabricDrawingCanvas = memo(({
         state.shape = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
           stroke: color, strokeWidth: sw, strokeUniform: true,
         });
+        console.log(`[DrawCanvas p${pageNumber}] ${tool} created — start=(${pointer.x.toFixed(1)}, ${pointer.y.toFixed(1)}), color=${color}, sw=${sw}`);
       }
 
       if (state.shape) {
@@ -303,7 +317,13 @@ const FabricDrawingCanvas = memo(({
         hasSize = Math.sqrt(dx * dx + dy * dy) > 3;
       }
 
-      console.log(`[DrawCanvas p${pageNumber}] shape mouseup — tool=${activeToolRef.current}, hasSize=${hasSize}`, s ? { left: s.left, top: s.top, w: s.width, h: s.height } : null);
+      if (tool === 'line' || tool === 'arrow') {
+        console.log(`[DrawCanvas p${pageNumber}] ${tool} mouseup — hasSize=${hasSize}`, {
+          fabricObj: { type: s.type, left: s.left?.toFixed(1), top: s.top?.toFixed(1), x1: s.x1?.toFixed(1), y1: s.y1?.toFixed(1), x2: s.x2?.toFixed(1), y2: s.y2?.toFixed(1), width: s.width?.toFixed(1), height: s.height?.toFixed(1) },
+        });
+      } else {
+        console.log(`[DrawCanvas p${pageNumber}] shape mouseup — tool=${tool}, hasSize=${hasSize}`, s ? { left: s.left, top: s.top, w: s.width, h: s.height } : null);
+      }
       if (hasSize) {
         commitShape(s);
       } else {

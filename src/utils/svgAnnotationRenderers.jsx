@@ -133,10 +133,15 @@ export const renderRect = (obj, index) => {
  * @returns {React.ReactElement}
  */
 export const renderLine = (obj, index) => {
-  const x1 = (obj.left || 0) + (obj.x1 || 0);
-  const y1 = (obj.top || 0) + (obj.y1 || 0);
-  const x2 = (obj.left || 0) + (obj.x2 || 0);
-  const y2 = (obj.top || 0) + (obj.y2 || 0);
+  // Fabric.js Line toJSON(): left/top = bounding box top-left corner,
+  // x1/y1/x2/y2 = offsets from bounding box CENTER.
+  // Must compute center first, then add offsets to get absolute coords.
+  const centerX = (obj.left || 0) + (obj.width || 0) / 2;
+  const centerY = (obj.top || 0) + (obj.height || 0) / 2;
+  const x1 = centerX + (obj.x1 || 0);
+  const y1 = centerY + (obj.y1 || 0);
+  const x2 = centerX + (obj.x2 || 0);
+  const y2 = centerY + (obj.y2 || 0);
 
   const key = `line-${obj.id || index}`;
 

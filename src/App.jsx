@@ -11022,6 +11022,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Track last used tool for each category to keep icons persistent
   useEffect(() => {
+    // Debug: log tool activation for line/arrow/callout
+    if (['line', 'arrow', 'callout'].includes(activeTool)) {
+      const isDrawingTool = ['pen', 'highlighter', 'rect', 'ellipse', 'line', 'arrow'].includes(activeTool);
+      console.log(`[App] TOOL ACTIVATED: ${activeTool}`, {
+        isDrawingTool,
+        willMountDrawingCanvas: isDrawingTool,
+        willMountCalloutUI: activeTool === 'callout',
+        NOTE: activeTool === 'callout'
+          ? 'CALLOUT TOOL HAS NO CREATION UI — isDrawingTool=false, no canvas mounts, no click handler'
+          : activeTool === 'arrow'
+            ? 'Arrow tool creates plain fabric.Line — NO arrowhead added in FabricDrawingCanvas'
+            : 'Line tool creates fabric.Line — edit blocked by non-editable check in handleAnnotationEdit',
+      });
+    }
+
     if (['pen', 'highlighter', 'eraser'].includes(activeTool)) {
       setLastDrawTool(activeTool);
       try {
@@ -24324,7 +24339,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     }
                                     // Non-editable types: pen strokes, highlights, lines, imported paths
                                     if (annotationType === 'path' || annotationType === 'line') {
-                                      console.log(`[App p${pageNumber}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`);
+                                      console.log(`[App p${pageNumber}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`, {
+                                        NOTE: 'Lines/arrows are blocked from edit mode — need line/arrow edit support',
+                                        annotationData: { type: annotationData.type, left: annotationData.left, top: annotationData.top, x1: annotationData.x1, y1: annotationData.y1, x2: annotationData.x2, y2: annotationData.y2 },
+                                      });
                                       return;
                                     }
                                     let editType;
@@ -24602,7 +24620,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         }
                                         // Non-editable types: pen strokes, highlights, lines, imported paths
                                         if (annotationType === 'path' || annotationType === 'line') {
-                                          console.log(`[App p${pageNumber}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`);
+                                          console.log(`[App p${pageNumber}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`, {
+                                            NOTE: 'Lines/arrows are blocked from edit mode — need line/arrow edit support',
+                                            annotationData: { type: annotationData.type, left: annotationData.left, top: annotationData.top, x1: annotationData.x1, y1: annotationData.y1, x2: annotationData.x2, y2: annotationData.y2 },
+                                          });
                                           return;
                                         }
                                         let editType;
