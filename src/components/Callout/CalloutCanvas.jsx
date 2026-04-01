@@ -51,6 +51,7 @@ const CalloutCanvas = ({
   const cornerResizeInitialStateRef = useRef(null);
   const justCreatedRef = useRef(false);
   const wasDraggingRef = useRef(false);
+  const lastCreationTimeRef = useRef(0);
 
   // Convert pixel position to percentage of page
   const toPercent = useCallback((pixelPoint) => ({
@@ -201,6 +202,7 @@ const CalloutCanvas = ({
 
     // If callout tool is active and clicking on empty space, start creation
     if (dragTarget.type === 'none') {
+      console.log('[CalloutCanvas] mouseDown — starting creation at', pos, 'page:', pageNumber);
       setCreationState({
         isCreating: true,
         arrowTip: pos,
@@ -364,6 +366,17 @@ const CalloutCanvas = ({
 
     // Complete creation
     if (creationState.isCreating && creationState.arrowTip) {
+      // Dedup guard: prevent double creation from rapid event firing
+      const now = Date.now();
+      const timeSinceLast = now - lastCreationTimeRef.current;
+      console.log('[CalloutCanvas] mouseUp — creation attempt, timeSinceLast:', timeSinceLast, 'page:', pageNumber);
+      if (timeSinceLast < 500) {
+        console.log('[CalloutCanvas] mouseUp — BLOCKED by dedup guard (within 500ms)');
+        setCreationState({ isCreating: false, arrowTip: null, currentMouse: null });
+        return;
+      }
+      lastCreationTimeRef.current = now;
+
       const arrowTipPercent = toPercent(creationState.arrowTip);
       const textBoxPercent = toPercent(pos);
 
@@ -399,7 +412,11 @@ const CalloutCanvas = ({
         newCallout.moduleId = selectedModuleId;
       }
 
-      setCallouts(prev => [...prev.map(c => ({ ...c, isSelected: false })), newCallout]);
+      console.log('[CalloutCanvas] mouseUp — CREATING callout', newCallout.id, 'total before:', 'unknown');
+      setCallouts(prev => {
+        console.log('[CalloutCanvas] setCallouts — prev count:', prev.length, '→ new count:', prev.length + 1);
+        return [...prev.map(c => ({ ...c, isSelected: false })), newCallout];
+      });
       setSelectedCalloutId(newCallout.id);
       setNewCalloutId(newCallout.id);
       justCreatedRef.current = true; // Prevent click handler from deselecting
@@ -424,14 +441,17 @@ const CalloutCanvas = ({
     
     // Skip if we just created a callout (click fires after mouseup)
     if (justCreatedRef.current) {
+      console.log('[CalloutCanvas] click — SKIPPED (justCreated guard)');
       justCreatedRef.current = false;
       return;
     }
     // Skip if we were just dragging (click fires after mouseup)
     if (wasDraggingRef.current) {
+      console.log('[CalloutCanvas] click — SKIPPED (wasDragging guard)');
       wasDraggingRef.current = false;
       return;
     }
+    console.log('[CalloutCanvas] click — processing, tool:', activeTool, 'selectedId:', selectedCalloutId);
     
     // If select or pan tool is active and a callout is selected, check if clicking on empty space
     if ((activeTool === 'select' || activeTool === 'pan') && selectedCalloutId) {

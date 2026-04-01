@@ -268,6 +268,8 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   const filteredCallouts = useMemo(() => {
     if (!Array.isArray(callouts) || callouts.length === 0) return [];
+    // When callout tool is active, CalloutOverlay handles rendering — skip SVG callouts to avoid duplicates
+    if (activeTool === 'callout') return [];
 
     const elements = [];
     let count = 0;
@@ -295,7 +297,7 @@ const SVGAnnotationLayer = memo(({
     }
 
     return elements;
-  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height]);
+  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, activeTool]);
 
   const objectCount = filteredAnnotations.length;
   const calloutCount = filteredCallouts.length;
@@ -558,12 +560,12 @@ const SVGAnnotationLayer = memo(({
                 style={handleStyle}
                 onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p1'); }}
               />
-              {/* End handle — for arrow, sits at arrowhead tip center */}
+              {/* End handle — same style as start handle, centered on arrowhead */}
               <circle
                 cx={ep.x2 + dx} cy={ep.y2 + dy}
-                r={isArrow ? handleR * 1.2 : handleR}
-                fill={isArrow ? '#4a90e2' : '#ffffff'}
-                stroke={isArrow ? '#2a70c2' : '#4a90e2'}
+                r={handleR}
+                fill="#ffffff"
+                stroke="#4a90e2"
                 strokeWidth={1.5 * inverseScale}
                 style={handleStyle}
                 onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p2'); }}

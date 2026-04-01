@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage } from '../utils/svgTransformMath';
-import { getAnnotationBBox, isImportedPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getLineEndpoints, isImportedPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
 
 /**
  * @param {object} options
@@ -287,6 +287,47 @@ export function useSVGInteraction({
         affectedIds: new Set(Object.keys(ds.groupOriginals).map(Number)),
       });
       setInteractionState('dragging');
+    } else if (ds.mode === 'endpoint') {
+      // Line/arrow endpoint drag — compute new absolute position for the dragged endpoint
+      const ep = ds.originalEndpoints;
+      const movingP1 = ds.handleId === 'p1';
+      const newX = movingP1 ? ep.x1 + (svgPoint.x - ds.startSVGPoint.x) : ep.x2 + (svgPoint.x - ds.startSVGPoint.x);
+      const newY = movingP1 ? ep.y1 + (svgPoint.y - ds.startSVGPoint.y) : ep.y2 + (svgPoint.y - ds.startSVGPoint.y);
+      const fixedX = movingP1 ? ep.x2 : ep.x1;
+      const fixedY = movingP1 ? ep.y2 : ep.y1;
+
+      // Recalculate bounding box from two absolute endpoints
+      const minX = Math.min(newX, fixedX);
+      const minY = Math.min(newY, fixedY);
+      const maxX = Math.max(newX, fixedX);
+      const maxY = Math.max(newY, fixedY);
+      const newWidth = maxX - minX;
+      const newHeight = maxY - minY;
+      const newCenterX = minX + newWidth / 2;
+      const newCenterY = minY + newHeight / 2;
+
+      const endpointData = {
+        left: minX,
+        top: minY,
+        width: newWidth,
+        height: newHeight,
+        x1: (movingP1 ? newX : fixedX) - newCenterX,
+        y1: (movingP1 ? newY : fixedY) - newCenterY,
+        x2: (movingP1 ? fixedX : newX) - newCenterX,
+        y2: (movingP1 ? fixedY : newY) - newCenterY,
+      };
+      ds.currentEndpoint = endpointData;
+
+      // Live commit: update annotation data on every move for immediate visual feedback
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      Object.assign(targetObj, endpointData);
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'object:modified',
+        action: 'endpoint-move',
+        checkpointPolicy: 'skip',
+      });
+      setInteractionState('dragging');
     } else if (ds.mode === 'resize') {
       // Determine which axes this handle affects
       const affectsX = !['mt', 'mb'].includes(ds.handleId);
@@ -404,6 +445,25 @@ export function useSVGInteraction({
           });
         }
       }
+    } else if (ds.mode === 'endpoint' && ds.currentEndpoint) {
+      // Commit line/arrow endpoint drag
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      const ep = ds.currentEndpoint;
+      targetObj.left = ep.left;
+      targetObj.top = ep.top;
+      targetObj.width = ep.width;
+      targetObj.height = ep.height;
+      targetObj.x1 = ep.x1;
+      targetObj.y1 = ep.y1;
+      targetObj.x2 = ep.x2;
+      targetObj.y2 = ep.y2;
+
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'object:modified',
+        action: 'endpoint-move',
+        checkpointPolicy: 'normal',
+      });
     } else if (ds.mode === 'group-move' && ds.groupOriginals) {
       // Group drag commit: apply totalDelta from ORIGINAL positions (prevents drift)
       const pt = new DOMPoint(e.clientX, e.clientY);
@@ -497,6 +557,7 @@ export function useSVGInteraction({
       originalProps: null, annotationIndex: null, ctmInverse: null,
       anchorX: null, anchorY: null, centerX: null, centerY: null,
       currentResize: null, currentAngle: undefined, groupOriginals: null,
+      originalEndpoints: null, currentEndpoint: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
@@ -519,6 +580,32 @@ export function useSVGInteraction({
     const ctmInverse = ctm ? ctm.inverse() : null;
     const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const bbox = getAnnotationBBox(obj);
+
+    // Line/arrow endpoint drag: p1 or p2
+    if (handleId === 'p1' || handleId === 'p2') {
+      const ep = getLineEndpoints(obj);
+      dragStateRef.current = {
+        active: true,
+        mode: 'endpoint',
+        handleId,
+        startSVGPoint: svgPoint,
+        originalProps: {
+          left: obj.left ?? 0,
+          top: obj.top ?? 0,
+          width: obj.width ?? 0,
+          height: obj.height ?? 0,
+          x1: obj.x1 ?? 0,
+          y1: obj.y1 ?? 0,
+          x2: obj.x2 ?? 0,
+          y2: obj.y2 ?? 0,
+        },
+        originalEndpoints: ep,
+        annotationIndex: selectedIndex,
+        ctmInverse,
+        currentEndpoint: null,
+      };
+      return;
+    }
 
     const mode = handleId === 'mtr' ? 'rotate' : 'resize';
     const cx = bbox.left + bbox.width / 2;

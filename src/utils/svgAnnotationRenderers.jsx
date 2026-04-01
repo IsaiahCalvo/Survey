@@ -149,25 +149,30 @@ export const renderLine = (obj, index) => {
   const sw = obj.strokeWidth || 2;
 
   if (isArrow) {
-    // Arrow: line + arrowhead polygon at endpoint 2
+    // Arrow: line + arrowhead polygon centered on endpoint 2
     const dx = x2 - x1;
     const dy = y2 - y1;
-    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    const angleRad = Math.atan2(dy, dx);
+    const angleDeg = angleRad * (180 / Math.PI);
     const headSize = Math.max(8, sw * 3);
+
+    // Shorten line so it ends at the back of the centered arrowhead (doesn't poke through)
+    const lineEndX = x2 - (headSize / 3) * Math.cos(angleRad);
+    const lineEndY = y2 - (headSize / 3) * Math.sin(angleRad);
 
     return (
       <g key={key} opacity={obj.opacity ?? 1}>
         <line
-          x1={x1} y1={y1} x2={x2} y2={y2}
+          x1={x1} y1={y1} x2={lineEndX} y2={lineEndY}
           stroke={strokeColor}
           strokeWidth={sw}
           strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
         />
         <polygon
-          points={`0,${-headSize / 2} ${headSize},0 0,${headSize / 2}`}
+          points={`${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`}
           fill={strokeColor}
-          transform={`translate(${x2},${y2}) rotate(${angle})`}
+          transform={`translate(${x2},${y2}) rotate(${angleDeg})`}
         />
       </g>
     );
@@ -216,8 +221,13 @@ export const renderArrow = (obj, index) => {
 
   const dx = x2 - x1;
   const dy = y2 - y1;
-  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+  const angleRad = Math.atan2(dy, dx);
+  const angleDeg = angleRad * (180 / Math.PI);
   const headSize = Math.max(6, (obj.strokeWidth || 2) * 3);
+
+  // Shorten line so it ends at the back of the centered arrowhead
+  const lineEndX = arrowHead ? x2 - (headSize / 3) * Math.cos(angleRad) : x2;
+  const lineEndY = arrowHead ? y2 - (headSize / 3) * Math.sin(angleRad) : y2;
 
   const key = `arrow-${obj.id || index}`;
 
@@ -226,8 +236,8 @@ export const renderArrow = (obj, index) => {
       <line
         x1={x1}
         y1={y1}
-        x2={x2}
-        y2={y2}
+        x2={lineEndX}
+        y2={lineEndY}
         stroke={obj.stroke || '#000'}
         strokeWidth={obj.strokeWidth || 2}
         strokeLinecap="round"
@@ -235,9 +245,9 @@ export const renderArrow = (obj, index) => {
       />
       {arrowHead && (
         <polygon
-          points={`0,${-headSize / 2} ${headSize},0 0,${headSize / 2}`}
+          points={`${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`}
           fill={obj.stroke || '#000'}
-          transform={`translate(${x2},${y2}) rotate(${angle})`}
+          transform={`translate(${x2},${y2}) rotate(${angleDeg})`}
         />
       )}
     </g>
