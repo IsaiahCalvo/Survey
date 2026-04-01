@@ -27,6 +27,7 @@ const CUSTOM_PROPS = [
   'data', 'name', 'highlightId', 'needsBIC',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType',
+  'tool',
 ];
 
 const SHAPE_TOOLS = ['rect', 'ellipse', 'line', 'arrow'];
@@ -214,16 +215,9 @@ const FabricDrawingCanvas = memo(({
       if (activeRegionIdRef.current) shapeJSON.regionId = activeRegionIdRef.current;
 
       const tool = activeToolRef.current;
+      // Tag line/arrow with tool so SVG renderer can differentiate
       if (tool === 'line' || tool === 'arrow') {
-        console.log(`[DrawCanvas p${pageNumber}] COMMIT ${tool} — JSON:`, {
-          type: shapeJSON.type,
-          left: shapeJSON.left, top: shapeJSON.top,
-          x1: shapeJSON.x1, y1: shapeJSON.y1, x2: shapeJSON.x2, y2: shapeJSON.y2,
-          width: shapeJSON.width, height: shapeJSON.height,
-          stroke: shapeJSON.stroke, strokeWidth: shapeJSON.strokeWidth,
-          tool: tool,
-          NOTE: tool === 'arrow' ? 'NO ARROWHEAD — FabricDrawingCanvas creates plain Line for both line and arrow' : undefined,
-        });
+        shapeJSON.tool = tool;
       }
 
       sessionPathsRef.current.push(shape);

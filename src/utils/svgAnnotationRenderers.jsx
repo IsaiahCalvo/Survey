@@ -143,7 +143,35 @@ export const renderLine = (obj, index) => {
   const x2 = centerX + (obj.x2 || 0);
   const y2 = centerY + (obj.y2 || 0);
 
-  const key = `line-${obj.id || index}`;
+  const isArrow = obj.tool === 'arrow';
+  const key = `${isArrow ? 'arrow' : 'line'}-${obj.id || index}`;
+  const strokeColor = obj.stroke || '#000';
+  const sw = obj.strokeWidth || 2;
+
+  if (isArrow) {
+    // Arrow: line + arrowhead polygon at endpoint 2
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    const headSize = Math.max(8, sw * 3);
+
+    return (
+      <g key={key} opacity={obj.opacity ?? 1}>
+        <line
+          x1={x1} y1={y1} x2={x2} y2={y2}
+          stroke={strokeColor}
+          strokeWidth={sw}
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+        <polygon
+          points={`0,${-headSize / 2} ${headSize},0 0,${headSize / 2}`}
+          fill={strokeColor}
+          transform={`translate(${x2},${y2}) rotate(${angle})`}
+        />
+      </g>
+    );
+  }
 
   return (
     <line
@@ -152,8 +180,8 @@ export const renderLine = (obj, index) => {
       y1={y1}
       x2={x2}
       y2={y2}
-      stroke={obj.stroke || '#000'}
-      strokeWidth={obj.strokeWidth || 2}
+      stroke={strokeColor}
+      strokeWidth={sw}
       strokeLinecap="round"
       vectorEffect="non-scaling-stroke"
       opacity={obj.opacity ?? 1}

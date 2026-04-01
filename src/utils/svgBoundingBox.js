@@ -165,6 +165,24 @@ export function scalePathData(pathData, scaleX, scaleY, anchorX, anchorY) {
   });
 }
 
+/**
+ * Get the absolute SVG endpoints for a line-type annotation.
+ * Uses the same center-based formula as renderLine in svgAnnotationRenderers.jsx.
+ *
+ * @param {object} obj - Fabric.js line JSON object
+ * @returns {{ x1: number, y1: number, x2: number, y2: number }}
+ */
+export function getLineEndpoints(obj) {
+  const centerX = (obj.left ?? 0) + (obj.width ?? 0) / 2;
+  const centerY = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+  return {
+    x1: centerX + (obj.x1 ?? 0),
+    y1: centerY + (obj.y1 ?? 0),
+    x2: centerX + (obj.x2 ?? 0),
+    y2: centerY + (obj.y2 ?? 0),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Internal bbox helpers per annotation type
 // ---------------------------------------------------------------------------
@@ -223,12 +241,16 @@ function getRectBBox(obj) {
 }
 
 function getLineBBox(obj) {
-  const objLeft = obj.left ?? 0;
-  const objTop = obj.top ?? 0;
-  const x1 = objLeft + (obj.x1 ?? 0);
-  const y1 = objTop + (obj.y1 ?? 0);
-  const x2 = objLeft + (obj.x2 ?? 0);
-  const y2 = objTop + (obj.y2 ?? 0);
+  // Fabric.js Line toJSON(): left/top = bounding box top-left corner,
+  // x1/y1/x2/y2 = offsets from bounding box CENTER.
+  // Must compute center first, then add offsets to get absolute coords.
+  // (Same formula as renderLine in svgAnnotationRenderers.jsx)
+  const centerX = (obj.left ?? 0) + (obj.width ?? 0) / 2;
+  const centerY = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+  const x1 = centerX + (obj.x1 ?? 0);
+  const y1 = centerY + (obj.y1 ?? 0);
+  const x2 = centerX + (obj.x2 ?? 0);
+  const y2 = centerY + (obj.y2 ?? 0);
 
   let width = Math.abs(x2 - x1);
   let height = Math.abs(y2 - y1);

@@ -33,7 +33,7 @@ import {
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
-import { getAnnotationBBox, getGroupBBox, isImportedPath } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints } from '../utils/svgBoundingBox';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -405,7 +405,39 @@ const SVGAnnotationLayer = memo(({
         <g style={{ pointerEvents: 'none' }}>
           {renderElement}
         </g>
-        {/* Hover outline + hit rect — rotated to match annotation angle */}
+        {/* Hover outline + hit area — line-type uses line-shaped hit, others use rect */}
+        {String(renderObj.type || '').toLowerCase() === 'line' ? (() => {
+          const ep = getLineEndpoints(renderObj);
+          return (
+            <g>
+              {/* Hover highlight along the line */}
+              {annotationIsHovered && (
+                <line
+                  x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
+                  stroke="#4a90e2"
+                  strokeOpacity={0.4}
+                  strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4) * inverseScale}
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
+              {/* Invisible thick line hit area */}
+              <line
+                x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
+                stroke="transparent"
+                strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10) * inverseScale}
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+                pointerEvents={isInteractive ? 'stroke' : 'none'}
+                onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+              />
+            </g>
+          );
+        })() : (
         <g transform={bbox.angle ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})` : undefined}>
           {/* Hover outline (shown before click, not when already selected) */}
           {annotationIsHovered && (
@@ -436,6 +468,7 @@ const SVGAnnotationLayer = memo(({
             onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
           />
         </g>
+        )}
       </g>
     );
   });
@@ -496,6 +529,47 @@ const SVGAnnotationLayer = memo(({
             // During move: apply translate to the overlay group
             overlayTransform = `translate(${visualTransform.dx}, ${visualTransform.dy})`;
           }
+        }
+
+        // Line-type annotations: endpoint handles only (no bbox, no dashed outline)
+        const isLineType = String(obj.type || '').toLowerCase() === 'line';
+        if (isLineType) {
+          const ep = getLineEndpoints(obj);
+          const dx = overlayTransform ? (visualTransform?.dx || 0) : 0;
+          const dy = overlayTransform ? (visualTransform?.dy || 0) : 0;
+          const isArrow = obj.tool === 'arrow';
+          // Arrow: handle at arrowhead tip (ep2) and line start (ep1)
+          // Line: handles at both endpoints
+          const handleR = 7 * inverseScale;
+          const handleStyle = {
+            filter: `drop-shadow(0 ${1 * inverseScale}px ${3 * inverseScale}px rgba(0,0,0,0.15))`,
+            cursor: 'grab',
+            pointerEvents: 'auto',
+          };
+          return (
+            <g key={`selection-wrapper-${selectedIndex}`}>
+              {/* Start handle (line start / arrow tail) */}
+              <circle
+                cx={ep.x1 + dx} cy={ep.y1 + dy}
+                r={handleR}
+                fill="#ffffff"
+                stroke="#4a90e2"
+                strokeWidth={1.5 * inverseScale}
+                style={handleStyle}
+                onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p1'); }}
+              />
+              {/* End handle — for arrow, sits at arrowhead tip center */}
+              <circle
+                cx={ep.x2 + dx} cy={ep.y2 + dy}
+                r={isArrow ? handleR * 1.2 : handleR}
+                fill={isArrow ? '#4a90e2' : '#ffffff'}
+                stroke={isArrow ? '#2a70c2' : '#4a90e2'}
+                strokeWidth={1.5 * inverseScale}
+                style={handleStyle}
+                onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p2'); }}
+              />
+            </g>
+          );
         }
 
         return (

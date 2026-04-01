@@ -69,6 +69,7 @@ import FabricDrawingCanvas from './components/FabricDrawingCanvas';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FabricEditCanvas from './components/FabricEditCanvas';
 import FabricTextCanvas from './components/FabricTextCanvas';
+import CalloutOverlay from './components/Callout';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
@@ -24446,6 +24447,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   viewerScale={scale}
                                 />
                               )}
+
+                              {/* Callout Overlay -- only on current page to avoid duplicate creation across pages */}
+                              {(activeTool === 'callout' || activeTool === 'select' || activeTool === 'pan') && pageNumber === (pageNumRef.current || 1) && (
+                                <CalloutOverlay
+                                  callouts={callouts}
+                                  setCallouts={setCallouts}
+                                  selectedCalloutId={selectedCalloutId}
+                                  setSelectedCalloutId={setSelectedCalloutId}
+                                  isCalloutToolActive={activeTool === 'callout'}
+                                  activeTool={activeTool}
+                                  pageNumber={pageNumber}
+                                  pageWidth={resolvedPageSize.width}
+                                  pageHeight={resolvedPageSize.height}
+                                  defaultStyle={{
+                                    borderColor: strokeColor,
+                                    lineThickness: Number(strokeWidth) || 3,
+                                  }}
+                                  selectionRect={null}
+                                  selectedSpaceId={annotationSpaceId}
+                                  selectedModuleId={selectedModuleId}
+                                  showSurveyPanel={showSurveyPanel}
+                                  clipboardCallout={clipboardCallout}
+                                  clipboardCalloutType={clipboardCalloutType}
+                                  onCutCallout={handleCutCallout}
+                                  onCopyCallout={handleCopyCallout}
+                                  onPasteCallout={handlePasteCallout}
+                                  middleAreaBounds={middleAreaBounds}
+                                  surveyPanelWidth={surveyPanelWidth}
+                                />
+                              )}
                             </>
                             );
                           })()}
@@ -24726,6 +24757,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         zoomGeneration={zoomGeneration}
                                         viewerScale={scale}
                                       />
+                                    )}
+
+                                    {/* Callout Overlay -- only on current page to avoid duplicate creation */}
+                                    {(activeTool === 'callout' || activeTool === 'select' || activeTool === 'pan') && pageNumber === (pageNumRef.current || 1) && (
+                                    <CalloutOverlay
+                                      callouts={callouts}
+                                      setCallouts={setCallouts}
+                                      selectedCalloutId={selectedCalloutId}
+                                      setSelectedCalloutId={setSelectedCalloutId}
+                                      isCalloutToolActive={activeTool === 'callout'}
+                                      activeTool={activeTool}
+                                      pageNumber={pageNumber}
+                                      pageWidth={pageSizes[pageNumber].width}
+                                      pageHeight={pageSizes[pageNumber].height}
+                                      defaultStyle={{
+                                        borderColor: strokeColor,
+                                        lineThickness: Number(strokeWidth) || 3,
+                                      }}
+                                      selectionRect={null}
+                                      selectedSpaceId={annotationSpaceId}
+                                      selectedModuleId={selectedModuleId}
+                                      showSurveyPanel={showSurveyPanel}
+                                      clipboardCallout={clipboardCallout}
+                                      clipboardCalloutType={clipboardCalloutType}
+                                      onCutCallout={handleCutCallout}
+                                      onCopyCallout={handleCopyCallout}
+                                      onPasteCallout={handlePasteCallout}
+                                      middleAreaBounds={middleAreaBounds}
+                                      surveyPanelWidth={surveyPanelWidth}
+                                    />
                                     )}
                                   </>
                                   );
