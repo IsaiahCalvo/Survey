@@ -268,8 +268,10 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   const filteredCallouts = useMemo(() => {
     if (!Array.isArray(callouts) || callouts.length === 0) return [];
-    // When callout tool is active, CalloutOverlay handles rendering — skip SVG callouts to avoid duplicates
-    if (activeTool === 'callout') return [];
+    // CalloutOverlay (in PageAnnotationLayer) handles ALL callout rendering and interaction
+    // across all tool modes (callout, select, pan). SVG layer must never render callouts
+    // to avoid doubled visuals.
+    return [];
 
     const elements = [];
     let count = 0;

@@ -87,9 +87,11 @@ export function useSVGInteraction({
 
   // ---------------------------------------------------------------------------
   // Clear selection when annotations prop identity changes
-  // (new page loaded or external edit)
+  // (new page loaded or external edit) — but NOT during active drag
+  // (endpoint drag does live commits which change annotations on every move)
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (dragStateRef.current?.active) return;
     setSelectedIds(new Set());
     setHoveredId(null);
   }, [annotations]);
@@ -394,7 +396,7 @@ export function useSVGInteraction({
         rotate: { angle: newAngle, deltaAngle, cx: ds.centerX, cy: ds.centerY },
       });
     }
-  }, [svgRef]);
+  }, [svgRef, annotations, onSaveAnnotations]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
