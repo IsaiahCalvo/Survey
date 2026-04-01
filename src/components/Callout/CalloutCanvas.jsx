@@ -669,6 +669,7 @@ const CalloutCanvas = ({
         height: '100%',
         cursor: isCalloutToolActive ? 'crosshair' : 'default',
         pointerEvents: pointerEventsValue,
+        zIndex: 101, // Must be above SVGAnnotationLayer wrapper (zIndex: 100) so callout handles receive clicks in select mode
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}

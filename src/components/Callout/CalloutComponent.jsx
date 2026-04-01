@@ -73,6 +73,7 @@ const CalloutComponent = ({
   const isInClickSequenceRef = useRef(false);
   const hasDraggedRef = useRef(false);
   const mouseDownPositionRef = useRef(null);
+  const mouseDownTimeRef = useRef(0);
   const mouseMoveHandlerRef = useRef(null);
   const mouseUpHandlerRef = useRef(null);
   const prevIsSelectedRef = useRef(isSelected);
@@ -99,7 +100,7 @@ const CalloutComponent = ({
   useEffect(() => {
     if (shouldFocus && textareaRef.current) {
       setIsEditing(true);
-      textareaRef.current.focus();
+      requestAnimationFrame(() => textareaRef.current?.focus());
     }
   }, [shouldFocus]);
 
@@ -172,6 +173,7 @@ const CalloutComponent = ({
       e.preventDefault(); // Prevent text selection during drag
       hasDraggedRef.current = false;
       mouseDownPositionRef.current = { x: e.clientX, y: e.clientY };
+      mouseDownTimeRef.current = Date.now();
 
       // Check if Control/Command is held to move the entire callout
       const isModifierKey = e.ctrlKey || e.metaKey; // Ctrl on Windows/Linux, Cmd on Mac
@@ -295,11 +297,16 @@ const CalloutComponent = ({
     hasDraggedRef.current = false;
     mouseDownPositionRef.current = null;
 
-    // Only enter editing if it was already selected and no drag occurred
-    // This means: first click selects, second click enters edit mode
-    if (wasSelectedBeforeClickRef.current && !didDrag) {
+    // Only enter editing if:
+    // 1. It was already selected before this click (two-click flow: first click selects, second enters edit)
+    // 2. No drag occurred during the click
+    // 3. The click was quick (< 300ms) — a long hold-and-release is NOT a click
+    const clickDuration = Date.now() - mouseDownTimeRef.current;
+    if (wasSelectedBeforeClickRef.current && !didDrag && clickDuration < 300) {
       setIsEditing(true);
-      textareaRef.current?.focus();
+      // Defer focus until after React re-renders with isEditing=true
+      // (textarea needs pointerEvents: 'auto' before focus sticks)
+      requestAnimationFrame(() => textareaRef.current?.focus());
     }
     // If not already selected, the callout was just selected by handleTextBoxMouseDown
     // Don't enter edit mode - just select (which is already done)
@@ -308,7 +315,7 @@ const CalloutComponent = ({
   const handleTextBoxDoubleClick = useCallback((e) => {
     e.stopPropagation();
     setIsEditing(true);
-    textareaRef.current?.focus();
+    requestAnimationFrame(() => textareaRef.current?.focus());
   }, []);
 
   const handleTextareaBlur = useCallback(() => {
