@@ -104,6 +104,6 @@ Progress: [████████░░] 78% (Phases 8-10 complete, Phase 11 P
 
 ## Session Continuity
 
-Last session: 2026-03-31
-Stopped at: Shape edit mini-toolbar click-through fix — portal to document.body applied, needs testing
+Last session: 2026-04-01
+Stopped at: Phase 11 functionally complete — debug logs removed, color picker fix verified, Plan 11-02 confirmed done. Line/arrow/callout deferred to match combined-tools UX. Need to create 11-02-SUMMARY.md and close phase.
 Resume file: .planning/phases/11-text-shape-editing-zoom-cleanup/.continue-here.md
