@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 8: SVG Display Foundation** - All 7 annotation types render as SVG with viewBox auto-scaling, replacing Canvas-based display
 - [ ] **Phase 9: SVG Selection and Interaction** - Click-to-select, drag-to-move, resize handles, and multi-select in SVG without Canvas
 - [ ] **Phase 10: Canvas Mount/Unmount (Pen + Eraser)** - Fabric.js Canvas mounts conditionally for pen/highlighter drawing and eraser operations
-- [ ] **Phase 11: Text/Shape Editing + Zoom Cleanup** - Targeted Canvas mount for text/shape editing, zoom integration, and removal of old timer machinery
+- [x] **Phase 11: Text/Shape Editing + Zoom Cleanup** - Targeted Canvas mount for text/shape editing, zoom integration, and removal of old timer machinery (completed 2026-04-02)
 
 ## Phase Details
 
@@ -116,4 +116,4 @@ Phases execute in numeric order: 8 -> 9 -> 10 -> 11
 | 8. SVG Display Foundation | v2.0 | 0/2 | Planning complete | - |
 | 9. SVG Selection and Interaction | v2.0 | 0/3 | Planning complete | - |
 | 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 2/2 | Complete | 2026-03-27 |
-| 11. Text/Shape Editing + Zoom Cleanup | 1/2 | In Progress|  | - |
+| 11. Text/Shape Editing + Zoom Cleanup | 2/2 | Complete   | 2026-04-02 | - |

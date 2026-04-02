@@ -49,14 +49,14 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 
 ### Zoom & Integration
 
-- [ ] **ZOOM-01**: SVG layer zoom is handled entirely by viewBox -- zero JavaScript timers for zoom coordination
+- [x] **ZOOM-01**: SVG layer zoom is handled entirely by viewBox -- zero JavaScript timers for zoom coordination
 - [x] **ZOOM-02**: If Canvas is mounted during zoom, it receives CSS transform for visual stability (blurry but positioned)
 - [x] **ZOOM-03**: After zoom settles (200ms debounce), Canvas remounts at new dimensions if still active
 - [x] **ZOOM-04**: In-progress pen stroke is auto-committed on zoom start, pen resumes after settle
-- [ ] **ZOOM-05**: All 6 zoom methods work (ctrl+scroll, toolbar buttons, dropdown, fit-to-page, fit-to-width, pinch)
-- [ ] **ZOOM-06**: Freeze/snapshot/confirm-pending machinery is removed from App.jsx (~30 refs, ~14 functions)
-- [ ] **ZOOM-07**: Dead props (onScaleApplied, presentationApiRegistry, isHidden) are removed from PageAnnotationLayer
-- [ ] **ZOOM-08**: Old 5-timer zoom system is fully replaced -- no PAL settle, App settle, confirm-pending, tier-2 defer, or overlay safety timers remain
+- [x] **ZOOM-05**: All 6 zoom methods work (ctrl+scroll, toolbar buttons, dropdown, fit-to-page, fit-to-width, pinch)
+- [x] **ZOOM-06**: Freeze/snapshot/confirm-pending machinery is removed from App.jsx (~30 refs, ~14 functions)
+- [x] **ZOOM-07**: Dead props (onScaleApplied, presentationApiRegistry, isHidden) are removed from PageAnnotationLayer
+- [x] **ZOOM-08**: Old 5-timer zoom system is fully replaced -- no PAL settle, App settle, confirm-pending, tier-2 defer, or overlay safety timers remain
 
 ## Future Requirements
 
@@ -122,14 +122,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EDIT-08 | Phase 11 | Complete |
 | EDIT-09 | Phase 10 | Complete |
 | EDIT-10 | Phase 10 | Complete |
-| ZOOM-01 | Phase 11 | Pending |
+| ZOOM-01 | Phase 11 | Complete |
 | ZOOM-02 | Phase 11 | Complete |
 | ZOOM-03 | Phase 11 | Complete |
 | ZOOM-04 | Phase 11 | Complete |
-| ZOOM-05 | Phase 11 | Pending |
-| ZOOM-06 | Phase 11 | Pending |
-| ZOOM-07 | Phase 11 | Pending |
-| ZOOM-08 | Phase 11 | Pending |
+| ZOOM-05 | Phase 11 | Complete |
+| ZOOM-06 | Phase 11 | Complete |
+| ZOOM-07 | Phase 11 | Complete |
+| ZOOM-08 | Phase 11 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 39 total

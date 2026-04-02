@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SVG Migration
-status: completed
-stopped_at: Phase 11 UI-SPEC approved
-last_updated: "2026-03-28T00:18:10.928Z"
-last_activity: 2026-03-27 -- Phase 10 Plan 02 complete (FabricEraserCanvas + verification bug fixes)
+status: verifying
+stopped_at: Endpoint drag fixed (selection-clearing guard), SVG callout duplication fixed (SVG defers to CalloutOverlay). Callout UX parity with combined-tools is next — callouts only work via pan (not select), missing drag-to-create preview, knee/arrowhead handles, textbox resize, two-click text editing.
+last_updated: "2026-04-02T18:57:20.784Z"
+last_activity: 2026-04-02 -- Phase 11 Plan 02 complete (zoom cleanup, dead props removed, CLAUDE.md updated)
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 9
-  completed_plans: 7
-  percent: 100
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -26,16 +26,16 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 11 of 11 (Text/Shape Editing + Zoom Cleanup)
-Plan: 1 of 2 (11-01-PLAN.md complete)
-Status: Plan 01 complete, ready for Plan 02 (zoom cleanup)
-Last activity: 2026-03-28 -- Phase 11 Plan 01 complete (FabricEditCanvas + App.jsx edit state)
+Plan: 2 of 2 (11-02-PLAN.md complete, awaiting human verification checkpoint)
+Status: Plan 02 code complete, Task 3 human verification checkpoint pending
+Last activity: 2026-04-02 -- Phase 11 Plan 02 complete (zoom cleanup, dead props removed, CLAUDE.md updated)
 
-Progress: [████████░░] 78% (Phases 8-10 complete, Phase 11 Plan 01 done)
+Progress: [█████████░] 89% (Phases 8-10 complete, Phase 11 Plans 01-02 done, checkpoint pending)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Phase 8: 2 plans across 2 sessions
 - Phase 9: Plan 01 in 11 min (3 tasks, 6 files)
 - Phase 9: Plan 02 in 4 min (2 tasks, 2 files)
@@ -43,6 +43,7 @@ Progress: [████████░░] 78% (Phases 8-10 complete, Phase 11 P
 - Phase 10: Plan 01 in 6 min (2 tasks, 3 files)
 - Phase 10: Plan 02 multi-session (3 tasks, 5 files, 10 bugs fixed during verification)
 - Phase 11: Plan 01 in 7 min (2 tasks, 2 files)
+- Phase 11: Plan 02 in 3 min (2 tasks, 3 files)
 
 ## Accumulated Context
 
@@ -84,6 +85,8 @@ Progress: [████████░░] 78% (Phases 8-10 complete, Phase 11 P
 - [11-01]: Click-outside commits edit (100ms delay to avoid initial double-click), Escape cancels
 - [11-01]: Callout edit hides SVG layer (eraser pattern), text/shape keep SVG visible
 - [11-01]: Mini-toolbar for shape editing positioned 8px above bbox Canvas with fill/stroke/width controls
+- [Phase 11]: beginSyncfusionScaleConfirmPending simplified to zoomGeneration-only + Canvas mode deprecation warning
+- [Phase 11]: Canvas mode toggle kept as dev escape hatch with degraded zoom warning; CLAUDE.md updated for SVG-based zoom
 
 ### Roadmap Evolution
 
@@ -104,6 +107,6 @@ Progress: [████████░░] 78% (Phases 8-10 complete, Phase 11 P
 
 ## Session Continuity
 
-Last session: 2026-04-01
-Stopped at: Endpoint drag fixed (selection-clearing guard), SVG callout duplication fixed (SVG defers to CalloutOverlay). Callout UX parity with combined-tools is next — callouts only work via pan (not select), missing drag-to-create preview, knee/arrowhead handles, textbox resize, two-click text editing.
+Last session: 2026-04-02
+Stopped at: Completed 11-02-PLAN.md Tasks 1-2 (zoom cleanup). Task 3 human verification checkpoint pending -- user needs to test editing + zoom workflows in browser.
 Resume file: .planning/phases/11-text-shape-editing-zoom-cleanup/.continue-here.md
