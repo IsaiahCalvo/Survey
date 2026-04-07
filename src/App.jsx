@@ -99,6 +99,11 @@ import {
   computeExcelSyncFingerprint,
   computeHasPendingExcelSyncChanges
 } from './utils/excelSyncDirtyState';
+import {
+  getPageAnnotationVisibilityState,
+  normalizePageRegions,
+  normalizeRegionVisibility
+} from './utils/annotationVisibilityRules';
 
 // Set up the PDF.js worker
 // Set up the PDF.js worker
@@ -13877,21 +13882,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         bookmark?.dest
       ));
       setHasImportedPdfBookmarks(hasStoredPdfBookmarks);
-      // Migrate spaces: ensure regions have showBackgroundAnnotations
+      // Migrate spaces: ensure page visibility state is explicit in the region data.
       // Requirement: "A region can contain multiple areas (polygons) within it"
       // Keep all regions as they represent multiple areas within the same logical region
       const migratedSpaces = (sidebarData.spaces || []).map(space => ({
         ...space,
         assignedPages: (space.assignedPages || []).map(page => {
-          const regions = page.regions || [];
-          // Migrate: ensure showBackgroundAnnotations property exists
-          const migratedRegions = regions.map(region => ({
-            ...region,
-            showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
-          }));
           return {
             ...page,
-            regions: migratedRegions
+            regions: normalizePageRegions(page.regions || [])
           };
         })
       }));
@@ -14354,14 +14353,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     historySpaces.map(space => ({
       ...space,
       assignedPages: (space.assignedPages || []).map(page => {
-        const regions = page.regions || [];
-        const migratedRegions = regions.map(region => ({
-          ...region,
-          showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
-        }));
         return {
           ...page,
-          regions: migratedRegions
+          regions: normalizePageRegions(page.regions || [])
         };
       })
     }))
@@ -15333,16 +15327,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Requirement: "A region can contain multiple areas (polygons) within it"
       if (Object.prototype.hasOwnProperty.call(updates, 'assignedPages')) {
         sanitizedUpdates.assignedPages = (updates.assignedPages || []).map(page => {
-          const regions = page.regions || [];
           // Keep all regions as they represent multiple areas within the same logical region
-          // Migrate: ensure showBackgroundAnnotations property exists
-          const migratedRegions = regions.map(region => ({
-            ...region,
-            showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true
-          }));
           return {
             ...page,
-            regions: migratedRegions
+            regions: normalizePageRegions(page.regions || [])
           };
         });
       }
@@ -19985,11 +19973,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       ? additiveRegions // Keep all additive regions as separate areas within the region
       : [];
 
-    // Ensure region has showBackgroundAnnotations property (migration)
-    const migratedRegions = normalizedRegions.map(region => ({
-      ...region,
-      showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true if not set
-    }));
+    // Ensure page visibility state is explicit on every saved region area.
+    const migratedRegions = normalizePageRegions(normalizedRegions);
 
     const validMigratedRegions = migratedRegions.filter(region => {
       if (!region || !Array.isArray(region.coordinates)) return false;
@@ -23713,23 +23698,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setActiveRegionId(null);
   }, [activeSpaceId, spaces, isRegionOverlayEnabled]);
 
-  // Helper function to get region lightbulb state for a specific region
-  const getRegionLightbulbState = useCallback((spaceId, pageId) => {
+  // Page visibility filters are separate features:
+  // - canvas visibility: light bulb in regular space context
+  // - survey visibility: survey icon in survey context
+  const getCanvasAnnotationVisibilityState = useCallback((spaceId, pageId) => {
     const space = spaces.find(s => s.id === spaceId);
     if (!space) return true;
 
     const page = space.assignedPages?.find(p => p.pageId === pageId);
     if (!page) return true;
 
-    const region = page.regions?.[0];
-    if (!region) return true;
-
-    return region.showBackgroundAnnotations !== false;
+    return getPageAnnotationVisibilityState(page).canvasVisible;
   }, [spaces]);
 
-  // Helper function to set region lightbulb state
-  const setRegionLightbulbState = useCallback((spaceId, pageId, value) => {
-    debugLog('[setRegionLightbulbState] Called:', { spaceId, pageId, value });
+  const getSurveyAnnotationVisibilityState = useCallback((spaceId, pageId) => {
+    const space = spaces.find(s => s.id === spaceId);
+    if (!space) return true;
+
+    const page = space.assignedPages?.find(p => p.pageId === pageId);
+    if (!page) return true;
+
+    return getPageAnnotationVisibilityState(page).surveyVisible;
+  }, [spaces]);
+
+  const setPageAnnotationVisibilityState = useCallback((spaceId, pageId, updates) => {
+    debugLog('[setPageAnnotationVisibilityState] Called:', { spaceId, pageId, updates });
     setSpaces(prev => prev.map(space => {
       if (space.id !== spaceId) {
         return space;
@@ -23744,24 +23737,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // Ensure regions array exists and has at least one region
         const regions = page.regions || [];
         if (regions.length === 0) {
-          // If no region exists, create one with default values
+          // If no region exists yet, create a placeholder region record so this
+          // page can still persist page-level visibility state.
+          const nextRegion = normalizeRegionVisibility({
+            regionId: `region-${pageId}-${Date.now()}`,
+            coordinates: [],
+            showCanvasAnnotations: updates.canvasVisible ?? true,
+            showSurveyAnnotations: updates.surveyVisible ?? true
+          });
           return {
             ...page,
-            regions: [{
-              regionId: `region-${pageId}-${Date.now()}`,
-              coordinates: [],
-              showBackgroundAnnotations: value
-            }]
+            regions: [nextRegion]
           };
         }
 
-        // Update all regions' lightbulb state (all areas share the same lightbulb)
-        // Requirement: "Each region has exactly one lightbulb"
+        // Update all regions' page-level visibility state (all areas on the page share it).
         return {
           ...page,
-          regions: regions.map(region => ({
+          regions: regions.map(region => normalizeRegionVisibility({
             ...region,
-            showBackgroundAnnotations: value
+            showCanvasAnnotations: updates.canvasVisible ?? region.showCanvasAnnotations ?? region.showBackgroundAnnotations,
+            showBackgroundAnnotations: updates.canvasVisible ?? region.showCanvasAnnotations ?? region.showBackgroundAnnotations,
+            showSurveyAnnotations: updates.surveyVisible ?? region.showSurveyAnnotations
           }))
         };
       });
@@ -23773,10 +23770,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }));
   }, []);
 
-  // Handler for toggling background annotations visibility (per-region)
-  const handleToggleBackgroundAnnotations = useCallback((spaceId, pageId, value) => {
-    setRegionLightbulbState(spaceId, pageId, value);
-  }, [activeSpaceId, selectedSpaceId, setRegionLightbulbState]);
+  const handleToggleCanvasAnnotations = useCallback((spaceId, pageId, value) => {
+    setPageAnnotationVisibilityState(spaceId, pageId, { canvasVisible: value });
+  }, [setPageAnnotationVisibilityState]);
+
+  const handleToggleSurveyAnnotations = useCallback((spaceId, pageId, value) => {
+    setPageAnnotationVisibilityState(spaceId, pageId, { surveyVisible: value });
+  }, [setPageAnnotationVisibilityState]);
 
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {
@@ -24143,8 +24143,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             scale={scale}
             tabId={tabId}
             onPageDrop={onPageDrop}
-            getRegionLightbulbState={getRegionLightbulbState}
-            onToggleBackgroundAnnotations={handleToggleBackgroundAnnotations}
+            getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+            onToggleCanvasAnnotations={handleToggleCanvasAnnotations}
+            getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
+            onToggleSurveyAnnotations={handleToggleSurveyAnnotations}
             selectedSpaceId={selectedSpaceId}
             onToggleRegionOverlay={handleToggleRegionOverlay}
             getRegionOverlayEnabled={isRegionOverlayEnabled}
@@ -24510,7 +24512,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 selectedCategoryId={selectedCategoryId}
                                 activeRegions={pageRegions}
                                 spaces={spaces}
-                                getRegionLightbulbState={getRegionLightbulbState}
+                                getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                                getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                 activeRegionId={activeRegionId}
                                 isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNumber}
                                 eraserMode={eraserMode}
@@ -24723,7 +24726,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   activeRegions={pageRegions}
                                   activeRegionId={activeRegionId}
                                   spaces={spaces}
-                                  getRegionLightbulbState={getRegionLightbulbState}
+                                  getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                                  getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                   isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
                                   onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
@@ -24829,9 +24833,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       rect, effectiveScale, pageNumber,
                                     };
                                   }}
+                                  onPointerMove={(e) => {
+                                    const drag = textToolDragRef.current;
+                                    if (!drag) return;
+                                    const el = e.currentTarget.querySelector('[data-text-preview]');
+                                    if (!el) return;
+                                    const dx = Math.abs(e.clientX - drag.startX);
+                                    const dy = Math.abs(e.clientY - drag.startY);
+                                    if (dx > 10 || dy > 10) {
+                                      el.style.display = 'block';
+                                      el.style.left = (Math.min(e.clientX, drag.startX) - drag.rect.left) + 'px';
+                                      el.style.top = (Math.min(e.clientY, drag.startY) - drag.rect.top) + 'px';
+                                      el.style.width = dx + 'px';
+                                      el.style.height = dy + 'px';
+                                    } else {
+                                      el.style.display = 'none';
+                                    }
+                                  }}
                                   onPointerUp={(e) => {
                                     const drag = textToolDragRef.current;
                                     if (!drag || drag.pageNumber !== pageNumber) return;
+                                    const previewEl = e.currentTarget.querySelector('[data-text-preview]');
+                                    if (previewEl) previewEl.style.display = 'none';
                                     textToolDragRef.current = null;
                                     const { rect, effectiveScale, startX, startY } = drag;
                                     const dx = Math.abs(e.clientX - startX);
@@ -24850,7 +24873,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       textBoxWidth: isDrag ? dx / effectiveScale : undefined,
                                     });
                                   }}
-                                />
+                                >
+                                  <div data-text-preview style={{
+                                    display: 'none',
+                                    position: 'absolute',
+                                    border: '2px dashed rgba(59, 130, 246, 0.5)',
+                                    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                                    borderRadius: '2px',
+                                    pointerEvents: 'none',
+                                  }} />
+                                </div>
                               )}
 
                               {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
@@ -25018,7 +25050,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       return pageRegions;
                                     })()}
                                     spaces={spaces}
-                                    getRegionLightbulbState={getRegionLightbulbState}
+                                    getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                                    getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                     activeRegionId={activeRegionId}
                                     isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNumber}
                                     eraserMode={eraserMode}
@@ -25074,7 +25107,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       activeRegions={pageRegions}
                                       activeRegionId={activeRegionId}
                                       spaces={spaces}
-                                      getRegionLightbulbState={getRegionLightbulbState}
+                                      getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                                      getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                       isRegionOverlayEnabled={isRegionOverlayEnabled}
                                       layerVisibility={annotationLayerVisibility}
                                       onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
@@ -25179,9 +25213,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                             rect, effectiveScale, pageNumber,
                                           };
                                         }}
+                                        onPointerMove={(e) => {
+                                          const drag = textToolDragRef.current;
+                                          if (!drag) return;
+                                          const el = e.currentTarget.querySelector('[data-text-preview]');
+                                          if (!el) return;
+                                          const dx = Math.abs(e.clientX - drag.startX);
+                                          const dy = Math.abs(e.clientY - drag.startY);
+                                          if (dx > 10 || dy > 10) {
+                                            el.style.display = 'block';
+                                            el.style.left = (Math.min(e.clientX, drag.startX) - drag.rect.left) + 'px';
+                                            el.style.top = (Math.min(e.clientY, drag.startY) - drag.rect.top) + 'px';
+                                            el.style.width = dx + 'px';
+                                            el.style.height = dy + 'px';
+                                          } else {
+                                            el.style.display = 'none';
+                                          }
+                                        }}
                                         onPointerUp={(e) => {
                                           const drag = textToolDragRef.current;
                                           if (!drag || drag.pageNumber !== pageNumber) return;
+                                          const previewEl = e.currentTarget.querySelector('[data-text-preview]');
+                                          if (previewEl) previewEl.style.display = 'none';
                                           textToolDragRef.current = null;
                                           const { rect, effectiveScale, startX, startY } = drag;
                                           const dx = Math.abs(e.clientX - startX);
@@ -25200,7 +25253,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                             textBoxWidth: isDrag ? dx / effectiveScale : undefined,
                                           });
                                         }}
-                                      />
+                                      >
+                                        <div data-text-preview style={{
+                                          display: 'none',
+                                          position: 'absolute',
+                                          border: '2px dashed rgba(59, 130, 246, 0.5)',
+                                          backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                                          borderRadius: '2px',
+                                          pointerEvents: 'none',
+                                        }} />
+                                      </div>
                                     )}
 
                                     {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
@@ -25423,7 +25485,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 selectedCategoryId={selectedCategoryId}
                                 activeRegions={pageRegions}
                                 spaces={spaces}
-                                getRegionLightbulbState={getRegionLightbulbState}
+                                getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                                getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                 activeRegionId={activeRegionId}
                                 isRegionSelectionActive={showRegionSelection && regionSelectionPage === pageNum}
                                 eraserMode={eraserMode}
@@ -25485,7 +25548,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       activeRegions={pageRegions}
                                       activeRegionId={activeRegionId}
                                       spaces={spaces}
-                                      getRegionLightbulbState={getRegionLightbulbState}
+                                      getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                                      getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                       isRegionOverlayEnabled={isRegionOverlayEnabled}
                                       layerVisibility={annotationLayerVisibility}
                                       onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNum, updatedJSON, saveContext)}
@@ -25587,9 +25651,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           rect, effectiveScale, pageNumber: pageNum,
                                         };
                                       }}
+                                      onPointerMove={(e) => {
+                                        const drag = textToolDragRef.current;
+                                        if (!drag) return;
+                                        const el = e.currentTarget.querySelector('[data-text-preview]');
+                                        if (!el) return;
+                                        const dx = Math.abs(e.clientX - drag.startX);
+                                        const dy = Math.abs(e.clientY - drag.startY);
+                                        if (dx > 10 || dy > 10) {
+                                          el.style.display = 'block';
+                                          el.style.left = (Math.min(e.clientX, drag.startX) - drag.rect.left) + 'px';
+                                          el.style.top = (Math.min(e.clientY, drag.startY) - drag.rect.top) + 'px';
+                                          el.style.width = dx + 'px';
+                                          el.style.height = dy + 'px';
+                                        } else {
+                                          el.style.display = 'none';
+                                        }
+                                      }}
                                       onPointerUp={(e) => {
                                         const drag = textToolDragRef.current;
                                         if (!drag || drag.pageNumber !== pageNum) return;
+                                        const previewEl = e.currentTarget.querySelector('[data-text-preview]');
+                                        if (previewEl) previewEl.style.display = 'none';
                                         textToolDragRef.current = null;
                                         const { rect, effectiveScale, startX, startY } = drag;
                                         const dx = Math.abs(e.clientX - startX);
@@ -25608,7 +25691,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           textBoxWidth: isDrag ? dx / effectiveScale : undefined,
                                         });
                                       }}
-                                    />
+                                    >
+                                      <div data-text-preview style={{
+                                        display: 'none',
+                                        position: 'absolute',
+                                        border: '2px dashed rgba(59, 130, 246, 0.5)',
+                                        backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                                        borderRadius: '2px',
+                                        pointerEvents: 'none',
+                                      }} />
+                                    </div>
                                   )}
 
                                   {isEditMode && (
