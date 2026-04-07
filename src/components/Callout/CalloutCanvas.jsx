@@ -53,6 +53,34 @@ const CalloutCanvas = ({
   const wasDraggingRef = useRef(false);
   const lastCreationTimeRef = useRef(0);
 
+  // Container-aware scaling: measure actual container size vs unscaled page size.
+  // A CSS transform on the inner wrapper scales callouts from page space to actual container size.
+  // Direct DOM update (no React state) eliminates the 1-frame flicker during zoom transitions.
+  const containerScaleRef = useRef({ x: 1, y: 1 });
+  const transformWrapperRef = useRef(null);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || !pageWidth || !pageHeight) return;
+
+    const measure = () => {
+      const scaleX = el.offsetWidth / pageWidth;
+      const scaleY = el.offsetHeight / pageHeight;
+      if (scaleX > 0 && scaleY > 0) {
+        containerScaleRef.current = { x: scaleX, y: scaleY };
+        // Direct DOM update — no React re-render, zero flicker
+        if (transformWrapperRef.current) {
+          transformWrapperRef.current.style.transform = `scale(${scaleX}, ${scaleY})`;
+        }
+      }
+    };
+    measure();
+
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pageWidth, pageHeight]);
+
   // Convert pixel position to percentage of page
   const toPercent = useCallback((pixelPoint) => ({
     x: pixelPoint.x / pageWidth,
@@ -65,12 +93,14 @@ const CalloutCanvas = ({
     y: percentPoint.y * pageHeight,
   }), [pageWidth, pageHeight]);
 
+  // Mouse position in unscaled page space (accounts for zoom via containerScale)
   const getMousePosition = useCallback((e) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
+    const cs = containerScaleRef.current;
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: (e.clientX - rect.left) / cs.x,
+      y: (e.clientY - rect.top) / cs.y,
     };
   }, []);
 
@@ -201,7 +231,7 @@ const CalloutCanvas = ({
     }
 
     // If callout tool is active and clicking on empty space, start creation
-    if (dragTarget.type === 'none') {
+    if (isCalloutToolActive && dragTarget.type === 'none') {
       console.log('[CalloutCanvas] mouseDown — starting creation at', pos, 'page:', pageNumber);
       setCreationState({
         isCreating: true,
@@ -396,7 +426,8 @@ const CalloutCanvas = ({
         kneePercent,
         textBoxPercent,
         textBoxWidthPercent,
-        textBoxHeightPercent
+        textBoxHeightPercent,
+        {}
       );
 
       // Apply default style if provided
@@ -527,8 +558,15 @@ const CalloutCanvas = ({
   }, [setSelectedCalloutId, setCallouts, activeTool, selectedCalloutId, getMousePosition, toPercent, toPixels, distanceToLineSegment, pageCallouts]);
 
   const startDrag = useCallback((target, offset) => {
+    // Convert offset from screen/scaled pixels to unscaled page space
+    // (CalloutComponent uses getBoundingClientRect which returns screen-space values)
+    const cs = containerScaleRef.current;
+    const unscaledOffset = {
+      x: offset.x / cs.x,
+      y: offset.y / cs.y,
+    };
     setDragTarget(target);
-    setDragOffset(offset);
+    setDragOffset(unscaledOffset);
     wasDraggingRef.current = true;
 
     // Capture initial state for corner resize
@@ -548,7 +586,7 @@ const CalloutCanvas = ({
     if (target.type === 'whole' && target.calloutId) {
       const callout = callouts.find(c => c.id === target.calloutId);
       if (callout) {
-        wholeMoveInitialPosRef.current = offset;
+        wholeMoveInitialPosRef.current = unscaledOffset;
         wholeMoveInitialCalloutPosRef.current = {
           arrowTip: { ...callout.arrowTip },
           knee: { ...callout.knee },
@@ -647,7 +685,7 @@ const CalloutCanvas = ({
   }, [dragTarget.type, isCalloutToolActive, handleMouseMove, handleMouseUp]);
 
   // Pointer events logic:
-  // - When callout tool is active: 'auto' to enable callout creation on the canvas
+  // - When callout or text tool is active: 'auto' to enable creation on the canvas
   // - When pan/select tool is active AND a callout is selected: 'auto' to enable clicking off to deselect
   // - When other tools are active: 'none' to let clicks pass through to Fabric canvas
   // Individual CalloutComponent elements have their own pointerEvents based on shouldReceivePointerEvents
@@ -676,72 +714,85 @@ const CalloutCanvas = ({
       onMouseUp={handleMouseUp}
       onClick={handleCanvasClick}
     >
-      {/* Creation preview line */}
-      {creationState.isCreating && creationState.arrowTip && creationState.currentMouse && (
-        <svg
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            width: '100%',
-            height: '100%',
-            pointerEvents: 'none',
-          }}
-        >
-          <defs>
-            <marker
-              id="arrowhead-preview"
-              markerWidth="10"
-              markerHeight="7"
-              refX="9"
-              refY="3.5"
-              orient="auto"
-            >
-              <polygon
-                points="0 0, 10 3.5, 0 7"
-                fill="#1e293b"
-                opacity={0.6}
-              />
-            </marker>
-          </defs>
-          <polyline
-            points={`${creationState.currentMouse.x},${creationState.currentMouse.y} ${(creationState.arrowTip.x + creationState.currentMouse.x) / 2},${creationState.arrowTip.y - 40} ${creationState.arrowTip.x},${creationState.arrowTip.y}`}
-            fill="none"
-            stroke="#1e293b"
-            strokeWidth={2}
-            strokeDasharray="5,5"
-            opacity={0.6}
-            markerEnd="url(#arrowhead-preview)"
-          />
-        </svg>
-      )}
+      {/* Transform wrapper: positions callouts in unscaled page space, CSS transform scales to actual container size.
+           This is the callout equivalent of SVGAnnotationLayer's viewBox — zoom is handled by the browser, not JS. */}
+      <div
+        ref={transformWrapperRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: pageWidth,
+          height: pageHeight,
+          transformOrigin: '0 0',
+          transform: `scale(1, 1)`,
+        }}
+      >
+        {/* Creation preview line */}
+        {creationState.isCreating && creationState.arrowTip && creationState.currentMouse && (
+          <svg
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none',
+            }}
+          >
+            <defs>
+              <marker
+                id="arrowhead-preview"
+                markerWidth="10"
+                markerHeight="7"
+                refX="9"
+                refY="3.5"
+                orient="auto"
+              >
+                <polygon
+                  points="0 0, 10 3.5, 0 7"
+                  fill="#1e293b"
+                  opacity={0.6}
+                />
+              </marker>
+            </defs>
+            <polyline
+              points={`${creationState.currentMouse.x},${creationState.currentMouse.y} ${(creationState.arrowTip.x + creationState.currentMouse.x) / 2},${creationState.arrowTip.y - 40} ${creationState.arrowTip.x},${creationState.arrowTip.y}`}
+              fill="none"
+              stroke="#1e293b"
+              strokeWidth={2}
+              strokeDasharray="5,5"
+              opacity={0.6}
+              markerEnd="url(#arrowhead-preview)"
+            />
+          </svg>
+        )}
 
-      {/* Render callouts */}
-      {pageCallouts.map(callout => (
-        <CalloutComponent
-          key={callout.id}
-          callout={callout}
-          isSelected={callout.id === selectedCalloutId}
-          onSelect={() => selectCallout(callout.id)}
-          onDeselect={deselectCallout}
-          onStartDrag={startDrag}
-          onUpdate={(updates) => updateCallout(callout.id, updates)}
-          onDelete={() => deleteCallout(callout.id)}
-          shouldFocus={callout.id === newCalloutId}
-          pageWidth={pageWidth}
-          pageHeight={pageHeight}
-          activeTool={activeTool}
-          isCalloutToolActive={isCalloutToolActive}
-          clipboardCallout={clipboardCallout}
-          clipboardCalloutType={clipboardCalloutType}
-          onCutCallout={onCutCallout}
-          onCopyCallout={onCopyCallout}
-          onPasteCallout={onPasteCallout}
-          pageNumber={pageNumber}
-        />
-      ))}
+        {/* Render callouts */}
+        {pageCallouts.map(callout => (
+          <CalloutComponent
+            key={callout.id}
+            callout={callout}
+            isSelected={callout.id === selectedCalloutId}
+            onSelect={() => selectCallout(callout.id)}
+            onDeselect={deselectCallout}
+            onStartDrag={startDrag}
+            onUpdate={(updates) => updateCallout(callout.id, updates)}
+            onDelete={() => deleteCallout(callout.id)}
+            shouldFocus={callout.id === newCalloutId}
+            pageWidth={pageWidth}
+            pageHeight={pageHeight}
+            activeTool={activeTool}
+            isCalloutToolActive={isCalloutToolActive}
+            clipboardCallout={clipboardCallout}
+            clipboardCalloutType={clipboardCalloutType}
+            onCutCallout={onCutCallout}
+            onCopyCallout={onCopyCallout}
+            onPasteCallout={onPasteCallout}
+            pageNumber={pageNumber}
+          />
+        ))}
+      </div>
     </div>
   );
 };

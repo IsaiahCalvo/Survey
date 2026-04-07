@@ -68,7 +68,7 @@ import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import FabricDrawingCanvas from './components/FabricDrawingCanvas';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FabricEditCanvas from './components/FabricEditCanvas';
-import FabricTextCanvas from './components/FabricTextCanvas';
+// FabricTextCanvas removed — text tool now creates text-only callouts via CalloutCanvas
 import CalloutOverlay from './components/Callout';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
@@ -9203,6 +9203,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const syncfusionOverlayTransformLoopActiveRef = useRef(false);
   const syncfusionOverlayTransformRatioByPageRef = useRef({});
   const syncfusionOverlayTransformNodeByPageRef = useRef({});
+  const syncfusionLiveZoomDebugLastLogRef = useRef({ atMs: 0, phase: null, branch: null, pageNumber: null });
+  const syncfusionOverlayLegacyCompensationRefs = useRef({});
   const syncfusionInteractionPortalHostsRef = useRef({});
   const syncfusionOverlayTransformStatsRef = useRef({
     ticks: 0,
@@ -9844,6 +9846,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       node.style.willChange = '';
       node.style.backfaceVisibility = '';
     });
+    const legacyCompensationRefs = syncfusionOverlayLegacyCompensationRefs.current || {};
+    Object.keys(legacyCompensationRefs).forEach((pageKey) => {
+      const node = legacyCompensationRefs[pageKey];
+      if (!node || !node.isConnected || !node.style) return;
+      node.style.transform = '';
+      node.style.transformOrigin = '';
+      node.style.willChange = '';
+      node.style.backfaceVisibility = '';
+    });
     syncfusionOverlayTransformRatioByPageRef.current = {};
     syncfusionOverlayTransformNodeByPageRef.current = {};
     resetSyncfusionZoomPresentationPages(null, { revealLive: true });
@@ -9856,6 +9867,81 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       delete fallbacks[pageKey];
     });
   }, [resetSyncfusionZoomPresentationPages, syncScaleConfirmHiddenPages]);
+
+  const commitSyncfusionOverlayScaleForPage = useCallback((pageNumber, appliedScale, source = 'unknown') => {
+    const safePageNumber = Number(pageNumber);
+    if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
+      return false;
+    }
+
+    const safeScale = Number(appliedScale);
+    const hasSafeScale = Number.isFinite(safeScale) && safeScale > 0;
+    const node = syncfusionOverlayContentRefs.current?.[safePageNumber] || null;
+    const compensationNode = syncfusionOverlayLegacyCompensationRefs.current?.[safePageNumber] || null;
+    const inlineTransform = typeof node?.style?.transform === 'string' ? node.style.transform : '';
+    const observedRatio = parseCssTransformScaleX(inlineTransform);
+    const ratioByPage = { ...(syncfusionOverlayTransformRatioByPageRef.current || {}) };
+    const storedRatio = Number(ratioByPage[safePageNumber]) || 1;
+    const hasTransform =
+      (typeof inlineTransform === 'string' && inlineTransform.trim().length > 0) ||
+      Math.abs(observedRatio - 1) > 0.001 ||
+      Math.abs(storedRatio - 1) > 0.001;
+
+    if (hasSafeScale) {
+      const currentCommittedScale = Number(syncfusionCommittedPageScalesRef.current?.[safePageNumber]);
+      if (!Number.isFinite(currentCommittedScale) || Math.abs(currentCommittedScale - safeScale) > 0.0005) {
+        syncfusionCommittedPageScalesRef.current = {
+          ...(syncfusionCommittedPageScalesRef.current || {}),
+          [safePageNumber]: safeScale
+        };
+        setSyncfusionCommittedPageScales((prev) => {
+          const previousScale = Number(prev?.[safePageNumber]);
+          if (Number.isFinite(previousScale) && Math.abs(previousScale - safeScale) <= 0.0005) {
+            return prev;
+          }
+          return {
+            ...(prev || {}),
+            [safePageNumber]: safeScale
+          };
+        });
+      }
+    }
+
+    if (hasTransform && node?.style) {
+      node.style.transform = '';
+      node.style.transformOrigin = '';
+      node.style.willChange = '';
+      node.style.backfaceVisibility = '';
+    }
+    if (compensationNode?.style) {
+      compensationNode.style.transform = '';
+      compensationNode.style.transformOrigin = '';
+      compensationNode.style.willChange = '';
+      compensationNode.style.backfaceVisibility = '';
+    }
+
+    ratioByPage[safePageNumber] = 1;
+    syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+
+    if (hasTransform || hasSafeScale) {
+      debugMark('overlay_transform_commit', {
+        page: safePageNumber,
+        scale: hasSafeScale ? safeScale : null,
+        source,
+        observedRatio: roundOverlayRecorderValue(observedRatio, 5),
+        storedRatio: roundOverlayRecorderValue(storedRatio, 5)
+      });
+    }
+
+    return hasTransform;
+  }, []);
+
+  const handleLegacyOverlayPaintCommitted = useCallback((pageNumber, appliedScale) => {
+    if (!useSyncfusionRenderer) return;
+    if (rendererModeRef.current !== 'svg') return;
+    if (zoomOverlayTransformActiveRef.current) return;
+    commitSyncfusionOverlayScaleForPage(pageNumber, appliedScale, 'legacy_paint_committed');
+  }, [commitSyncfusionOverlayScaleForPage, useSyncfusionRenderer]);
 
   // [Phase 11] Removed: old frozen overlay page caching function, inert in SVG mode.
 
@@ -10829,6 +10915,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // { pageNumber, index, type, editType ('text'|'shape'|'callout'), data }
   const [editingAnnotation, setEditingAnnotation] = useState(null);
   const editModeCooldownRef = useRef(0); // timestamp — prevents re-entering edit mode immediately after dismiss
+  const textToolDragRef = useRef(null); // { startX, startY, pageNumber, rect, effectiveScale } for drag-to-create
 
   // Disable ALL Syncfusion interactive layers during annotation edit mode via injected <style>.
   // Covers .e-pv-text-layer, .e-pv-annotation-canvas, and any other Syncfusion overlay.
@@ -10850,7 +10937,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => { style.remove(); };
   }, [editingAnnotation]);
 
-  // newTextPlacement removed — FabricTextCanvas handles text creation directly
+  // newTextPlacement removed — text tool creates text-only callouts via CalloutCanvas
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
 
   // Callout overlay state
@@ -19412,6 +19499,135 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const annotationSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
 
+  const requiresLegacyAnnotationLayer = useMemo(() => {
+    if (rendererMode !== 'svg') return true;
+
+    // Survey highlight creation/editing still depends on PAL. Spaces/regions
+    // stay on the SVG path so imported annotations and zoom remain stable.
+    return showSurveyPanel;
+  }, [rendererMode, showSurveyPanel]);
+
+  useEffect(() => {
+    if (!useSyncfusionRenderer) return undefined;
+    if (syncfusionInteractionPhase === 'idle' && !zoomOverlayTransformActiveRef.current) {
+      return undefined;
+    }
+
+    const branch = requiresLegacyAnnotationLayer
+      ? 'legacy-survey'
+      : (rendererMode === 'svg' ? 'svg' : 'canvas');
+    const intervalId = window.setInterval(() => {
+      const nowMs = Date.now();
+      const previous = syncfusionLiveZoomDebugLastLogRef.current || {};
+      if (
+        previous.phase === syncfusionInteractionPhase &&
+        previous.branch === branch &&
+        nowMs - (previous.atMs || 0) < 140
+      ) {
+        return;
+      }
+
+      const currentPage = Number(pageNumRef.current) || 1;
+      const viewerScale = getSyncfusionViewerScale();
+      const pageHost =
+        syncfusionPageContainersStateRef.current?.[currentPage] ||
+        pageContainersRef.current?.[currentPage] ||
+        null;
+      const overlayLayer = syncfusionOverlayLayerRefs.current?.[currentPage] || null;
+      const overlayContent = syncfusionOverlayContentRefs.current?.[currentPage] || null;
+      const legacyCompensationRoot = overlayContent?.querySelector?.(`[data-legacy-overlay-compensation="${currentPage}"]`) || null;
+      const palRoot = overlayContent?.querySelector?.(`[data-pal-root="${currentPage}"]`) || null;
+      const canvasContainer = overlayContent?.querySelector?.('.canvas-container') || null;
+      const palCanvas = overlayContent?.querySelector?.(`[data-pal-canvas="${currentPage}"]`) || null;
+      const regionRoot = overlayContent?.querySelector?.(`[data-space-region-overlay-root="${currentPage}"]`) || null;
+      const regionSvg = overlayContent?.querySelector?.(`[data-space-region-overlay-svg="${currentPage}"]`) || null;
+      const svgLayer = overlayLayer?.querySelector?.(`[data-svg-annotation-layer="${currentPage}"]`) || null;
+
+      const toRectSummary = (node) => {
+        const rect = node?.getBoundingClientRect?.();
+        if (!rect) return null;
+        return {
+          w: roundOverlayRecorderValue(rect.width, 3),
+          h: roundOverlayRecorderValue(rect.height, 3),
+          left: roundOverlayRecorderValue(rect.left, 3),
+          top: roundOverlayRecorderValue(rect.top, 3)
+        };
+      };
+
+      const measuredScale = normalizeInteractionMeasuredScale(
+        measureSyncfusionPageHostScale(
+          currentPage,
+          pageSizesRef.current || {},
+          syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+          viewerScale
+        ),
+        viewerScale,
+        viewerScale
+      );
+      const committedScale = Number(syncfusionCommittedPageScalesRef.current?.[currentPage]) || null;
+      const overlayTransform = typeof overlayContent?.style?.transform === 'string'
+        ? overlayContent.style.transform
+        : '';
+      const overlayTransformScale = parseCssTransformScaleX(
+        overlayTransform ||
+        (overlayContent && typeof window.getComputedStyle === 'function'
+          ? window.getComputedStyle(overlayContent).transform
+          : null)
+      );
+      const regionScreenWidth = Number(regionRoot?.getAttribute?.('data-space-region-overlay-screen-width')) || null;
+      const regionScreenHeight = Number(regionRoot?.getAttribute?.('data-space-region-overlay-screen-height')) || null;
+      const legacyCompensationTransform = typeof legacyCompensationRoot?.style?.transform === 'string'
+        ? legacyCompensationRoot.style.transform
+        : '';
+
+      console.log(`[ZoomLive ${branch} p${currentPage}]`, {
+        interactionPhase: syncfusionInteractionPhase,
+        zoomOverlayTransformActive: zoomOverlayTransformActiveRef.current,
+        viewerScale: roundOverlayRecorderValue(viewerScale, 5),
+        measuredScale: roundOverlayRecorderValue(measuredScale, 5),
+        committedScale: roundOverlayRecorderValue(committedScale, 5),
+        overlayTransform: overlayTransform || 'none',
+        overlayTransformScale: roundOverlayRecorderValue(overlayTransformScale, 5),
+        pageHostRect: toRectSummary(pageHost),
+        overlayLayerRect: toRectSummary(overlayLayer),
+        overlayContentRect: toRectSummary(overlayContent),
+        legacyCompensationRect: toRectSummary(legacyCompensationRoot),
+        legacyCompensationTransform: legacyCompensationTransform || 'none',
+        palRootRect: toRectSummary(palRoot),
+        canvasContainerRect: toRectSummary(canvasContainer),
+        palCanvasRect: toRectSummary(palCanvas),
+        regionRootRect: toRectSummary(regionRoot),
+        regionSvgRect: toRectSummary(regionSvg),
+        regionScreenWidth: roundOverlayRecorderValue(regionScreenWidth, 3),
+        regionScreenHeight: roundOverlayRecorderValue(regionScreenHeight, 3),
+        svgLayerRect: toRectSummary(svgLayer),
+        activeSpaceId,
+        activeRegionId,
+        showRegionSelection,
+      });
+
+      syncfusionLiveZoomDebugLastLogRef.current = {
+        atMs: nowMs,
+        phase: syncfusionInteractionPhase,
+        branch,
+        pageNumber: currentPage
+      };
+    }, 120);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [
+    activeRegionId,
+    activeSpaceId,
+    getSyncfusionViewerScale,
+    requiresLegacyAnnotationLayer,
+    rendererMode,
+    showRegionSelection,
+    syncfusionInteractionPhase,
+    useSyncfusionRenderer
+  ]);
+
 
   // Navigation functions
   const goToPage = useCallback((targetPage, options = {}) => {
@@ -22055,6 +22271,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, []);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
+    const source_ = saveContext?.source || 'unknown';
+    const prevCount_ = annotationsByPageRef.current?.[pageNumber]?.objects?.length ?? 0;
+    const nextCount_ = json?.objects?.length ?? 0;
+    if (source_.includes('text')) {
+      console.log(`[App p${pageNumber}] handleSaveAnnotations TEXT — source=${source_}, prevObjects=${prevCount_}, nextObjects=${nextCount_}, delta=${nextCount_ - prevCount_}`);
+    }
     const currentPageAnnotations = annotationsByPageRef.current?.[pageNumber];
     const normalizedCurrentAnnotations = normalizeCanvasJsonForHistory(currentPageAnnotations);
     const normalizedIncomingAnnotations = normalizeCanvasJsonForHistory(json);
@@ -22191,9 +22413,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setAnnotationsByPage(prev => {
       // Deep compare to avoid unnecessary updates/renders
       if (JSON.stringify(normalizeCanvasJsonForHistory(prev[pageNumber])) === JSON.stringify(normalizedIncomingAnnotations)) {
+        if (source_.includes('text')) {
+          console.log(`[App p${pageNumber}] setAnnotationsByPage TEXT — NOOP (no change detected)`);
+        }
         return prev;
       }
 
+      if (source_.includes('text')) {
+        const prevC = prev[pageNumber]?.objects?.length ?? 0;
+        const nextC = normalizedIncomingAnnotations?.objects?.length ?? 0;
+        console.log(`[App p${pageNumber}] setAnnotationsByPage TEXT — APPLYING state update: ${prevC} → ${nextC} objects`);
+      }
       return {
         ...prev,
         [pageNumber]: normalizedIncomingAnnotations
@@ -23766,6 +23996,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             currentSpaceId={activeSpaceId}
             currentPageId={regionSelectionPage}
             scale={regionSelectionScale}
+            pageWidth={regionSelectionPage ? (pageSizes[regionSelectionPage]?.width || 0) : 0}
+            pageHeight={regionSelectionPage ? (pageSizes[regionSelectionPage]?.height || 0) : 0}
             initialRegions={regionSelectionPage ? (getPageRegions(regionSelectionPage) || []) : []}
             onSetFullPage={handleRegionSetFullPage}
             canSetFullPage={canSetRegionToFullPage}
@@ -24049,14 +24281,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                     .map(k => Number(k))
                     .filter(n => Number.isFinite(n) && n > 0);
 
+                  // When a drawing/editing tool is active, always include the current page
+                  // so the Canvas layer can mount even on pages with no existing annotations.
+                  const toolNeedsCanvas = activeTool !== 'pan' && activeTool !== 'text-select';
+                  const currentPage = pageNum;
+
                   return containerPageNumbers
                     .filter(pageNumber => {
                       if (!shouldShowPage(pageNumber)) return false;
+                      // Always include current page when a tool that needs Canvas is active
+                      if (toolNeedsCanvas && pageNumber === currentPage) return true;
                       // Limit portals to pages with content to avoid unbounded memory growth
                       const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
+                      const hasSurveyHighlights = (newHighlightsByPage[pageNumber]?.length ?? 0) > 0;
                       const hasRegions = getPageRegions(pageNumber)?.length > 0;
                       const hasSearchHighlights = searchResultsByPage[pageNumber]?.length > 0;
-                      return hasAnnotations || hasRegions || hasSearchHighlights;
+                      return hasAnnotations || hasSurveyHighlights || hasRegions || hasSearchHighlights;
                     })
                     .sort((a, b) => a - b)
                     .map(pageNumber => {
@@ -24076,25 +24316,43 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                       const committedPageScale = Number(syncfusionCommittedPageScales[pageNumber]);
                       const hasCommittedPageScale = Number.isFinite(committedPageScale) && committedPageScale > 0;
-                      // Keep PAL on the last committed page scale while the outer
-                      // overlay CSS transform is active. Letting PAL consume the
-                      // live Syncfusion scale mid-zoom starts its redraw before the
-                      // App settle/confirm-pending handoff begins, which recreates
-                      // the visible flicker the user is reporting.
+                      const measuredPageScale = getSyncfusionPageScale(pageNumber, syncfusionViewerScale);
+                      const resolvedMeasuredPageScale = Number.isFinite(measuredPageScale) && measuredPageScale > 0
+                        ? measuredPageScale
+                        : (hasCommittedPageScale ? committedPageScale : (syncfusionViewerScale > 0 ? syncfusionViewerScale : 1));
+                      const overlayContentNode = syncfusionOverlayContentRefs.current?.[pageNumber] || null;
+                      const overlayContentTransform = typeof overlayContentNode?.style?.transform === 'string'
+                        ? overlayContentNode.style.transform
+                        : '';
+                      const overlayContentTransformScale = parseCssTransformScaleX(overlayContentTransform);
+                      const storedOverlayTransformScale = Number(syncfusionOverlayTransformRatioByPageRef.current?.[pageNumber]) || 1;
+                      const activeOverlayTransformScale =
+                        Math.abs(overlayContentTransformScale - 1) > 0.001
+                          ? overlayContentTransformScale
+                          : storedOverlayTransformScale;
+                      const legacyCommitCompensationPending =
+                        requiresLegacyAnnotationLayer &&
+                        hasCommittedPageScale &&
+                        !zoomOverlayTransformActiveRef.current &&
+                        Math.abs(activeOverlayTransformScale - 1) > 0.001;
+                      const legacyCommitCompensationScale =
+                        legacyCommitCompensationPending && activeOverlayTransformScale > 0
+                          ? (1 / activeOverlayTransformScale)
+                          : 1;
                       const layerScale = zoomOverlayTransformActiveRef.current && hasCommittedPageScale
                         ? committedPageScale
-                        : (syncfusionViewerScale > 0 ? syncfusionViewerScale : 1);
+                        : resolvedMeasuredPageScale;
 
                       // [DEBUG] Log props being passed to PAL
-                      if (pageNumber === 6) {
-                        console.log(`[App-Debug p${pageNumber}] PAL render — pageSize={w:${pageSize.width}, h:${pageSize.height}}, layerScale=${layerScale}, syncfusionViewerScale=${syncfusionViewerScale}, overlayDiv=${!!overlayDiv}, overlayDivW=${overlayDiv?.offsetWidth}, overlayDivH=${overlayDiv?.offsetHeight}, overlayDivTransform=${overlayDiv?.style?.transform || 'none'}`);
+                      if (pageNumber === (Number(pageNumRef.current) || 1)) {
+                        console.log(`[App-Debug p${pageNumber}] PAL render — pageSize={w:${pageSize.width}, h:${pageSize.height}}, layerScale=${layerScale}, measuredPageScale=${resolvedMeasuredPageScale}, committedPageScale=${hasCommittedPageScale ? committedPageScale : 'none'}, legacyCommitCompensationPending=${legacyCommitCompensationPending}, legacyCommitCompensationScale=${legacyCommitCompensationScale}, overlayContentTransformScale=${overlayContentTransformScale}, storedOverlayTransformScale=${storedOverlayTransformScale}, syncfusionViewerScale=${syncfusionViewerScale}, overlayDiv=${!!overlayDiv}, overlayDivW=${overlayDiv?.offsetWidth}, overlayDivH=${overlayDiv?.offsetHeight}, overlayDivTransform=${overlayDiv?.style?.transform || 'none'}, overlayContentTransform=${overlayContentTransform || 'none'}`);
                       }
 
                       // Proxy rendering variables (kept -- for scroll/drag interactions, not zoom)
                       const interactionPageMode = syncfusionInteractionPageModes[pageNumber] || 'full';
                       const isProxyPageWhileInteracting = interactionPageMode === 'proxy';
                       const isProxyPageWhileCommitting = syncfusionCommittingProxyPages.has(pageNumber);
-                      const shouldRenderLightweightAnnotations = useLiveStableOverlay && !isZoomOnlyInteraction && (
+                      const shouldRenderLightweightAnnotations = !requiresLegacyAnnotationLayer && useLiveStableOverlay && !isZoomOnlyInteraction && (
                         (syncfusionInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
                         (syncfusionInteractionPhase === 'committing' && isProxyPageWhileCommitting)
                       );
@@ -24149,6 +24407,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               }
                             }}
                           >
+                            <div
+                              ref={(node) => {
+                                if (node) {
+                                  syncfusionOverlayLegacyCompensationRefs.current[pageNumber] = node;
+                                } else {
+                                  delete syncfusionOverlayLegacyCompensationRefs.current[pageNumber];
+                                }
+                              }}
+                              data-legacy-overlay-compensation={pageNumber}
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '100%',
+                                transform: legacyCommitCompensationPending ? `scale(${legacyCommitCompensationScale})` : undefined,
+                                transformOrigin: legacyCommitCompensationPending ? 'top left' : undefined,
+                                willChange: legacyCommitCompensationPending ? 'transform' : undefined,
+                                backfaceVisibility: legacyCommitCompensationPending ? 'hidden' : undefined,
+                              }}
+                            >
                             {searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
                               <SearchHighlightLayer
                                 pageNumber={pageNumber}
@@ -24160,7 +24439,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
                               />
                             )}
-                            {rendererMode !== 'svg' && (
+                            {requiresLegacyAnnotationLayer && (
                             <div style={shouldHideFullLayer ? { visibility: 'hidden' } : undefined}>
                               <PageAnnotationLayer
                                 pageNumber={pageNumber}
@@ -24212,8 +24491,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onInsertBlankPage={handleInsertBlankPage}
                                 pageClipboard={pageClipboardPayload}
                                 onPastePageHere={handlePastePageHere}
+                                onPaintCommitted={handleLegacyOverlayPaintCommitted}
                                 isInteracting={syncfusionInteractionPhase === 'interacting' || zoomOverlayTransformActiveRef.current}
                                 isZooming={isZooming}
+                                preferImmediateVisibleZoomRender={true}
                               />
                             </div>
                             )}
@@ -24253,12 +24534,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                               if (validRegions.length === 0) return null;
 
+                              const legacyOverlayDisplayWidth = resolvedPageSize.width * layerScale;
+                              const legacyOverlayDisplayHeight = resolvedPageSize.height * layerScale;
+
                               return (
                                 <SpaceRegionOverlay
                                   pageNumber={pageNumber}
                                   regions={validRegions}
                                   width={resolvedPageSize.width}
                                   height={resolvedPageSize.height}
+                                  displayWidth={legacyOverlayDisplayWidth}
+                                  displayHeight={legacyOverlayDisplayHeight}
                                   scale={layerScale}
                                 />
                               );
@@ -24268,8 +24554,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 position: 'absolute',
                                 top: 0,
                                 left: 0,
-                                width: `${resolvedPageSize.width * layerScale}px`,
-                                height: `${resolvedPageSize.height * layerScale}px`,
+                                width: '100%',
+                                height: '100%',
                                 pointerEvents: 'none',
                                 zIndex: 1000
                               }}>
@@ -24282,10 +24568,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 }} />
                               </div>
                             )}
+                            </div>
                           </div>
                           {/* SVG layer + Drawing Canvas: OUTSIDE the transform/freeze div, directly in the portal overlay.
                               viewBox auto-scales with the Syncfusion page div — no CSS transforms needed. */}
-                          {rendererMode === 'svg' && (() => {
+                          {!requiresLegacyAnnotationLayer && (() => {
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                             const isTextTool = activeTool === 'text';
                             const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
@@ -24382,7 +24669,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   annotations={pageAnnotations}
                                   onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
                                   selectedModuleId={selectedModuleId}
+                                  selectedSpaceId={annotationSpaceId}
                                   activeRegionId={activeRegionId}
+                                  spaces={spaces}
+                                  isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   zoomGeneration={zoomGeneration}
                                 />
                               )}
@@ -24398,23 +24688,55 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
                                   eraserSize={eraserSize}
                                   viewerScale={scale}
+                                  selectedSpaceId={annotationSpaceId}
+                                  activeSpaceId={activeSpaceId}
+                                  spaces={spaces}
                                   zoomGeneration={zoomGeneration}
                                 />
                               )}
 
-                              {/* Text Canvas -- full-page overlay for text creation (cursor-correct via native zoom) */}
-                              {isTextTool && (
-                                <FabricTextCanvas
-                                  key={`text-${pageNumber}`}
-                                  pageNumber={pageNumber}
-                                  pageWidth={resolvedPageSize.width}
-                                  pageHeight={resolvedPageSize.height}
-                                  strokeColor={strokeColor}
-                                  annotations={pageAnnotations}
-                                  onTextCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'text:commit', tool: 'text' })}
-                                  selectedModuleId={selectedModuleId}
-                                  activeRegionId={activeRegionId}
-                                  zoomGeneration={zoomGeneration}
+                              {/* Text tool click-to-place / drag-to-create overlay */}
+                              {activeTool === 'text' && !(editingAnnotation?.pageNumber === pageNumber) && (
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0, left: 0, right: 0, bottom: 0,
+                                    cursor: 'text',
+                                    zIndex: 102,
+                                    pointerEvents: 'auto',
+                                  }}
+                                  onPointerDown={(e) => {
+                                    if (Date.now() - editModeCooldownRef.current < 300) return;
+                                    e.stopPropagation();
+                                    e.currentTarget.setPointerCapture(e.pointerId);
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const effectiveScale = rect.width / resolvedPageSize.width;
+                                    textToolDragRef.current = {
+                                      startX: e.clientX, startY: e.clientY,
+                                      rect, effectiveScale, pageNumber,
+                                    };
+                                  }}
+                                  onPointerUp={(e) => {
+                                    const drag = textToolDragRef.current;
+                                    if (!drag || drag.pageNumber !== pageNumber) return;
+                                    textToolDragRef.current = null;
+                                    const { rect, effectiveScale, startX, startY } = drag;
+                                    const dx = Math.abs(e.clientX - startX);
+                                    const dy = Math.abs(e.clientY - startY);
+                                    const x = (Math.min(startX, e.clientX) - rect.left) / effectiveScale;
+                                    const y = (Math.min(startY, e.clientY) - rect.top) / effectiveScale;
+                                    const isDrag = dx > 10 || dy > 10;
+                                    setEditingAnnotation({
+                                      pageNumber,
+                                      index: null,
+                                      type: 'textbox',
+                                      editType: 'text',
+                                      data: null,
+                                      isNewText: true,
+                                      clickPosition: { x, y },
+                                      textBoxWidth: isDrag ? dx / effectiveScale : undefined,
+                                    });
+                                  }}
                                 />
                               )}
 
@@ -24429,6 +24751,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   annotationData={editingAnnotation.data}
                                   annotationIndex={editingAnnotation.index}
                                   annotations={pageAnnotations}
+                                  isNewText={editingAnnotation.isNewText || false}
+                                  clickPosition={editingAnnotation.clickPosition || null}
+                                  textBoxWidth={editingAnnotation.textBoxWidth}
                                   onEditCommit={(updatedJSON) => {
                                     handleSaveAnnotations(pageNumber, updatedJSON, {
                                       source: 'edit:commit',
@@ -24448,8 +24773,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 />
                               )}
 
-                              {/* Callout Overlay -- only on current page to avoid duplicate creation across pages */}
-                              {(activeTool === 'callout' || activeTool === 'select' || activeTool === 'pan') && pageNumber === (pageNumRef.current || 1) && (
+                              {/* Callout Overlay -- always rendered so callouts stay visible in all tool modes.
+                                  CalloutCanvas handles its own pointer-events based on activeTool. */}
+                              {pageNumber === (pageNumRef.current || 1) && (
                                 <CalloutOverlay
                                   callouts={callouts}
                                   setCallouts={setCallouts}
@@ -24552,7 +24878,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
                                   />
                                 )}
-                                {pageSizes[pageNumber] && rendererMode !== 'svg' && (
+                                {pageSizes[pageNumber] && requiresLegacyAnnotationLayer && (
                                   <PageAnnotationLayer
                                     pageNumber={pageNumber}
                                     width={pageSizes[pageNumber].width}
@@ -24606,7 +24932,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     onPastePageHere={handlePastePageHere}
                                   />
                                 )}
-                                {pageSizes[pageNumber] && rendererMode === 'svg' && (() => {
+                                {pageSizes[pageNumber] && !requiresLegacyAnnotationLayer && (() => {
                                   const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                                   const isTextTool = activeTool === 'text';
                                   const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
@@ -24693,7 +25019,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         annotations={pageAnnotationsCS}
                                         onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
                                         selectedModuleId={selectedModuleId}
+                                        selectedSpaceId={annotationSpaceId}
                                         activeRegionId={activeRegionId}
+                                        spaces={spaces}
+                                        isRegionOverlayEnabled={isRegionOverlayEnabled}
                                         zoomGeneration={zoomGeneration}
                                       />
                                     )}
@@ -24709,23 +25038,55 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
                                         eraserSize={eraserSize}
                                         viewerScale={scale}
+                                        selectedSpaceId={annotationSpaceId}
+                                        activeSpaceId={activeSpaceId}
+                                        spaces={spaces}
                                         zoomGeneration={zoomGeneration}
                                       />
                                     )}
 
-                                    {/* Text Canvas -- full-page overlay for text creation (cursor-correct via native zoom) */}
-                                    {isTextTool && (
-                                      <FabricTextCanvas
-                                        key={`text-${pageNumber}`}
-                                        pageNumber={pageNumber}
-                                        pageWidth={pageSizes[pageNumber].width}
-                                        pageHeight={pageSizes[pageNumber].height}
-                                        strokeColor={strokeColor}
-                                        annotations={pageAnnotationsCS}
-                                        onTextCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'text:commit', tool: 'text' })}
-                                        selectedModuleId={selectedModuleId}
-                                        activeRegionId={activeRegionId}
-                                        zoomGeneration={zoomGeneration}
+                                    {/* Text tool click-to-place / drag-to-create overlay */}
+                                    {activeTool === 'text' && !(editingAnnotation?.pageNumber === pageNumber) && (
+                                      <div
+                                        style={{
+                                          position: 'absolute',
+                                          top: 0, left: 0, right: 0, bottom: 0,
+                                          cursor: 'text',
+                                          zIndex: 102,
+                                          pointerEvents: 'auto',
+                                        }}
+                                        onPointerDown={(e) => {
+                                          if (Date.now() - editModeCooldownRef.current < 300) return;
+                                          e.stopPropagation();
+                                          e.currentTarget.setPointerCapture(e.pointerId);
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const effectiveScale = rect.width / pageSizes[pageNumber].width;
+                                          textToolDragRef.current = {
+                                            startX: e.clientX, startY: e.clientY,
+                                            rect, effectiveScale, pageNumber,
+                                          };
+                                        }}
+                                        onPointerUp={(e) => {
+                                          const drag = textToolDragRef.current;
+                                          if (!drag || drag.pageNumber !== pageNumber) return;
+                                          textToolDragRef.current = null;
+                                          const { rect, effectiveScale, startX, startY } = drag;
+                                          const dx = Math.abs(e.clientX - startX);
+                                          const dy = Math.abs(e.clientY - startY);
+                                          const x = (Math.min(startX, e.clientX) - rect.left) / effectiveScale;
+                                          const y = (Math.min(startY, e.clientY) - rect.top) / effectiveScale;
+                                          const isDrag = dx > 10 || dy > 10;
+                                          setEditingAnnotation({
+                                            pageNumber,
+                                            index: null,
+                                            type: 'textbox',
+                                            editType: 'text',
+                                            data: null,
+                                            isNewText: true,
+                                            clickPosition: { x, y },
+                                            textBoxWidth: isDrag ? dx / effectiveScale : undefined,
+                                          });
+                                        }}
                                       />
                                     )}
 
@@ -24740,6 +25101,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         annotationData={editingAnnotation.data}
                                         annotationIndex={editingAnnotation.index}
                                         annotations={pageAnnotationsCS}
+                                        isNewText={editingAnnotation.isNewText || false}
+                                        clickPosition={editingAnnotation.clickPosition || null}
+                                        textBoxWidth={editingAnnotation.textBoxWidth}
                                         onEditCommit={(updatedJSON) => {
                                           handleSaveAnnotations(pageNumber, updatedJSON, {
                                             source: 'edit:commit',
@@ -24759,8 +25123,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       />
                                     )}
 
-                                    {/* Callout Overlay -- only on current page to avoid duplicate creation */}
-                                    {(activeTool === 'callout' || activeTool === 'select' || activeTool === 'pan') && pageNumber === (pageNumRef.current || 1) && (
+                                    {/* Callout Overlay -- always rendered so callouts stay visible in all tool modes */}
+                                    {pageNumber === (pageNumRef.current || 1) && (
                                     <CalloutOverlay
                                       callouts={callouts}
                                       setCallouts={setCallouts}
@@ -24819,6 +25183,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       regions={validRegions}
                                       width={pageSizes[pageNumber]?.width || 0}
                                       height={pageSizes[pageNumber]?.height || 0}
+                                      displayWidth={(pageSizes[pageNumber]?.width || 0) * renderedScale}
+                                      displayHeight={(pageSizes[pageNumber]?.height || 0) * renderedScale}
                                       scale={renderedScale}
                                     />
                                   );
@@ -24971,6 +25337,230 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 onPastePageHere={handlePastePageHere}
                               />
                             )}
+                            {pageSizes[pageNum] && !requiresLegacyAnnotationLayer && (() => {
+                              const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
+                              const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
+                              const isEraserTool = activeTool === 'eraser';
+                              const isEditMode = editingAnnotation?.pageNumber === pageNum;
+                              const pageAnnotations = annotationsByPage[pageNum];
+
+                              return (
+                                <>
+                                  <div
+                                    style={{
+                                      position: 'relative',
+                                      width: '100%',
+                                      height: '100%',
+                                      pointerEvents: (svgInteractive && !isEditMode) ? 'auto' : 'none',
+                                      zIndex: 100,
+                                      visibility: (isEraserTool || (isEditMode && editingAnnotation?.editType === 'callout')) ? 'hidden' : 'visible',
+                                      cursor: (svgInteractive && !isEditMode) ? 'default' : undefined,
+                                    }}
+                                    onPointerDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
+                                    onMouseDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
+                                  >
+                                    <SVGAnnotationLayer
+                                      pageNumber={pageNum}
+                                      width={pageSizes[pageNum].width}
+                                      height={pageSizes[pageNum].height}
+                                      annotations={pageAnnotations}
+                                      callouts={callouts}
+                                      selectedModuleId={selectedModuleId}
+                                      showSurveyPanel={showSurveyPanel}
+                                      selectedSpaceId={annotationSpaceId}
+                                      activeSpaceId={activeSpaceId}
+                                      activeRegions={pageRegions}
+                                      activeRegionId={activeRegionId}
+                                      spaces={spaces}
+                                      getRegionLightbulbState={getRegionLightbulbState}
+                                      isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                      layerVisibility={annotationLayerVisibility}
+                                      onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNum, updatedJSON, saveContext)}
+                                      onRequestEditMode={(annotationIndex, annotationType) => {
+                                        if (Date.now() - editModeCooldownRef.current < 300) {
+                                          console.log(`[App p${pageNum}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
+                                          return;
+                                        }
+                                        const annotationData = pageAnnotations?.objects?.[annotationIndex];
+                                        if (!annotationData) {
+                                          console.warn(`[App p${pageNum}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
+                                          return;
+                                        }
+                                        if (annotationType === 'path' || annotationType === 'line') {
+                                          console.log(`[App p${pageNum}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`, {
+                                            NOTE: 'Lines/arrows are blocked from edit mode — need line/arrow edit support',
+                                            annotationData: { type: annotationData.type, left: annotationData.left, top: annotationData.top, x1: annotationData.x1, y1: annotationData.y1, x2: annotationData.x2, y2: annotationData.y2 },
+                                          });
+                                          return;
+                                        }
+                                        let editType;
+                                        if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
+                                          editType = 'text';
+                                        } else if (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle') {
+                                          editType = 'shape';
+                                        } else {
+                                          editType = 'callout';
+                                        }
+                                        console.log(`[App p${pageNum}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
+                                        setEditingAnnotation({
+                                          pageNumber: pageNum,
+                                          index: annotationIndex,
+                                          type: annotationType,
+                                          editType,
+                                          data: annotationData,
+                                        });
+                                      }}
+                                      activeTool={activeTool}
+                                      editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
+                                    />
+                                  </div>
+
+                                  {isDrawingTool && (
+                                    <FabricDrawingCanvas
+                                      key={`draw-${pageNum}`}
+                                      pageNumber={pageNum}
+                                      pageWidth={pageSizes[pageNum].width}
+                                      pageHeight={pageSizes[pageNum].height}
+                                      activeTool={activeTool}
+                                      strokeColor={strokeColor}
+                                      highlightColor="rgba(255, 193, 7, 0.3)"
+                                      strokeWidth={strokeWidth}
+                                      annotations={pageAnnotations}
+                                      onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNum, updatedJSON, { source: 'path:created', tool: activeTool })}
+                                      selectedModuleId={selectedModuleId}
+                                      selectedSpaceId={annotationSpaceId}
+                                      activeRegionId={activeRegionId}
+                                      spaces={spaces}
+                                      isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                      zoomGeneration={zoomGeneration}
+                                    />
+                                  )}
+
+                                  {isEraserTool && (
+                                    <FabricEraserCanvas
+                                      key={`erase-${pageNum}`}
+                                      pageNumber={pageNum}
+                                      pageWidth={pageSizes[pageNum].width}
+                                      pageHeight={pageSizes[pageNum].height}
+                                      annotations={pageAnnotations}
+                                      onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNum, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
+                                      eraserSize={eraserSize}
+                                      viewerScale={scale}
+                                      selectedSpaceId={annotationSpaceId}
+                                      activeSpaceId={activeSpaceId}
+                                      spaces={spaces}
+                                      zoomGeneration={zoomGeneration}
+                                    />
+                                  )}
+
+                                  {/* Text tool click-to-place / drag-to-create overlay */}
+                                  {activeTool === 'text' && !(editingAnnotation?.pageNumber === pageNum) && (
+                                    <div
+                                      style={{
+                                        position: 'absolute',
+                                        top: 0, left: 0, right: 0, bottom: 0,
+                                        cursor: 'text',
+                                        zIndex: 102,
+                                        pointerEvents: 'auto',
+                                      }}
+                                      onPointerDown={(e) => {
+                                        if (Date.now() - editModeCooldownRef.current < 300) return;
+                                        e.stopPropagation();
+                                        e.currentTarget.setPointerCapture(e.pointerId);
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        const effectiveScale = rect.width / pageSizes[pageNum].width;
+                                        textToolDragRef.current = {
+                                          startX: e.clientX, startY: e.clientY,
+                                          rect, effectiveScale, pageNumber: pageNum,
+                                        };
+                                      }}
+                                      onPointerUp={(e) => {
+                                        const drag = textToolDragRef.current;
+                                        if (!drag || drag.pageNumber !== pageNum) return;
+                                        textToolDragRef.current = null;
+                                        const { rect, effectiveScale, startX, startY } = drag;
+                                        const dx = Math.abs(e.clientX - startX);
+                                        const dy = Math.abs(e.clientY - startY);
+                                        const x = (Math.min(startX, e.clientX) - rect.left) / effectiveScale;
+                                        const y = (Math.min(startY, e.clientY) - rect.top) / effectiveScale;
+                                        const isDrag = dx > 10 || dy > 10;
+                                        setEditingAnnotation({
+                                          pageNumber: pageNum,
+                                          index: null,
+                                          type: 'textbox',
+                                          editType: 'text',
+                                          data: null,
+                                          isNewText: true,
+                                          clickPosition: { x, y },
+                                          textBoxWidth: isDrag ? dx / effectiveScale : undefined,
+                                        });
+                                      }}
+                                    />
+                                  )}
+
+                                  {isEditMode && (
+                                    <FabricEditCanvas
+                                      key={`edit-${pageNum}-${editingAnnotation?.index ?? 'new'}`}
+                                      pageNumber={pageNum}
+                                      pageWidth={pageSizes[pageNum].width}
+                                      pageHeight={pageSizes[pageNum].height}
+                                      editType={editingAnnotation.editType}
+                                      annotationData={editingAnnotation.data}
+                                      annotationIndex={editingAnnotation.index}
+                                      annotations={pageAnnotations}
+                                      isNewText={editingAnnotation.isNewText || false}
+                                      clickPosition={editingAnnotation.clickPosition || null}
+                                      textBoxWidth={editingAnnotation.textBoxWidth}
+                                      onEditCommit={(updatedJSON) => {
+                                        handleSaveAnnotations(pageNum, updatedJSON, {
+                                          source: 'edit:commit',
+                                          action: editingAnnotation.editType,
+                                          checkpointPolicy: 'normal',
+                                        });
+                                        editModeCooldownRef.current = Date.now();
+                                        setEditingAnnotation(null);
+                                      }}
+                                      onEditCancel={() => {
+                                        editModeCooldownRef.current = Date.now();
+                                        setEditingAnnotation(null);
+                                      }}
+                                      strokeColor={strokeColor}
+                                      zoomGeneration={zoomGeneration}
+                                      viewerScale={scale}
+                                    />
+                                  )}
+
+                                  {pageNum === (pageNumRef.current || 1) && (
+                                    <CalloutOverlay
+                                      callouts={callouts}
+                                      setCallouts={setCallouts}
+                                      selectedCalloutId={selectedCalloutId}
+                                      setSelectedCalloutId={setSelectedCalloutId}
+                                      isCalloutToolActive={activeTool === 'callout'}
+                                      activeTool={activeTool}
+                                      pageNumber={pageNum}
+                                      pageWidth={pageSizes[pageNum].width}
+                                      pageHeight={pageSizes[pageNum].height}
+                                      defaultStyle={{
+                                        borderColor: strokeColor,
+                                        lineThickness: Number(strokeWidth) || 3,
+                                      }}
+                                      selectionRect={null}
+                                      selectedSpaceId={annotationSpaceId}
+                                      selectedModuleId={selectedModuleId}
+                                      showSurveyPanel={showSurveyPanel}
+                                      clipboardCallout={clipboardCallout}
+                                      clipboardCalloutType={clipboardCalloutType}
+                                      onCutCallout={handleCutCallout}
+                                      onCopyCallout={handleCopyCallout}
+                                      onPasteCallout={handlePasteCallout}
+                                      middleAreaBounds={middleAreaBounds}
+                                      surveyPanelWidth={surveyPanelWidth}
+                                    />
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                           {/* Space Region Dimming Overlay */}
                           {/* Requirement: Only show overlay if regions exist AND have valid areas/coordinates AND overlay is enabled */}
@@ -25000,6 +25590,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 regions={validRegions}
                                 width={pageSizes[pageNum]?.width || 0}
                                 height={pageSizes[pageNum]?.height || 0}
+                                displayWidth={(pageSizes[pageNum]?.width || 0) * renderedScale}
+                                displayHeight={(pageSizes[pageNum]?.height || 0) * renderedScale}
                                 scale={renderedScale}
                               />
                             );
@@ -25010,8 +25602,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               position: 'absolute',
                               top: 0,
                               left: 0,
-                              width: `${(pageSizes[pageNum]?.width || 0) * scale}px`,
-                              height: `${(pageSizes[pageNum]?.height || 0) * scale}px`,
+                              width: `${(pageSizes[pageNum]?.width || 0) * renderedScale}px`,
+                              height: `${(pageSizes[pageNum]?.height || 0) * renderedScale}px`,
                               pointerEvents: 'none',
                               zIndex: 1000
                             }}>

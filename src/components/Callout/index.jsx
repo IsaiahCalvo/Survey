@@ -103,6 +103,7 @@ const CalloutOverlay = ({
         selectedCalloutId={selectedCalloutId}
         setSelectedCalloutId={setSelectedCalloutId}
         isCalloutToolActive={isCalloutToolActive}
+
         activeTool={activeTool}
         pageNumber={pageNumber}
         pageWidth={pageWidth}

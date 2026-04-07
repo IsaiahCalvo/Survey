@@ -298,6 +298,7 @@ const FabricEditCanvas = memo(({
   viewerScale,         // syncfusionViewerScale
   isNewText,           // true when text tool click-to-place creates new annotation
   clickPosition,       // { x, y } in page coordinates for new text placement
+  textBoxWidth,        // optional page-space width from drag-to-create
 }) => {
   // -------------------------------------------------------------------------
   // State
@@ -667,7 +668,7 @@ const FabricEditCanvas = memo(({
       const textObj = new fabric.Textbox('', {
         left: pxPad,
         top: pxPad,
-        width: 160 * es, // textbox width in pixels
+        width: textBoxWidth ? textBoxWidth * es : 160 * es, // page-space width from drag, or default 160px
         fontSize: Math.round(16 * es),
         fill: strokeColor || '#007AFF',
         fontFamily: DEFAULT_FONT_FAMILY,
