@@ -356,6 +356,7 @@ export const renderText = (obj, index) => {
           whiteSpace: 'pre-wrap',
           boxSizing: 'border-box',
           padding: 0,
+          border: '1px solid #000',
           WebkitFontSmoothing: 'antialiased',
           MozOsxFontSmoothing: 'grayscale',
         }}

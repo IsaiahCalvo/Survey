@@ -500,12 +500,14 @@ const FabricEditCanvas = memo(({
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    const _t0 = performance.now();
 
     // Find the portal host (parent element sized by Syncfusion)
     const parentEl = container.parentElement;
     if (!parentEl || parentEl.offsetWidth <= 0 || pageWidth <= 0) return;
 
     const effectiveScale = parentEl.offsetWidth / pageWidth;
+    console.log(`[EditCanvas] useLayoutEffect — editType=${editType}, isNewText=${isNewText}, es=${effectiveScale.toFixed(4)}, container.visibility=${container.style.visibility}, computedVisibility=${getComputedStyle(container).visibility}`);
 
     let style;
     if (editType === 'callout') {
@@ -526,7 +528,7 @@ const FabricEditCanvas = memo(({
       if (isNewText && clickPosition) {
         annLeft = clickPosition.x;
         annTop = clickPosition.y;
-        annWidth = 200; // default width for new text (matches Textbox width + padding)
+        annWidth = textBoxWidth || 200; // drag width or default (Textbox width + padding)
         annHeight = 30;  // initial height — auto-resizes as user types
       } else if (annotationData) {
         annLeft = annotationData.left || 0;
@@ -560,6 +562,7 @@ const FabricEditCanvas = memo(({
           pointerEvents: 'auto',
           transformOrigin: '0 0',
           transform: buildBboxTransform(sx, sy, annLeft, annTop, annWidth, annHeight, annAngle),
+          visibility: 'hidden', // stay hidden until canvas loading reveals
         };
         pageSpaceModeRef.current = true;
       } else {
@@ -571,6 +574,7 @@ const FabricEditCanvas = memo(({
           height: (annHeight + BBOX_PADDING * 2) * effectiveScale,
           zIndex: 101,
           pointerEvents: 'auto',
+          visibility: 'hidden', // stay hidden until canvas loading reveals
         };
         pageSpaceModeRef.current = false;
       }
@@ -595,10 +599,16 @@ const FabricEditCanvas = memo(({
       // Text/shape bbox: stay hidden until canvas loading corrects size + transformOrigin.
       if (editType === 'callout') {
         container.style.visibility = 'visible';
+      } else {
+        container.style.visibility = 'hidden';
       }
     }
+    if (editType === 'text') {
+      style.outline = '1px solid #000';
+    }
     setContainerStyle(style);
-  }, [editType, annotationData, isNewText, clickPosition, pageWidth, pageHeight]);
+    console.log(`[EditCanvas] useLayoutEffect DONE — container.visibility=${container.style.visibility}, style.visibility=${style.visibility}, left=${container.style.left}, top=${container.style.top}, w=${container.style.width}, h=${container.style.height}, elapsed=${(performance.now()-_t0).toFixed(1)}ms`);
+  }, [editType, annotationData, isNewText, clickPosition, textBoxWidth, pageWidth, pageHeight]);
 
   // -------------------------------------------------------------------------
   // Canvas initialization: sizing, annotation loading
@@ -606,6 +616,8 @@ const FabricEditCanvas = memo(({
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas || !containerRef.current) return;
+    const _t0 = performance.now();
+    console.log(`[EditCanvas] canvasInit useEffect — fabricRef=${!!canvas}, container.visibility=${containerRef.current.style.visibility}`);
 
     const parentEl = containerRef.current.parentElement;
     if (!parentEl || parentEl.offsetWidth <= 0 || pageWidth <= 0) return;
@@ -620,7 +632,7 @@ const FabricEditCanvas = memo(({
     } else {
       let annWidth, annHeight;
       if (isNewText && clickPosition) {
-        annWidth = 200;
+        annWidth = textBoxWidth || 200;
         annHeight = 30;
       } else if (annotationDataRef.current) {
         annWidth = (annotationDataRef.current.width || 200) * (annotationDataRef.current.scaleX || 1);
@@ -642,11 +654,13 @@ const FabricEditCanvas = memo(({
     // Container-aware sizing (CLAUDE.md rule)
     canvas.setZoom(pageSpaceModeRef.current ? 1 : effectiveScale);
     canvas.setDimensions({ width: canvasWidth, height: canvasHeight });
+    console.log(`[EditCanvas] canvasInit — canvasW=${canvasWidth}, canvasH=${canvasHeight}, zoom=${canvas.getZoom().toFixed(4)}, container.visibility=${containerRef.current.style.visibility}`);
 
     lastContainerSizeRef.current = { width: canvasWidth, height: canvasHeight };
 
     // Branch by editType
     if (editTypeRef.current === 'text') {
+      console.log(`[EditCanvas] canvasInit → loadTextAnnotation, elapsed=${(performance.now()-_t0).toFixed(1)}ms`);
       loadTextAnnotation(canvas, effectiveScale);
     } else if (editTypeRef.current === 'shape') {
       loadShapeAnnotation(canvas);
@@ -659,11 +673,13 @@ const FabricEditCanvas = memo(({
   // Text loading
   // -------------------------------------------------------------------------
   const loadTextAnnotation = useCallback((canvas, effectiveScale) => {
+    const _lt0 = performance.now();
     if (isNewText) {
       // New text creation: Textbox at click position (wraps text, visible border)
       // Use canvas zoom=1 with pixel-space coordinates to avoid Fabric.js cursor drift bug at fractional zoom
       canvas.setZoom(1);
       const es = effectiveScale;
+      console.log(`[EditCanvas] loadText NEW — es=${es.toFixed(4)}, clickPos=${JSON.stringify(clickPosition)}, textBoxWidth=${textBoxWidth}, container.visibility=${containerRef.current?.style.visibility}`);
       const pxPad = BBOX_PADDING * es;
       const textObj = new fabric.Textbox('', {
         left: pxPad,
@@ -684,6 +700,7 @@ const FabricEditCanvas = memo(({
         padding: 0,
         hasBorders: false,
         hasControls: false,
+        splitByGrapheme: !!textBoxWidth, // Enforce fixed width when drag-to-create
       });
 
       bboxOriginRef.current = {
@@ -696,14 +713,7 @@ const FabricEditCanvas = memo(({
 
       canvas.add(textObj);
       canvas.setActiveObject(textObj);
-      canvas.renderAll();
-
-      // Container is ready — reveal it
-      if (containerRef.current) containerRef.current.style.visibility = 'visible';
-      setContainerStyle(prev => ({ ...prev, visibility: 'visible' }));
-
-      // Enter editing mode
-      textObj.enterEditing();
+      console.log(`[EditCanvas] loadText — textObj added, left=${textObj.left}, top=${textObj.top}, w=${textObj.width}, fontSize=${textObj.fontSize}, canvasW=${canvas.width}, canvasH=${canvas.height}, container.visibility=${containerRef.current?.style.visibility}`);
 
       // Auto-resize container to fit text height
       const autoResize = () => {
@@ -714,8 +724,26 @@ const FabricEditCanvas = memo(({
         containerRef.current.style.height = newH + 'px';
       };
       textObj.on('changed', autoResize);
+
+      // Settle dimensions BEFORE revealing — prevents cursor flicker
       autoResize();
-      setIsLoading(false);
+      console.log(`[EditCanvas] loadText — after autoResize: canvasH=${canvas.height}, containerH=${containerRef.current?.style.height}, container.visibility=${containerRef.current?.style.visibility}`);
+      textObj.enterEditing();
+      console.log(`[EditCanvas] loadText — after enterEditing: isEditing=${textObj.isEditing}, cursorOffsetCache=${JSON.stringify(textObj.__cursorOffsetCache || 'none')}, container.visibility=${containerRef.current?.style.visibility}`);
+      canvas.renderAll();
+      console.log(`[EditCanvas] loadText — after renderAll: container.visibility=${containerRef.current?.style.visibility}, computedVisibility=${containerRef.current ? getComputedStyle(containerRef.current).visibility : 'N/A'}, elapsed=${(performance.now()-_lt0).toFixed(1)}ms`);
+
+      // Reveal after next paint frame — Fabric.js enterEditing() schedules cursor
+      // rendering via requestAnimationFrame; deferring reveal ensures cursor position
+      // and canvas layout are fully settled before the container becomes visible.
+      requestAnimationFrame(() => {
+        if (!mountedRef.current) return;
+        console.log(`[EditCanvas] loadText — rAF reveal: container.visibility=${containerRef.current?.style.visibility}, computedVisibility=${containerRef.current ? getComputedStyle(containerRef.current).visibility : 'N/A'}, elapsed=${(performance.now()-_lt0).toFixed(1)}ms`);
+        if (containerRef.current) containerRef.current.style.visibility = 'visible';
+        setContainerStyle(prev => ({ ...prev, visibility: 'visible' }));
+        setIsLoading(false);
+        console.log(`[EditCanvas] loadText — REVEALED, container.visibility=${containerRef.current?.style.visibility}`);
+      });
     } else if (annotationDataRef.current) {
       // Editing existing text annotation
       const annData = annotationDataRef.current;
@@ -1317,6 +1345,7 @@ const FabricEditCanvas = memo(({
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
+  console.log(`[EditCanvas] RENDER — editType=${editType}, isLoading=${isLoading}, visibility=${containerStyle?.visibility || 'unset'}, containerRef.visibility=${containerRef.current?.style.visibility || 'N/A'}`);
   return (
     <>
       {editType === 'shape' && !isLoading && (
