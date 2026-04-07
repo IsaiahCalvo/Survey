@@ -265,6 +265,70 @@ const resolveArrowConfigFromPdfLineEndings = (lineEndings) => {
   return null;
 };
 
+const formatDashArrayForDebug = (dashArray) => {
+  if (!Array.isArray(dashArray) || dashArray.length === 0) return 'none';
+  return dashArray
+    .map((value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : value;
+    })
+    .join(',');
+};
+
+const formatPdfLineEndingsForDebug = (lineEndings) => {
+  if (!Array.isArray(lineEndings) || lineEndings.length === 0) return 'none';
+  return lineEndings
+    .map((value) => normalizePdfLineEnding(value) || 'None')
+    .join('>');
+};
+
+const summarizeImportedAnnotationForDebug = (objData, index) => ({
+  id: objData?.pdfAnnotationId || `idx-${index}`,
+  pdfType: objData?.pdfAnnotationType || 'unknown',
+  rawType: objData?.type || 'unknown',
+  rawTool: objData?.tool || null,
+  rawDash: formatDashArrayForDebug(objData?.strokeDashArray),
+  rawLineEndings: formatPdfLineEndingsForDebug(objData?.data?.pdfLineEndings),
+  rawIntent: objData?.data?.pdfIntent || null,
+  spaceId: objData?.spaceId || null,
+  regionId: objData?.regionId || null,
+});
+
+const buildImportedAnnotationSignatureForDebug = (objects) => {
+  const rows = (Array.isArray(objects) ? objects : [])
+    .filter((obj) => obj?.isPdfImported)
+    .map((obj, index) => summarizeImportedAnnotationForDebug(obj, index));
+  return JSON.stringify(rows);
+};
+
+const summarizeConvertedImportedObjectForDebug = (obj) => {
+  if (!obj) {
+    return {
+      convertedType: 'null',
+      convertedPartType: null,
+      convertedTool: null,
+      convertedDash: 'none',
+      childTypes: null,
+    };
+  }
+
+  const groupChildren = typeof obj.getObjects === 'function' ? obj.getObjects() : [];
+  const lineLikeChild = Array.isArray(groupChildren)
+    ? groupChildren.find((child) => child && (child.type === 'line' || child.type === 'polyline' || child.type === 'path'))
+    : null;
+  const dashSource = lineLikeChild?.strokeDashArray || obj.strokeDashArray;
+
+  return {
+    convertedType: obj.type || 'unknown',
+    convertedPartType: obj?.data?.type || null,
+    convertedTool: obj.tool || null,
+    convertedDash: formatDashArrayForDebug(dashSource),
+    childTypes: Array.isArray(groupChildren) && groupChildren.length > 0
+      ? groupChildren.map((child) => child?.type || 'unknown').join(',')
+      : null,
+  };
+};
+
 /**
  * Creates an arrowhead shape based on the specified style
  * @param {number} x - X position of the arrow tip
@@ -3132,8 +3196,10 @@ const PageAnnotationLayer = memo(({
   onInsertBlankPage = () => { },
   pageClipboard = null, // { pageNumber, type: 'cut' | 'copy' } | null
   onPastePageHere = () => { },
+  onPaintCommitted = null,
   isInteracting = false,
   isZooming = false,
+  preferImmediateVisibleZoomRender = false,
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
@@ -3146,6 +3212,7 @@ const PageAnnotationLayer = memo(({
   const isInteractingRef = useRef(isInteracting);
   isInteractingRef.current = isInteracting;
   const pendingScaleRef = useRef(null);
+  const annotationPropDebugRef = useRef({ signature: null, objectCount: 0, importedCount: 0 });
   const deferredZoomScaleRef = useRef(null);
   const viewportObserverRef = useRef(null);
   const paintCommitTokenRef = useRef(0);
@@ -3255,11 +3322,18 @@ const PageAnnotationLayer = memo(({
         }
         paintCommitRafIdsRef.current = [];
         schedulePointerRecovery();
+        if (typeof onPaintCommitted === 'function') {
+          try {
+            onPaintCommitted(pageNumber, safeScale);
+          } catch (error) {
+            console.warn(`[Page ${pageNumber}] Failed to notify paint commit:`, error);
+          }
+        }
       });
       paintCommitRafIdsRef.current = [firstRafId, secondRafId];
     });
     paintCommitRafIdsRef.current = [firstRafId];
-  }, [cancelPendingPaintCommit, pageNumber, schedulePointerRecovery]);
+  }, [cancelPendingPaintCommit, onPaintCommitted, pageNumber, schedulePointerRecovery]);
 
   const capturePresentationSnapshot = useCallback(() => {
     const canvas = fabricRef.current;
@@ -4909,6 +4983,7 @@ const PageAnnotationLayer = memo(({
 
     if (annotationsData && annotationsData.objects && annotationsData.objects.length > 0) {
       util.enlivenObjects(annotationsData.objects, (enlivenedObjects) => {
+        const importedConversionRows = [];
         enlivenedObjects.forEach((enlivenedObj, index) => {
           const objData = annotationsData.objects[index];
           let obj = enlivenedObj;
@@ -4923,6 +4998,13 @@ const PageAnnotationLayer = memo(({
                 obj = importedArrow;
               }
             }
+          }
+
+          if (objData?.isPdfImported) {
+            importedConversionRows.push({
+              ...summarizeImportedAnnotationForDebug(objData, index),
+              ...summarizeConvertedImportedObjectForDebug(obj),
+            });
           }
 
           obj.set({
@@ -5055,6 +5137,9 @@ const PageAnnotationLayer = memo(({
           canvas.add(obj);
           obj.setCoords();
         });
+        if (importedConversionRows.length > 0) {
+          console.log(`[PAL-Imported p${pageNumber}] loadAnnotations — imported=${importedConversionRows.length}, scale=${scale}, isZooming=${isZoomingRef.current}, isInteracting=${isInteractingRef.current}, rows=${JSON.stringify(importedConversionRows.slice(0, 12))}`);
+        }
         debugMark('fabric_renderStart', { page: pageNumber, source: 'loadAnnotations' });
         canvas.renderAll();
         debugMark('fabric_renderEnd', { page: pageNumber, source: 'loadAnnotations' });
@@ -5065,6 +5150,27 @@ const PageAnnotationLayer = memo(({
   // Sync canvas with annotations prop (handles Undo/Redo)
   useEffect(() => {
     if (!fabricRef.current || !annotations) return;
+
+    const importedObjects = Array.isArray(annotations?.objects)
+      ? annotations.objects.filter((obj) => obj?.isPdfImported)
+      : [];
+    const nextSignature = buildImportedAnnotationSignatureForDebug(annotations?.objects);
+    const previousDebug = annotationPropDebugRef.current || { signature: null, objectCount: 0, importedCount: 0 };
+    const nextObjectCount = Array.isArray(annotations?.objects) ? annotations.objects.length : 0;
+    const nextImportedCount = importedObjects.length;
+    const signatureChanged = previousDebug.signature !== nextSignature;
+    const countChanged = previousDebug.objectCount !== nextObjectCount || previousDebug.importedCount !== nextImportedCount;
+
+    if (signatureChanged || countChanged || isZoomingRef.current || isInteractingRef.current) {
+      console.log(
+        `[PAL-Annotations p${pageNumber}] prop change — objects=${previousDebug.objectCount}->${nextObjectCount}, imported=${previousDebug.importedCount}->${nextImportedCount}, signatureChanged=${signatureChanged}, isZooming=${isZoomingRef.current}, isInteracting=${isInteractingRef.current}, activeSpaceId=${activeSpaceIdRef.current}, selectedSpaceId=${selectedSpaceIdRef.current}`
+      );
+    }
+    annotationPropDebugRef.current = {
+      signature: nextSignature,
+      objectCount: nextObjectCount,
+      importedCount: nextImportedCount
+    };
 
     // Skip reload if the update originated from us (internal save)
     if (lastSavedAnnotationsRef.current === annotations) {
@@ -7957,11 +8063,16 @@ const PageAnnotationLayer = memo(({
           }
         }
 
+        const shouldRenderVisibleImmediately = preferImmediateVisibleZoomRender && isVisible;
+        console.log(
+          `[PAL-Debug p${pageNumber}] settle strategy — isVisible=${isVisible}, isCenterPage=${isCenterPage}, preferImmediateVisibleZoomRender=${preferImmediateVisibleZoomRender}, immediate=${isCenterPage || shouldRenderVisibleImmediately}`
+        );
+
         // Apply CSS scale to the canvas wrapper for non-center pages only.
         // This lets App release the outer overlay transform per-page without
         // exposing stale Fabric pixels while delayed pages wait their turn.
         const currentZoom = c.getZoom();
-        if (wrapperEl && currentZoom > 0 && !isCenterPage) {
+        if (wrapperEl && currentZoom > 0 && !isCenterPage && !shouldRenderVisibleImmediately) {
           const ratio = finalScale / currentZoom;
           wrapperEl.style.transform = `scale(${ratio})`;
           wrapperEl.style.transformOrigin = 'top left';
@@ -7990,7 +8101,7 @@ const PageAnnotationLayer = memo(({
 	          schedulePaintCommitted(finalScale);
 	        };
 
-        if (isCenterPage) {
+        if (isCenterPage || shouldRenderVisibleImmediately) {
           // ── Tier 1: Center page — immediate render via stagger queue ──
           enqueueZoomResize(doFabricRender);
         } else if (isVisible) {
@@ -8092,7 +8203,7 @@ const PageAnnotationLayer = memo(({
         scaleUpdateFrameRef.current = null;
       }
     };
-	  }, [cancelPendingPaintCommit, cancelPointerRecovery, scale, schedulePaintCommitted, schedulePointerRecovery, width, height, isInteracting, isZooming, pageNumber]);
+	  }, [cancelPendingPaintCommit, cancelPointerRecovery, scale, schedulePaintCommitted, schedulePointerRecovery, width, height, isInteracting, isZooming, pageNumber, preferImmediateVisibleZoomRender]);
 
   // Handle drawing mode changes
   useEffect(() => {
@@ -8938,9 +9049,11 @@ const PageAnnotationLayer = memo(({
         pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'pan' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'callout' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight') ? 'auto' : 'none',
         zIndex: 10,
       }}
+      data-pal-root={pageNumber}
     >
       <canvas
         ref={canvasRef}
+        data-pal-canvas={pageNumber}
         style={{
           position: 'absolute',
           top: 0,
@@ -9812,7 +9925,8 @@ const PageAnnotationLayer = memo(({
     prevProps.callouts === nextProps.callouts &&
     prevProps.selectedCalloutId === nextProps.selectedCalloutId &&
     prevProps.isInteracting === nextProps.isInteracting &&
-    prevProps.isZooming === nextProps.isZooming
+    prevProps.isZooming === nextProps.isZooming &&
+    prevProps.preferImmediateVisibleZoomRender === nextProps.preferImmediateVisibleZoomRender
   );
 });
 

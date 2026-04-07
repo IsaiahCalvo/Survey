@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useId, useLayoutEffect, useMemo, useRef } from 'react';
 import { union, diff } from 'martinez-polygon-clipping';
 
 // Helper to convert region to polygon for martinez
@@ -64,7 +64,7 @@ const regionToPolygon = (region) => {
 };
 
 // Helper to convert polygon back to path string
-const polygonToPath = (polygon, scale) => {
+const polygonToPath = (polygon) => {
   if (!polygon || !Array.isArray(polygon) || polygon.length === 0) return '';
 
   // Handle multipolygons (array of polygons) or single polygon (array of rings)
@@ -78,9 +78,9 @@ const polygonToPath = (polygon, scale) => {
   rings.forEach(ring => {
     if (!Array.isArray(ring) || ring.length < 2) return;
 
-    path += `M ${ring[0][0] * scale} ${ring[0][1] * scale}`;
+    path += `M ${ring[0][0]} ${ring[0][1]}`;
     for (let i = 1; i < ring.length; i++) {
-      path += ` L ${ring[i][0] * scale} ${ring[i][1] * scale}`;
+      path += ` L ${ring[i][0]} ${ring[i][1]}`;
     }
     path += ' Z ';
   });
@@ -110,36 +110,22 @@ const SpaceRegionOverlay = ({
   regions,
   width,
   height,
-  scale = 1
+  displayWidth,
+  displayHeight,
+  scale = 1,
+  fillContainer = false,
 }) => {
-  const buildRegionPath = (region) => {
-    if (!region || !Array.isArray(region.coordinates)) {
-      return null;
-    }
+  const rootRef = useRef(null);
+  const svgRef = useRef(null);
+  const instanceId = useId().replace(/:/g, '-');
+  const screenWidth = Number.isFinite(displayWidth) && displayWidth > 0
+    ? displayWidth
+    : width * scale;
+  const screenHeight = Number.isFinite(displayHeight) && displayHeight > 0
+    ? displayHeight
+    : height * scale;
 
-    const coords = region.coordinates;
-    if (region.shapeType === 'rectangular' && coords.length >= 8) {
-      const scaled = coords.map((value) => value * scale);
-      return `M ${scaled[0]} ${scaled[1]} L ${scaled[2]} ${scaled[3]} L ${scaled[4]} ${scaled[5]} L ${scaled[6]} ${scaled[7]} Z`;
-    }
-
-    if (region.shapeType === 'polygon' && coords.length >= 6) {
-      let path = `M ${coords[0] * scale} ${coords[1] * scale}`;
-      for (let i = 2; i < coords.length; i += 2) {
-        const x = coords[i] * scale;
-        const y = coords[i + 1] * scale;
-        path += ` L ${x} ${y}`;
-      }
-      path += ' Z';
-      return path;
-    }
-
-    return null;
-  };
-
-
-
-  const overlayPath = useMemo(() => {
+  const regionCutoutPath = useMemo(() => {
     if (!regions || regions.length === 0) {
       return null;
     }
@@ -151,10 +137,6 @@ const SpaceRegionOverlay = ({
     if (!hasAnyValidAreas) {
       return null; // No valid areas defined, don't show overlay
     }
-
-    const outerWidth = width * scale;
-    const outerHeight = height * scale;
-    const basePath = `M 0 0 H ${outerWidth} V ${outerHeight} H 0 Z`;
 
     // Union all regions to handle overlaps correctly
     let mergedPolygons = [];
@@ -215,7 +197,7 @@ const SpaceRegionOverlay = ({
     let regionPaths = '';
     if (mergedPolygons.length > 0) {
       mergedPolygons.forEach(polygon => {
-        regionPaths += polygonToPath(polygon, scale);
+        regionPaths += polygonToPath(polygon);
       });
     }
 
@@ -223,41 +205,90 @@ const SpaceRegionOverlay = ({
       return null;
     }
 
-    return `${basePath} ${regionPaths}`;
-  }, [regions, width, height, scale]);
+    return regionPaths;
+  }, [height, regions, width]);
 
-  const hatchId = useMemo(() => `space-hatch-${pageNumber}`, [pageNumber]);
+  const hatchId = useMemo(() => `space-hatch-${pageNumber}-${instanceId}`, [instanceId, pageNumber]);
+  const maskId = useMemo(() => `space-mask-${pageNumber}-${instanceId}`, [instanceId, pageNumber]);
 
-  if (!overlayPath) {
+  if (!regionCutoutPath) {
     return null;
   }
 
-  const scaledWidth = width * scale;
-  const scaledHeight = height * scale;
+  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+    return null;
+  }
+
+  if (!Number.isFinite(screenWidth) || screenWidth <= 0 || !Number.isFinite(screenHeight) || screenHeight <= 0) {
+    return null;
+  }
+
+  console.log(
+    `[SpaceRegionOverlay p${pageNumber}] render — ` +
+    `regions=${regions.length}, screen=${Math.round(screenWidth)}x${Math.round(screenHeight)}, ` +
+    `cutoutPathLength=${regionCutoutPath.length}, maskId=${maskId}`
+  );
+
+  useLayoutEffect(() => {
+    const rootRect = rootRef.current?.getBoundingClientRect?.();
+    const svgRect = svgRef.current?.getBoundingClientRect?.();
+    console.log(
+      `[SpaceRegionOverlay p${pageNumber}] mounted — ` +
+      `root=${rootRect ? `${Math.round(rootRect.width)}x${Math.round(rootRect.height)}` : 'none'}, ` +
+      `svg=${svgRect ? `${Math.round(svgRect.width)}x${Math.round(svgRect.height)}` : 'none'}, ` +
+      `fillContainer=${fillContainer}, maskId=${maskId}`
+    );
+  }, [fillContainer, maskId, pageNumber, regionCutoutPath]);
 
   return (
     <div
+      ref={rootRef}
+      data-space-region-overlay-root={pageNumber}
+      data-space-region-overlay-screen-width={String(Math.round(screenWidth * 1000) / 1000)}
+      data-space-region-overlay-screen-height={String(Math.round(screenHeight * 1000) / 1000)}
       style={{
         position: 'absolute',
         top: 0,
         left: 0,
-        width: `${scaledWidth}px`,
-        height: `${scaledHeight}px`,
+        width: fillContainer ? '100%' : `${screenWidth}px`,
+        height: fillContainer ? '100%' : `${screenHeight}px`,
         pointerEvents: 'none', // FIX: Don't block mouse events - overlay is visual only
         zIndex: 30
       }}
     >
       <svg
-        width={scaledWidth}
-        height={scaledHeight}
+        ref={svgRef}
+        data-space-region-overlay-svg={pageNumber}
+        width={fillContainer ? '100%' : screenWidth}
+        height={fillContainer ? '100%' : screenHeight}
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
+          width: fillContainer ? '100%' : undefined,
+          height: fillContainer ? '100%' : undefined,
           pointerEvents: 'none' // FIX: Don't block mouse events
         }}
       >
         <defs>
+          <mask
+            id={maskId}
+            x="0"
+            y="0"
+            width={width}
+            height={height}
+            maskUnits="userSpaceOnUse"
+            maskContentUnits="userSpaceOnUse"
+          >
+            <rect x="0" y="0" width={width} height={height} fill="#ffffff" />
+            <path
+              d={regionCutoutPath}
+              fill="#000000"
+              fillRule="evenodd"
+            />
+          </mask>
           <pattern
             id={hatchId}
             x="0"
@@ -271,17 +302,24 @@ const SpaceRegionOverlay = ({
             <path d="M 8 12 L 12 8" stroke="#000" strokeWidth="1" />
           </pattern>
         </defs>
-        <path
-          d={overlayPath}
-          fill="rgba(40, 40, 40, 0.55)"
-          fillRule="evenodd"
+        <rect
+          x="0"
+          y="0"
+          width={width}
+          height={height}
+          fill="#282828"
+          fillOpacity="0.55"
+          mask={`url(#${maskId})`}
           pointerEvents="none"
         />
-        <path
-          d={overlayPath}
+        <rect
+          x="0"
+          y="0"
+          width={width}
+          height={height}
           fill={`url(#${hatchId})`}
-          fillRule="evenodd"
           opacity={0.3}
+          mask={`url(#${maskId})`}
           pointerEvents="none"
         />
       </svg>

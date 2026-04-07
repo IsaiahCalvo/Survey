@@ -42,6 +42,36 @@ import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints } fro
 const MAX_PREVIEW_OBJECTS = 420;
 const MAX_PREVIEW_CALLOUTS = 140;
 
+const formatDashArrayForDebug = (dashArray) => {
+  if (!Array.isArray(dashArray) || dashArray.length === 0) return 'none';
+  return dashArray
+    .map((value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : value;
+    })
+    .join(',');
+};
+
+const formatPdfLineEndingsForDebug = (lineEndings) => {
+  if (!Array.isArray(lineEndings) || lineEndings.length === 0) return 'none';
+  return lineEndings
+    .map((value) => (typeof value === 'string' ? value.replace(/^\//, '') : 'None'))
+    .join('>');
+};
+
+const summarizeImportedSvgAnnotationForDebug = (obj, index) => ({
+  id: obj?.pdfAnnotationId || `idx-${index}`,
+  pdfType: obj?.pdfAnnotationType || 'unknown',
+  renderType: obj?.type || 'unknown',
+  renderPartType: obj?.data?.type || null,
+  renderTool: obj?.tool || null,
+  dash: formatDashArrayForDebug(obj?.strokeDashArray),
+  lineEndings: formatPdfLineEndingsForDebug(obj?.data?.pdfLineEndings),
+  isImportedPath: isImportedPath(obj),
+  spaceId: obj?.spaceId || null,
+  regionId: obj?.regionId || null,
+});
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -73,6 +103,7 @@ const SVGAnnotationLayer = memo(({
   // Refs
   // ---------------------------------------------------------------------------
   const svgRef = useRef(null);
+  const importedDebugRef = useRef(null);
 
   // ---------------------------------------------------------------------------
   // Interaction hook (Phase 9)
@@ -209,6 +240,17 @@ const SVGAnnotationLayer = memo(({
 
       if (!isVisible) continue;
 
+      // Match PAL interaction rules:
+      // - Background annotations stay visible in a space when the lightbulb is on,
+      //   but they are not selectable/editable.
+      // - Region-scoped annotations remain interactive only inside the active space.
+      const isObjectInteractive = (() => {
+        if (activeSpaceId !== null) {
+          return isScopedRegionAnnotation && derivedSpaceId === activeSpaceId;
+        }
+        return true;
+      })();
+
       // --- Type dispatch ---
       const objectType = String(obj.type || '').toLowerCase();
       let element = null;
@@ -241,7 +283,7 @@ const SVGAnnotationLayer = memo(({
       }
 
       if (element) {
-        results.push({ obj, index: i, element });
+        results.push({ obj, index: i, element, isObjectInteractive });
         count++;
       }
     }
@@ -303,6 +345,15 @@ const SVGAnnotationLayer = memo(({
 
   const objectCount = filteredAnnotations.length;
   const calloutCount = filteredCallouts.length;
+  const importedDebugRows = useMemo(() => (
+    filteredAnnotations
+      .filter(({ obj }) => obj?.isPdfImported)
+      .map(({ obj, index }) => summarizeImportedSvgAnnotationForDebug(obj, index))
+  ), [filteredAnnotations]);
+  const importedDebugSignature = useMemo(
+    () => JSON.stringify(importedDebugRows),
+    [importedDebugRows]
+  );
 
   // Log mount/unmount
   useEffect(() => {
@@ -314,6 +365,27 @@ const SVGAnnotationLayer = memo(({
     };
   }, [pageNumber, objectCount, calloutCount, width, height]);
 
+  useEffect(() => {
+    if (importedDebugRows.length === 0) {
+      importedDebugRef.current = importedDebugSignature;
+      return;
+    }
+    if (importedDebugRef.current !== importedDebugSignature) {
+      console.log(
+        `[SVG-Imported p${pageNumber}] renderSummary — imported=${importedDebugRows.length}, activeSpaceId=${activeSpaceId}, selectedSpaceId=${selectedSpaceId}, activeRegionId=${activeRegionId}, showSurveyPanel=${showSurveyPanel}, rows=${JSON.stringify(importedDebugRows.slice(0, 12))}`
+      );
+      importedDebugRef.current = importedDebugSignature;
+    }
+  }, [
+    activeRegionId,
+    activeSpaceId,
+    importedDebugRows,
+    importedDebugSignature,
+    pageNumber,
+    selectedSpaceId,
+    showSurveyPanel
+  ]);
+
   // Log every render (to detect re-renders during zoom)
   console.log(
     `[SVG p${pageNumber}] render — ${objectCount} objs, viewBox=${width}x${height}`
@@ -323,7 +395,7 @@ const SVGAnnotationLayer = memo(({
   // Render: wrap each annotation with hit-area, hover, and interaction handlers
   // ---------------------------------------------------------------------------
   const wrappedAnnotations = filteredAnnotations
-    .map(({ obj, index: i, element }) => {
+    .map(({ obj, index: i, element, isObjectInteractive }) => {
     // During resize, create a temporary modified copy for rendering
     // (Imported paths use SVG transform instead — handled in computedTransform below)
     let renderObj = obj;
@@ -433,7 +505,7 @@ const SVGAnnotationLayer = memo(({
                 strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10) * inverseScale}
                 strokeLinecap="round"
                 vectorEffect="non-scaling-stroke"
-                pointerEvents={isInteractive ? 'stroke' : 'none'}
+                pointerEvents={isInteractive && isObjectInteractive ? 'stroke' : 'none'}
                 onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                 onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                 onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -465,7 +537,7 @@ const SVGAnnotationLayer = memo(({
             height={Math.max(bbox.height, 10)}
             fill="transparent"
             stroke="none"
-            pointerEvents={isInteractive ? 'all' : 'none'}
+            pointerEvents={isInteractive && isObjectInteractive ? 'all' : 'none'}
             onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
             onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
             onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -480,6 +552,7 @@ const SVGAnnotationLayer = memo(({
   return (
     <svg
       ref={svgRef}
+      data-svg-annotation-layer={pageNumber}
       viewBox={`0 0 ${width} ${height}`}
       width="100%"
       height="100%"

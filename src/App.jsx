@@ -19423,17 +19423,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (!page || !Array.isArray(page.regions) || page.regions.length === 0) {
       return false;
     }
-    // Enforce single region per page (as per requirements)
-    if (page.regions.length > 1) {
-      console.warn('Page has multiple regions, expected max 1:', page.regions.length);
-    }
-    const region = page.regions[0]; // Use first region only
-    if (!region || !Array.isArray(region.coordinates)) {
-      return false;
-    }
-    const coords = region.coordinates;
-    return (region.shapeType === 'rectangular' && coords.length >= 8) ||
-      (region.shapeType === 'polygon' && coords.length >= 6);
+    return page.regions.some(region => {
+      if (!region || !Array.isArray(region.coordinates)) {
+        return false;
+      }
+      const coords = region.coordinates;
+      return (region.shapeType === 'rectangular' && coords.length >= 8) ||
+        (region.shapeType === 'polygon' && coords.length >= 6);
+    });
   }, []);
 
   // Toggle region overlay visibility
@@ -19948,6 +19945,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const handleRegionComplete = useCallback((regions) => {
     if (!activeSpaceId || !regionSelectionPage) {
+      console.warn('[App-RegionEdit] handleRegionComplete ignored — missing activeSpaceId or regionSelectionPage', {
+        activeSpaceId,
+        regionSelectionPage,
+        incomingCount: Array.isArray(regions) ? regions.length : 0
+      });
       return;
     }
 
@@ -19989,21 +19991,49 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       showBackgroundAnnotations: region.showBackgroundAnnotations !== false // Default to true if not set
     }));
 
+    const validMigratedRegions = migratedRegions.filter(region => {
+      if (!region || !Array.isArray(region.coordinates)) return false;
+      const coords = region.coordinates;
+      return (region.shapeType === 'rectangular' && coords.length >= 8) ||
+        (region.shapeType === 'polygon' && coords.length >= 6);
+    });
+
+    console.log('[App-RegionEdit] handleRegionComplete — saving regions', {
+      activeSpaceId,
+      regionSelectionPage,
+      incomingCount: Array.isArray(regions) ? regions.length : 0,
+      additiveCount: additiveRegions.length,
+      migratedCount: migratedRegions.length,
+      validCount: validMigratedRegions.length,
+      regionIds: validMigratedRegions.map(region => region.regionId)
+    });
+
     if (pageIndex >= 0) {
       updatedPages[pageIndex] = {
         ...updatedPages[pageIndex],
         wholePageIncluded: false,
-        regions: migratedRegions
+        regions: validMigratedRegions
       };
     } else {
       updatedPages.push({
         pageId: regionSelectionPage,
         wholePageIncluded: false,
-        regions: migratedRegions
+        regions: validMigratedRegions
       });
     }
 
+    setRegionOverlayDisabled(prev => {
+      const key = `${activeSpaceId}-${regionSelectionPage}`;
+      if (prev.get(key) !== true) {
+        return prev;
+      }
+      const next = new Map(prev);
+      next.delete(key);
+      return next;
+    });
     handleSpaceUpdate(activeSpaceId, { assignedPages: updatedPages });
+    setActiveSpaceId(activeSpaceId);
+    setSelectedSpaceId(activeSpaceId);
     setShowRegionSelection(false);
     setRegionSelectionPage(null);
     // Keep selectedSpaceId set - don't clear it when region selection completes
@@ -24289,6 +24319,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   return containerPageNumbers
                     .filter(pageNumber => {
                       if (!shouldShowPage(pageNumber)) return false;
+                      const isActiveRegionSelectionPage = showRegionSelection && regionSelectionPage === pageNumber;
+                      if (isActiveRegionSelectionPage) {
+                        return true;
+                      }
                       // Always include current page when a tool that needs Canvas is active
                       if (toolNeedsCanvas && pageNumber === currentPage) return true;
                       // Limit portals to pages with content to avoid unbounded memory growth
@@ -24311,6 +24345,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                       const pageAnnotations = annotationsByPage[pageNumber];
                       const pageSize = pageSizes[pageNumber];
                       if (!pageSize) return null;  // Page size not yet known -- skip this render
+
+                      if (showRegionSelection && regionSelectionPage === pageNumber) {
+                        console.log(
+                          `[App-RegionEdit p${pageNumber}] overlay portal mounted — ` +
+                          `currentPage=${currentPage}, activeTool=${activeTool}, ` +
+                          `hasAnnotations=${Array.isArray(pageAnnotations?.objects) && pageAnnotations.objects.length > 0}, ` +
+                          `hasRegions=${Array.isArray(pageRegions) && pageRegions.length > 0}, ` +
+                          `overlayDiv=${!!overlayDiv}, portalTarget=${!!portalTarget}`
+                        );
+                      }
 
                       const resolvedPageSize = pageSize;
 
@@ -24517,11 +24561,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               />
                             ) : null}
                             {/* SVGAnnotationLayer moved outside this div — see sibling below */}
-                            {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
+                            {requiresLegacyAnnotationLayer && pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
                               const space = spaces.find(s => s.id === activeSpaceId);
                               const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
 
                               if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNumber, page)) {
+                                if (pageNumber === (Number(pageNumRef.current) || 1)) {
+                                  console.log(
+                                    `[App-RegionOverlay p${pageNumber}] hidden — ` +
+                                    `page=${!!page}, activeSpaceId=${activeSpaceId ?? 'none'}, ` +
+                                    `enabled=${!!(page && isRegionOverlayEnabled(activeSpaceId, pageNumber, page))}, ` +
+                                    `regions=${pageRegions.length}`
+                                  );
+                                }
                                 return null;
                               }
 
@@ -24533,6 +24585,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               });
 
                               if (validRegions.length === 0) return null;
+
+                              if (pageNumber === (Number(pageNumRef.current) || 1)) {
+                                console.log(
+                                  `[App-RegionOverlay p${pageNumber}] render — ` +
+                                  `regions=${pageRegions.length}, valid=${validRegions.length}, ` +
+                                  `display=${Math.round(overlayDiv?.offsetWidth || 0)}x${Math.round(overlayDiv?.offsetHeight || 0)}`
+                                );
+                              }
 
                               const legacyOverlayDisplayWidth = resolvedPageSize.width * layerScale;
                               const legacyOverlayDisplayHeight = resolvedPageSize.height * layerScale;
@@ -24546,28 +24606,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   displayWidth={legacyOverlayDisplayWidth}
                                   displayHeight={legacyOverlayDisplayHeight}
                                   scale={layerScale}
+                                  fillContainer={!requiresLegacyAnnotationLayer}
                                 />
                               );
                             })()}
-                            {showRegionSelection && regionSelectionPage === pageNumber && (
-                              <div style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                width: '100%',
-                                height: '100%',
-                                pointerEvents: 'none',
-                                zIndex: 1000
-                              }}>
-                                <div id="region-selection-target" style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  width: '100%',
-                                  height: '100%'
-                                }} />
-                              </div>
-                            )}
                             </div>
                           </div>
                           {/* SVG layer + Drawing Canvas: OUTSIDE the transform/freeze div, directly in the portal overlay.
@@ -24578,9 +24620,80 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
+                            const regionSelectionDisplayWidth = overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale);
+                            const regionSelectionDisplayHeight = overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale);
 
                             return (
                             <>
+                              {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
+                                const space = spaces.find(s => s.id === activeSpaceId);
+                                const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
+
+                                if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNumber, page)) {
+                                  if (pageNumber === (Number(pageNumRef.current) || 1)) {
+                                    console.log(
+                                      `[App-RegionOverlay p${pageNumber}] hidden-svg — ` +
+                                      `page=${!!page}, activeSpaceId=${activeSpaceId ?? 'none'}, ` +
+                                      `enabled=${!!(page && isRegionOverlayEnabled(activeSpaceId, pageNumber, page))}, ` +
+                                      `regions=${pageRegions.length}`
+                                    );
+                                  }
+                                  return null;
+                                }
+
+                                const validRegions = pageRegions.filter(region => {
+                                  if (!region || !Array.isArray(region.coordinates)) return false;
+                                  const coords = region.coordinates;
+                                  return (region.shapeType === 'rectangular' && coords.length >= 8) ||
+                                    (region.shapeType === 'polygon' && coords.length >= 6);
+                                });
+
+                                if (validRegions.length === 0) return null;
+
+                                if (pageNumber === (Number(pageNumRef.current) || 1)) {
+                                  console.log(
+                                    `[App-RegionOverlay p${pageNumber}] render-svg — ` +
+                                    `regions=${pageRegions.length}, valid=${validRegions.length}, ` +
+                                    `display=${Math.round(overlayDiv?.offsetWidth || 0)}x${Math.round(overlayDiv?.offsetHeight || 0)}`
+                                  );
+                                }
+
+                                return (
+                                  <SpaceRegionOverlay
+                                    pageNumber={pageNumber}
+                                    regions={validRegions}
+                                    width={resolvedPageSize.width}
+                                    height={resolvedPageSize.height}
+                                    displayWidth={overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale)}
+                                    displayHeight={overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale)}
+                                    scale={layerScale}
+                                    fillContainer={true}
+                                  />
+                                );
+                              })()}
+                              {showRegionSelection && regionSelectionPage === pageNumber && (
+                                <div style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  width: `${regionSelectionDisplayWidth}px`,
+                                  height: `${regionSelectionDisplayHeight}px`,
+                                  pointerEvents: 'none',
+                                  zIndex: 95
+                                }}>
+                                  <div
+                                    id="region-selection-target"
+                                    data-region-selection-target={pageNumber}
+                                    style={{
+                                      position: 'absolute',
+                                      top: 0,
+                                      left: 0,
+                                      width: '100%',
+                                      height: '100%'
+                                    }}
+                                  />
+                                </div>
+                              )}
                               {/* SVG layer -- hidden when eraser or callout edit is mounted */}
                               <div
                                 style={{
@@ -25200,7 +25313,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     pointerEvents: 'none',
                                     zIndex: 1000
                                   }}>
-                                    <div id="region-selection-target" style={{
+                                    <div id="region-selection-target" data-region-selection-target={pageNumber} style={{
                                       position: 'absolute',
                                       top: 0,
                                       left: 0,
@@ -25607,7 +25720,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               pointerEvents: 'none',
                               zIndex: 1000
                             }}>
-                              <div id="region-selection-target" style={{
+                              <div id="region-selection-target" data-region-selection-target={pageNum} style={{
                                 position: 'absolute',
                                 top: 0,
                                 left: 0,

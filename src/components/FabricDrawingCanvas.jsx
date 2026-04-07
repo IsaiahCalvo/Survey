@@ -43,7 +43,10 @@ const FabricDrawingCanvas = memo(({
   annotations,
   onStrokeCommit,
   selectedModuleId,
+  selectedSpaceId,
   activeRegionId,
+  spaces,
+  isRegionOverlayEnabled,
   zoomGeneration,
 }) => {
   // -------------------------------------------------------------------------
@@ -59,10 +62,38 @@ const FabricDrawingCanvas = memo(({
   // Refs to avoid stale closures in event handlers
   const activeToolRef = useRef(activeTool);
   const selectedModuleIdRef = useRef(selectedModuleId);
+  const selectedSpaceIdRef = useRef(selectedSpaceId);
   const activeRegionIdRef = useRef(activeRegionId);
+  const spacesRef = useRef(spaces);
+  const isRegionOverlayEnabledRef = useRef(isRegionOverlayEnabled);
   const onStrokeCommitRef = useRef(onStrokeCommit);
   const initialZoomGenRef = useRef(zoomGeneration);
   const isDisposingRef = useRef(false);
+
+  const shouldAssignRegionId = () => {
+    const regionId = activeRegionIdRef.current;
+    const spaceId = selectedSpaceIdRef.current;
+    if (!regionId || !spaceId) return false;
+
+    const currentSpaces = Array.isArray(spacesRef.current) ? spacesRef.current : [];
+    const space = currentSpaces.find((entry) => entry?.id === spaceId);
+    if (!space) return false;
+
+    const assignedPage = space.assignedPages?.find((page) => page?.pageId === pageNumber);
+    if (!assignedPage) return false;
+
+    const pageRegions = Array.isArray(assignedPage.regions) ? assignedPage.regions : [];
+    if (!pageRegions.some((region) => region?.regionId === regionId)) {
+      return false;
+    }
+
+    const overlayToggle = isRegionOverlayEnabledRef.current;
+    if (typeof overlayToggle === 'function') {
+      return overlayToggle(spaceId, pageNumber, assignedPage) !== false;
+    }
+
+    return true;
+  };
 
   // Pre-dispose callback: flush in-progress stroke before canvas.off()/dispose()
   // so that the path:created handler is still bound when the flush fires it.
@@ -151,7 +182,7 @@ const FabricDrawingCanvas = memo(({
       if (selectedModuleIdRef.current) {
         e.path.set({ moduleId: selectedModuleIdRef.current });
       }
-      if (activeRegionIdRef.current) {
+      if (shouldAssignRegionId()) {
         e.path.set({ regionId: activeRegionIdRef.current });
       }
 
@@ -212,7 +243,7 @@ const FabricDrawingCanvas = memo(({
     const commitShape = (shape) => {
       const shapeJSON = shape.toJSON(CUSTOM_PROPS);
       if (selectedModuleIdRef.current) shapeJSON.moduleId = selectedModuleIdRef.current;
-      if (activeRegionIdRef.current) shapeJSON.regionId = activeRegionIdRef.current;
+      if (shouldAssignRegionId()) shapeJSON.regionId = activeRegionIdRef.current;
 
       const tool = activeToolRef.current;
       // Tag line/arrow with tool so SVG renderer can differentiate
@@ -351,8 +382,20 @@ const FabricDrawingCanvas = memo(({
   }, [selectedModuleId]);
 
   useEffect(() => {
+    selectedSpaceIdRef.current = selectedSpaceId;
+  }, [selectedSpaceId]);
+
+  useEffect(() => {
     activeRegionIdRef.current = activeRegionId;
   }, [activeRegionId]);
+
+  useEffect(() => {
+    spacesRef.current = spaces;
+  }, [spaces]);
+
+  useEffect(() => {
+    isRegionOverlayEnabledRef.current = isRegionOverlayEnabled;
+  }, [isRegionOverlayEnabled]);
 
   useEffect(() => {
     onStrokeCommitRef.current = onStrokeCommit;

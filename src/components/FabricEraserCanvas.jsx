@@ -38,6 +38,9 @@ const FabricEraserCanvas = memo(({
   onEraseCommit,
   eraserSize = 20,
   viewerScale,
+  selectedSpaceId,
+  activeSpaceId,
+  spaces,
   zoomGeneration,
 }) => {
   // ---------------------------------------------------------------------------
@@ -67,7 +70,27 @@ const FabricEraserCanvas = memo(({
   const eraserSizeRef = useRef(eraserSize);
   const viewerScaleRef = useRef(viewerScale);
   const effectiveScaleRef = useRef(1);
+  const selectedSpaceIdRef = useRef(selectedSpaceId);
+  const activeSpaceIdRef = useRef(activeSpaceId);
+  const spacesRef = useRef(spaces);
   const initialZoomGenRef = useRef(zoomGeneration);
+
+  const getSpaceIdForRegion = (regionId) => {
+    if (!regionId) return null;
+    const currentSpaces = Array.isArray(spacesRef.current) ? spacesRef.current : [];
+    for (const space of currentSpaces) {
+      const assignedPages = Array.isArray(space?.assignedPages) ? space.assignedPages : [];
+      for (const page of assignedPages) {
+        const regions = Array.isArray(page?.regions) ? page.regions : [];
+        for (const region of regions) {
+          if (region?.regionId === regionId) {
+            return space.id;
+          }
+        }
+      }
+    }
+    return null;
+  };
 
   // Pre-dispose callback: flush in-progress erase gesture before canvas.off()/dispose()
   const onBeforeDisposeRef = useRef((canvas) => {
@@ -136,6 +159,29 @@ const FabricEraserCanvas = memo(({
     let changed = false;
 
     for (const obj of objects) {
+      const objSpaceId = obj.spaceId || null;
+      const objRegionId = obj.regionId || null;
+      let shouldSkip = false;
+
+      if (activeSpaceIdRef.current !== null) {
+        if (objRegionId !== null) {
+          const derivedSpaceId = getSpaceIdForRegion(objRegionId);
+          if (derivedSpaceId !== null && derivedSpaceId !== activeSpaceIdRef.current) {
+            shouldSkip = true;
+          }
+        } else if (objSpaceId !== null) {
+          shouldSkip = objSpaceId !== activeSpaceIdRef.current;
+        } else {
+          shouldSkip = true;
+        }
+      } else if (selectedSpaceIdRef.current !== null && objSpaceId !== null) {
+        shouldSkip = objSpaceId !== selectedSpaceIdRef.current;
+      }
+
+      if (shouldSkip) {
+        continue;
+      }
+
       // Only erase path-type objects (same approach as PAL -- non-path objects
       // like rect, ellipse, textbox are removed if touched, path objects get
       // boolean subtraction)
@@ -379,6 +425,18 @@ const FabricEraserCanvas = memo(({
   useEffect(() => {
     viewerScaleRef.current = viewerScale;
   }, [viewerScale]);
+
+  useEffect(() => {
+    selectedSpaceIdRef.current = selectedSpaceId;
+  }, [selectedSpaceId]);
+
+  useEffect(() => {
+    activeSpaceIdRef.current = activeSpaceId;
+  }, [activeSpaceId]);
+
+  useEffect(() => {
+    spacesRef.current = spaces;
+  }, [spaces]);
 
   // ---------------------------------------------------------------------------
   // Container-aware resize: keep Canvas sized to container after zoom changes.
