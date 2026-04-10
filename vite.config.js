@@ -40,7 +40,7 @@ export default defineConfig({
     debugFixturesPlugin()
   ],
   server: {
-    port: 5173,
+    // Port is set via CLI flag from find-port.js
     headers: {
       // Allow MSAL popup authentication to work properly
       // Using 'same-origin-allow-popups' allows the popup to communicate back to the parent
