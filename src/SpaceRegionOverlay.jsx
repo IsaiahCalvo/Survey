@@ -253,7 +253,8 @@ const SpaceRegionOverlay = ({
         width: fillContainer ? '100%' : `${screenWidth}px`,
         height: fillContainer ? '100%' : `${screenHeight}px`,
         pointerEvents: 'none', // FIX: Don't block mouse events - overlay is visual only
-        zIndex: 30
+        // Sit above the base annotation renderers so canvas-scoped content is dimmed.
+        zIndex: 101
       }}
     >
       <svg

@@ -35,6 +35,11 @@ const { Canvas, Rect, Circle, Line, Triangle, Textbox, PencilBrush, Polyline, Gr
 // Note: polygon-clipping removed - using clipPath-based erasing instead
 import { regionContainsPoint } from './utils/regionMath';
 import {
+  ANNOTATION_VISIBILITY_SCOPE,
+  getAnnotationVisibilityScope,
+  isAnnotationVisibleByPageControl
+} from './utils/annotationVisibilityRules';
+import {
   isPointOnObject,
   doesRectIntersectObject,
   isObjectFullyInRect,
@@ -3167,7 +3172,8 @@ const PageAnnotationLayer = memo(({
   selectedCategoryId = null, // Category ID to keep highlights visible when panel is hidden
   activeRegions = null,
   spaces = [], // Array of spaces to look up region-to-space relationships
-  getRegionLightbulbState = null, // Function to get lightbulb state for a region: (spaceId, pageId) => boolean
+  getCanvasAnnotationVisibilityState = null, // (spaceId, pageId) => boolean for canvas-scoped annotations
+  getSurveyAnnotationVisibilityState = null, // (spaceId, pageId) => boolean for survey-scoped annotations
   activeRegionId = null, // NEW: ID of currently active region for scoping
   isRegionSelectionActive = false, // NEW: Whether region selection/editing is currently active
   eraserMode = 'partial', // 'partial' | 'entire'
@@ -3244,9 +3250,10 @@ const PageAnnotationLayer = memo(({
     showSurveyPanelRef.current = showSurveyPanel;
     activeRegionIdRef.current = activeRegionId;
     spacesRef.current = spaces;
-    getRegionLightbulbStateRef.current = getRegionLightbulbState;
+    getCanvasAnnotationVisibilityStateRef.current = getCanvasAnnotationVisibilityState;
+    getSurveyAnnotationVisibilityStateRef.current = getSurveyAnnotationVisibilityState;
     isRegionOverlayEnabledRef.current = isRegionOverlayEnabled;
-  }, [callouts, setCallouts, selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, spaces, getRegionLightbulbState, isRegionOverlayEnabled, pageNumber]);
+  }, [callouts, setCallouts, selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, pageNumber]);
   const strokeWidthRef = useRef(strokeWidth);
   const justCreatedCalloutRef = useRef(false);
   const onHighlightCreatedRef = useRef(onHighlightCreated);
@@ -3376,7 +3383,8 @@ const PageAnnotationLayer = memo(({
   const showSurveyPanelRef = useRef(showSurveyPanel);
   const activeRegionIdRef = useRef(activeRegionId);
   const spacesRef = useRef(spaces);
-  const getRegionLightbulbStateRef = useRef(getRegionLightbulbState);
+  const getCanvasAnnotationVisibilityStateRef = useRef(getCanvasAnnotationVisibilityState);
+  const getSurveyAnnotationVisibilityStateRef = useRef(getSurveyAnnotationVisibilityState);
   const isRegionOverlayEnabledRef = useRef(isRegionOverlayEnabled);
 
   // Helper function to determine if regionId should be assigned to new annotations
@@ -5084,10 +5092,13 @@ const PageAnnotationLayer = memo(({
           const currentActiveSpaceId = activeSpaceIdRef.current;
           const currentModuleId = selectedModuleIdRef.current;
 
-          // Check if this is a survey annotation (has moduleId)
-          const isSurveyAnnotation = objModuleId !== null;
-          // Check if this is a region-scoped annotation (has regionId)
-          const isRegionScoped = objRegionId !== null;
+          const visibilityScope = getAnnotationVisibilityScope({ moduleId: objModuleId, regionId: objRegionId });
+          const isSurveyAnnotation =
+            visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY ||
+            visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
+          const isRegionScoped =
+            visibilityScope === ANNOTATION_VISIBILITY_SCOPE.REGION ||
+            visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
 
           let isVisible = true;
           let isInteractive = true;
@@ -5117,11 +5128,18 @@ const PageAnnotationLayer = memo(({
             }
           }
 
-          // Lightbulb check for non-region-scoped annotations (survey highlights without regionId, and background annotations)
-          // when a space is active
-          if (!isRegionScoped && isVisible && currentSpaceId && getRegionLightbulbStateRef?.current) {
-            const lightbulbOn = getRegionLightbulbStateRef.current(currentSpaceId, pageNumber) !== false;
-            if (!lightbulbOn) {
+          // Page-level visibility filters apply only to non-region-scoped annotations.
+          if (!isRegionScoped && isVisible && currentSpaceId) {
+            const pageScopedVisible = isAnnotationVisibleByPageControl({
+              scope: visibilityScope,
+              canvasVisible: getCanvasAnnotationVisibilityStateRef.current
+                ? getCanvasAnnotationVisibilityStateRef.current(currentSpaceId, pageNumber) !== false
+                : true,
+              surveyVisible: getSurveyAnnotationVisibilityStateRef.current
+                ? getSurveyAnnotationVisibilityStateRef.current(currentSpaceId, pageNumber) !== false
+                : true
+            });
+            if (!pageScopedVisible) {
               isVisible = false;
             }
           }
@@ -8803,6 +8821,7 @@ const PageAnnotationLayer = memo(({
 
       // Filter by module: if selectedModuleId is set, object must match
       const matchesModule = selectedModuleId === null || objModuleId === selectedModuleId;
+      const visibilityScope = getAnnotationVisibilityScope({ moduleId: objModuleId, regionId: objRegionId });
 
       // Three-layer visibility logic:
       // - Base layer (no moduleId, no regionId): hidden when survey mode is active with a module selected
@@ -8847,20 +8866,19 @@ const PageAnnotationLayer = memo(({
       // Background annotations visibility logic
       // Background annotations (objRegionId === null) should respect the per-region lightbulb toggle
       // when a space is active, or be visible when no space is active
-      let backgroundAnnotationVisible = true;
+      let pageScopedAnnotationVisible = true;
 
-      // Only apply to background annotations (not scoped region annotations)
-      if (!isScopedRegionAnnotation && objRegionId === null) {
-        // This is a background annotation (made outside any space/region)
-        if (selectedSpaceId !== null && getRegionLightbulbStateRef.current) {
-          // A space is active: check the per-region lightbulb state for this page
-          const lightbulbResult = getRegionLightbulbStateRef.current(selectedSpaceId, pageNumber);
-          backgroundAnnotationVisible = lightbulbResult;
-
-        } else {
-          // No space is active: background annotations should always be visible
-          backgroundAnnotationVisible = true;
-        }
+      // Canvas-scoped and survey-scoped annotations each respect their own page-level control.
+      if (!isScopedRegionAnnotation && selectedSpaceId !== null) {
+        pageScopedAnnotationVisible = isAnnotationVisibleByPageControl({
+          scope: visibilityScope,
+          canvasVisible: getCanvasAnnotationVisibilityStateRef.current
+            ? getCanvasAnnotationVisibilityStateRef.current(selectedSpaceId, pageNumber)
+            : true,
+          surveyVisible: getSurveyAnnotationVisibilityStateRef.current
+            ? getSurveyAnnotationVisibilityStateRef.current(selectedSpaceId, pageNumber)
+            : true
+        });
       }
 
       // Object is visible if:
@@ -8872,7 +8890,7 @@ const PageAnnotationLayer = memo(({
         matchesModule &&
         surveyAnnotationVisible &&
         scopedRegionAnnotationVisible &&
-        (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
+        pageScopedAnnotationVisible;
 
       // Interaction logic:
       // - When a space is active (activeSpaceId !== null), background annotations (objRegionId === null) 
@@ -9916,7 +9934,8 @@ const PageAnnotationLayer = memo(({
     prevProps.selectedModuleId === nextProps.selectedModuleId &&
     prevProps.selectedCategoryId === nextProps.selectedCategoryId &&
     prevProps.activeRegions === nextProps.activeRegions &&
-    prevProps.getRegionLightbulbState === nextProps.getRegionLightbulbState &&
+    prevProps.getCanvasAnnotationVisibilityState === nextProps.getCanvasAnnotationVisibilityState &&
+    prevProps.getSurveyAnnotationVisibilityState === nextProps.getSurveyAnnotationVisibilityState &&
     prevProps.spaces === nextProps.spaces &&
     prevProps.activeRegionId === nextProps.activeRegionId &&
     prevProps.isRegionSelectionActive === nextProps.isRegionSelectionActive &&

@@ -100,6 +100,7 @@ import {
   computeHasPendingExcelSyncChanges
 } from './utils/excelSyncDirtyState';
 import {
+  getActivePageRegionId,
   getPageAnnotationVisibilityState,
   normalizePageRegions,
   normalizeRegionVisibility
@@ -22847,6 +22848,39 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   }, [highlightAnnotations, handleHighlightDeleted]);
 
+  const getPageSurveyRegionId = useCallback((pageId) => {
+    return getActivePageRegionId({
+      activeSpaceId,
+      pageId,
+      spaces,
+      isRegionOverlayEnabled
+    });
+  }, [activeSpaceId, spaces, isRegionOverlayEnabled]);
+
+  // Persist explicit regionId/null on survey highlight previews so older
+  // survey-scoped highlights do not get silently reclassified when a page
+  // overlay is later enabled.
+  const buildSurveyHighlightPreview = useCallback((highlight, extra = {}) => {
+    const preview = {
+      ...(highlight?.bounds || {}),
+      highlightId: extra.highlightId ?? highlight?.highlightId ?? highlight?.id,
+      moduleId: extra.moduleId ?? highlight?.moduleId ?? selectedModuleId ?? null,
+      regionId: extra.regionId !== undefined ? extra.regionId : (highlight?.regionId ?? null)
+    };
+
+    if (extra.color !== undefined) {
+      preview.color = extra.color;
+    }
+    if (extra.needsBIC !== undefined) {
+      preview.needsBIC = extra.needsBIC;
+    }
+    if (extra.needsCategory !== undefined) {
+      preview.needsCategory = extra.needsCategory;
+    }
+
+    return preview;
+  }, [selectedModuleId]);
+
   // Handle highlight creation from annotation tool
   const handleHighlightCreated = useCallback((pageNumber, bounds) => {
     // Checkpoint history before creation
@@ -22874,6 +22908,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     }
 
+    const pageRegionId = getPageSurveyRegionId(pageNumber);
+
     // Handle locating a pending item (from "Locate" button on unlocated item)
     if (pendingLocationItem) {
       const highlightId = pendingLocationItem.id;
@@ -22890,6 +22926,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             pageNumber,
             bounds,
             moduleId: effectiveModuleId,
+            regionId: pageRegionId,
             spaceId: activeSpaceId ?? selectedSpaceId // Ensure spaceId is set
           }
         };
@@ -22900,13 +22937,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         ...prev,
         [pageNumber]: [
           ...(prev[pageNumber] || []),
-          {
-            ...bounds,
-            highlightId,
-            moduleId: effectiveModuleId,
-            color: pendingLocationItem.ballInCourtColor, // Use BIC color if available
-            needsBIC: !pendingLocationItem.ballInCourtColor // Dashed if no color
-          }
+          buildSurveyHighlightPreview(
+            {
+              id: highlightId,
+              bounds,
+              moduleId: effectiveModuleId,
+              regionId: pageRegionId
+            },
+            {
+              color: pendingLocationItem.ballInCourtColor, // Use BIC color if available
+              needsBIC: !pendingLocationItem.ballInCourtColor // Dashed if no color
+            }
+          )
         ]
       }));
 
@@ -22921,7 +22963,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             id: highlightId,
             pageNumber,
             bounds,
-            moduleId: effectiveModuleId
+            moduleId: effectiveModuleId,
+            regionId: pageRegionId
           },
           categoryId: pendingLocationItem.categoryId
         });
@@ -22948,13 +22991,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       });
 
-      const newHighlight = {
-        ...bounds,
-        highlightId: highlightId,
-        moduleId: effectiveModuleId,
-        needsCategory: !selectedCategoryId, // Flag to indicate it needs category selection
-        needsBIC: true // Use needsBIC rendering style (transparent with dashed outline) initially
-      };
+      const newHighlight = buildSurveyHighlightPreview(
+        {
+          id: highlightId,
+          bounds,
+          moduleId: effectiveModuleId,
+          regionId: pageRegionId
+        },
+        {
+          needsCategory: !selectedCategoryId, // Flag to indicate it needs category selection
+          needsBIC: true // Use needsBIC rendering style (transparent with dashed outline) initially
+        }
+      );
 
       return {
         ...filteredPrev,
@@ -22976,7 +23024,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             id: highlightId,
             pageNumber,
             bounds,
-            moduleId: effectiveModuleId
+            moduleId: effectiveModuleId,
+            regionId: pageRegionId
           },
           categoryId: selectedCategoryId
         });
@@ -22987,7 +23036,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             id: highlightId,
             pageNumber,
             bounds,
-            moduleId: effectiveModuleId
+            moduleId: effectiveModuleId,
+            regionId: pageRegionId
           },
           categoryId: selectedCategoryId
         });
@@ -23004,11 +23054,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           id: highlightId,
           pageNumber,
           bounds,
-          moduleId: effectiveModuleId
+          moduleId: effectiveModuleId,
+          regionId: pageRegionId
         });
       }
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyHighlightPreview]);
 
   // Auto-switch to highlight tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
@@ -23076,10 +23127,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const handleTextSelected = useCallback((pageNumber, selectedText, highlights) => {
     if (!selectedText || !highlights || highlights.length === 0) return;
 
+    const pageRegionId = getPageSurveyRegionId(pageNumber);
+    const normalizedHighlights = highlights.map((highlight) => ({
+      ...highlight,
+      moduleId: highlight.moduleId ?? selectedModuleId ?? null,
+      regionId: highlight.regionId !== undefined ? highlight.regionId : pageRegionId
+    }));
+
     // Set new highlights to trigger addition in PageAnnotationLayer
     setNewHighlightsByPage(prev => ({
       ...prev,
-      [pageNumber]: highlights
+      [pageNumber]: normalizedHighlights
     }));
 
     // Clear the highlights after a brief delay to allow re-selection
@@ -23090,7 +23148,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return updated;
       });
     }, 100);
-  }, []);
+  }, [getPageSurveyRegionId, selectedModuleId]);
 
   const handleSyncfusionTextSelectionEnd = useCallback(() => {
     // Selection-only mode for Syncfusion renderer:
@@ -23194,6 +23252,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             height: highlight.bounds.height,
             highlightId: highlightId,
             moduleId: highlightModuleId,
+            regionId: highlight.regionId ?? null,
             ...(needsBIC && { needsBIC: true }),
             ...(highlightColor && { color: highlightColor })
           };
@@ -26732,6 +26791,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       pageNumber: pageNum,
                                       bounds: bounds,
                                       moduleId: module.id,
+                                      regionId: sourceHighlight?.regionId ?? null,
                                       categoryId: destCategory?.id || null,
                                       name: item.name || sourceHighlight?.name || 'Untitled Item',
                                       checklistResponses: {}
@@ -26744,7 +26804,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         {
                                           ...bounds,
                                           needsBIC: true,
-                                          highlightId: highlightId
+                                          highlightId: highlightId,
+                                          regionId: sourceHighlight?.regionId ?? null
                                         }
                                       ]
                                     }));
@@ -26987,6 +27048,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         pageNumber: pageNum,
                                         bounds: bounds,
                                         spaceId: space.id,
+                                        regionId: sourceHighlight?.regionId ?? null,
                                         categoryId: destCategory?.id || null,
                                         name: item.name || sourceHighlight?.name || 'Untitled Item',
                                         // Do NOT copy BIC properties - item starts blank in new space
@@ -27001,7 +27063,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           {
                                             ...bounds,
                                             needsBIC: true, // Flag to indicate it needs BIC assignment
-                                            highlightId: highlightId // Store ID for later reference
+                                            highlightId: highlightId, // Store ID for later reference
+                                            regionId: sourceHighlight?.regionId ?? null
                                           }
                                         ]
                                       }));
@@ -30222,12 +30285,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 ...prev,
                                 [pendingBallInCourtSelection.highlight.pageNumber]: [
                                   ...filtered,
-                                  {
-                                    ...pendingBallInCourtSelection.highlight.bounds,
-                                    color: entityColor,
-                                    highlightId: pendingBallInCourtSelection.highlight.id,
-                                    moduleId: pendingBallInCourtSelection.highlight.moduleId || selectedModuleId
-                                  }
+                                  buildSurveyHighlightPreview(
+                                    pendingBallInCourtSelection.highlight,
+                                    { color: entityColor }
+                                  )
                                 ]
                               };
                             });
@@ -30329,12 +30390,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                         ...prev,
                         [pendingHighlightName.highlight.pageNumber]: [
                           ...filtered,
-                          {
-                            ...pendingHighlightName.highlight.bounds,
-                            color: highlightColor,
-                            highlightId: pendingHighlightName.highlight.id,
-                            moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                          }
+                          buildSurveyHighlightPreview(
+                            pendingHighlightName.highlight,
+                            { color: highlightColor }
+                          )
                         ]
                       };
                     });
@@ -30495,12 +30554,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               ...prev,
                               [pendingHighlightName.highlight.pageNumber]: [
                                 ...filtered,
-                                {
-                                  ...pendingHighlightName.highlight.bounds,
-                                  color: highlightColor,
-                                  highlightId: pendingHighlightName.highlight.id,
-                                  moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                                }
+                                buildSurveyHighlightPreview(
+                                  pendingHighlightName.highlight,
+                                  { color: highlightColor }
+                                )
                               ]
                             };
                           });
@@ -30559,12 +30616,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               ...prev,
                               [pendingHighlightName.highlight.pageNumber]: [
                                 ...filtered,
-                                {
-                                  ...pendingHighlightName.highlight.bounds,
-                                  color: highlightColor,
-                                  highlightId: pendingHighlightName.highlight.id,
-                                  moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                                }
+                                buildSurveyHighlightPreview(
+                                  pendingHighlightName.highlight,
+                                  { color: highlightColor }
+                                )
                               ]
                             };
                           });
@@ -30601,12 +30656,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               ...prev,
                               [pendingHighlightName.highlight.pageNumber]: [
                                 ...filtered,
-                                {
-                                  ...pendingHighlightName.highlight.bounds,
-                                  color: highlightColor,
-                                  highlightId: pendingHighlightName.highlight.id,
-                                  moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                                }
+                                buildSurveyHighlightPreview(
+                                  pendingHighlightName.highlight,
+                                  { color: highlightColor }
+                                )
                               ]
                             };
                           });
@@ -30742,12 +30795,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               ...prev,
                               [pendingHighlightName.highlight.pageNumber]: [
                                 ...filtered,
-                                {
-                                  ...pendingHighlightName.highlight.bounds,
-                                  color: highlightColor,
-                                  highlightId: pendingHighlightName.highlight.id,
-                                  moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                                }
+                                buildSurveyHighlightPreview(
+                                  pendingHighlightName.highlight,
+                                  { color: highlightColor }
+                                )
                               ]
                             };
                           });
@@ -30878,12 +30929,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               ...prev,
                               [pendingHighlightName.highlight.pageNumber]: [
                                 ...filtered,
-                                {
-                                  ...pendingHighlightName.highlight.bounds,
-                                  color: highlightColor,
-                                  highlightId: pendingHighlightName.highlight.id,
-                                  moduleId: pendingHighlightName.highlight.moduleId || selectedModuleId
-                                }
+                                buildSurveyHighlightPreview(
+                                  pendingHighlightName.highlight,
+                                  { color: highlightColor }
+                                )
                               ]
                             };
                           });
@@ -31471,6 +31520,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       pageNumber: sourceHighlight?.pageNumber || 1,
                                       bounds: bounds,
                                       spaceId: space.id,
+                                      regionId: sourceHighlight?.regionId ?? null,
                                       categoryId: destCategory?.id || null,
                                       name: item.name || sourceHighlight?.name || 'Untitled Item',
                                       checklistResponses: {}

@@ -2,6 +2,10 @@ import React, { useState, useCallback, useMemo, useRef } from 'react';
 import Icon from '../Icons';
 import { parsePageRangeInput, formatPageList } from '../utils/pageRangeParser';
 import {
+  getPageVisibilityControlMode,
+  PAGE_VISIBILITY_CONTROL_MODE
+} from '../utils/annotationVisibilityRules';
+import {
   DndContext,
   PointerSensor,
   closestCenter,
@@ -78,8 +82,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onToggleSpace,
   isRegionSelectionActive = false,
   features,
-  getRegionLightbulbState = null,
-  onToggleBackgroundAnnotations = null,
+  getCanvasAnnotationVisibilityState = null,
+  onToggleCanvasAnnotations = null,
+  getSurveyAnnotationVisibilityState = null,
+  onToggleSurveyAnnotations = null,
   activeSpaceId = null,
   onToggleRegionOverlay = null,
   getRegionOverlayEnabled = null,
@@ -790,32 +796,37 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             )}
                           </div>
                           <div style={{ display: 'flex', gap: '4px' }}>
-                            {/* Background Annotations Toggle - Changes to survey icon when in survey mode with space active */}
-                            {isExpanded && onToggleBackgroundAnnotations && getRegionLightbulbState && (() => {
-                              const regionLightbulbState = getRegionLightbulbState(space.id, page.pageId);
-                              const isDisabled = !isActive || activeSpaceId === null;
-                              // Determine if we're in survey context (space active + survey mode)
-                              const isSurveyContext = activeSpaceId && showSurveyPanel && selectedModuleId;
+                            {/* One visible control on screen, but separate canvas/survey features in code. */}
+                            {isExpanded && (() => {
+                              const controlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });
+                              const isSurveyContext =
+                                activeSpaceId !== null &&
+                                controlMode === PAGE_VISIBILITY_CONTROL_MODE.SURVEY;
+                              const getVisibilityState = isSurveyContext
+                                ? getSurveyAnnotationVisibilityState
+                                : getCanvasAnnotationVisibilityState;
+                              const onToggleVisibility = isSurveyContext
+                                ? onToggleSurveyAnnotations
+                                : onToggleCanvasAnnotations;
 
-                              // Tooltip changes based on context
-                              const getTooltip = () => {
-                                if (isDisabled) return 'Toggle is only available when a space is active';
-                                if (isSurveyContext) {
-                                  return regionLightbulbState ? 'Hide Survey Highlights' : 'Show Survey Highlights';
-                                }
-                                return regionLightbulbState ? 'Hide Background Annotations' : 'Show Background Annotations';
-                              };
+                              if (!getVisibilityState || !onToggleVisibility) {
+                                return null;
+                              }
+
+                              const visibilityState = getVisibilityState(space.id, page.pageId);
+                              const isDisabled = !isActive || activeSpaceId === null;
+                              const title = !isDisabled
+                                ? (isSurveyContext
+                                  ? (visibilityState ? 'Hide Survey Annotations' : 'Show Survey Annotations')
+                                  : (visibilityState ? 'Hide Canvas Annotations' : 'Show Canvas Annotations'))
+                                : 'Toggle is only available when a space is active';
 
                               return (
                                 <button
                                   onClick={(e) => {
                                     const now = Date.now();
-                                    // Use a data attribute on the button to track last click time (per-button debounce)
                                     const lastClick = parseInt(e.currentTarget.dataset.lastClick || '0', 10);
-                                    const timeSinceLastClick = now - lastClick;
-
-                                    // Debounce: ignore clicks within 300ms of each other
-                                    if (timeSinceLastClick < 300) {
+                                    if (now - lastClick < 300) {
                                       e.preventDefault();
                                       e.stopPropagation();
                                       return;
@@ -825,12 +836,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     if (isDisabled) {
                                       return;
                                     }
+
                                     e.stopPropagation();
-                                    onToggleBackgroundAnnotations(space.id, page.pageId, !regionLightbulbState);
+                                    onToggleVisibility(space.id, page.pageId, !visibilityState);
                                   }}
                                   style={{
-                                    background: regionLightbulbState ? 'rgba(74, 144, 226, 0.15)' : 'rgba(153, 153, 153, 0.1)',
-                                    border: `1px solid ${regionLightbulbState ? 'rgba(74, 144, 226, 0.4)' : 'rgba(153, 153, 153, 0.3)'}`,
+                                    background: visibilityState ? 'rgba(74, 144, 226, 0.15)' : 'rgba(153, 153, 153, 0.1)',
+                                    border: `1px solid ${visibilityState ? 'rgba(74, 144, 226, 0.4)' : 'rgba(153, 153, 153, 0.3)'}`,
                                     padding: '4px 8px',
                                     cursor: isDisabled ? 'not-allowed' : 'pointer',
                                     borderRadius: '4px',
@@ -838,7 +850,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     fontSize: '10px',
-                                    color: isDisabled ? '#666' : (regionLightbulbState ? '#4A90E2' : '#999'),
+                                    color: isDisabled ? '#666' : (visibilityState ? '#4A90E2' : '#999'),
                                     opacity: isDisabled ? 0.5 : 1,
                                     fontFamily: FONT_FAMILY,
                                     transition: 'all 0.15s ease',
@@ -856,19 +868,15 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   onMouseLeave={(e) => {
                                     e.currentTarget.style.background = 'transparent';
                                   }}
-                                  title={getTooltip()}
+                                  title={title}
                                 >
-                                  {/* Survey icon when in survey context, otherwise lightbulb */}
                                   {isSurveyContext ? (
-                                    // Survey/Clipboard icon
-
                                     <Icon
                                       name="survey"
                                       size={12}
                                       style={{ width: '15px', height: '15px', flexShrink: 0 }}
                                     />
-                                  ) : regionLightbulbState ? (
-                                    // Lightbulb ON icon
+                                  ) : visibilityState ? (
                                     <svg
                                       width="14"
                                       height="14"
@@ -881,7 +889,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                       <path d="M12.7857 8.5L10.6429 11.5H13.6429L11.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>
                                   ) : (
-                                    // Lightbulb OFF icon
                                     <svg
                                       width="14"
                                       height="14"
@@ -976,8 +983,10 @@ const SpacesPanel = ({
   isRegionSelectionActive = false,
   numPages,
   features,
-  getRegionLightbulbState = null,
-  onToggleBackgroundAnnotations = null,
+  getCanvasAnnotationVisibilityState = null,
+  onToggleCanvasAnnotations = null,
+  getSurveyAnnotationVisibilityState = null,
+  onToggleSurveyAnnotations = null,
   externalSelectedSpaceId = null,
   onToggleRegionOverlay = null,
   getRegionOverlayEnabled = null,
@@ -1372,8 +1381,10 @@ const SpacesPanel = ({
                     onRemovePage={handleRemovePage}
                     isRegionSelectionActive={isRegionSelectionActive}
                     features={features}
-                    getRegionLightbulbState={getRegionLightbulbState}
-                    onToggleBackgroundAnnotations={onToggleBackgroundAnnotations}
+                    getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                    onToggleCanvasAnnotations={onToggleCanvasAnnotations}
+                    getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
+                    onToggleSurveyAnnotations={onToggleSurveyAnnotations}
                     activeSpaceId={activeSpaceId}
                     onToggleRegionOverlay={onToggleRegionOverlay}
                     getRegionOverlayEnabled={getRegionOverlayEnabled}

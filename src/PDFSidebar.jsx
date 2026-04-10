@@ -56,8 +56,10 @@ const PDFSidebar = React.forwardRef(({
   onPageDrop,
   onToggleCollapse,
   features,
-  getRegionLightbulbState = null,
-  onToggleBackgroundAnnotations = null,
+  getCanvasAnnotationVisibilityState = null,
+  onToggleCanvasAnnotations = null,
+  getSurveyAnnotationVisibilityState = null,
+  onToggleSurveyAnnotations = null,
   selectedSpaceId = null,
   onToggleRegionOverlay = null,
   getRegionOverlayEnabled = null,
@@ -293,8 +295,10 @@ const PDFSidebar = React.forwardRef(({
                 isRegionSelectionActive={isRegionSelectionActive}
                 numPages={numPages}
                 features={features}
-                getRegionLightbulbState={getRegionLightbulbState}
-                onToggleBackgroundAnnotations={onToggleBackgroundAnnotations}
+                getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                onToggleCanvasAnnotations={onToggleCanvasAnnotations}
+                getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
+                onToggleSurveyAnnotations={onToggleSurveyAnnotations}
                 externalSelectedSpaceId={selectedSpaceId}
                 onToggleRegionOverlay={onToggleRegionOverlay}
                 getRegionOverlayEnabled={getRegionOverlayEnabled}
