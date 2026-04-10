@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: SVG Migration
 status: complete
 stopped_at: Milestone v2.0 COMPLETE — Phase 11 closed. Canvas-vs-SVG rasterizer difference documented in CLAUDE.md as an accepted sub-pixel cosmetic (not a fixable code bug). All diagnostic logging reverted, opacity:0 restored on isBeingEdited SVG wrapper. SVG migration finished — zero-timer zoom, Canvas mounts only during active edit/draw, all 39 v2.0 requirements met.
-last_updated: "2026-04-10T00:00:00.000Z"
-last_activity: 2026-04-10 -- Phase 11 closed; milestone v2.0 complete at 100%
+last_updated: "2026-04-10T15:30:00.000Z"
+last_activity: 2026-04-10 -- Working tree triage executed; 7 polish commits landed post-milestone v2.0
 progress:
   total_phases: 4
   completed_phases: 4
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 
 Phase: 11 of 11 (Text/Shape Editing + Zoom Cleanup) — COMPLETE
 Plan: 2 of 2 — COMPLETE
-Status: Milestone v2.0 closed
-Last activity: 2026-04-10 -- Phase 11 closed, Canvas-vs-SVG rasterizer gotcha documented in CLAUDE.md
+Status: Milestone v2.0 closed, working tree triage complete
+Last activity: 2026-04-10 -- Working tree triage executed; 7 polish commits landed (visibility refactor, region edit session, text flicker, SVG text bbox, callout contentEditable, dev port, cleanup)
 
 Progress: [██████████] 100% (All 4 phases complete, all 9 plans complete)
 
@@ -113,5 +113,5 @@ Progress: [██████████] 100% (All 4 phases complete, all 9 pl
 ## Session Continuity
 
 Last session: 2026-04-10
-Stopped at: Milestone v2.0 COMPLETE — Phase 11 closed, diagnostics reverted, gotcha documented. Ready for next milestone or maintenance mode.
-Resume file: (none — milestone complete)
+Stopped at: Working tree triage complete. 7 polish commits landed on top of milestone v2.0. Ready for next milestone or maintenance mode.
+Resume file: (none — milestone complete, working tree clean)
