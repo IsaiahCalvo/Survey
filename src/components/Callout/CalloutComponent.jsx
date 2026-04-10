@@ -70,7 +70,9 @@ const CalloutComponent = ({
   const showResizeHandles = (isCalloutToolActive || activeTool === 'select' || activeTool === 'pan') && isSelected;
   const textareaRef = useRef(null);
   const [isEditing, setIsEditing] = useState(false);
-  // Fabric.js canvas refs for text editing (replaces HTML textarea during editing)
+  // contentEditable div ref for text editing (replaces Fabric.js canvas — native wrapping + cursor)
+  const editableDivRef = useRef(null);
+  // Legacy Fabric refs — kept for cleanup safety
   const fabricCanvasElRef = useRef(null);
   const fabricContainerRef = useRef(null);
   const fabricInstanceRef = useRef(null);
@@ -80,6 +82,7 @@ const CalloutComponent = ({
   onUpdateRef.current = onUpdate;
   const calloutTextBoxHeightRef = useRef(callout.textBoxHeight);
   calloutTextBoxHeightRef.current = callout.textBoxHeight;
+  const textareaWidthRef = useRef(0);
   const wasSelectedBeforeClickRef = useRef(false);
   const isInClickSequenceRef = useRef(false);
   const hasDraggedRef = useRef(false);
@@ -188,138 +191,45 @@ const CalloutComponent = ({
   }, []);
 
   // -------------------------------------------------------------------------
-  // Fabric.js canvas for callout text editing
-  // Replaces HTML textarea during editing to avoid React re-render cursor bugs.
-  // Root cause: React batched state updates between mouseup→click reset cursor
-  // in controlled/uncontrolled textareas. Fabric.js manages its own DOM.
-  // Pattern: FabricTextCanvas.jsx (proven Fabric.js Textbox approach)
+  // contentEditable div for callout text editing
+  // Replaces Fabric.js canvas — native wrapping, native cursor, retina-quality.
+  // contentEditable is NOT React-controlled, so cursor position is immune to
+  // React re-render batching (the original textarea bug).
   // -------------------------------------------------------------------------
   useEffect(() => {
-    if (!isEditing) {
-      if (fabricInstanceRef.current) {
-        try { fabricInstanceRef.current.dispose(); } catch (e) { /* canvas may already be removed from DOM */ }
-        fabricInstanceRef.current = null;
-      }
-      return;
+    if (!isEditing) return;
+
+    const div = editableDivRef.current;
+    if (!div) return;
+
+    // Set initial text and focus
+    div.textContent = callout.text || '';
+    div.focus();
+
+    // Place cursor at end of text
+    const range = document.createRange();
+    const sel = window.getSelection();
+    if (div.childNodes.length > 0) {
+      range.selectNodeContents(div);
+      range.collapse(false); // collapse to end
+      sel.removeAllRanges();
+      sel.addRange(range);
     }
 
-    const canvasEl = fabricCanvasElRef.current;
-    const container = fabricContainerRef.current;
-    if (!canvasEl || !container) return;
-
-    const borderW = style.lineThickness || 1;
-    const padH = 8; // match textarea horizontal padding
-    const padV = 4; // match textarea vertical padding
-    // Calculate dimensions from callout data (NOT container — default <canvas> is 300x150 and inflates it)
-    const innerW = Math.max(40, textBoxWidth - 2 * borderW);
-
-    // Pre-set canvas element size BEFORE Fabric wraps it (prevents 300x150 default)
-    canvasEl.width = innerW;
-    canvasEl.height = 30; // temporary — will resize after measuring text
-
-    console.log('[CalloutEdit] MOUNT — textBoxWidth:', textBoxWidth, 'textBoxHeight:', textBoxHeight,
-      'borderW:', borderW, 'innerW:', innerW, 'pageHeight:', pageHeight);
-
-    const canvas = new fabric.Canvas(canvasEl, {
-      backgroundColor: 'transparent',
-      selection: false,
-      stopContextMenu: true,
-      enableRetinaScaling: true,
-    });
-    canvas.setWidth(innerW);
-    canvas.setHeight(30); // temporary — will resize after measuring text
-    fabricInstanceRef.current = canvas;
-
-    // Subtract extra 4px to match CSS text wrapping (canvas measureText is ~3-5% narrower than CSS)
-    const tbWidth = innerW - 2 * padH - 4;
-    console.log('[CalloutEdit] Textbox width:', tbWidth, 'innerW:', innerW, 'fontSize:', style.fontSize);
-
-    // Create Textbox matching callout style — width must enable word wrapping
-    const textObj = new fabric.Textbox(callout.text || '', {
-      left: padH,
-      top: padV,
-      width: tbWidth,
-      fontSize: style.fontSize || 14,
-      fill: style.fontColor || '#000000',
-      fontFamily: style.fontFamily || '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif',
-      fontWeight: style.bold ? 'bold' : 'normal',
-      fontStyle: style.italic ? 'italic' : 'normal',
-      textAlign: style.textAlign || 'left',
-      underline: style.underline || false,
-      linethrough: style.strikethrough || false,
-      editable: true,
-      selectable: true,
-      hasControls: false,
-      hasBorders: false,
-      lockMovementX: true,
-      lockMovementY: true,
-    });
-
-    canvas.add(textObj);
-    canvas.setActiveObject(textObj);
-
-    // Measure actual text height and size canvas to fit (replaces the temporary 30px)
-    textObj.initDimensions();
-    const initTextH = textObj.calcTextHeight();
-    const fitH = Math.max(30, initTextH + 2 * padV);
-    canvas.setHeight(fitH);
-    canvas.renderAll();
-
-    console.log('[CalloutEdit] sized canvas — textH:', initTextH, 'fitH:', fitH,
-      'lines:', textObj.textLines?.length, 'storedH:', textBoxHeight);
-
-    textObj.enterEditing();
-
-    // Handle text changes — update callout data in real time
-    textObj.on('changed', () => {
-      const newText = textObj.text;
-      const updates = { text: newText };
-
-      // Force Fabric to recalculate text dimensions (wrapping, line breaks)
-      textObj.initDimensions();
-      canvas.renderAll();
-
-      // Auto-resize: if text grows taller, expand canvas and callout height
-      const actualTextH = textObj.calcTextHeight();
-      const neededH = actualTextH + 2 * padV;
-      const currentCanvasH = canvas.getHeight();
-
-      if (neededH > currentCanvasH || neededH < currentCanvasH - 20) {
-        // Grow or shrink canvas to fit text (with minimum)
-        const newCanvasH = Math.max(30, neededH);
-        canvas.setHeight(newCanvasH);
-        canvas.renderAll();
-        const newTotalH = newCanvasH + 2 * borderW;
-        const newHeightPercent = newTotalH / pageHeight;
-        if (Math.abs(newHeightPercent - calloutTextBoxHeightRef.current) > 0.001) {
-          updates.textBoxHeight = newHeightPercent;
-        }
-        console.log('[CalloutEdit] resize — textH:', actualTextH, 'canvasH:', newCanvasH,
-          'lines:', textObj.textLines?.length);
-      }
-
-      onUpdateRef.current(updates);
-    });
-
-    // Click-outside: commit text and exit editing
+    // Click-outside: exit editing (text already committed per-keystroke via onInput)
     const handleDocPointerDown = (e) => {
-      const cont = fabricContainerRef.current;
-      if (cont && !cont.contains(e.target)) {
-        const finalText = textObj.text || '';
-        textObj.exitEditing();
-        onUpdateRef.current({ text: finalText });
+      if (div && !div.contains(e.target)) {
         setIsEditing(false);
       }
     };
-    // Defer registration so the click that opened editing doesn't immediately trigger
+    // Defer so the click that opened editing doesn't immediately close it
     const timerId = setTimeout(() => {
       document.addEventListener('pointerdown', handleDocPointerDown, true);
     }, 100);
 
-    // Escape: exit editing (text already committed on each keystroke via 'changed')
+    // Escape: exit editing
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        textObj.exitEditing();
         setIsEditing(false);
       }
     };
@@ -329,12 +239,8 @@ const CalloutComponent = ({
       clearTimeout(timerId);
       document.removeEventListener('pointerdown', handleDocPointerDown, true);
       document.removeEventListener('keydown', handleKeyDown);
-      if (fabricInstanceRef.current) {
-        try { fabricInstanceRef.current.dispose(); } catch (e) { /* OK */ }
-        fabricInstanceRef.current = null;
-      }
     };
-  }, [isEditing]); // Mount-only per editing session — style/size captured at creation time
+  }, [isEditing]);
 
   const handleTextBoxMouseDown = useCallback((e) => {
     e.stopPropagation();
@@ -480,6 +386,11 @@ const CalloutComponent = ({
     // 3. The click was quick (< 300ms) — a long hold-and-release is NOT a click
     const clickDuration = Date.now() - mouseDownTimeRef.current;
     if (wasSelectedBeforeClickRef.current && !didDrag && clickDuration < 300) {
+      // Capture textarea's actual rendered width BEFORE switching to Fabric canvas
+      // This ensures Fabric Textbox wraps text at the exact same width as CSS
+      if (textareaRef.current) {
+        textareaWidthRef.current = textareaRef.current.clientWidth;
+      }
       setIsEditing(true);
     }
     // If not already selected, the callout was just selected by handleTextBoxMouseDown
@@ -488,6 +399,9 @@ const CalloutComponent = ({
 
   const handleTextBoxDoubleClick = useCallback((e) => {
     e.stopPropagation();
+    if (textareaRef.current) {
+      textareaWidthRef.current = textareaRef.current.clientWidth;
+    }
     setIsEditing(true);
   }, []);
 
@@ -1274,9 +1188,12 @@ const CalloutComponent = ({
         onTouchMove={handleTouchMove}
       >
         {isEditing ? (
-          /* Fabric.js canvas for text editing — cursor works natively, immune to React re-renders */
+          /* contentEditable div for editing — native wrapping, native cursor, retina-quality.
+             NOT React-controlled, so cursor immune to re-render batching. */
           <div
-            ref={fabricContainerRef}
+            ref={editableDivRef}
+            contentEditable
+            suppressContentEditableWarning
             style={{
               width: textBoxWidth,
               minHeight: 32,
@@ -1284,18 +1201,50 @@ const CalloutComponent = ({
               borderColor: hexToRgba(style.borderColor, style.borderOpacity),
               borderWidth: style.lineThickness,
               borderStyle: 'solid',
+              color: style.fontColor,
+              fontFamily: style.fontFamily,
+              fontSize: style.fontSize,
+              fontWeight: style.bold ? 'bold' : 'normal',
+              fontStyle: style.italic ? 'italic' : 'normal',
+              textDecoration: [
+                style.underline ? 'underline' : '',
+                style.strikethrough ? 'line-through' : '',
+              ].filter(Boolean).join(' ') || 'none',
+              textAlign: style.textAlign || 'left',
+              padding: '4px 8px',
               borderRadius: '4px',
-              boxSizing: 'border-box',
+              outline: 'none',
               overflow: 'hidden',
+              boxSizing: 'border-box',
               cursor: 'text',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              lineHeight: 'normal',
+            }}
+            onInput={(e) => {
+              const text = e.currentTarget.innerText;
+              const updates = { text };
+              // Auto-resize: update callout height if content grows/shrinks
+              const div = e.currentTarget;
+              const newHeight = Math.max(32, div.scrollHeight);
+              const borderW = style.lineThickness || 1;
+              const newHeightPercent = newHeight / pageHeight;
+              if (Math.abs(newHeightPercent - calloutTextBoxHeightRef.current) > 0.001) {
+                updates.textBoxHeight = newHeightPercent;
+              }
+              onUpdateRef.current(updates);
+            }}
+            onPaste={(e) => {
+              // Strip rich text — paste plain text only
+              e.preventDefault();
+              const text = e.clipboardData.getData('text/plain');
+              document.execCommand('insertText', false, text);
             }}
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
-          >
-            <canvas ref={fabricCanvasElRef} />
-          </div>
+          />
         ) : (
           /* Display-only textarea when not editing */
           <textarea
