@@ -49,7 +49,9 @@ const RegionSelectionTool = ({
   const canvasRectRef = useRef(null);
   const lastTargetDebugKeyRef = useRef(null);
   const lastCanvasRectDebugRef = useRef(null);
+  const lastTargetQueryDebugRef = useRef(null);
   const regionsRef = useRef([]);
+  const documentDragFallbackRef = useRef(false);
 
   const resolvedPageWidth = useMemo(() => {
     if (Number.isFinite(pageWidth) && pageWidth > 0) {
@@ -105,6 +107,20 @@ const RegionSelectionTool = ({
     }
     return null;
   }, [targetElement]);
+
+  const isPointWithinTargetRect = useCallback((clientX, clientY, rectOverride = null) => {
+    const rect = rectOverride || getTargetRect();
+    if (!rect) {
+      return false;
+    }
+
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
+  }, [getTargetRect]);
 
   const clientPointToPage = useCallback((clientX, clientY, rectOverride = null) => {
     const rect = rectOverride || getTargetRect();
@@ -170,6 +186,26 @@ const RegionSelectionTool = ({
           const rightArea = rightRect.width * rightRect.height;
           return rightArea - leftArea;
         })[0] || document.getElementById('region-selection-target');
+      if (!nextTarget) {
+        const queryDebugKey = `${selector}:0:${activeTool ?? 'none'}`;
+        if (lastTargetQueryDebugRef.current !== queryDebugKey) {
+          lastTargetQueryDebugRef.current = queryDebugKey;
+          console.warn(
+            `[RegionSelectionTool p${currentPageId ?? 'unknown'}] target query miss — ` +
+            `selector=${selector}, candidates=0, tool=${activeTool ?? 'none'}`
+          );
+        }
+      } else {
+        const renderer = nextTarget.dataset?.regionSelectionRenderer || 'unspecified';
+        const queryDebugKey = `${selector}:${renderer}`;
+        if (lastTargetQueryDebugRef.current !== queryDebugKey) {
+          lastTargetQueryDebugRef.current = queryDebugKey;
+          console.log(
+            `[RegionSelectionTool p${currentPageId ?? 'unknown'}] target query hit — ` +
+            `selector=${selector}, renderer=${renderer}`
+          );
+        }
+      }
       setTargetElement((prevTarget) => (prevTarget === nextTarget ? prevTarget : nextTarget));
       frameId = window.requestAnimationFrame(updateTarget);
     };
@@ -181,7 +217,7 @@ const RegionSelectionTool = ({
         window.cancelAnimationFrame(frameId);
       }
     };
-  }, [active, currentPageId]);
+  }, [active, currentPageId, activeTool]);
 
   useEffect(() => {
     if (!active) {
@@ -771,11 +807,7 @@ const RegionSelectionTool = ({
     }
 
     const rect = targetElement.getBoundingClientRect();
-    const isWithinCanvas =
-      event.clientX >= rect.left &&
-      event.clientX <= rect.right &&
-      event.clientY >= rect.top &&
-      event.clientY <= rect.bottom;
+    const isWithinCanvas = isPointWithinTargetRect(event.clientX, event.clientY, rect);
 
     console.log(
       `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseDown — ` +
@@ -787,6 +819,9 @@ const RegionSelectionTool = ({
     if (!isWithinCanvas) {
       return;
     }
+
+    event.preventDefault();
+    event.stopPropagation();
 
     setIsCursorOverCanvas(true);
 
@@ -831,7 +866,7 @@ const RegionSelectionTool = ({
       setIsDrawing(true);
       setPolygonPoints([{ x, y }]);
     }
-  }, [active, targetElement, effectiveToolType, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool]);
+  }, [active, targetElement, effectiveToolType, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool, isPointWithinTargetRect]);
 
   const handleMouseMove = useCallback((event) => {
     if (!active || !targetElement) return;
@@ -1682,6 +1717,47 @@ const RegionSelectionTool = ({
     };
   }, [active, targetElement, handleCancel]);
 
+  useEffect(() => {
+    if (!active || !targetElement) return;
+
+    const handleDocumentMouseDownCapture = (event) => {
+      if (activeTool === 'pan') return;
+      if (documentDragFallbackRef.current) return;
+      if (containerRef.current && containerRef.current.contains(event.target)) return;
+      if (event.target?.closest?.('[data-region-selection-ui="true"]')) return;
+      if (!isPointWithinTargetRect(event.clientX, event.clientY)) return;
+
+      documentDragFallbackRef.current = true;
+      handleMouseDown(event);
+    };
+
+    const handleDocumentMouseMoveCapture = (event) => {
+      if (!documentDragFallbackRef.current) return;
+      handleMouseMove(event);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handleDocumentMouseUpCapture = (event) => {
+      if (!documentDragFallbackRef.current) return;
+      documentDragFallbackRef.current = false;
+      handleMouseUp(event);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    document.addEventListener('mousedown', handleDocumentMouseDownCapture, true);
+    document.addEventListener('mousemove', handleDocumentMouseMoveCapture, true);
+    document.addEventListener('mouseup', handleDocumentMouseUpCapture, true);
+
+    return () => {
+      documentDragFallbackRef.current = false;
+      document.removeEventListener('mousedown', handleDocumentMouseDownCapture, true);
+      document.removeEventListener('mousemove', handleDocumentMouseMoveCapture, true);
+      document.removeEventListener('mouseup', handleDocumentMouseUpCapture, true);
+    };
+  }, [active, targetElement, activeTool, handleMouseDown, handleMouseMove, handleMouseUp, isPointWithinTargetRect]);
+
   if (!active) return null;
 
   return (
@@ -1701,7 +1777,7 @@ const RegionSelectionTool = ({
           display: 'flex',
           gap: '6px',
           alignItems: 'center',
-          zIndex: 1001,
+          zIndex: 100001,
           boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
           fontFamily: FONT_FAMILY
         }}
@@ -1815,7 +1891,7 @@ const RegionSelectionTool = ({
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  zIndex: 1000
+                  zIndex: 100000
                 }}
                 onClick={() => setIsToolDropdownOpen(false)}
               />
@@ -1829,7 +1905,7 @@ const RegionSelectionTool = ({
                   border: '1px solid #555',
                   borderRadius: '4px',
                   minWidth: '110px',
-                  zIndex: 1001,
+                  zIndex: 100001,
                   boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                   overflow: 'hidden'
                 }}
@@ -1991,7 +2067,7 @@ const RegionSelectionTool = ({
               top: `${canvasRect.top}px`,
               width: `${canvasRect.width}px`,
               height: `${canvasRect.height}px`,
-              zIndex: 1000,
+              zIndex: 100000,
               cursor: effectiveToolType === 'move' ? 'default' : (isCursorOverCanvas ? 'crosshair' : 'default'),
               pointerEvents: activeTool === 'pan' ? 'none' : 'auto' // Allow events to pass through when pan is active
             }}
@@ -2152,7 +2228,7 @@ const RegionSelectionTool = ({
                 border: '1px solid #ccc',
                 borderRadius: '4px',
                 boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-                zIndex: 1004,
+                zIndex: 100004,
                 padding: '4px 0',
                 minWidth: '120px',
                 pointerEvents: 'auto' // Ensure context menu is always interactive
@@ -2277,7 +2353,7 @@ const RegionSelectionTool = ({
                       border: '1px solid #87CEEB',
                       borderRadius: '0px',
                       pointerEvents: 'auto',
-                      zIndex: 1002,
+                      zIndex: 100002,
                       boxSizing: 'border-box',
                       cursor: 'move'
                     }}
@@ -2305,7 +2381,7 @@ const RegionSelectionTool = ({
                       border: '1px solid #87CEEB',
                       cursor: 'crosshair',
                       pointerEvents: 'auto',
-                      zIndex: 1003
+                      zIndex: 100003
                     }}
                   />
                 );
@@ -2341,7 +2417,7 @@ const RegionSelectionTool = ({
                       border: '1px solid #87CEEB',
                       borderRadius: '0px',
                       pointerEvents: 'auto',
-                      zIndex: 1002,
+                      zIndex: 100002,
                       boxSizing: 'border-box',
                       cursor: 'move'
                     }}
@@ -2363,7 +2439,7 @@ const RegionSelectionTool = ({
                           border: '1px solid #87CEEB',
                           cursor: handle.cursor,
                           pointerEvents: 'auto',
-                          zIndex: 1003
+                          zIndex: 100003
                         }}
                       />
                     );
@@ -2383,7 +2459,7 @@ const RegionSelectionTool = ({
             left: `${cursorPosition.x + 8}px`,
             top: `${cursorPosition.y - 20}px`,
             pointerEvents: 'none',
-            zIndex: 1002
+            zIndex: 100002
           }}
         >
           <span
@@ -2409,7 +2485,7 @@ const RegionSelectionTool = ({
             left: `${cursorPosition.x + 8}px`,
             top: `${cursorPosition.y - 20}px`,
             pointerEvents: 'none',
-            zIndex: 1002
+            zIndex: 100002
           }}
         >
           <span

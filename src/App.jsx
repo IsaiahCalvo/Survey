@@ -1,5 +1,5 @@
 // App.jsx - PDF Management Dashboard
-import React, { useRef, useState, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
@@ -114,6 +114,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 // Consistent font stack for the entire application
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
+const REGION_EDIT_TOOL = 'region-edit';
 
 // Convert hex color to rgba with default opacity (default 0.2, but highlights use 1.0)
 const hexToRgba = (hex, opacity = 0.2) => {
@@ -10891,7 +10892,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const el = document.elementFromPoint(x, y);
     if (el) {
       let forcedCursor = 'default';
-      if (activeTool === 'pen' || activeTool === 'highlighter') forcedCursor = 'crosshair';
+      if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
       else if (activeTool === 'text') forcedCursor = 'text';
@@ -10926,8 +10927,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Disable ALL Syncfusion interactive layers during annotation edit mode via injected <style>.
   // Covers .e-pv-text-layer, .e-pv-annotation-canvas, and any other Syncfusion overlay.
   // Using a <style> tag instead of querySelectorAll ensures dynamically-added elements are caught.
-  useEffect(() => {
+  // Also forces cursor:text on the page div during text editing to prevent cursor flicker —
+  // when the text overlay gets pointer-events:none and FabricEditCanvas hasn't painted yet,
+  // the browser would briefly show cursor:auto from the page div. This CSS keeps it text.
+  // MUST be useLayoutEffect (not useEffect) so the CSS is active BEFORE the first browser paint.
+  useLayoutEffect(() => {
     if (!editingAnnotation) return;
+    const isTextEdit = editingAnnotation.editType === 'text';
     const style = document.createElement('style');
     style.dataset.editMode = 'true';
     style.textContent = `
@@ -10938,6 +10944,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       .e-pv-page-div > canvas {
         pointer-events: none !important;
       }
+      ${isTextEdit ? `.e-pv-page-div { cursor: text !important; }` : ''}
     `;
     document.head.appendChild(style);
     return () => { style.remove(); };
@@ -11040,6 +11047,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Spacebar Pan state
   const previousToolRef = useRef(null);
+  const regionEditReturnToolRef = useRef(null);
   const isPanningRef = useRef(false);
   // Track canvas mouse down for pan tool empty space panning
   const canvasMouseDownRef = useRef(null);
@@ -13768,12 +13776,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return getSyncfusionPageScale(regionSelectionPage, viewerScale);
   }, [showRegionSelection, regionSelectionPage, useSyncfusionRenderer, scale, getSyncfusionPageScale]);
 
-  // When region selection is activated, set activeTool to 'select' if it's 'pan'
-  // This ensures that spacebar pan can save/restore the correct tool
-  // BUT: Don't override if spacebar is currently held (isPanningRef.current is true)
+  // Region editing temporarily owns pointer input. Keep the app in a dedicated
+  // region-edit tool while the session is open, but still allow temporary
+  // spacebar panning to switch to `pan` and back.
   useEffect(() => {
-    if (showRegionSelection && activeTool === 'pan' && !isPanningRef.current) {
-      setActiveTool('select');
+    if (!showRegionSelection) {
+      return;
+    }
+
+    if (activeTool === 'pan' && isPanningRef.current) {
+      return;
+    }
+
+    if (activeTool !== REGION_EDIT_TOOL) {
+      setActiveTool(REGION_EDIT_TOOL);
     }
   }, [showRegionSelection, activeTool]);
 
@@ -19883,6 +19899,34 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return null;
   }, [searchResults, currentMatchIndex]);
 
+  const getRegionEditReturnTool = useCallback(() => {
+    const currentTool = activeToolRef.current;
+    if (currentTool === 'pan' && previousToolRef.current) {
+      return previousToolRef.current;
+    }
+    return currentTool;
+  }, []);
+
+  const finishRegionEditSession = useCallback((nextToolOverride = null) => {
+    const toolToRestore = nextToolOverride ?? regionEditReturnToolRef.current;
+
+    setShowRegionSelection(false);
+    setRegionSelectionPage(null);
+
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+    }
+    previousToolRef.current = null;
+
+    if (toolToRestore && toolToRestore !== REGION_EDIT_TOOL) {
+      setActiveTool(toolToRestore);
+    } else if (activeToolRef.current === REGION_EDIT_TOOL || activeToolRef.current === 'pan') {
+      setActiveTool('select');
+    }
+
+    regionEditReturnToolRef.current = null;
+  }, []);
+
   const handleRequestRegionEdit = useCallback((spaceId, pageId) => {
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
@@ -19898,17 +19942,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setSelectedSpaceId(spaceId); // Automatically select the space when entering edit mode
     setRegionSelectionPage(pageId);
     if (features?.advancedSurvey) {
+      const returnTool = getRegionEditReturnTool();
+      if (regionEditReturnToolRef.current === null && returnTool && returnTool !== REGION_EDIT_TOOL) {
+        regionEditReturnToolRef.current = returnTool;
+      }
+      setEditingAnnotation(null);
+      setActiveTool(REGION_EDIT_TOOL);
       setShowRegionSelection(true);
     } else {
       alert('The Region Selection Tool is a Pro feature. Please upgrade to use this tool.');
     }
     goToPage(pageId, { fallback: 'nearest' });
-  }, [spaces, goToPage, features]);
+  }, [spaces, goToPage, features, getRegionEditReturnTool, showSurveyPanel, selectedModuleId, activeRegionId]);
 
   const handleCancelRegionEdit = useCallback(() => {
-    setShowRegionSelection(false);
-    setRegionSelectionPage(null);
-  }, []);
+    finishRegionEditSession();
+  }, [finishRegionEditSession]);
 
   const handleRegionSetFullPage = useCallback(() => {
     if (!activeSpaceId || !regionSelectionPage) {
@@ -19919,9 +19968,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     handleSpaceClearRegions(activeSpaceId, regionSelectionPage);
 
     // Close the region selection tool after setting full page
-    setShowRegionSelection(false);
-    setRegionSelectionPage(null);
-  }, [activeSpaceId, regionSelectionPage, handleSpaceClearRegions]);
+    finishRegionEditSession();
+  }, [activeSpaceId, regionSelectionPage, handleSpaceClearRegions, finishRegionEditSession]);
 
   const canSetRegionToFullPage = useMemo(() => {
     if (!activeSpaceId || !regionSelectionPage) return false;
@@ -20020,10 +20068,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     handleSpaceUpdate(activeSpaceId, { assignedPages: updatedPages });
     setActiveSpaceId(activeSpaceId);
     setSelectedSpaceId(activeSpaceId);
-    setShowRegionSelection(false);
-    setRegionSelectionPage(null);
+    finishRegionEditSession();
     // Keep selectedSpaceId set - don't clear it when region selection completes
-  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate]);
+  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession]);
 
   // Templates are loaded from Supabase via Dashboard component
   // No need to load from localStorage here
@@ -20069,6 +20116,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setSelectedCategoryId(null);
     setShowRegionSelection(false);
     setRegionSelectionPage(null);
+    regionEditReturnToolRef.current = null;
+    previousToolRef.current = null;
+    isPanningRef.current = false;
     setPendingHighlight(null);
     setPendingHighlightName(null);
     setHighlightNameInput('');
@@ -24078,10 +24128,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             active={showRegionSelection}
             activeTool={activeTool}
             onRegionComplete={handleRegionComplete}
-            onCancel={() => {
-              setShowRegionSelection(false);
-              setRegionSelectionPage(null);
-            }}
+            onCancel={handleCancelRegionEdit}
             currentSpaceId={activeSpaceId}
             currentPageId={regionSelectionPage}
             scale={regionSelectionScale}
@@ -24482,6 +24529,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           proxyHasRenderablePayload &&
                           isProxyReady
                       );
+                      const regionSelectionDisplayWidth = overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale);
+                      const regionSelectionDisplayHeight = overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale);
 
                       return createPortal(
                         <div
@@ -24672,6 +24721,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 />
                               );
                             })()}
+                            {requiresLegacyAnnotationLayer && showRegionSelection && regionSelectionPage === pageNumber && (
+                              <div style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: `${regionSelectionDisplayWidth}px`,
+                                height: `${regionSelectionDisplayHeight}px`,
+                                pointerEvents: 'none',
+                                zIndex: requiresLegacyAnnotationLayer ? 105 : 95
+                              }}>
+                                <div
+                                  id="region-selection-target"
+                                  data-region-selection-target={pageNumber}
+                                  data-region-selection-renderer={requiresLegacyAnnotationLayer ? 'syncfusion-legacy' : 'syncfusion-svg'}
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: '100%'
+                                  }}
+                                />
+                              </div>
+                            )}
                             </div>
                           </div>
                           {/* SVG layer + Drawing Canvas: OUTSIDE the transform/freeze div, directly in the portal overlay.
@@ -24682,8 +24755,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
-                            const regionSelectionDisplayWidth = overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale);
-                            const regionSelectionDisplayHeight = overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale);
 
                             return (
                             <>
@@ -24734,18 +24805,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 );
                               })()}
                               {showRegionSelection && regionSelectionPage === pageNumber && (
-                                <div style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  width: `${regionSelectionDisplayWidth}px`,
-                                  height: `${regionSelectionDisplayHeight}px`,
-                                  pointerEvents: 'none',
-                                  zIndex: 95
-                                }}>
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    pointerEvents: 'none',
+                                    zIndex: 99
+                                  }}
+                                >
                                   <div
                                     id="region-selection-target"
                                     data-region-selection-target={pageNumber}
+                                    data-region-selection-renderer="syncfusion-svg-stable"
                                     style={{
                                       position: 'absolute',
                                       top: 0,
@@ -24872,14 +24946,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               )}
 
                               {/* Text tool click-to-place / drag-to-create overlay */}
-                              {activeTool === 'text' && !(editingAnnotation?.pageNumber === pageNumber) && (
+                              {/* FLICKER FIX: Always mounted when text tool active. During editing,
+                                  pointer-events: none lets clicks through to FabricEditCanvas.
+                                  This prevents the full-page DOM unmount that caused visual flicker. */}
+                              {activeTool === 'text' && (
                                 <div
+                                  data-text-overlay={pageNumber}
                                   style={{
                                     position: 'absolute',
                                     top: 0, left: 0, right: 0, bottom: 0,
-                                    cursor: 'text',
-                                    zIndex: 102,
-                                    pointerEvents: 'auto',
+                                    cursor: editingAnnotation?.pageNumber === pageNumber ? undefined : 'text',
+                                    zIndex: editingAnnotation?.pageNumber === pageNumber ? 100 : 102, // Below canvas (101) during editing
+                                    pointerEvents: editingAnnotation?.pageNumber === pageNumber ? 'none' : 'auto',
                                   }}
                                   onPointerDown={(e) => {
                                     if (Date.now() - editModeCooldownRef.current < 300) return;
@@ -24891,6 +24969,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       startX: e.clientX, startY: e.clientY,
                                       rect, effectiveScale, pageNumber,
                                     };
+
                                   }}
                                   onPointerMove={(e) => {
                                     const drag = textToolDragRef.current;
@@ -24921,6 +25000,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     const x = (Math.min(startX, e.clientX) - rect.left) / effectiveScale;
                                     const y = (Math.min(startY, e.clientY) - rect.top) / effectiveScale;
                                     const isDrag = dx > 10 || dy > 10;
+                                    // Click (not drag): check if an existing text annotation was hit
+                                    if (!isDrag && pageAnnotations?.objects) {
+                                      const hitIdx = pageAnnotations.objects.findIndex((obj) => {
+                                        const t = String(obj.type || '').toLowerCase();
+                                        if (t !== 'textbox' && t !== 'i-text' && t !== 'text') return false;
+                                        const l = obj.left || 0, tp = obj.top || 0;
+                                        const w = (obj.width || 0) * Math.abs(obj.scaleX ?? 1);
+                                        const h = (obj.height || 0) * Math.abs(obj.scaleY ?? 1);
+                                        return x >= l && x <= l + w && y >= tp && y <= tp + h;
+                                      });
+                                      if (hitIdx >= 0) {
+                                        const hitObj = pageAnnotations.objects[hitIdx];
+                                        setEditingAnnotation({
+                                          pageNumber,
+                                          index: hitIdx,
+                                          type: hitObj.type,
+                                          editType: 'text',
+                                          data: hitObj,
+                                        });
+                                        return;
+                                      }
+                                    }
                                     setEditingAnnotation({
                                       pageNumber,
                                       index: null,
@@ -25252,14 +25353,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     )}
 
                                     {/* Text tool click-to-place / drag-to-create overlay */}
-                                    {activeTool === 'text' && !(editingAnnotation?.pageNumber === pageNumber) && (
+                                    {/* FLICKER FIX: Always mounted when text tool active */}
+                                    {activeTool === 'text' && (
                                       <div
+                                        data-text-overlay={pageNumber}
                                         style={{
                                           position: 'absolute',
                                           top: 0, left: 0, right: 0, bottom: 0,
-                                          cursor: 'text',
-                                          zIndex: 102,
-                                          pointerEvents: 'auto',
+                                          cursor: editingAnnotation?.pageNumber === pageNumber ? undefined : 'text',
+                                          zIndex: editingAnnotation?.pageNumber === pageNumber ? 100 : 102,
+                                          pointerEvents: editingAnnotation?.pageNumber === pageNumber ? 'none' : 'auto',
                                         }}
                                         onPointerDown={(e) => {
                                           if (Date.now() - editModeCooldownRef.current < 300) return;
@@ -25301,6 +25404,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           const x = (Math.min(startX, e.clientX) - rect.left) / effectiveScale;
                                           const y = (Math.min(startY, e.clientY) - rect.top) / effectiveScale;
                                           const isDrag = dx > 10 || dy > 10;
+                                          if (!isDrag && pageAnnotationsCS?.objects) {
+                                            const hitIdx = pageAnnotationsCS.objects.findIndex((obj) => {
+                                              const t = String(obj.type || '').toLowerCase();
+                                              if (t !== 'textbox' && t !== 'i-text' && t !== 'text') return false;
+                                              const l = obj.left || 0, tp = obj.top || 0;
+                                              const w = (obj.width || 0) * Math.abs(obj.scaleX ?? 1);
+                                              const h = (obj.height || 0) * Math.abs(obj.scaleY ?? 1);
+                                              return x >= l && x <= l + w && y >= tp && y <= tp + h;
+                                            });
+                                            if (hitIdx >= 0) {
+                                              const hitObj = pageAnnotationsCS.objects[hitIdx];
+                                              setEditingAnnotation({
+                                                pageNumber,
+                                                index: hitIdx,
+                                                type: hitObj.type,
+                                                editType: 'text',
+                                                data: hitObj,
+                                              });
+                                              return;
+                                            }
+                                          }
                                           setEditingAnnotation({
                                             pageNumber,
                                             index: null,
@@ -25690,14 +25814,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   )}
 
                                   {/* Text tool click-to-place / drag-to-create overlay */}
-                                  {activeTool === 'text' && !(editingAnnotation?.pageNumber === pageNum) && (
+                                  {/* FLICKER FIX: Always mounted when text tool active */}
+                                  {activeTool === 'text' && (
                                     <div
+                                      data-text-overlay={pageNumber}
                                       style={{
                                         position: 'absolute',
                                         top: 0, left: 0, right: 0, bottom: 0,
-                                        cursor: 'text',
-                                        zIndex: 102,
-                                        pointerEvents: 'auto',
+                                        cursor: editingAnnotation?.pageNumber === pageNum ? undefined : 'text',
+                                        zIndex: editingAnnotation?.pageNumber === pageNum ? 100 : 102,
+                                        pointerEvents: editingAnnotation?.pageNumber === pageNum ? 'none' : 'auto',
                                       }}
                                       onPointerDown={(e) => {
                                         if (Date.now() - editModeCooldownRef.current < 300) return;
@@ -25739,6 +25865,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         const x = (Math.min(startX, e.clientX) - rect.left) / effectiveScale;
                                         const y = (Math.min(startY, e.clientY) - rect.top) / effectiveScale;
                                         const isDrag = dx > 10 || dy > 10;
+                                        if (!isDrag && pageAnnotations?.objects) {
+                                          const hitIdx = pageAnnotations.objects.findIndex((obj) => {
+                                            const t = String(obj.type || '').toLowerCase();
+                                            if (t !== 'textbox' && t !== 'i-text' && t !== 'text') return false;
+                                            const l = obj.left || 0, tp = obj.top || 0;
+                                            const w = (obj.width || 0) * Math.abs(obj.scaleX ?? 1);
+                                            const h = (obj.height || 0) * Math.abs(obj.scaleY ?? 1);
+                                            return x >= l && x <= l + w && y >= tp && y <= tp + h;
+                                          });
+                                          if (hitIdx >= 0) {
+                                            const hitObj = pageAnnotations.objects[hitIdx];
+                                            setEditingAnnotation({
+                                              pageNumber: pageNum,
+                                              index: hitIdx,
+                                              type: hitObj.type,
+                                              editType: 'text',
+                                              data: hitObj,
+                                            });
+                                            return;
+                                          }
+                                        }
                                         setEditingAnnotation({
                                           pageNumber: pageNum,
                                           index: null,
