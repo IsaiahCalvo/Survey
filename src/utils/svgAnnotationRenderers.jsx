@@ -328,42 +328,57 @@ export const renderText = (obj, index) => {
   const angle = obj.angle || 0;
 
   const key = `text-${obj.id || index}`;
+  // Add buffer for descenders (j,p,g,q,y) + bottom breathing room
+  const fontSize = obj.fontSize || 16;
+  const descenderBuffer = fontSize * 0.35;
+  const displayHeight = effectiveHeight + descenderBuffer;
+  const rotateTransform = angle !== 0
+    ? `rotate(${angle}, ${left + effectiveWidth / 2}, ${top + displayHeight / 2})`
+    : undefined;
 
   return (
-    <foreignObject
-      key={key}
-      x={left}
-      y={top}
-      width={effectiveWidth}
-      height={effectiveHeight}
-      transform={angle !== 0 ? `rotate(${angle}, ${left + effectiveWidth / 2}, ${top + effectiveHeight / 2})` : undefined}
-      opacity={obj.opacity ?? 1}
-    >
-      <div
-        xmlns="http://www.w3.org/1999/xhtml"
-        style={{
-          width: '100%',
-          height: '100%',
-          fontSize: `${obj.fontSize || 16}px`,
-          fontFamily: obj.fontFamily || 'sans-serif',
-          fontWeight: obj.fontWeight || 'normal',
-          fontStyle: obj.fontStyle || 'normal',
-          color: obj.fill || '#000',
-          textAlign: obj.textAlign || 'left',
-          lineHeight: obj.lineHeight || 1.16,
-          overflow: 'hidden',
-          wordWrap: 'break-word',
-          whiteSpace: 'pre-wrap',
-          boxSizing: 'border-box',
-          padding: 0,
-          border: '1px solid #000',
-          WebkitFontSmoothing: 'antialiased',
-          MozOsxFontSmoothing: 'grayscale',
-        }}
+    <g key={key} opacity={obj.opacity ?? 1} transform={rotateTransform}>
+      <rect
+        x={left}
+        y={top}
+        width={effectiveWidth}
+        height={displayHeight}
+        fill="none"
+        stroke="#000"
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+      />
+      <foreignObject
+        x={left}
+        y={top}
+        width={effectiveWidth}
+        height={displayHeight}
+        overflow="visible"
       >
-        {obj.text || ''}
-      </div>
-    </foreignObject>
+        <div
+          xmlns="http://www.w3.org/1999/xhtml"
+          style={{
+            width: '100%',
+            height: '100%',
+            fontSize: `${fontSize}px`,
+            fontFamily: obj.fontFamily || 'sans-serif',
+            fontWeight: obj.fontWeight || 'normal',
+            fontStyle: obj.fontStyle || 'normal',
+            color: obj.fill || '#000',
+            textAlign: obj.textAlign || 'left',
+            lineHeight: obj.lineHeight || 1.16,
+            overflow: 'visible',
+            wordWrap: 'break-word',
+            whiteSpace: 'pre-wrap',
+            padding: 0,
+            WebkitFontSmoothing: 'antialiased',
+            MozOsxFontSmoothing: 'grayscale',
+          }}
+        >
+          {obj.text || ''}
+        </div>
+      </foreignObject>
+    </g>
   );
 };
 

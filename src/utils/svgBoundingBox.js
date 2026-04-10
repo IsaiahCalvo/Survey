@@ -341,12 +341,14 @@ function getTextBBox(obj) {
   const objType = String(obj.type || '').toLowerCase();
 
   // Textbox type: use stored width/height from Fabric.js (authoritative after edit commit)
+  // Add descender buffer (j,p,g,q,y extend below baseline) — matches renderText in svgAnnotationRenderers
   if (objType === 'textbox' && obj.width && obj.height) {
+    const fontSize = obj.fontSize || 16;
     return {
       left: obj.left ?? 0,
       top: obj.top ?? 0,
       width: obj.width * scaleX,
-      height: obj.height * scaleY,
+      height: obj.height * scaleY + fontSize * 0.35,
       angle: obj.angle ?? 0,
     };
   }
