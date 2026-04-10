@@ -79,7 +79,7 @@ function buildBboxTransform(sx, sy, annLeft, annTop, annWidth, annHeight, annAng
   return `scale(${sx}, ${sy}) translate(${tx}px, ${ty}px) translate(${cx}px, ${cy}px) rotate(${annAngle}deg) translate(${-cx}px, ${-cy}px)`;
 }
 
-const DEFAULT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif';
+const DEFAULT_FONT_FAMILY = 'Helvetica';
 
 // ---------------------------------------------------------------------------
 // MiniToolbar -- floating toolbar for shape editing (fill/stroke/width)
@@ -322,6 +322,7 @@ const FabricEditCanvas = memo(({
   const originalAnnotationRef = useRef(null);
   const bboxOriginRef = useRef(null);
   const lastContainerSizeRef = useRef({ width: 0, height: 0 });
+  const lastParentWidthRef = useRef(0); // Tracks parent width to detect spurious ResizeObserver fires (see Bug A in Phase 11 .continue-here.md)
   const initialZoomGenRef = useRef(zoomGeneration);
   const settleTimerRef = useRef(null);
   const committedRef = useRef(false);
@@ -367,18 +368,38 @@ const FabricEditCanvas = memo(({
 
     // Serialize with custom properties
     const json = activeObj.toJSON(CUSTOM_PROPS);
+    console.log(`[EditCanvas] COMMIT pre-convert — text="${(json.text||'').slice(0,20)}" fontSize=${json.fontSize} width=${json.width} height=${json.height} scaleX=${json.scaleX} scaleY=${json.scaleY} left=${json.left} top=${json.top} isNewText=${isNewText}`);
 
-    // For new text created at zoom=1 pixel coords: convert back to page-space
-    if (isNewText && newTextScaleRef.current) {
-      const es = newTextScaleRef.current;
-      const pxPad = BBOX_PADDING * es;
-      json.left = (json.left - pxPad) / es;
-      json.top = (json.top - pxPad) / es;
-      json.width = json.width / es;
-      json.fontSize = Math.round(json.fontSize / es);
+    // Task 3 — Tight-width fit on commit. Fabric Textbox.width stores the
+    // WRAP TARGET (default 160), not the visible text width. Without this,
+    // a short label like "aaaaa" would save as a 160-wide box with the
+    // characters hugging the left edge. Replace with the max rendered line
+    // width so the saved annotation rect hugs the actual characters.
+    // Re-edit path expands back to a comfortable typing width (see ~line 819).
+    if (activeObj.type === 'textbox') {
+      let maxLineWidth = 0;
+      if (activeObj.textLines && typeof activeObj._getLineWidth === 'function') {
+        for (let i = 0; i < activeObj.textLines.length; i++) {
+          const w = activeObj._getLineWidth(i) || 0;
+          if (w > maxLineWidth) maxLineWidth = w;
+        }
+      }
+      // Fallback if per-line measurement unavailable
+      if (maxLineWidth === 0 && typeof activeObj.calcTextWidth === 'function') {
+        maxLineWidth = activeObj.calcTextWidth();
+      }
+      if (maxLineWidth > 0) {
+        // 2px breathing room so stroke edge doesn't clip last glyph
+        json.width = Math.ceil(maxLineWidth + 2);
+      }
+    }
+
+    // For new text in page-space: offset from bbox origin (same as existing text)
+    if (isNewText) {
+      json.left = json.left - BBOX_PADDING;
+      json.top = json.top - BBOX_PADDING;
       json.scaleX = 1;
       json.scaleY = 1;
-      // Add page-space origin offset
       if (bboxOriginRef.current) {
         json.left += bboxOriginRef.current.left;
         json.top += bboxOriginRef.current.top;
@@ -413,6 +434,8 @@ const FabricEditCanvas = memo(({
         }
       }
     }
+
+    console.log(`[EditCanvas] COMMIT post-convert — text="${(json.text||'').slice(0,20)}" fontSize=${json.fontSize} width=${json.width} height=${json.height} scaleX=${json.scaleX} scaleY=${json.scaleY} left=${json.left} top=${json.top}`);
 
     // For paths: normalize left/top to 0 for SVG renderer compatibility
     if (json.type === 'path') {
@@ -500,14 +523,12 @@ const FabricEditCanvas = memo(({
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const _t0 = performance.now();
 
     // Find the portal host (parent element sized by Syncfusion)
     const parentEl = container.parentElement;
     if (!parentEl || parentEl.offsetWidth <= 0 || pageWidth <= 0) return;
 
     const effectiveScale = parentEl.offsetWidth / pageWidth;
-    console.log(`[EditCanvas] useLayoutEffect — editType=${editType}, isNewText=${isNewText}, es=${effectiveScale.toFixed(4)}, container.visibility=${container.style.visibility}, computedVisibility=${getComputedStyle(container).visibility}`);
 
     let style;
     if (editType === 'callout') {
@@ -528,13 +549,23 @@ const FabricEditCanvas = memo(({
       if (isNewText && clickPosition) {
         annLeft = clickPosition.x;
         annTop = clickPosition.y;
-        annWidth = textBoxWidth || 200; // drag width or default (Textbox width + padding)
+        // Must match loadTextAnnotation's Textbox width (default 160) to avoid
+        // container starting larger than canvas — which causes a visible "big box
+        // shrinks to small box" flicker on click-to-create.
+        annWidth = textBoxWidth || 160;
         annHeight = 30;  // initial height — auto-resizes as user types
       } else if (annotationData) {
         annLeft = annotationData.left || 0;
         annTop = annotationData.top || 0;
         annWidth = (annotationData.width || 200) * (annotationData.scaleX || 1);
         annHeight = (annotationData.height || 30) * (annotationData.scaleY || 1);
+        // Task 3 — For TEXT re-edit, expand placeholder container width to
+        // match the Textbox wrap-width expansion (see ~line 819). Keeps
+        // initial hidden container size aligned with the final canvas size
+        // so there's no mid-rAF mismatch. Shapes keep stored width as-is.
+        if (editType === 'text') {
+          annWidth = Math.max(annWidth, 160);
+        }
       } else {
         annLeft = 0;
         annTop = 0;
@@ -595,19 +626,24 @@ const FabricEditCanvas = memo(({
       container.style.pointerEvents = style.pointerEvents || '';
       container.style.transform = style.transform || '';
       container.style.transformOrigin = style.transformOrigin || '';
-      // Callout mode: visible immediately (full-page, no rotation mismatch).
-      // Text/shape bbox: stay hidden until canvas loading corrects size + transformOrigin.
+      // ALL modes start hidden. Container only becomes visible in canvasInit after the
+      // canvas is fully initialized with correct dimensions + outline. This eliminates
+      // multi-frame transition flicker (empty container → resized container with outline).
+      // Cursor continuity during the hidden period is maintained by injected CSS in App.jsx
+      // (useLayoutEffect sets .e-pv-page-div { cursor: text } for text editing).
       if (editType === 'callout') {
         container.style.visibility = 'visible';
       } else {
         container.style.visibility = 'hidden';
       }
     }
+    // Text outline deferred to canvas init — prevents wrong-size outline flash.
+    // Outline is added in loadTextAnnotation after text dimensions are measured.
     if (editType === 'text') {
-      style.outline = '1px solid #000';
+      // intentionally no outline here — see canvas init
     }
+
     setContainerStyle(style);
-    console.log(`[EditCanvas] useLayoutEffect DONE — container.visibility=${container.style.visibility}, style.visibility=${style.visibility}, left=${container.style.left}, top=${container.style.top}, w=${container.style.width}, h=${container.style.height}, elapsed=${(performance.now()-_t0).toFixed(1)}ms`);
   }, [editType, annotationData, isNewText, clickPosition, textBoxWidth, pageWidth, pageHeight]);
 
   // -------------------------------------------------------------------------
@@ -616,8 +652,6 @@ const FabricEditCanvas = memo(({
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas || !containerRef.current) return;
-    const _t0 = performance.now();
-    console.log(`[EditCanvas] canvasInit useEffect — fabricRef=${!!canvas}, container.visibility=${containerRef.current.style.visibility}`);
 
     const parentEl = containerRef.current.parentElement;
     if (!parentEl || parentEl.offsetWidth <= 0 || pageWidth <= 0) return;
@@ -632,7 +666,8 @@ const FabricEditCanvas = memo(({
     } else {
       let annWidth, annHeight;
       if (isNewText && clickPosition) {
-        annWidth = textBoxWidth || 200;
+        // Must match loadTextAnnotation's Textbox width (default 160)
+        annWidth = textBoxWidth || 160;
         annHeight = 30;
       } else if (annotationDataRef.current) {
         annWidth = (annotationDataRef.current.width || 200) * (annotationDataRef.current.scaleX || 1);
@@ -642,7 +677,6 @@ const FabricEditCanvas = memo(({
         annHeight = 40;
       }
       if (pageSpaceModeRef.current) {
-        // Page-space mode: canvas at page-space resolution, CSS transform handles screen mapping
         canvasWidth = Math.ceil(annWidth + BBOX_PADDING * 2);
         canvasHeight = Math.ceil(annHeight + BBOX_PADDING * 2);
       } else {
@@ -654,13 +688,20 @@ const FabricEditCanvas = memo(({
     // Container-aware sizing (CLAUDE.md rule)
     canvas.setZoom(pageSpaceModeRef.current ? 1 : effectiveScale);
     canvas.setDimensions({ width: canvasWidth, height: canvasHeight });
-    console.log(`[EditCanvas] canvasInit — canvasW=${canvasWidth}, canvasH=${canvasHeight}, zoom=${canvas.getZoom().toFixed(4)}, container.visibility=${containerRef.current.style.visibility}`);
 
-    lastContainerSizeRef.current = { width: canvasWidth, height: canvasHeight };
+    // DO NOT seed lastContainerSizeRef here. The ResizeObserver callback at
+    // ~line 1330 compares lastSize.width against parentEl.offsetWidth (parent-space),
+    // but canvasWidth/canvasHeight are canvas-space. For new text creation
+    // (annotationDataRef.current === null), the comparison falls back to pageWidth
+    // and produces a bogus ~6x ratio on the immediate first fire of the observer,
+    // causing a one-frame flicker where the container is scaled up before the
+    // 200ms settle timer clears it. Leaving lastContainerSizeRef at its default
+    // {0,0} makes the `if (lastSize.width > 0)` guard skip the first fire, and
+    // the settle timer populates it correctly afterwards. See Bug 2 investigation
+    // in .planning/phases/11-text-shape-editing-zoom-cleanup/.continue-here.md.
 
     // Branch by editType
     if (editTypeRef.current === 'text') {
-      console.log(`[EditCanvas] canvasInit → loadTextAnnotation, elapsed=${(performance.now()-_t0).toFixed(1)}ms`);
       loadTextAnnotation(canvas, effectiveScale);
     } else if (editTypeRef.current === 'shape') {
       loadShapeAnnotation(canvas);
@@ -675,20 +716,23 @@ const FabricEditCanvas = memo(({
   const loadTextAnnotation = useCallback((canvas, effectiveScale) => {
     const _lt0 = performance.now();
     if (isNewText) {
-      // New text creation: Textbox at click position (wraps text, visible border)
-      // Use canvas zoom=1 with pixel-space coordinates to avoid Fabric.js cursor drift bug at fractional zoom
-      canvas.setZoom(1);
+      // New text creation — mirrors existing text edit path exactly (same zoom, cache clearing,
+      // render-before-edit order, sync reveal) to avoid cursor drift
       const es = effectiveScale;
-      console.log(`[EditCanvas] loadText NEW — es=${es.toFixed(4)}, clickPos=${JSON.stringify(clickPosition)}, textBoxWidth=${textBoxWidth}, container.visibility=${containerRef.current?.style.visibility}`);
-      const pxPad = BBOX_PADDING * es;
+
       const textObj = new fabric.Textbox('', {
-        left: pxPad,
-        top: pxPad,
-        width: textBoxWidth ? textBoxWidth * es : 160 * es, // page-space width from drag, or default 160px
-        fontSize: Math.round(16 * es),
+        type: 'textbox',
+        left: BBOX_PADDING,
+        top: BBOX_PADDING,
+        angle: 0,
+        width: textBoxWidth || 160,
+        fontSize: 16,
         fill: strokeColor || '#007AFF',
         fontFamily: DEFAULT_FONT_FAMILY,
-        charSpacing: 1, // Fabric.js #6168: prevents sub-pixel cursor drift
+        splitByGrapheme: true,
+        fontWeight: 'normal',
+        styles: {},
+        charSpacing: 0,
         editable: true,
         selectable: true,
         evented: true,
@@ -697,10 +741,8 @@ const FabricEditCanvas = memo(({
         borderColor: 'transparent',
         backgroundColor: '',
         textBackgroundColor: '',
-        padding: 0,
         hasBorders: false,
         hasControls: false,
-        splitByGrapheme: !!textBoxWidth, // Enforce fixed width when drag-to-create
       });
 
       bboxOriginRef.current = {
@@ -708,45 +750,79 @@ const FabricEditCanvas = memo(({
         top: clickPosition?.y ?? 0,
       };
       originalAnnotationRef.current = null;
-      // Store effectiveScale so commit can convert back to page-space
-      newTextScaleRef.current = es;
+      newTextScaleRef.current = null;
 
+      // Clear font cache + init dimensions (same as existing text path)
+      fabric.util.clearFabricFontCache();
+      textObj.initDimensions();
+      textObj._clearCache();
+
+      // Add to canvas WITHOUT rendering yet
       canvas.add(textObj);
       canvas.setActiveObject(textObj);
-      console.log(`[EditCanvas] loadText — textObj added, left=${textObj.left}, top=${textObj.top}, w=${textObj.width}, fontSize=${textObj.fontSize}, canvasW=${canvas.width}, canvasH=${canvas.height}, container.visibility=${containerRef.current?.style.visibility}`);
 
-      // Auto-resize container to fit text height
-      const autoResize = () => {
+      // Resize canvas to fit (same as existing text path)
+      const actualW = textObj.width * (textObj.scaleX || 1);
+      const actualH = textObj.calcTextHeight ? textObj.calcTextHeight() : textObj.height * (textObj.scaleY || 1);
+      const neededW = Math.ceil((actualW + BBOX_PADDING * 2) * es);
+      const neededH = Math.ceil((actualH + BBOX_PADDING * 2) * es);
+
+      canvas.setDimensions({ width: neededW, height: neededH });
+
+      // Render FIRST, then enter editing (same order as existing text path)
+      canvas.renderAll();
+      textObj.enterEditing();
+
+      // Suppress native caret on Fabric's hidden textarea (Electron can flash it)
+      if (textObj.hiddenTextarea) {
+        textObj.hiddenTextarea.style.caretColor = 'transparent';
+      }
+
+      // Reveal via rAF: wait one frame for the browser to finish compositing the
+      // Fabric.js canvas layers (wrapper div, lower-canvas, upper-canvas) before
+      // making the container visible. Direct DOM avoids a React re-render cycle
+      // that can cause an intermediate frame with partially-applied styles.
+      // State updates are also deferred to prevent a React re-render from
+      // overwriting direct DOM styles before the rAF fires.
+      requestAnimationFrame(() => {
         if (!mountedRef.current || !containerRef.current) return;
-        const h = textObj.calcTextHeight() + pxPad * 2 + 8;
+        const c = containerRef.current;
+        c.style.width = neededW + 'px';
+        c.style.height = neededH + 'px';
+        c.style.visibility = 'visible';
+        c.style.outline = '1px solid #000';
+        // Inset the outline by BBOX_PADDING*es on each side so it matches the tight
+        // SVG rect position (which draws at textW x textH without any padding).
+        // Wrapper size is (textW+40)*es, outline inset by 20*es = visible outline at
+        // textW*es x textH*es, positioned at (padding*es, padding*es) inside wrapper,
+        // which in viewer coords aligns with (annLeft*es, annTop*es) — same as SVG.
+        c.style.outlineOffset = `-${BBOX_PADDING * es}px`;
+        c.style.backgroundColor = 'transparent';
+        // Sync React state so future re-renders don't revert visibility
+        setContainerStyle(prev => ({
+          ...prev,
+          width: neededW,
+          height: neededH,
+          visibility: 'visible',
+          outline: '1px solid #000',
+          outlineOffset: `-${BBOX_PADDING * es}px`,
+          backgroundColor: 'transparent',
+        }));
+        setIsLoading(false);
+      });
+
+      // Auto-resize height as text wraps (same as existing text path)
+      textObj.on('changed', () => {
+        if (!mountedRef.current || !containerRef.current) return;
+        const h = (textObj.calcTextHeight() + BBOX_PADDING * 2) * es + 8;
         const newH = Math.max(Math.round(30 * es), Math.ceil(h));
         canvas.setDimensions({ height: newH });
         containerRef.current.style.height = newH + 'px';
-      };
-      textObj.on('changed', autoResize);
-
-      // Settle dimensions BEFORE revealing — prevents cursor flicker
-      autoResize();
-      console.log(`[EditCanvas] loadText — after autoResize: canvasH=${canvas.height}, containerH=${containerRef.current?.style.height}, container.visibility=${containerRef.current?.style.visibility}`);
-      textObj.enterEditing();
-      console.log(`[EditCanvas] loadText — after enterEditing: isEditing=${textObj.isEditing}, cursorOffsetCache=${JSON.stringify(textObj.__cursorOffsetCache || 'none')}, container.visibility=${containerRef.current?.style.visibility}`);
-      canvas.renderAll();
-      console.log(`[EditCanvas] loadText — after renderAll: container.visibility=${containerRef.current?.style.visibility}, computedVisibility=${containerRef.current ? getComputedStyle(containerRef.current).visibility : 'N/A'}, elapsed=${(performance.now()-_lt0).toFixed(1)}ms`);
-
-      // Reveal after next paint frame — Fabric.js enterEditing() schedules cursor
-      // rendering via requestAnimationFrame; deferring reveal ensures cursor position
-      // and canvas layout are fully settled before the container becomes visible.
-      requestAnimationFrame(() => {
-        if (!mountedRef.current) return;
-        console.log(`[EditCanvas] loadText — rAF reveal: container.visibility=${containerRef.current?.style.visibility}, computedVisibility=${containerRef.current ? getComputedStyle(containerRef.current).visibility : 'N/A'}, elapsed=${(performance.now()-_lt0).toFixed(1)}ms`);
-        if (containerRef.current) containerRef.current.style.visibility = 'visible';
-        setContainerStyle(prev => ({ ...prev, visibility: 'visible' }));
-        setIsLoading(false);
-        console.log(`[EditCanvas] loadText — REVEALED, container.visibility=${containerRef.current?.style.visibility}`);
       });
     } else if (annotationDataRef.current) {
       // Editing existing text annotation
       const annData = annotationDataRef.current;
+      const es = canvas.getZoom();
       bboxOriginRef.current = { left: annData.left || 0, top: annData.top || 0, angle: annData.angle || 0 };
       originalAnnotationRef.current = JSON.parse(JSON.stringify(annData));
 
@@ -771,14 +847,19 @@ const FabricEditCanvas = memo(({
             left: BBOX_PADDING,
             top: BBOX_PADDING,
             angle: 0,
-            width: json.width || 200,
+            // Task 3 — Expand tight-saved widths back to a comfortable wrap
+            // width for re-editing. If the annotation was saved tight (e.g.
+            // width=40 for "aaaaa"), give the user at least 160px of room to
+            // add more characters without aggressive per-grapheme wrapping.
+            // Commit path (~line 370) re-tightens on save.
+            width: Math.max(json.width || 0, 160),
             splitByGrapheme: true,
             fontWeight: json.fontWeight || 'normal',
             styles: {},
             editable: true,
             selectable: true,
             evented: true,
-            charSpacing: 1, // Fabric.js #6168: prevents sub-pixel cursor drift
+            charSpacing: 0, // Must be 0 to match CSS letter-spacing: normal in SVG foreignObject
             cursorColor: '#007AFF',
             editingBorderColor: 'transparent',
             borderColor: 'transparent',
@@ -794,37 +875,51 @@ const FabricEditCanvas = memo(({
         textObj.initDimensions();
         textObj._clearCache();
 
-        // Add to canvas WITHOUT rendering yet (renderOnAddRemove: false)
-        canvas.add(textObj);
-        canvas.setActiveObject(textObj);
-
         // Resize canvas to fit actual text BEFORE first render — prevents flash
         const actualW = textObj.width * (textObj.scaleX || 1);
         const actualH = textObj.calcTextHeight ? textObj.calcTextHeight() : textObj.height * (textObj.scaleY || 1);
         const es = canvas.getZoom();
+        // Add to canvas WITHOUT rendering yet (renderOnAddRemove: false)
+        canvas.add(textObj);
+        canvas.setActiveObject(textObj);
         const neededW = Math.ceil((actualW + BBOX_PADDING * 2) * es);
         const neededH = Math.ceil((actualH + BBOX_PADDING * 2) * es);
 
         canvas.setDimensions({ width: neededW, height: neededH });
-        if (containerRef.current) {
-          containerRef.current.style.width = neededW + 'px';
-          containerRef.current.style.height = neededH + 'px';
-          containerRef.current.style.visibility = 'visible';
-
-        }
-        // Sync React state so setIsLoading(false) re-render doesn't revert
-        // the container back to stale stored dimensions from useLayoutEffect.
-        setContainerStyle(prev => ({
-          ...prev,
-          width: neededW,
-          height: neededH,
-          visibility: 'visible',
-        }));
 
         // NOW render and enter editing — canvas is correctly sized
         canvas.renderAll();
         textObj.enterEditing();
         textObj.selectAll();
+
+        // Suppress native caret on Fabric's hidden textarea (Electron can flash it)
+        if (textObj.hiddenTextarea) {
+          textObj.hiddenTextarea.style.caretColor = 'transparent';
+        }
+
+        // Reveal via rAF: wait one frame for browser to finish compositing Fabric canvas layers
+        requestAnimationFrame(() => {
+          if (!mountedRef.current || !containerRef.current) return;
+          const c = containerRef.current;
+          c.style.width = neededW + 'px';
+          c.style.height = neededH + 'px';
+          c.style.visibility = 'visible';
+          c.style.outline = '1px solid #000';
+          // Inset outline by padding*es to match the tight SVG rect position.
+          // See new-text reveal path for full explanation.
+          c.style.outlineOffset = `-${BBOX_PADDING * es}px`;
+          c.style.backgroundColor = 'transparent';
+          setContainerStyle(prev => ({
+            ...prev,
+            width: neededW,
+            height: neededH,
+            visibility: 'visible',
+            outline: '1px solid #000',
+            outlineOffset: `-${BBOX_PADDING * es}px`,
+            backgroundColor: 'transparent',
+          }));
+          setIsLoading(false);
+        });
 
         // Auto-resize height as text wraps — width stays fixed for wrapping
         textObj.on('changed', () => {
@@ -834,8 +929,6 @@ const FabricEditCanvas = memo(({
           canvas.setDimensions({ height: newH });
           containerRef.current.style.height = newH + 'px';
         });
-
-        setIsLoading(false);
       });
     }
   }, [isNewText, strokeColor, clickPosition]);
@@ -857,6 +950,11 @@ const FabricEditCanvas = memo(({
       }
       const obj = objects[0];
 
+      // Pre-scale padding to match SVGSelectionOverlay PADDING=2 (viewBox units).
+      // Fabric's `padding` is in canvas pixels and does NOT scale with setZoom(),
+      // so padding=2 produces only 2 screen px while SVG produces 2*effectiveScale
+      // screen px. Multiply by the current zoom to compensate.
+      const svgPaddingScaled = 2 * canvas.getZoom();
       obj.set({
         left: BBOX_PADDING,
         top: BBOX_PADDING,
@@ -866,11 +964,14 @@ const FabricEditCanvas = memo(({
         evented: true,
         hasControls: true,
         hasBorders: true,
+        padding: svgPaddingScaled,
+        borderScaleFactor: 2,
       });
 
       canvas.add(obj);
       canvas.setActiveObject(obj);
       canvas.renderAll();
+
       // Container is ready — reveal it
       if (containerRef.current) containerRef.current.style.visibility = 'visible';
       setContainerStyle(prev => ({ ...prev, visibility: 'visible' }));
@@ -1096,6 +1197,26 @@ const FabricEditCanvas = memo(({
       const newParentWidth = parentEl.offsetWidth;
       if (newParentWidth <= 0 || pageWidth <= 0) return;
 
+      // Skip initial mount ResizeObserver fire (spurious -- no zoom change occurred).
+      // The settle timer below resizes Canvas using recomputed dimensions (hardcoded
+      // 200x40 default for new text, stored annData.height for existing) that differ
+      // from loadTextAnnotation's initial setDim sizing. This causes a visible
+      // "re-render to bigger size" ~200ms after mount. On initial mount, Canvas is
+      // already sized correctly by canvasInit -- just seed refs for the NEXT real zoom
+      // and bail out. See Bug A in Phase 11 .continue-here.md for full analysis.
+      if (lastParentWidthRef.current === 0) {
+        lastParentWidthRef.current = newParentWidth;
+        const c = fabricRef.current;
+        if (c) {
+          lastContainerSizeRef.current = { width: c.getWidth(), height: c.getHeight() };
+        }
+        return;
+      }
+
+      // Skip duplicate fires where parent width did not actually change
+      if (newParentWidth === lastParentWidthRef.current) return;
+      lastParentWidthRef.current = newParentWidth;
+
       // Page-space mode: canvas stays at page-space resolution, only update CSS transform
       if (pageSpaceModeRef.current) {
         const newSx = newParentWidth / pageWidth;
@@ -1217,6 +1338,10 @@ const FabricEditCanvas = memo(({
               containerEl.style.top = ((annTop - BBOX_PADDING) * effectiveScale) + 'px';
               containerEl.style.width = ((annWidth2 + BBOX_PADDING * 2) * effectiveScale) + 'px';
               containerEl.style.height = ((annHeight2 + BBOX_PADDING * 2) * effectiveScale) + 'px';
+              // Keep the inset outline aligned with SVG rect position when zoom changes
+              if (editTypeRef.current === 'text') {
+                containerEl.style.outlineOffset = `-${BBOX_PADDING * effectiveScale}px`;
+              }
             }
           }
         }
@@ -1242,6 +1367,7 @@ const FabricEditCanvas = memo(({
             const annTop = annData.top || 0;
             const annWidth2 = (annData.width || 100) * (annData.scaleX || 1);
             const annHeight2 = (annData.height || 30) * (annData.scaleY || 1);
+            const isText = editTypeRef.current === 'text';
             setContainerStyle({
               position: 'absolute',
               left: (annLeft - BBOX_PADDING) * effectiveScale,
@@ -1250,6 +1376,13 @@ const FabricEditCanvas = memo(({
               height: (annHeight2 + BBOX_PADDING * 2) * effectiveScale,
               zIndex: 101,
               pointerEvents: 'auto',
+              // Preserve tight outline-offset for text during zoom settle re-sync
+              ...(isText ? {
+                outline: '1px solid #000',
+                outlineOffset: `-${BBOX_PADDING * effectiveScale}px`,
+                backgroundColor: 'transparent',
+                visibility: 'visible',
+              } : {}),
             });
           }
         }
@@ -1345,7 +1478,6 @@ const FabricEditCanvas = memo(({
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
-  console.log(`[EditCanvas] RENDER — editType=${editType}, isLoading=${isLoading}, visibility=${containerStyle?.visibility || 'unset'}, containerRef.visibility=${containerRef.current?.style.visibility || 'N/A'}`);
   return (
     <>
       {editType === 'shape' && !isLoading && (

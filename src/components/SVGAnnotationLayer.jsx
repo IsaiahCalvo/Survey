@@ -34,6 +34,11 @@ import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
 import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints } from '../utils/svgBoundingBox';
+import {
+  ANNOTATION_VISIBILITY_SCOPE,
+  getAnnotationVisibilityScope,
+  isAnnotationVisibleByPageControl
+} from '../utils/annotationVisibilityRules';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -41,6 +46,7 @@ import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints } fro
 
 const MAX_PREVIEW_OBJECTS = 420;
 const MAX_PREVIEW_CALLOUTS = 140;
+
 
 const formatDashArrayForDebug = (dashArray) => {
   if (!Array.isArray(dashArray) || dashArray.length === 0) return 'none';
@@ -90,7 +96,8 @@ const SVGAnnotationLayer = memo(({
   activeRegions,
   activeRegionId,
   spaces,
-  getRegionLightbulbState,
+  getCanvasAnnotationVisibilityState,
+  getSurveyAnnotationVisibilityState,
   isRegionOverlayEnabled,
   layerVisibility,
   // Selection / interaction props (Phase 9)
@@ -123,6 +130,23 @@ const SVGAnnotationLayer = memo(({
   // Determine pointer events mode: interactive when select tool active AND not in edit mode
   // When editingAnnotationIndex is set, FabricEditCanvas + MiniToolbar need to receive clicks
   const isInteractive = (activeTool === 'select' || activeTool === 'text-select') && editingAnnotationIndex == null;
+
+  // ---------------------------------------------------------------------------
+  // Delete key handler — delete selected annotations on Delete/Backspace
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      // Don't delete if user is typing in a form field
+      const el = document.activeElement;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable || el.contentEditable === 'true')) return;
+      e.preventDefault();
+      deleteSelected();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds, deleteSelected]);
 
   // ---------------------------------------------------------------------------
   // Helper: derive spaceId from regionId by searching through spaces data
@@ -184,8 +208,16 @@ const SVGAnnotationLayer = memo(({
       if (layerVisibility && layerVisibility[layer] === false) continue;
 
       // --- Three-layer filtering (ported from PAL lines 8625-8840) ---
-      const isSurveyAnnotation = obj.moduleId !== null && obj.moduleId !== undefined;
-      const isScopedRegionAnnotation = obj.regionId !== null && obj.regionId !== undefined;
+      const visibilityScope = getAnnotationVisibilityScope({
+        moduleId: obj.moduleId,
+        regionId: obj.regionId
+      });
+      const isSurveyAnnotation =
+        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY ||
+        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
+      const isScopedRegionAnnotation =
+        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.REGION ||
+        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
       const derivedSpaceId = isScopedRegionAnnotation ? getSpaceIdForRegion(obj.regionId) : null;
 
       // 1. Space matching
@@ -221,14 +253,18 @@ const SVGAnnotationLayer = memo(({
         }
       }
 
-      // 4. Background annotation visibility (lightbulb toggle)
-      let backgroundAnnotationVisible = true;
-      if (!isScopedRegionAnnotation && obj.regionId === null) {
-        if (selectedSpaceId !== null && getRegionLightbulbState) {
-          backgroundAnnotationVisible = getRegionLightbulbState(selectedSpaceId, pageNumber);
-        } else {
-          backgroundAnnotationVisible = true;
-        }
+      // 4. Page-level visibility controls for canvas-scoped vs survey-scoped annotations.
+      let pageScopedAnnotationVisible = true;
+      if (!isScopedRegionAnnotation && selectedSpaceId !== null) {
+        pageScopedAnnotationVisible = isAnnotationVisibleByPageControl({
+          scope: visibilityScope,
+          canvasVisible: getCanvasAnnotationVisibilityState
+            ? getCanvasAnnotationVisibilityState(selectedSpaceId, pageNumber)
+            : true,
+          surveyVisible: getSurveyAnnotationVisibilityState
+            ? getSurveyAnnotationVisibilityState(selectedSpaceId, pageNumber)
+            : true
+        });
       }
 
       // 5. Final visibility
@@ -236,7 +272,7 @@ const SVGAnnotationLayer = memo(({
         matchesSpace &&
         surveyAnnotationVisible &&
         scopedRegionAnnotationVisible &&
-        (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
+        pageScopedAnnotationVisible;
 
       if (!isVisible) continue;
 
@@ -299,7 +335,8 @@ const SVGAnnotationLayer = memo(({
     activeRegions,
     activeRegionId,
     spaces,
-    getRegionLightbulbState,
+    getCanvasAnnotationVisibilityState,
+    getSurveyAnnotationVisibilityState,
     isRegionOverlayEnabled,
     layerVisibility,
     getSpaceIdForRegion,
@@ -468,10 +505,6 @@ const SVGAnnotationLayer = memo(({
         data-annotation-id={obj.id || ''}
         style={{
           cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
-          // Hide SVG annotation during edit — FabricEditCanvas renders the annotation
-          // at the same position via CSS rotation. Hiding avoids visible text rendering
-          // differences between SVG foreignObject and Fabric.js canvas (especially
-          // for rotated text where the difference is amplified).
           opacity: isBeingEdited ? 0 : undefined,
           pointerEvents: isBeingEdited ? 'none' : undefined,
         }}

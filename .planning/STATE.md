@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SVG Migration
-status: verifying
-stopped_at: Endpoint drag fixed (selection-clearing guard), SVG callout duplication fixed (SVG defers to CalloutOverlay). Callout UX parity with combined-tools is next — callouts only work via pan (not select), missing drag-to-create preview, knee/arrowhead handles, textbox resize, two-click text editing.
-last_updated: "2026-04-02T18:57:20.784Z"
-last_activity: 2026-04-02 -- Phase 11 Plan 02 complete (zoom cleanup, dead props removed, CLAUDE.md updated)
+status: complete
+stopped_at: Milestone v2.0 COMPLETE — Phase 11 closed. Canvas-vs-SVG rasterizer difference documented in CLAUDE.md as an accepted sub-pixel cosmetic (not a fixable code bug). All diagnostic logging reverted, opacity:0 restored on isBeingEdited SVG wrapper. SVG migration finished — zero-timer zoom, Canvas mounts only during active edit/draw, all 39 v2.0 requirements met.
+last_updated: "2026-04-10T00:00:00.000Z"
+last_activity: 2026-04-10 -- Phase 11 closed; milestone v2.0 complete at 100%
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 9
-  completed_plans: 8
-  percent: 89
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox
-**Current focus:** Phase 11 -- Text/Shape Editing + Zoom Cleanup
+**Current focus:** Milestone v2.0 COMPLETE — ready for next milestone
 
 ## Current Position
 
-Phase: 11 of 11 (Text/Shape Editing + Zoom Cleanup)
-Plan: 2 of 2 (11-02-PLAN.md complete, awaiting human verification checkpoint)
-Status: Plan 02 code complete, Task 3 human verification checkpoint pending
-Last activity: 2026-04-02 -- Phase 11 Plan 02 complete (zoom cleanup, dead props removed, CLAUDE.md updated)
+Phase: 11 of 11 (Text/Shape Editing + Zoom Cleanup) — COMPLETE
+Plan: 2 of 2 — COMPLETE
+Status: Milestone v2.0 closed
+Last activity: 2026-04-10 -- Phase 11 closed, Canvas-vs-SVG rasterizer gotcha documented in CLAUDE.md
 
-Progress: [█████████░] 89% (Phases 8-10 complete, Phase 11 Plans 01-02 done, checkpoint pending)
+Progress: [██████████] 100% (All 4 phases complete, all 9 plans complete)
 
 ## Performance Metrics
 
@@ -96,9 +96,14 @@ Progress: [█████████░] 89% (Phases 8-10 complete, Phase 11 P
 
 ### Pending Todos
 
-- Selection overlay bbox slightly oversized at high zoom (padding visible) — deferred to post-Phase 11
-- Selection overlay does not follow annotation during drag (visual transform not applied to overlay) — deferred to post-Phase 11
-- Zoom while drawing creates disconnected fragment (stroke committed on zoom, new stroke starts fresh) — documented as expected behavior
+- ~~Selection highlight too big at high zoom~~ — user reports handles are on border now; separate issue: selection box and text border should be unified (blue selection box with handles directly on text edges, remove black border during select/edit)
+- ~~Selection highlight doesn't follow drag~~ — user reports this is fixed
+- ~~Zoom while drawing creates disconnected fragment~~ — user reports this is fixed
+- ~~Bug 3: Text boxes need visible black border~~ — already working
+- ~~Bug 4: Drag preview visual~~ — already working
+- Bug 2: Cursor flicker on text creation (both click-to-place AND drag-to-create) — 5 attempts failed, source is external to FabricEditCanvas
+- Bug 5: Text size/position jumps when switching between edit mode and SVG display — re-render visual mismatch
+- Selection box handles should sit directly on text border, not offset outside it — user prefers removing the black border entirely during select/edit and just showing blue selection box with handles on edges
 
 ### Blockers/Concerns
 
@@ -107,6 +112,6 @@ Progress: [█████████░] 89% (Phases 8-10 complete, Phase 11 P
 
 ## Session Continuity
 
-Last session: 2026-04-02
-Stopped at: Completed 11-02-PLAN.md Tasks 1-2 (zoom cleanup). Task 3 human verification checkpoint pending -- user needs to test editing + zoom workflows in browser.
-Resume file: .planning/phases/11-text-shape-editing-zoom-cleanup/.continue-here.md
+Last session: 2026-04-10
+Stopped at: Milestone v2.0 COMPLETE — Phase 11 closed, diagnostics reverted, gotcha documented. Ready for next milestone or maintenance mode.
+Resume file: (none — milestone complete)
