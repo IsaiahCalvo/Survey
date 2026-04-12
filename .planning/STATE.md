@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: SVG Migration
 status: complete
 stopped_at: Milestone v2.0 COMPLETE — Phase 11 closed. Canvas-vs-SVG rasterizer difference documented in CLAUDE.md as an accepted sub-pixel cosmetic (not a fixable code bug). All diagnostic logging reverted, opacity:0 restored on isBeingEdited SVG wrapper. SVG migration finished — zero-timer zoom, Canvas mounts only during active edit/draw, all 39 v2.0 requirements met.
-last_updated: "2026-04-10T15:30:00.000Z"
-last_activity: 2026-04-10 -- Working tree triage executed; 7 polish commits landed post-milestone v2.0
+last_updated: "2026-04-12T00:00:00.000Z"
+last_activity: 2026-04-12 -- Circle edit fixes landed (handle alignment, live scaling, clipping); Stage 0 shape edit polish queued in FEATURE-BACKLOG.md; ready for new milestone planning
 progress:
   total_phases: 4
   completed_phases: 4
@@ -112,6 +112,7 @@ Progress: [██████████] 100% (All 4 phases complete, all 9 pl
 
 ## Session Continuity
 
-Last session: 2026-04-10
-Stopped at: Working tree triage complete. 7 polish commits landed on top of milestone v2.0. Ready for next milestone or maintenance mode.
-Resume file: (none — milestone complete, working tree clean)
+Last session: 2026-04-12
+Stopped at: v2.0 fully closed out. Circle edit fixes committed (10bcb8e). Working tree clean. HANDOFF.md deleted. Next session: plan Stage 0 (shape edit polish — 45° rotation snap, 10% zoom floor) as a new milestone/phase. User wants formal planning, no direct implementation.
+Resume file: .planning/FEATURE-BACKLOG.md (Stage 0 is next up)
+Next action: `/gsd:new-milestone` to start v2.1 with Stage 0 as the first phase
