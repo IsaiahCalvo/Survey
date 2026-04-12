@@ -113,6 +113,6 @@ Progress: [░░░░░░░░░░] 0% (milestone just initialized)
 ## Session Continuity
 
 Last session: 2026-04-12
-Stopped at: Milestone v2.1 initialized. PROJECT.md + STATE.md updated. Defining REQUIREMENTS.md next, then spawning roadmapper.
-Resume file: .planning/FEATURE-BACKLOG.md (Stage 0 is scope)
-Next action: REQUIREMENTS.md → ROADMAP.md → `/gsd:discuss-phase 12`
+Stopped at: v2.1 milestone initialized. Research (4 dimensions) complete + synthesized. REQUIREMENTS.md committed with 3 requirements (EDIT-11 soft snap w/ 3° threshold, EDIT-12 rotation degree input field — NEW scope, ~60-120 LOC, ZOOM-09 zoom floor 10%). Context depleted before roadmapper spawn. Fresh /clear recommended next session.
+Resume file: .planning/phases/11-text-shape-editing-zoom-cleanup/.continue-here.md
+Next action: /clear → /gsd:resume-work → spawn gsd-roadmapper for Phase 12 → /gsd:discuss-phase 12 → /gsd:plan-phase 12
