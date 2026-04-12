@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Shape Edit Polish & Foundation Wins
-status: defining_requirements
-stopped_at: Milestone v2.1 started. Scope locked to Stage 0 (Shape Edit Polish) only. Defining requirements.
+status: roadmap_complete
+stopped_at: ROADMAP.md written for Phase 12. Ready for /gsd:discuss-phase 12.
 last_updated: "2026-04-12T00:00:00.000Z"
-last_activity: 2026-04-12 -- Milestone v2.1 initialized; scope is Stage 0 shape edit polish (Shift+rotate 45° snap + zoom floor 10%)
+last_activity: 2026-04-12 -- Phase 12 roadmap created (EDIT-11, EDIT-12, ZOOM-09); 1 phase, 2 plans
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
   percent: 0
 ---
@@ -18,101 +18,62 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-23)
+See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox
-**Current focus:** Milestone v2.1 — Stage 0 shape edit polish (rotation snap + zoom floor)
+**Current focus:** v2.1 Phase 12 — Shape Edit Polish (soft Shift-snap, rotation degree input, zoom floor 10%)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-04-12 — Milestone v2.1 started; Stage 0 scope confirmed
+Phase: 12 of 12 (Shape Edit Polish) — v2.1 milestone
+Plan: 0 of 2 (awaiting /gsd:discuss-phase 12)
+Status: Roadmap complete, ready to discuss-phase
+Last activity: 2026-04-12 — Phase 12 roadmap written with 3 requirements mapped
 
-Progress: [░░░░░░░░░░] 0% (milestone just initialized)
+Progress: [░░░░░░░░░░] 0% (Phase 12 not yet started)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Phase 8: 2 plans across 2 sessions
-- Phase 9: Plan 01 in 11 min (3 tasks, 6 files)
-- Phase 9: Plan 02 in 4 min (2 tasks, 2 files)
-- Phase 9: Plan 03 + bug fixes across 2 sessions (imported path compat layer)
-- Phase 10: Plan 01 in 6 min (2 tasks, 3 files)
-- Phase 10: Plan 02 multi-session (3 tasks, 5 files, 10 bugs fixed during verification)
-- Phase 11: Plan 01 in 7 min (2 tasks, 2 files)
-- Phase 11: Plan 02 in 3 min (2 tasks, 3 files)
+- Total plans completed: 9 (v1.0 + v2.0)
+- Phase 8: 2 plans, Phase 9: 3 plans, Phase 10: 2 plans, Phase 11: 2 plans
+
+**v2.1 Phase 12 (planned):**
+- Plan 12-01: EDIT-11 + ZOOM-09 atomic bundle (~8 LOC, 3 files, low risk)
+- Plan 12-02: EDIT-12 rotation degree input field (~60-120 LOC, new UI, moderate risk)
 
 ## Accumulated Context
 
 ### Decisions
 
-- [v1.0]: Phases 1-3 shipped overlay div foundation (valid for v2.0)
-- [v1.0]: Phase 4 PAL zoom simplification failed 4 times -- motivated SVG migration
-- [v2.0]: SVG display + Fabric.js edit-only architecture chosen over continued timer fixes
-- [v2.0]: Same Fabric.js JSON data model -- no data migration
-- [v2.0]: Zero new runtime dependencies -- React SVG + native pointer events + existing Fabric.js
-- [08-01]: SVGAnnotationLayer is new component (not evolved from LightweightAnnotationOverlay) -- keeps fallback intact
-- [08-01]: Renderer toggle uses .jsx extension for svgAnnotationRenderers due to Vite JSX requirement
-- [08-02]: SVG layer MUST sit outside syncfusionOverlayContentRefs div (CSS transforms fight viewBox)
-- [08-02]: Portal freeze (beginSyncfusionScaleConfirmPending) completely skipped in SVG mode
-- [08-02]: SVG set as default display mode -- Canvas mode available via Ctrl+Shift+V or ?renderer=canvas
-- [08-02]: Canvas mode zoom not worth fixing -- SVG eliminates the problem category
-- [09-01]: useMemo refactored to filter-only; wrapping in render body prevents re-render on selection change
-- [09-01]: inverseScale via ResizeObserver on SVG clientWidth -- container-aware per CLAUDE.md
-- [09-01]: Selection auto-clears on annotations prop identity change
-- [09-02]: Cached CTM inverse at drag start for entire drag duration (CTM stable during single drag)
-- [09-02]: Resize updates scaleX/scaleY (not width/height) to match Fabric.js Canvas mode serialization
-- [09-02]: Anchor-point resize -- opposite corner stays fixed, dragged handle determines scale
-- [09-02]: Resize visual re-renders annotation element (not SVG transform) because scale changes affect geometry
-- [09-03]: Wrapper div pointerEvents is tool-dependent: 'auto' for select/text-select, 'none' for all others
-- [09-03]: Hit rect uses SVG attribute pointerEvents="all" (not CSS style) for cross-browser reliability
-- [09-03]: Imported paths use SVG transform for resize visual (not re-rendering)
-- [09-03]: isImportedPath + translatePathData + scalePathData added for imported PDF annotation compat
-- [10-01]: useFabricCanvas hook extracted as shared Canvas lifecycle for reuse by FabricEraserCanvas
-- [10-01]: setZoomGeneration placed at top of beginSyncfusionScaleConfirmPending before SVG guard
-- [10-01]: Canvas key uses pageNumber only (not activeTool) -- pen<->highlighter reconfigures brush without remount
-- [10-01]: Container-aware canvas sizing via setZoom(effectiveScale) puts paths in SVG viewBox space
-- [10-02]: isLoadingRef mirrors isLoading state to avoid stale closure in eraser mouse:down handler
-- [10-02]: Eraser precision: viewerScale/effectiveScale ratio corrects radius mismatch between cursor overlay and canvas
-- [10-02]: flushSync during dispose forces synchronous SVG re-render before Canvas DOM removal (prevents flicker)
-- [10-02]: SVG wrapper cursor: 'default' when svgInteractive for instant cursor change on tool switch
-- [10-02]: Zoom while drawing fragment is expected behavior (ResizeObserver flush commits stroke, new stroke starts fresh)
-- [11-01]: FabricEditCanvas handles text/shape/callout via editType prop (one component, three modes)
-- [11-01]: Canvas key excludes zoomGeneration -- zoom handled via CSS transform + 200ms ResizeObserver settle, not remount
-- [11-01]: Click-outside commits edit (100ms delay to avoid initial double-click), Escape cancels
-- [11-01]: Callout edit hides SVG layer (eraser pattern), text/shape keep SVG visible
-- [11-01]: Mini-toolbar for shape editing positioned 8px above bbox Canvas with fill/stroke/width controls
-- [Phase 11]: beginSyncfusionScaleConfirmPending simplified to zoomGeneration-only + Canvas mode deprecation warning
-- [Phase 11]: Canvas mode toggle kept as dev escape hatch with degraded zoom warning; CLAUDE.md updated for SVG-based zoom
+- [v2.0]: SVG display + Fabric.js edit-only shipped; zero-timer zoom working
+- [v2.1]: Scope locked to Stage 0 (shape edit polish only); Stage 1+ deferred to v2.2+
+- [v2.1]: Research-first approach (user chose it); 4 dimensions synthesized in .planning/research/
+- [v2.1]: Soft snap with 3° threshold (EDIT-11) — matches Fabric `snapThreshold` convention; Shift-at-41° stays free, Shift-at-44° snaps
+- [v2.1]: EDIT-12 rotation degree input field is a scope expansion (~60-120 LOC new component) — original backlog was ~11 LOC total
+- [v2.1]: FabricEditCanvas shape rotation is commit-lossy (force-zero on load, restore on commit) — explicitly OUT of scope; SVG-path snap only
+- [v2.1]: "Handles hard to grab at <25% zoom" is ACCEPTED table-stakes (Illustrator/Photoshop convention), not a defect
+- [v2.1]: Zoom floor 10% is a 2-file ATOMIC commit — `zoomController.js:15` AND `App.jsx:21999` must ship together
 
-### Roadmap Evolution
+### Integration Points (verified, exact line numbers)
 
-- v1.0 Phases 4-6 superseded by SVG migration
-- v1.0 Phase 7 (widen zoom range) deferred
-- v2.0 Phases 8-11 created from 39 requirements across DISP/INTR/EDIT/ZOOM
+- `src/hooks/useSVGInteraction.js:391-408` — rotate branch; promote `const newAngle` → `let newAngle` at 396; add soft-snap `if (e.shiftKey && |angle - nearest45| <= 3) angle = nearest45 % 360`
+- `src/utils/zoomController.js:15` — `MIN_SCALE: 0.5 → 0.1`
+- `src/App.jsx:21999` — `Math.min(Math.max(parsed, 50), 500)` → `Math.min(Math.max(parsed, 10), 500)` (MUST ship same commit as zoomController change)
+- EDIT-12 integration point UNDETERMINED — /gsd:discuss-phase will resolve between SVGSelectionOverlay foreignObject extension, new RotationInputField sibling, or HTML portal with absolute positioning
 
 ### Pending Todos
 
-- ~~Selection highlight too big at high zoom~~ — user reports handles are on border now; separate issue: selection box and text border should be unified (blue selection box with handles directly on text edges, remove black border during select/edit)
-- ~~Selection highlight doesn't follow drag~~ — user reports this is fixed
-- ~~Zoom while drawing creates disconnected fragment~~ — user reports this is fixed
-- ~~Bug 3: Text boxes need visible black border~~ — already working
-- ~~Bug 4: Drag preview visual~~ — already working
-- ~~Bug 2: Cursor flicker on text creation (both click-to-place AND drag-to-create)~~ — FIXED (user confirmed 2026-04-11)
-- ~~Bug 5: Text size/position jumps when switching between edit mode and SVG display~~ — FIXED (user confirmed 2026-04-11)
-- Selection box handles should sit directly on text border, not offset outside it — user prefers removing the black border entirely during select/edit and just showing blue selection box with handles on edges
+- Selection box handles should sit directly on text border, not offset outside it — carried over from v2.0 cleanup
+- EDIT-12 UX spec questions for /gsd:discuss-phase: visibility (hover/select/active-rotation?), Tab-away behavior, Escape semantics, display-when-not-rotating?
 
 ### Blockers/Concerns
 
-- Phase 10: ~~Validate async dispose() + React StrictMode rapid tool switching~~ RESOLVED -- Fabric.js 5.5.2 dispose() is synchronous, project does not use StrictMode
-- Phase 11: foreignObject text rendering pixel tolerance needs product decision before planning
+- None. REQUIREMENTS.md committed, ROADMAP.md written, ready to proceed.
 
 ## Session Continuity
 
 Last session: 2026-04-12
-Stopped at: v2.1 milestone initialized. Research (4 dimensions) complete + synthesized. REQUIREMENTS.md committed with 3 requirements (EDIT-11 soft snap w/ 3° threshold, EDIT-12 rotation degree input field — NEW scope, ~60-120 LOC, ZOOM-09 zoom floor 10%). Context depleted before roadmapper spawn. Fresh /clear recommended next session.
+Stopped at: Phase 12 roadmap written for v2.1 milestone (3 requirements, 2 plans, 5 success criteria)
 Resume file: .planning/phases/11-text-shape-editing-zoom-cleanup/.continue-here.md
-Next action: /clear → /gsd:resume-work → spawn gsd-roadmapper for Phase 12 → /gsd:discuss-phase 12 → /gsd:plan-phase 12
+Next action: /gsd:discuss-phase 12 → produce CONTEXT.md with Given/When/Then acceptance criteria + DO NOT CHANGE list; then /gsd:plan-phase 12 → PLAN.md; then execute

@@ -3,7 +3,8 @@
 ## Milestones
 
 - Shipped **v1.0 Zoom Flicker Fix** - Phases 1-3 (shipped 2026-03-19), Phases 4-7 superseded/deferred
-- Current **v2.0 SVG Migration** - Phases 8-11 (in progress)
+- Shipped **v2.0 SVG Migration** - Phases 8-11 (shipped 2026-04-10)
+- Current **v2.1 Shape Edit Polish & Foundation Wins** - Phase 12 (planning)
 
 ## Phases
 
@@ -26,14 +27,26 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 </details>
 
-### v2.0 SVG Migration (Phases 8-11)
+<details>
+<summary>v2.0 SVG Migration (Phases 8-11) - SHIPPED 2026-04-10</summary>
 
-- [ ] **Phase 8: SVG Display Foundation** - All 7 annotation types render as SVG with viewBox auto-scaling, replacing Canvas-based display
-- [ ] **Phase 9: SVG Selection and Interaction** - Click-to-select, drag-to-move, resize handles, and multi-select in SVG without Canvas
-- [ ] **Phase 10: Canvas Mount/Unmount (Pen + Eraser)** - Fabric.js Canvas mounts conditionally for pen/highlighter drawing and eraser operations
+- [x] **Phase 8: SVG Display Foundation** - All 7 annotation types render as SVG with viewBox auto-scaling, replacing Canvas-based display
+- [x] **Phase 9: SVG Selection and Interaction** - Click-to-select, drag-to-move, resize handles, and multi-select in SVG without Canvas
+- [x] **Phase 10: Canvas Mount/Unmount (Pen + Eraser)** - Fabric.js Canvas mounts conditionally for pen/highlighter drawing and eraser operations (completed 2026-03-27)
 - [x] **Phase 11: Text/Shape Editing + Zoom Cleanup** - Targeted Canvas mount for text/shape editing, zoom integration, and removal of old timer machinery (completed 2026-04-02)
 
+</details>
+
+### v2.1 Shape Edit Polish & Foundation Wins (Phase 12)
+
+**Milestone Goal:** Finish the shape editing interaction model started in the post-v2.0 cleanup branch — add rotation precision (soft Shift-snap + exact degree input) and extend the usable zoom range to 10% so shape editing feels complete before moving on to future foundation wins.
+
+- [ ] **Phase 12: Shape Edit Polish** - Soft Shift-snap at 45° with 3° threshold, rotation degree input field for exact angles, zoom floor lowered to 10%
+
 ## Phase Details
+
+<details>
+<summary>v1.0 + v2.0 phase details (collapsed — shipped)</summary>
 
 ### Phase 8: SVG Display Foundation
 **Goal**: All committed annotations render correctly as SVG elements with browser-native zoom scaling via viewBox, replacing Canvas-based display rendering
@@ -48,8 +61,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 08-01-PLAN.md -- SVGAnnotationLayer core + renderer toggle + tier 1 types (pen, highlights, lines, arrows)
-- [ ] 08-02-PLAN.md -- Tier 2 types (shapes, text, callouts) + eraser rendering + full PAL-level filtering
+- [x] 08-01-PLAN.md -- SVGAnnotationLayer core + renderer toggle + tier 1 types (pen, highlights, lines, arrows)
+- [x] 08-02-PLAN.md -- Tier 2 types (shapes, text, callouts) + eraser rendering + full PAL-level filtering
 
 ### Phase 9: SVG Selection and Interaction
 **Goal**: Users can select, move, and resize annotations entirely in SVG without mounting a Canvas
@@ -64,9 +77,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 09-01-PLAN.md -- Utility modules + selection hook + SVGSelectionOverlay + wiring into SVGAnnotationLayer
-- [ ] 09-02-PLAN.md -- Drag-to-move + resize handles + rotation handle
-- [ ] 09-03-PLAN.md -- Multi-select (shift-click) + group drag/delete + double-click edit trigger
+- [x] 09-01-PLAN.md -- Utility modules + selection hook + SVGSelectionOverlay + wiring into SVGAnnotationLayer
+- [x] 09-02-PLAN.md -- Drag-to-move + resize handles + rotation handle
+- [x] 09-03-PLAN.md -- Multi-select (shift-click) + group drag/delete + double-click edit trigger
 
 ### Phase 10: Canvas Mount/Unmount (Pen + Eraser)
 **Goal**: Fabric.js Canvas mounts only when the user activates pen, highlighter, or eraser tools, captures the work, and unmounts cleanly
@@ -96,13 +109,31 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 11-01-PLAN.md -- FabricEditCanvas component (text/shape/callout editing) + App.jsx edit mode wiring
-- [ ] 11-02-PLAN.md -- Old 5-timer zoom system removal from App.jsx + dead prop cleanup from PAL + CLAUDE.md update
+- [x] 11-01-PLAN.md -- FabricEditCanvas component (text/shape/callout editing) + App.jsx edit mode wiring
+- [x] 11-02-PLAN.md -- Old 5-timer zoom system removal from App.jsx + dead prop cleanup from PAL + CLAUDE.md update
+
+</details>
+
+### Phase 12: Shape Edit Polish
+**Goal**: Shape rotation feels precise and predictable (soft Shift-snap to 45° when the user is near an increment, exact-value input for typed angles) and the usable zoom range extends down to 10% for whole-page inspection of mechanical/electrical drawings
+**Depends on**: Phase 11 (SVG selection + `useSVGInteraction` rotation path, `FabricEditCanvas` edit infrastructure, zero-timer zoom system)
+**Requirements**: EDIT-11, EDIT-12, ZOOM-09
+**Success Criteria** (what must be TRUE):
+  1. User can drag the SVG rotation handle on a selected shape with Shift held and the live angle soft-snaps to the nearest 45° increment (0°/45°/90°/135°/180°/225°/270°/315°) only when within 3° of that increment — Shift-at-41° stays free at 41°, Shift-at-44° snaps to 45°, Shift-at-23° stays free at 23°, and releasing Shift always returns to free rotation
+  2. User sees an inline numeric degree input near the rotation handle while rotating a selected shape (and/or hovering the rotation handle), can type an exact angle, commits with Enter or blur to apply the rotation atomically, cancels with Escape, and typed values are normalized to [0, 360) before persisting
+  3. User can zoom the PDF all the way down to 10% via every zoom entry point (toolbar buttons, keyboard shortcuts, scroll wheel, typed value in the zoom input box, fit-to-page, fit-to-width, pinch) without the app silently re-clamping the floor to 50%
+  4. At zoom levels below 25% the selection/rotation handles remain visible but become hard to target — this is accepted table-stakes behavior (matches Illustrator/Photoshop); the user is expected to zoom back in to edit and no defect is recorded
+  5. No existing behavior regresses: free rotation (Shift not held) still produces float angles, Shift+resize aspect-lock still works, every zoom method still funnels through `clampScale`, and the `zoomGeneration` signal contract is preserved
+**Plans**: 2 plans
+
+Plans:
+- [ ] 12-01-PLAN.md -- EDIT-11 soft Shift-snap (3° threshold) in `useSVGInteraction.js:391-408` + ZOOM-09 zoom floor 10% atomic bundle (`zoomController.js:15` MIN_SCALE 0.5→0.1 AND `App.jsx:21999` pre-clamp 50→10 in the SAME commit) — ~8 LOC, 3 files, low risk
+- [ ] 12-02-PLAN.md -- EDIT-12 rotation degree input field component (integration point TBD during /gsd:discuss-phase: SVGSelectionOverlay foreignObject vs new RotationInputField sibling vs HTML portal with absolute positioning) — ~60-120 LOC, new UI component, moderate risk, needs UX spec resolution
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 8 -> 9 -> 10 -> 11
+Phases execute in numeric order: 8 → 9 → 10 → 11 → 12
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -113,7 +144,11 @@ Phases execute in numeric order: 8 -> 9 -> 10 -> 11
 | 5. Page Container Re-attachment | v1.0 | - | Superseded | - |
 | 6. Dead Code Removal | v1.0 | - | Superseded | - |
 | 7. Widen Zoom Range | v1.0 | - | Deferred | - |
-| 8. SVG Display Foundation | v2.0 | 0/2 | Planning complete | - |
-| 9. SVG Selection and Interaction | v2.0 | 0/3 | Planning complete | - |
+| 8. SVG Display Foundation | v2.0 | 2/2 | Complete | 2026-04-10 |
+| 9. SVG Selection and Interaction | v2.0 | 3/3 | Complete | 2026-04-10 |
 | 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 2/2 | Complete | 2026-03-27 |
-| 11. Text/Shape Editing + Zoom Cleanup | 2/2 | Complete   | 2026-04-02 | - |
+| 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 2/2 | Complete | 2026-04-02 |
+| 12. Shape Edit Polish | v2.1 | 0/2 | Not started | - |
+
+---
+*Last updated: 2026-04-12 — Phase 12 added for v2.1 Shape Edit Polish milestone*
