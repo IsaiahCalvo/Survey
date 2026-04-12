@@ -10896,9 +10896,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
       else if (activeTool === 'text') forcedCursor = 'text';
+      const prevCursor = el.style.cursor;
       el.style.cursor = forcedCursor;
       const clearOverride = () => {
-        el.style.cursor = '';
+        el.style.cursor = prevCursor;
         window.removeEventListener('mousemove', clearOverride);
       };
       window.addEventListener('mousemove', clearOverride, { once: true });
