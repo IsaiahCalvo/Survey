@@ -25073,6 +25073,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
                                   }}
+                                  onLivePreview={(json) => handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' })}
                                   strokeColor={strokeColor}
                                   zoomGeneration={zoomGeneration}
                                   viewerScale={scale}
@@ -25476,6 +25477,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           editModeCooldownRef.current = Date.now();
                                           setEditingAnnotation(null);
                                         }}
+                                        onLivePreview={(json) => handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' })}
                                         strokeColor={strokeColor}
                                         zoomGeneration={zoomGeneration}
                                         viewerScale={scale}
@@ -25936,6 +25938,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         editModeCooldownRef.current = Date.now();
                                         setEditingAnnotation(null);
                                       }}
+                                      onLivePreview={(json) => handleSaveAnnotations(pageNum, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' })}
                                       strokeColor={strokeColor}
                                       zoomGeneration={zoomGeneration}
                                       viewerScale={scale}

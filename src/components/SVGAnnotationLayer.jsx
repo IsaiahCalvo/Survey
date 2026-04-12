@@ -621,10 +621,17 @@ const SVGAnnotationLayer = memo(({
       {/* Selection overlays — rendered on top of all annotations */}
       {/* Single selection: individual bounding box with handles */}
       {selectedIds.size === 1 && Array.from(selectedIds).map((selectedIndex) => {
-        // Hide selection overlay while annotation is being edited in FabricEditCanvas
-        if (editingAnnotationIndex != null && selectedIndex === editingAnnotationIndex) return null;
         const obj = annotations?.objects?.[selectedIndex];
         if (!obj) return null;
+
+        // During edit: FabricEditCanvas provides its own handles. For border-flush types
+        // (rect, text) there's no dashed bbox to preserve, so hide the overlay entirely.
+        // For non-border-flush types (circle, ellipse, triangle), keep the dashed bbox
+        // visible but strip the handles (Fabric provides those).
+        const editObjType = String(obj.type || '').toLowerCase();
+        const editIsBorderFlush = editObjType === 'text' || editObjType === 'textbox' || editObjType === 'i-text' || editObjType === 'rect';
+        const isBeingEditedNow = editingAnnotationIndex != null && selectedIndex === editingAnnotationIndex;
+        if (isBeingEditedNow && editIsBorderFlush) return null;
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
         let bbox = getAnnotationBBox(obj);
@@ -703,7 +710,7 @@ const SVGAnnotationLayer = memo(({
               bbox={bbox}
               inverseScale={inverseScale}
               onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
-              isGroupSelection={false}
+              isGroupSelection={isBeingEditedNow}
               hideBoundingBox={isBorderFlush}
               padding={isBorderFlush ? 0 : 2}
             />

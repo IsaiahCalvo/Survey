@@ -315,12 +315,11 @@ function getGroupArrowBBox(obj) {
 
 function getCircleBBox(obj) {
   const radius = obj.radius ?? 0;
-  const diameter = radius * 2 * Math.abs(obj.scaleX ?? 1);
   return {
     left: obj.left ?? 0,
     top: obj.top ?? 0,
-    width: diameter,
-    height: diameter,
+    width: radius * 2 * Math.abs(obj.scaleX ?? 1),
+    height: radius * 2 * Math.abs(obj.scaleY ?? 1),
     angle: obj.angle ?? 0,
   };
 }

@@ -79,6 +79,19 @@ function buildBboxTransform(sx, sy, annLeft, annTop, annWidth, annHeight, annAng
   return `scale(${sx}, ${sy}) translate(${tx}px, ${ty}px) translate(${cx}px, ${cy}px) rotate(${annAngle}deg) translate(${-cx}px, ${-cy}px)`;
 }
 
+function getAnnotationDims(annData) {
+  if (!annData) return { width: 200, height: 40 };
+  const t = String(annData.type || '').toLowerCase();
+  if (t === 'circle') {
+    const d = (annData.radius || 0) * 2;
+    return { width: d * Math.abs(annData.scaleX || 1), height: d * Math.abs(annData.scaleY || 1) };
+  }
+  if (t === 'ellipse') {
+    return { width: (annData.rx || 0) * 2 * Math.abs(annData.scaleX || 1), height: (annData.ry || 0) * 2 * Math.abs(annData.scaleY || 1) };
+  }
+  return { width: (annData.width || 200) * (annData.scaleX || 1), height: (annData.height || 30) * (annData.scaleY || 1) };
+}
+
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
 // ---------------------------------------------------------------------------
@@ -90,6 +103,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
   const [strokeW, setStrokeW] = useState(3);
   const [showFillPicker, setShowFillPicker] = useState(false);
   const [showStrokePicker, setShowStrokePicker] = useState(false);
+  const [toolbarPos, setToolbarPos] = useState(null);
   const toolbarRef = useRef(null);
 
   // Sync from active object
@@ -100,17 +114,40 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
     if (!obj) return;
     setFill(obj.fill || 'transparent');
     setStroke(obj.stroke || '#000000');
-    setStrokeW(obj.strokeWidth || 3);
+    setStrokeW(obj._realStrokeWidth ?? obj.strokeWidth ?? 3);
   }, [fabricRef]);
+
+  // Track container position via rAF so toolbar follows during pan/scroll/zoom
+  useEffect(() => {
+    let rafId;
+    const track = () => {
+      const el = containerRef.current;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        setToolbarPos(prev => {
+          if (prev && Math.abs(prev.left - r.left) < 0.5 && Math.abs(prev.top - r.top) < 0.5 &&
+              Math.abs(prev.width - r.width) < 0.5) return prev;
+          return { left: r.left, top: r.top, width: r.width, height: r.height };
+        });
+      }
+      rafId = requestAnimationFrame(track);
+    };
+    rafId = requestAnimationFrame(track);
+    return () => cancelAnimationFrame(rafId);
+  }, [containerRef]);
 
   const updateProperty = useCallback((prop, value) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     const obj = canvas.getActiveObject();
     if (!obj) return;
-    obj.set(prop, value);
-    canvas.renderAll();
-    if (onPropertyChange) onPropertyChange();
+    if (prop === 'strokeWidth') {
+      obj._realStrokeWidth = value;
+    } else {
+      obj.set(prop, value);
+      canvas.renderAll();
+    }
+    if (onPropertyChange) onPropertyChange(prop, value);
   }, [fabricRef, onPropertyChange]);
 
   const handleStrokeWidthChange = useCallback((delta) => {
@@ -119,20 +156,18 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
     updateProperty('strokeWidth', newW);
   }, [strokeW, updateProperty]);
 
-  // Position: 8px above the edit Canvas container, using screen coords via portal to document.body
-  // This escapes all Syncfusion stacking contexts so clicks actually reach the toolbar.
-  const container = containerRef.current;
-  const containerRect = container ? container.getBoundingClientRect() : null;
+  // Position: 8px above the edit Canvas container, using rAF-tracked screen coords.
+  // Portaled to document.body to escape Syncfusion stacking contexts.
+  const toolbarWidth = 240;
   const positionStyle = {
     position: 'fixed',
-    left: containerRect ? containerRect.left : 0,
-    top: containerRect ? containerRect.top - 44 : 0,
+    left: toolbarPos ? toolbarPos.left + (toolbarPos.width - toolbarWidth) / 2 : -9999,
+    top: toolbarPos ? toolbarPos.top - 44 : -9999,
     zIndex: 999999,
   };
 
-  // If not enough space above, position below
-  if (positionStyle.top < 0 && containerRect) {
-    positionStyle.top = containerRect.bottom + 8;
+  if (positionStyle.top < 0 && toolbarPos) {
+    positionStyle.top = toolbarPos.top + toolbarPos.height + 8;
   }
 
   const PRESET_COLORS = [
@@ -299,6 +334,7 @@ const FabricEditCanvas = memo(({
   isNewText,           // true when text tool click-to-place creates new annotation
   clickPosition,       // { x, y } in page coordinates for new text placement
   textBoxWidth,        // optional page-space width from drag-to-create
+  onLivePreview,       // (updatedAnnotationsJSON) => void -- live SVG update during shape edit
 }) => {
   // -------------------------------------------------------------------------
   // State
@@ -373,6 +409,7 @@ const FabricEditCanvas = memo(({
     // display is unaffected.
     if (editTypeRef.current === 'shape') {
       json.opacity = originalAnnotationRef.current?.opacity ?? 1;
+      if (activeObj._realStrokeWidth !== undefined) json.strokeWidth = activeObj._realStrokeWidth;
     }
     console.log(`[EditCanvas] COMMIT pre-convert — text="${(json.text||'').slice(0,20)}" fontSize=${json.fontSize} width=${json.width} height=${json.height} scaleX=${json.scaleX} scaleY=${json.scaleY} left=${json.left} top=${json.top} isNewText=${isNewText}`);
 
@@ -584,8 +621,9 @@ const FabricEditCanvas = memo(({
       } else if (annotationData) {
         annLeft = annotationData.left || 0;
         annTop = annotationData.top || 0;
-        annWidth = (annotationData.width || 200) * (annotationData.scaleX || 1);
-        annHeight = (annotationData.height || 30) * (annotationData.scaleY || 1);
+        const dims = getAnnotationDims(annotationData);
+        annWidth = dims.width;
+        annHeight = dims.height;
         if (editType === 'text' && annWidth < 30) {
           annWidth = 30;
         }
@@ -614,6 +652,7 @@ const FabricEditCanvas = memo(({
           height: annHeight + BBOX_PADDING * 2,
           zIndex: 101,
           pointerEvents: 'auto',
+          overflow: editType === 'shape' ? 'visible' : undefined,
           transformOrigin: '0 0',
           transform: buildBboxTransform(sx, sy, annLeft, annTop, annWidth, annHeight, annAngle),
           visibility: 'hidden', // stay hidden until canvas loading reveals
@@ -628,6 +667,7 @@ const FabricEditCanvas = memo(({
           height: (annHeight + BBOX_PADDING * 2) * effectiveScale,
           zIndex: 101,
           pointerEvents: 'auto',
+          overflow: editType === 'shape' ? 'visible' : undefined,
           visibility: 'hidden', // stay hidden until canvas loading reveals
         };
         pageSpaceModeRef.current = false;
@@ -986,16 +1026,20 @@ const FabricEditCanvas = memo(({
       // interactive. SVGAnnotationLayer keeps the SVG shape visible for shape edits,
       // making SVG the single visual truth (sidesteps Canvas 2D vs SVG rasterizer
       // stroke difference — see CLAUDE.md 2026-04-10).
+      // Store real stroke properties for commit/live-preview, then zero strokeWidth
+      // so Fabric's bounding rect = fill rect (handles align with SVG geometry edges).
+      // The Fabric shape is opacity:0 — SVG is the visual truth.
+      obj._realStrokeWidth = obj.strokeWidth || 0;
       obj.set({
         left: BBOX_PADDING,
         top: BBOX_PADDING,
-        // Strip rotation — CSS transform on the container handles visual rotation
         angle: 0,
+        strokeWidth: 0,
         selectable: true,
         evented: true,
         hasControls: true,
         hasBorders: false,
-        padding: 0,
+        padding: 2,
         cornerStyle: 'circle',
         cornerSize: 14,
         cornerColor: '#ffffff',
@@ -1007,6 +1051,100 @@ const FabricEditCanvas = memo(({
       canvas.add(obj);
       canvas.setActiveObject(obj);
       canvas.renderAll();
+
+      canvas.on('object:moving', (e) => {
+        const o = e.target;
+        const dx = o.left - BBOX_PADDING;
+        const dy = o.top - BBOX_PADDING;
+        if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return;
+
+        o.set({ left: BBOX_PADDING, top: BBOX_PADDING });
+
+        bboxOriginRef.current.left += dx;
+        bboxOriginRef.current.top += dy;
+
+        const containerEl = containerRef.current;
+        const parentEl = containerEl?.parentElement;
+        if (containerEl && parentEl && pageWidth > 0) {
+          const effectiveScale = parentEl.offsetWidth / pageWidth;
+          containerEl.style.left = ((bboxOriginRef.current.left - BBOX_PADDING) * effectiveScale) + 'px';
+          containerEl.style.top = ((bboxOriginRef.current.top - BBOX_PADDING) * effectiveScale) + 'px';
+        }
+
+        if (annotationDataRef.current) {
+          annotationDataRef.current = { ...annotationDataRef.current, left: bboxOriginRef.current.left, top: bboxOriginRef.current.top };
+        }
+
+        if (onLivePreview && annotationIndex >= 0) {
+          const updated = JSON.parse(JSON.stringify(annotationsRef.current || { objects: [] }));
+          if (updated.objects[annotationIndex]) {
+            updated.objects[annotationIndex].left = bboxOriginRef.current.left;
+            updated.objects[annotationIndex].top = bboxOriginRef.current.top;
+            onLivePreview(updated);
+          }
+        }
+      });
+
+      canvas.on('object:scaling', (e) => {
+        const o = e.target;
+        const containerEl = containerRef.current;
+        const parentEl = containerEl?.parentElement;
+        if (!containerEl || !parentEl || pageWidth <= 0) return;
+
+        const effectiveScale = parentEl.offsetWidth / pageWidth;
+        const annData = annotationDataRef.current;
+        if (!annData) return;
+
+        const newScaleX = o.scaleX;
+        const newScaleY = o.scaleY;
+        const t = String(annData.type || '').toLowerCase();
+        let newW, newH;
+        if (t === 'circle') {
+          const d = (annData.radius || 0) * 2;
+          newW = d * Math.abs(newScaleX);
+          newH = d * Math.abs(newScaleY);
+        } else if (t === 'ellipse') {
+          newW = (annData.rx || 0) * 2 * Math.abs(newScaleX);
+          newH = (annData.ry || 0) * 2 * Math.abs(newScaleY);
+        } else {
+          newW = (annData.width || 200) * Math.abs(newScaleX);
+          newH = (annData.height || 30) * Math.abs(newScaleY);
+        }
+
+        const cw = Math.ceil((newW + BBOX_PADDING * 2) * effectiveScale);
+        const ch = Math.ceil((newH + BBOX_PADDING * 2) * effectiveScale);
+        containerEl.style.width = cw + 'px';
+        containerEl.style.height = ch + 'px';
+        canvas.setDimensions({ width: cw, height: ch });
+
+        annotationDataRef.current = { ...annData, scaleX: newScaleX, scaleY: newScaleY };
+
+        if (onLivePreview && annotationIndex >= 0) {
+          const updated = JSON.parse(JSON.stringify(annotationsRef.current || { objects: [] }));
+          if (updated.objects[annotationIndex]) {
+            updated.objects[annotationIndex].scaleX = newScaleX;
+            updated.objects[annotationIndex].scaleY = newScaleY;
+            onLivePreview(updated);
+          }
+        }
+      });
+
+      canvas.on('object:modified', () => {
+        const containerEl = containerRef.current;
+        const parentEl = containerEl?.parentElement;
+        if (containerEl && parentEl && pageWidth > 0) {
+          const effectiveScale = parentEl.offsetWidth / pageWidth;
+          setContainerStyle(prev => ({
+            ...prev,
+            left: (bboxOriginRef.current.left - BBOX_PADDING) * effectiveScale,
+            top: (bboxOriginRef.current.top - BBOX_PADDING) * effectiveScale,
+          }));
+        }
+      });
+
+      // Allow handles to extend past the canvas during scaling
+      const wrapperEl = canvas.wrapperEl;
+      if (wrapperEl) wrapperEl.style.overflow = 'visible';
 
       // Container is ready — reveal it
       if (containerRef.current) containerRef.current.style.visibility = 'visible';
@@ -1170,6 +1308,10 @@ const FabricEditCanvas = memo(({
         }
       }
 
+      // Zoom clicks intentionally dismiss edit mode (commit + close). Re-entering is
+      // just a double-click, and keeping edit alive through zoom adds container reposition,
+      // canvas re-zoom, and toolbar tracking complexity with many edge cases. (2026-04-12)
+
       // Click is outside both canvas and toolbar — commit and close
       commitAndClose();
     };
@@ -1202,14 +1344,15 @@ const FabricEditCanvas = memo(({
   }, [cancelAndClose]);
 
   // -------------------------------------------------------------------------
-  // Zoom handling -- direct-DOM CSS transform bridge (ZOOM-02) + zoomGeneration detection
+  // Zoom handling -- edit mode is intentionally dismissed on zoom (click-outside
+  // commits before zoom fires). This effect only handles the text cursor edge case
+  // where zoom somehow starts while text editing is active.
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (zoomGeneration === initialZoomGenRef.current) return;
     const canvas = fabricRef.current;
     if (!canvas) return;
 
-    // For text: store cursor position for restoration after settle
     if (editTypeRef.current === 'text') {
       const activeObj = canvas.getActiveObject();
       if (activeObj?.isEditing) {
@@ -1233,13 +1376,6 @@ const FabricEditCanvas = memo(({
       const newParentWidth = parentEl.offsetWidth;
       if (newParentWidth <= 0 || pageWidth <= 0) return;
 
-      // Skip initial mount ResizeObserver fire (spurious -- no zoom change occurred).
-      // The settle timer below resizes Canvas using recomputed dimensions (hardcoded
-      // 200x40 default for new text, stored annData.height for existing) that differ
-      // from loadTextAnnotation's initial setDim sizing. This causes a visible
-      // "re-render to bigger size" ~200ms after mount. On initial mount, Canvas is
-      // already sized correctly by canvasInit -- just seed refs for the NEXT real zoom
-      // and bail out. See Bug A in Phase 11 .continue-here.md for full analysis.
       if (lastParentWidthRef.current === 0) {
         lastParentWidthRef.current = newParentWidth;
         const c = fabricRef.current;
@@ -1249,7 +1385,6 @@ const FabricEditCanvas = memo(({
         return;
       }
 
-      // Skip duplicate fires where parent width did not actually change
       if (newParentWidth === lastParentWidthRef.current) return;
       lastParentWidthRef.current = newParentWidth;
 
@@ -1301,7 +1436,7 @@ const FabricEditCanvas = memo(({
       if (lastSize.width > 0) {
         const oldEffectiveScale = editTypeRef.current === 'callout'
           ? lastSize.width / pageWidth
-          : lastSize.width / ((annotationDataRef.current?.width * (annotationDataRef.current?.scaleX || 1) + BBOX_PADDING * 2) || pageWidth);
+          : lastSize.width / ((getAnnotationDims(annotationDataRef.current).width + BBOX_PADDING * 2) || pageWidth);
         const newEffectiveScale = newParentWidth / pageWidth;
         const transformRatio = newEffectiveScale / oldEffectiveScale;
 
@@ -1340,16 +1475,9 @@ const FabricEditCanvas = memo(({
           newWidth = parentEl.offsetWidth;
           newHeight = parentEl.offsetHeight;
         } else {
-          let annWidth, annHeight;
-          if (annotationDataRef.current) {
-            annWidth = (annotationDataRef.current.width || 100) * (annotationDataRef.current.scaleX || 1);
-            annHeight = (annotationDataRef.current.height || 30) * (annotationDataRef.current.scaleY || 1);
-          } else {
-            annWidth = 200;
-            annHeight = 40;
-          }
-          const bboxW = annWidth + BBOX_PADDING * 2;
-          const bboxH = annHeight + BBOX_PADDING * 2;
+          const settleDims = getAnnotationDims(annotationDataRef.current);
+          const bboxW = settleDims.width + BBOX_PADDING * 2;
+          const bboxH = settleDims.height + BBOX_PADDING * 2;
           newWidth = Math.floor(bboxW * effectiveScale);
           newHeight = Math.floor(bboxH * effectiveScale);
         }
@@ -1368,8 +1496,9 @@ const FabricEditCanvas = memo(({
             if (annData) {
               const annLeft = annData.left || 0;
               const annTop = annData.top || 0;
-              const annWidth2 = (annData.width || 100) * (annData.scaleX || 1);
-              const annHeight2 = (annData.height || 30) * (annData.scaleY || 1);
+              const settleDims2 = getAnnotationDims(annData);
+              const annWidth2 = settleDims2.width;
+              const annHeight2 = settleDims2.height;
               containerEl.style.left = ((annLeft - BBOX_PADDING) * effectiveScale) + 'px';
               containerEl.style.top = ((annTop - BBOX_PADDING) * effectiveScale) + 'px';
               containerEl.style.width = ((annWidth2 + BBOX_PADDING * 2) * effectiveScale) + 'px';
@@ -1401,15 +1530,14 @@ const FabricEditCanvas = memo(({
           if (annData) {
             const annLeft = annData.left || 0;
             const annTop = annData.top || 0;
-            const annWidth2 = (annData.width || 100) * (annData.scaleX || 1);
-            const annHeight2 = (annData.height || 30) * (annData.scaleY || 1);
+            const syncDims = getAnnotationDims(annData);
             const isText = editTypeRef.current === 'text';
             setContainerStyle({
               position: 'absolute',
               left: (annLeft - BBOX_PADDING) * effectiveScale,
               top: (annTop - BBOX_PADDING) * effectiveScale,
-              width: (annWidth2 + BBOX_PADDING * 2) * effectiveScale,
-              height: (annHeight2 + BBOX_PADDING * 2) * effectiveScale,
+              width: (syncDims.width + BBOX_PADDING * 2) * effectiveScale,
+              height: (syncDims.height + BBOX_PADDING * 2) * effectiveScale,
               zIndex: 101,
               pointerEvents: 'auto',
               // Preserve tight outline-offset for text during zoom settle re-sync
@@ -1522,7 +1650,15 @@ const FabricEditCanvas = memo(({
           fabricRef={fabricRef}
           containerRef={containerRef}
           editCanvasStyle={containerStyle}
-          onPropertyChange={() => {}}
+          onPropertyChange={(prop, value) => {
+            if (!onLivePreview || annotationIndex < 0) return;
+            const current = annotationsRef.current;
+            const updated = JSON.parse(JSON.stringify(current || { objects: [] }));
+            if (updated.objects[annotationIndex]) {
+              updated.objects[annotationIndex][prop] = value;
+              onLivePreview(updated);
+            }
+          }}
         />
       )}
       <div
