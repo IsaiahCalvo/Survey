@@ -58,6 +58,20 @@ Requirements for SVG display + Fabric.js edit-only migration. Each maps to roadm
 - [x] **ZOOM-07**: Dead props (onScaleApplied, presentationApiRegistry, isHidden) are removed from PageAnnotationLayer
 - [x] **ZOOM-08**: Old 5-timer zoom system is fully replaced -- no PAL settle, App settle, confirm-pending, tier-2 defer, or overlay safety timers remain
 
+## v2.1 Requirements
+
+Requirements for Shape Edit Polish (Stage 0 of v2.1 "Shape Edit Polish & Foundation Wins"). Continues EDIT and ZOOM category numbering from v2.0.
+
+### Canvas Editing
+
+- [ ] **EDIT-11**: User can hold Shift during SVG shape rotation to soft-snap the rotation angle to the nearest 45° increment (0°/45°/90°/135°/180°/225°/270°/315°) when the free angle is within 3° of the increment. Outside the 3° threshold, rotation remains free even while Shift is held (so Shift-at-23° stays at 23°, Shift-at-43° snaps to 45°, Shift-at-41° stays at 41°). Releasing Shift always returns to free rotation. Applies to the SVG interaction path only; Fabric edit canvas shape rotation is commit-lossy and out of scope.
+
+- [ ] **EDIT-12**: When a shape is selected and a rotation drag is active (or when hovering the rotation handle), the user sees an inline numeric input field near the rotation handle displaying the current rotation angle in degrees. The user can type an exact value, commit with Enter or blur to apply the rotation, or cancel with Escape. Input values are normalized to `[0, 360)` and applied atomically to the annotation angle. Positioning tracks the handle during rotation and remains on-screen at zoom ≥ 25%.
+
+### Zoom & Integration
+
+- [ ] **ZOOM-09**: User can zoom the PDF down to 10% via every zoom entry point (toolbar buttons, keyboard shortcuts, scroll wheel, zoom input box, fit-to-page/fit-to-width) without the app silently re-clamping the floor to a higher value.
+
 ## Future Requirements
 
 Deferred to future milestones. Tracked but not in current roadmap.
@@ -130,12 +144,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ZOOM-06 | Phase 11 | Complete |
 | ZOOM-07 | Phase 11 | Complete |
 | ZOOM-08 | Phase 11 | Complete |
+| EDIT-11 | Phase 12 | Pending |
+| EDIT-12 | Phase 12 | Pending |
+| ZOOM-09 | Phase 12 | Pending |
 
 **Coverage:**
-- v2.0 requirements: 39 total
-- Mapped to phases: 39
-- Unmapped: 0
+- v2.0 requirements: 39 total, 39 mapped, 0 unmapped
+- v2.1 requirements: 3 total, 3 mapped to Phase 12, 0 unmapped
 
 ---
-*Requirements defined: 2026-03-23*
-*Last updated: 2026-03-23 after roadmap creation -- traceability updated*
+*Requirements defined: 2026-03-23 (v2.0), 2026-04-12 (v2.1)*
+*Last updated: 2026-04-12 after v2.1 Stage 0 requirements added*
