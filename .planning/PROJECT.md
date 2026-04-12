@@ -8,17 +8,24 @@ A PDF annotation application for mechanical/electrical engineers at mid-size fir
 
 Annotations must render correctly at all zoom levels with zero disappearance, zero flicker, and zero timer coordination — the browser handles zoom scaling automatically via SVG viewBox.
 
-## Current Milestone: v2.0 SVG Migration
+## Previous Milestone: v2.0 SVG Migration ✓ COMPLETE (2026-04-10)
 
-**Goal:** Replace Fabric.js-everywhere with SVG display + Fabric.js edit-only architecture
+Phases 8-11 shipped. SVG display + Fabric.js edit-only architecture fully
+landed with zero-timer zoom. All 39 v2.0 requirements met. See MILESTONES.md.
 
-**Target features:**
-- SVG display layer renders all committed annotations (viewBox handles zoom automatically)
-- Fabric.js Canvas mounts only during active editing/drawing (transparent overlay)
-- Select tool works entirely in SVG (click handlers, selection handles)
-- Pen/highlighter/eraser tools mount Canvas temporarily
-- Text/shape editing mounts targeted Canvas over annotation bounding box
-- Zoom works with zero timers — SVG scales via viewBox, Canvas gets CSS transform if mounted
+## Current Milestone: v2.1 Shape Edit Polish & Foundation Wins
+
+**Goal:** Finish the shape editing interaction model started in the post-v2.0
+cleanup branch (circle edit fixes) — add rotation precision and extend the
+usable zoom range so shape editing feels complete before moving on to prop-flip
+foundation wins.
+
+**Target features (Stage 0 only):**
+- Shift+rotate snaps to 45° increments during shape rotation (both SVG and Fabric edit paths)
+- Zoom floor lowered from 50% to 10% so annotations remain inspectable at extreme zoom-out
+
+Stage 1+ (prop-flip wins, QA, UX polish) remains queued in FEATURE-BACKLOG.md
+for v2.2+.
 
 ## Requirements
 
@@ -33,19 +40,16 @@ Annotations must render correctly at all zoom levels with zero disappearance, ze
 - ✓ Overlay divs as direct children of Syncfusion page divs — v1.0 Phase 1
 - ✓ CSS transform zoom handling on overlay divs — v1.0 Phase 2
 - ✓ React portals render into persistent overlay divs — v1.0 Phase 3
+- ✓ SVG display layer for all 7 annotation types with viewBox auto-scaling — v2.0 Phase 8
+- ✓ SVG selection, drag, resize, multi-select — v2.0 Phase 9
+- ✓ Fabric.js Canvas mount-on-demand for pen/eraser — v2.0 Phase 10
+- ✓ Targeted Canvas for text/shape/callout editing + zero-timer zoom — v2.0 Phase 11
+- ✓ Circle edit handle alignment, live scaling, clipping fixes — post-v2.0 cleanup (2026-04-12)
 
-### Active
+### Active (v2.1)
 
-- [ ] SVG layer renders all committed annotations with viewBox auto-scaling
-- [ ] Fabric.js Canvas mounts/unmounts per tool activation (not permanently mounted)
-- [ ] Select tool works in SVG with click-to-edit flow
-- [ ] Pen/highlighter captures strokes in Canvas, commits to SVG
-- [ ] Eraser loads annotations into Canvas for boolean path ops
-- [ ] Text editing via targeted Canvas mount on annotation bbox
-- [ ] Shape/callout editing via targeted Canvas mount
-- [ ] Zoom during active tools handled gracefully (CSS transform + remount)
-- [ ] All annotation types render correctly in SVG (paths, highlights, lines, arrows, callouts, shapes, text)
-- [ ] pathOffset handling for correct SVG path positioning
+- [ ] Shape rotation snaps to 45° increments while Shift is held
+- [ ] Zoom floor lowered to 10% so annotations remain editable at extreme zoom-out
 
 ### Out of Scope
 
@@ -83,4 +87,4 @@ Annotations must render correctly at all zoom levels with zero disappearance, ze
 | v1.0 overlay divs remain valid | SVG layer uses same direct-child-of-page-div pattern | ✓ Good |
 
 ---
-*Last updated: 2026-03-23 after milestone v2.0 initialization*
+*Last updated: 2026-04-12 after milestone v2.1 initialization*

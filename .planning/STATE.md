@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: SVG Migration
-status: complete
-stopped_at: Milestone v2.0 COMPLETE — Phase 11 closed. Canvas-vs-SVG rasterizer difference documented in CLAUDE.md as an accepted sub-pixel cosmetic (not a fixable code bug). All diagnostic logging reverted, opacity:0 restored on isBeingEdited SVG wrapper. SVG migration finished — zero-timer zoom, Canvas mounts only during active edit/draw, all 39 v2.0 requirements met.
+milestone: v2.1
+milestone_name: Shape Edit Polish & Foundation Wins
+status: defining_requirements
+stopped_at: Milestone v2.1 started. Scope locked to Stage 0 (Shape Edit Polish) only. Defining requirements.
 last_updated: "2026-04-12T00:00:00.000Z"
-last_activity: 2026-04-12 -- Circle edit fixes landed (handle alignment, live scaling, clipping); Stage 0 shape edit polish queued in FEATURE-BACKLOG.md; ready for new milestone planning
+last_activity: 2026-04-12 -- Milestone v2.1 initialized; scope is Stage 0 shape edit polish (Shift+rotate 45° snap + zoom floor 10%)
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox
-**Current focus:** Milestone v2.0 COMPLETE — ready for next milestone
+**Current focus:** Milestone v2.1 — Stage 0 shape edit polish (rotation snap + zoom floor)
 
 ## Current Position
 
-Phase: 11 of 11 (Text/Shape Editing + Zoom Cleanup) — COMPLETE
-Plan: 2 of 2 — COMPLETE
-Status: Milestone v2.0 closed, working tree triage complete
-Last activity: 2026-04-10 -- Working tree triage executed; 7 polish commits landed (visibility refactor, region edit session, text flicker, SVG text bbox, callout contentEditable, dev port, cleanup)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-12 — Milestone v2.1 started; Stage 0 scope confirmed
 
-Progress: [██████████] 100% (All 4 phases complete, all 9 plans complete)
+Progress: [░░░░░░░░░░] 0% (milestone just initialized)
 
 ## Performance Metrics
 
@@ -113,6 +113,6 @@ Progress: [██████████] 100% (All 4 phases complete, all 9 pl
 ## Session Continuity
 
 Last session: 2026-04-12
-Stopped at: v2.0 fully closed out. Circle edit fixes committed (10bcb8e). Working tree clean. HANDOFF.md deleted. Next session: plan Stage 0 (shape edit polish — 45° rotation snap, 10% zoom floor) as a new milestone/phase. User wants formal planning, no direct implementation.
-Resume file: .planning/FEATURE-BACKLOG.md (Stage 0 is next up)
-Next action: `/gsd:new-milestone` to start v2.1 with Stage 0 as the first phase
+Stopped at: Milestone v2.1 initialized. PROJECT.md + STATE.md updated. Defining REQUIREMENTS.md next, then spawning roadmapper.
+Resume file: .planning/FEATURE-BACKLOG.md (Stage 0 is scope)
+Next action: REQUIREMENTS.md → ROADMAP.md → `/gsd:discuss-phase 12`
