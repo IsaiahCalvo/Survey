@@ -497,6 +497,13 @@ const SVGAnnotationLayer = memo(({
     })();
 
     const isBeingEdited = editingAnnotationIndex != null && i === editingAnnotationIndex;
+    // Shape edit: SVG stays visible as the visual truth while Fabric provides an
+    // invisible hit-zone + handles. This sidesteps the Canvas 2D vs SVG rasterizer
+    // stroke difference documented in CLAUDE.md 2026-04-10. Text/callout still hide
+    // SVG so Fabric can render live content.
+    const objTypeForEdit = String(obj.type || '').toLowerCase();
+    const isShapeEdit = isBeingEdited && ['rect', 'circle', 'ellipse', 'triangle'].includes(objTypeForEdit);
+    const hideForEdit = isBeingEdited && !isShapeEdit;
 
     return (
       <g
@@ -505,7 +512,7 @@ const SVGAnnotationLayer = memo(({
         data-annotation-id={obj.id || ''}
         style={{
           cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
-          opacity: isBeingEdited ? 0 : undefined,
+          opacity: hideForEdit ? 0 : undefined,
           pointerEvents: isBeingEdited ? 'none' : undefined,
         }}
         transform={computedTransform}
@@ -624,14 +631,17 @@ const SVGAnnotationLayer = memo(({
         let overlayTransform;
         if (visualTransform && typeof visualTransform.id === 'number' && visualTransform.id === selectedIndex) {
           if (visualTransform.resize) {
-            // During resize: recompute bbox from transformed props
-            bbox = {
+            // During resize: recompute bbox from a transformed copy of the object so
+            // type-specific bbox math (e.g. textbox descender buffer) is applied fresh
+            // instead of being scaled along with the stored bbox height.
+            const transformedObj = {
+              ...obj,
+              scaleX: visualTransform.resize.scaleX,
+              scaleY: visualTransform.resize.scaleY,
               left: visualTransform.resize.left,
               top: visualTransform.resize.top,
-              width: bbox.width / Math.abs(obj.scaleX ?? 1) * visualTransform.resize.scaleX,
-              height: bbox.height / Math.abs(obj.scaleY ?? 1) * visualTransform.resize.scaleY,
-              angle: bbox.angle,
             };
+            bbox = getAnnotationBBox(transformedObj);
           } else if (visualTransform.rotate) {
             // During rotate: update angle on bbox
             bbox = { ...bbox, angle: visualTransform.rotate.angle };
@@ -682,6 +692,10 @@ const SVGAnnotationLayer = memo(({
           );
         }
 
+        // Border-flush types: handles sit directly on the shape's own stroke, no dashed bbox
+        const objType = String(obj.type || '').toLowerCase();
+        const isBorderFlush = objType === 'text' || objType === 'textbox' || objType === 'i-text' || objType === 'rect';
+
         return (
           <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
             <SVGSelectionOverlay
@@ -690,6 +704,8 @@ const SVGAnnotationLayer = memo(({
               inverseScale={inverseScale}
               onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
               isGroupSelection={false}
+              hideBoundingBox={isBorderFlush}
+              padding={isBorderFlush ? 0 : 2}
             />
           </g>
         );

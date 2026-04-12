@@ -88,11 +88,21 @@ export function useSVGInteraction({
   // ---------------------------------------------------------------------------
   // Clear selection when annotations prop identity changes
   // (new page loaded or external edit) — but NOT during active drag
-  // (endpoint drag does live commits which change annotations on every move)
+  // (endpoint drag does live commits which change annotations on every move).
+  // Also preserve selection on post-commit updates: if every selected index
+  // still points to a valid annotation, keep the selection. Drop it only when
+  // the array shrinks past a selected index (deletion) or the page swaps.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (dragStateRef.current?.active) return;
-    setSelectedIds(new Set());
+    const maxIdx = (annotations?.objects?.length ?? 0) - 1;
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      for (const i of prev) {
+        if (i > maxIdx || i < 0) return new Set();
+      }
+      return prev;
+    });
     setHoveredId(null);
   }, [annotations]);
 
@@ -520,7 +530,11 @@ export function useSVGInteraction({
       } else {
         const objType = String(obj.type || '').toLowerCase();
         if (objType === 'textbox' || objType === 'i-text' || objType === 'text') {
-          // Text: absorb scale into width/height so text reflows instead of stretching
+          // Text: absorb scale into width/height so text reflows instead of stretching.
+          // Honor the user's chosen size — do NOT re-tighten to fit current text.
+          // If the user resized the box oversized, that was deliberate. A future
+          // per-annotation "auto-fit on commit" setting will reintroduce tightening
+          // as an opt-in behavior (see FEATURE-BACKLOG.md).
           obj.width = (obj.width || 100) * (newScaleX / (ds.originalProps.scaleX || 1));
           if (obj.height) {
             obj.height = obj.height * (newScaleY / (ds.originalProps.scaleY || 1));

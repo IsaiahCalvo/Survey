@@ -368,15 +368,26 @@ const FabricEditCanvas = memo(({
 
     // Serialize with custom properties
     const json = activeObj.toJSON(CUSTOM_PROPS);
+    // Shape edit uses opacity:0 on the Fabric object to hide its raster while keeping
+    // handles interactive — restore the original opacity before persisting so SVG
+    // display is unaffected.
+    if (editTypeRef.current === 'shape') {
+      json.opacity = originalAnnotationRef.current?.opacity ?? 1;
+    }
     console.log(`[EditCanvas] COMMIT pre-convert — text="${(json.text||'').slice(0,20)}" fontSize=${json.fontSize} width=${json.width} height=${json.height} scaleX=${json.scaleX} scaleY=${json.scaleY} left=${json.left} top=${json.top} isNewText=${isNewText}`);
 
-    // Task 3 — Tight-width fit on commit. Fabric Textbox.width stores the
-    // WRAP TARGET (default 160), not the visible text width. Without this,
-    // a short label like "aaaaa" would save as a 160-wide box with the
+    // Task 3 — Tight-width fit on commit (NEW TEXT ONLY). Fabric Textbox.width
+    // stores the WRAP TARGET (default 160), not the visible text width. Without
+    // this, a short label like "aaaaa" would save as a 160-wide box with the
     // characters hugging the left edge. Replace with the max rendered line
     // width so the saved annotation rect hugs the actual characters.
-    // Re-edit path expands back to a comfortable typing width (see ~line 819).
-    if (activeObj.type === 'textbox') {
+    //
+    // Re-edit path intentionally does NOT re-tighten: once the user has chosen
+    // a size (either by accepting the auto-fit or by manually resizing), that
+    // size is locked. Re-entering edit mode and typing more must not shrink or
+    // re-fit the box. A future per-annotation "Auto-fit on commit" setting will
+    // make this configurable (see FEATURE-BACKLOG.md Stage 3).
+    if (isNewText && activeObj.type === 'textbox') {
       let maxLineWidth = 0;
       if (activeObj.textLines && typeof activeObj._getLineWidth === 'function') {
         for (let i = 0; i < activeObj.textLines.length; i++) {
@@ -392,6 +403,22 @@ const FabricEditCanvas = memo(({
         // 2px breathing room so stroke edge doesn't clip last glyph
         json.width = Math.ceil(maxLineWidth + 2);
       }
+    }
+
+    // Re-edit path: preserve the user's chosen size, but allow the textbox to
+    // GROW when typed content needs more room. Rule: max(fabricNatural, stored).
+    // Never shrink below the user's chosen width/height; always grow to fit
+    // overflow so text can't spill past the visible bbox.
+    // Future "Preferences → Annotations → Auto-fit textbox on commit" setting
+    // will toggle this behavior (see FEATURE-BACKLOG.md Stage 3).
+    if (!isNewText && activeObj.type === 'textbox' && originalAnnotationRef.current) {
+      const naturalH = activeObj.calcTextHeight
+        ? activeObj.calcTextHeight()
+        : (activeObj.height || 0);
+      const origH = originalAnnotationRef.current.height || 0;
+      const origW = originalAnnotationRef.current.width || 0;
+      json.width = Math.max(activeObj.width || 0, origW);
+      json.height = Math.max(naturalH, origH);
     }
 
     // For new text in page-space: offset from bbox origin (same as existing text)
@@ -559,12 +586,8 @@ const FabricEditCanvas = memo(({
         annTop = annotationData.top || 0;
         annWidth = (annotationData.width || 200) * (annotationData.scaleX || 1);
         annHeight = (annotationData.height || 30) * (annotationData.scaleY || 1);
-        // Task 3 — For TEXT re-edit, expand placeholder container width to
-        // match the Textbox wrap-width expansion (see ~line 819). Keeps
-        // initial hidden container size aligned with the final canvas size
-        // so there's no mid-rAF mismatch. Shapes keep stored width as-is.
-        if (editType === 'text') {
-          annWidth = Math.max(annWidth, 160);
+        if (editType === 'text' && annWidth < 30) {
+          annWidth = 30;
         }
       } else {
         annLeft = 0;
@@ -847,12 +870,7 @@ const FabricEditCanvas = memo(({
             left: BBOX_PADDING,
             top: BBOX_PADDING,
             angle: 0,
-            // Task 3 — Expand tight-saved widths back to a comfortable wrap
-            // width for re-editing. If the annotation was saved tight (e.g.
-            // width=40 for "aaaaa"), give the user at least 160px of room to
-            // add more characters without aggressive per-grapheme wrapping.
-            // Commit path (~line 370) re-tightens on save.
-            width: Math.max(json.width || 0, 160),
+            width: json.width || 160,
             splitByGrapheme: true,
             fontWeight: json.fontWeight || 'normal',
             styles: {},
@@ -875,9 +893,15 @@ const FabricEditCanvas = memo(({
         textObj.initDimensions();
         textObj._clearCache();
 
-        // Resize canvas to fit actual text BEFORE first render — prevents flash
+        // Resize canvas to fit actual text BEFORE first render — prevents flash.
+        // Height uses max(natural, stored) so a previously-resized-larger textbox
+        // does not snap to tight-natural height the instant we re-enter edit mode.
         const actualW = textObj.width * (textObj.scaleX || 1);
-        const actualH = textObj.calcTextHeight ? textObj.calcTextHeight() : textObj.height * (textObj.scaleY || 1);
+        const naturalH = textObj.calcTextHeight
+          ? textObj.calcTextHeight()
+          : textObj.height * (textObj.scaleY || 1);
+        const storedH = originalAnnotationRef.current?.height || 0;
+        const actualH = Math.max(naturalH, storedH);
         const es = canvas.getZoom();
         // Add to canvas WITHOUT rendering yet (renderOnAddRemove: false)
         canvas.add(textObj);
@@ -921,10 +945,15 @@ const FabricEditCanvas = memo(({
           setIsLoading(false);
         });
 
-        // Auto-resize height as text wraps — width stays fixed for wrapping
+        // Auto-resize height as text wraps — width stays fixed for wrapping.
+        // Per-keystroke: use max(natural, stored) so typing less than the stored
+        // height does not shrink the visual box below what the user chose.
         textObj.on('changed', () => {
           if (!mountedRef.current || !containerRef.current) return;
-          const h = (textObj.calcTextHeight() + BBOX_PADDING * 2) * es + 8;
+          const naturalH = textObj.calcTextHeight();
+          const storedH2 = originalAnnotationRef.current?.height || 0;
+          const effectiveH = Math.max(naturalH, storedH2);
+          const h = (effectiveH + BBOX_PADDING * 2) * es + 8;
           const newH = Math.max(Math.round(30 * es), Math.ceil(h));
           canvas.setDimensions({ height: newH });
           containerRef.current.style.height = newH + 'px';
@@ -950,11 +979,13 @@ const FabricEditCanvas = memo(({
       }
       const obj = objects[0];
 
-      // Pre-scale padding to match SVGSelectionOverlay PADDING=2 (viewBox units).
-      // Fabric's `padding` is in canvas pixels and does NOT scale with setZoom(),
-      // so padding=2 produces only 2 screen px while SVG produces 2*effectiveScale
-      // screen px. Multiply by the current zoom to compensate.
-      const svgPaddingScaled = 2 * canvas.getZoom();
+      // Shape edit: no dashed border, handles visually match SVGSelectionOverlay
+      // (white circles, ~14px diameter, centered exactly on the shape corner/midpoint
+      // — not outlined squares extending outward like Fabric's default).
+      // opacity: 0 hides the Fabric shape render while keeping the hit zone + handles
+      // interactive. SVGAnnotationLayer keeps the SVG shape visible for shape edits,
+      // making SVG the single visual truth (sidesteps Canvas 2D vs SVG rasterizer
+      // stroke difference — see CLAUDE.md 2026-04-10).
       obj.set({
         left: BBOX_PADDING,
         top: BBOX_PADDING,
@@ -963,9 +994,14 @@ const FabricEditCanvas = memo(({
         selectable: true,
         evented: true,
         hasControls: true,
-        hasBorders: true,
-        padding: svgPaddingScaled,
-        borderScaleFactor: 2,
+        hasBorders: false,
+        padding: 0,
+        cornerStyle: 'circle',
+        cornerSize: 14,
+        cornerColor: '#ffffff',
+        cornerStrokeColor: '#d1d1d1',
+        transparentCorners: false,
+        opacity: 0,
       });
 
       canvas.add(obj);

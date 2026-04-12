@@ -17,20 +17,19 @@ import { getCursorForHandle } from '../utils/svgTransformMath';
 import { getHandlePositions } from '../utils/svgBoundingBox';
 import rotateIconSvg from '../assets/rotate-icon.svg';
 
-// Padding around the bounding box — minimal to keep selection tight to the annotation
-const PADDING = 2;
-
 const SVGSelectionOverlay = memo(({
   bbox,             // { left, top, width, height, angle }
   inverseScale,     // number -- for constant-size handles
   onHandleDrag,     // (e, handleId) => void
   isGroupSelection, // boolean -- true for multi-select (hides individual handles)
   strokeOpacity = 1.0, // number -- opacity for bounding box stroke (Plan 03: group union box uses 0.6)
+  hideBoundingBox = false, // boolean -- hide the blue dashed rect (border-flush types)
+  padding = 2,      // number -- padding around bbox; 0 places handles directly on stroke
 }) => {
   if (!bbox) return null;
 
   const { left, top, width, height, angle } = bbox;
-  const handles = getHandlePositions(bbox, PADDING);
+  const handles = getHandlePositions(bbox, padding);
   const is = inverseScale; // shorthand
 
   // Center of the bounding box for rotation transform
@@ -38,10 +37,10 @@ const SVGSelectionOverlay = memo(({
   const cy = top + height / 2;
 
   // Bounding box rect dimensions (with padding)
-  const boxX = left - PADDING;
-  const boxY = top - PADDING;
-  const boxW = width + PADDING * 2;
-  const boxH = height + PADDING * 2;
+  const boxX = left - padding;
+  const boxY = top - padding;
+  const boxW = width + padding * 2;
+  const boxH = height + padding * 2;
 
   // Shadow filter strings
   const cornerShadow = `drop-shadow(0 ${1 * is}px ${3 * is}px rgba(0,0,0,0.15))`;
@@ -65,18 +64,20 @@ const SVGSelectionOverlay = memo(({
       style={{ pointerEvents: 'none' }}
     >
       {/* --- Bounding box rect --- */}
-      <rect
-        x={boxX}
-        y={boxY}
-        width={boxW}
-        height={boxH}
-        fill="none"
-        stroke="#4a90e2"
-        strokeOpacity={strokeOpacity}
-        strokeWidth={2 * is}
-        strokeDasharray={`${4 * is},${4 * is}`}
-        style={{ pointerEvents: 'none' }}
-      />
+      {!hideBoundingBox && (
+        <rect
+          x={boxX}
+          y={boxY}
+          width={boxW}
+          height={boxH}
+          fill="none"
+          stroke="#4a90e2"
+          strokeOpacity={strokeOpacity}
+          strokeWidth={2 * is}
+          strokeDasharray={`${4 * is},${4 * is}`}
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
 
       {/* --- Handles (hidden for group selection -- Plan 03 renders group handles) --- */}
       {!isGroupSelection && (
