@@ -1,5 +1,43 @@
 # Survey BetaSafeS2 — Claude Code Instructions
 
+## Phase Discipline — ENFORCED
+
+This project uses the global GSD phase discipline rules from `~/.claude/CLAUDE.md`
+(PAUL-style acceptance criteria, DO NOT CHANGE boundaries, RECONCILIATION.md at
+phase close). A SessionStart hook at `~/.claude/hooks/gsd-phase-discipline.py`
+checks `.planning/phases/` and flags gaps.
+
+When creating or editing a phase CONTEXT.md in this project, **always** include:
+
+1. `## Acceptance Criteria` with Given/When/Then bullets
+2. `## DO NOT CHANGE` with an explicit file allowlist (start from the "Always
+   Protected" list below, then add phase-specific files)
+
+Never close a phase without writing `<phase>/<phase>-RECONCILIATION.md`.
+
+### Always Protected (project-wide DO NOT CHANGE unless explicitly in scope)
+
+These files are load-bearing for v2.0 and must NEVER be modified without an
+explicit user waiver. Include them in every phase's DO NOT CHANGE list by default,
+then remove only the ones the phase explicitly owns.
+
+- `src/App.jsx` — ~1.3MB main file, zoom logic, portal host resolution, render
+  loop. Edits here are high-risk; any change requires explicit approval.
+- `src/components/PageAnnotationLayer.jsx` — per-page Fabric.js canvas overlay
+  (~9,858 lines). Only touch when the phase explicitly owns PAL changes.
+- `src/components/FabricDrawingCanvas.jsx` / `FabricEraserCanvas.jsx` /
+  `FabricEditCanvas.jsx` — all use the `zoomGeneration` signal contract; do not
+  remove or rename that signal.
+- `src/components/SVGAnnotationLayer.jsx` — SVG viewBox owns all zoom scaling.
+  Never reintroduce JavaScript zoom coordination here.
+- `package.json` / `vite.config.js` — infra. Touching requires explicit approval.
+
+### Session Moments
+
+Follow the PSMM logging rules in `~/.claude/CLAUDE.md`. Today's file is at
+`~/.claude/projects/-Users-isaiahcalvo-Desktop-Survey-BetaSafeS2/memory/session-moments/YYYY-MM-DD.md`
+and is auto-created at session start.
+
 ## CRITICAL — DO NOT BREAK (Enforced Rules)
 
 - **Canvas sizing MUST use container-aware measurement, not pageSize * scale.** The Electron/browser zoom factor creates a mismatch. Always measure `containerEl.offsetWidth / pageSize.width` to get `effectiveScale`. This applies to FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas, and any future Canvas component. See Gotchas section for details.

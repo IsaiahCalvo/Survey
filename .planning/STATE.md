@@ -101,8 +101,8 @@ Progress: [██████████] 100% (All 4 phases complete, all 9 pl
 - ~~Zoom while drawing creates disconnected fragment~~ — user reports this is fixed
 - ~~Bug 3: Text boxes need visible black border~~ — already working
 - ~~Bug 4: Drag preview visual~~ — already working
-- Bug 2: Cursor flicker on text creation (both click-to-place AND drag-to-create) — 5 attempts failed, source is external to FabricEditCanvas
-- Bug 5: Text size/position jumps when switching between edit mode and SVG display — re-render visual mismatch
+- ~~Bug 2: Cursor flicker on text creation (both click-to-place AND drag-to-create)~~ — FIXED (user confirmed 2026-04-11)
+- ~~Bug 5: Text size/position jumps when switching between edit mode and SVG display~~ — FIXED (user confirmed 2026-04-11)
 - Selection box handles should sit directly on text border, not offset outside it — user prefers removing the black border entirely during select/edit and just showing blue selection box with handles on edges
 
 ### Blockers/Concerns
