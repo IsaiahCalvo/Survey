@@ -9,7 +9,7 @@
  * Phase 9 Plan 03: Multi-select group ops (group-move, group-delete), double-click edit trigger.
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage } from '../utils/svgTransformMath';
+import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45 } from '../utils/svgTransformMath';
 import { getAnnotationBBox, getLineEndpoints, isImportedPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
 
 /**
@@ -393,7 +393,13 @@ export function useSVGInteraction({
       const dx = svgPoint.x - ds.centerX;
       const dy = svgPoint.y - ds.centerY;
       const radians = Math.atan2(dy, dx);
-      const newAngle = normalizeAngle(radians);
+      let newAngle = normalizeAngle(radians);
+
+      // EDIT-11: soft Shift-snap to nearest 45° within 3° threshold (CONTEXT.md locked decision)
+      if (e.shiftKey) {
+        newAngle = snapAngleToNearest45(newAngle, 3);
+      }
+
       // Delta from original angle — the wrapper <g> already renders the committed angle,
       // so the visual transform must only apply the change to avoid double-rotation.
       const deltaAngle = newAngle - (ds.originalProps.angle || 0);
