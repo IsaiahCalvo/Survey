@@ -1,16 +1,17 @@
-# HANDOFF — Phase 12 gap bugs (bugs #1, #1b, #2, #2.5, #2.6 shipped — #3, #4 remaining)
+# HANDOFF — Phase 12 gap bugs (bugs #1, #1b, #2, #2.5, #2.6, #3 shipped — only #4 remaining)
 
-**Session:** 2026-04-13 · **Branch:** `post-v2.0/cleanup` · **Context at handoff:** 21%
+**Session:** 2026-04-13 (updated) · **Branch:** `post-v2.0/cleanup` · **Context at handoff:** ~40%
 
 ## Where we are
 
-Plan 12-01 checkpoint remains OPEN. **Five** gap bugs shipped and user-verified. Two remain before 12-01 can close.
+Plan 12-01 checkpoint remains OPEN. **Six** gap bugs shipped and user-verified. Only **bug #4** remains before 12-01 can close.
 
-**Do NOT close Plan 12-01 or advance to Wave 2 (Plan 12-02 EDIT-12) until bugs #3 and #4 are resolved and the user re-verifies the full 15-check manual checklist.**
+**Do NOT close Plan 12-01 or advance to Wave 2 (Plan 12-02 EDIT-12) until bug #4 is resolved and the user re-verifies the full 15-check manual checklist.**
 
 ## Commits landed
 
 ```
+056dc1cf fix(12-01): bug #3 blue glow + line/arrow stroke + handle dampening
 29a51a8b fix(12-01): fit-page/fit-height use pdf.js pageSize × calibrated Electron factor — bug #2.6
 8b5d7ee5 chore(12-01): update handoff after bugs #2 + #2.5 ship
 0d0c3218 fix(12-01): replace fitToPage() with direct zoomTo() — bug #2.5 v2
@@ -34,8 +35,8 @@ All on `post-v2.0/cleanup`. 79/79 tests green.
 | 2 | ✅ `4839f1e` | Fit-height wrong calc | `App.jsx` FIT_HEIGHT | — |
 | 2.5 | ✅ `0d0c3218` | Fit-page continuous-scroll cascade | `App.jsx` FIT_PAGE | — |
 | **2.6** | ✅ `29a51a8b` | **Fit-page → 10% on first click + "click twice" UI-lag on all four modes** | `App.jsx` handleZoomModeSelect. Root cause: `viewer.getZoomValue()` LEADS the DOM re-layout — at the failing moment, getZoomValue=10 but pageDiv was still rendered at ~88%. Formula `pageDiv / (getZoomValue/100)` produced 14360-px "real" page → clamped to 10%. Also confirmed `magnification.zoomFactor` is undefined in this Syncfusion version. Bug #2.7 (click-twice UI lag) turned out to be an amplification of #2.6, not a separate bug. | — |
-| 3 | ⏳ NEXT | Blue glow/hitbox scales with zoom in selection mode | `SVGSelectionOverlay.jsx` — almost certainly missing `vector-effect="non-scaling-stroke"` on the glow stroke element | low, ~1 LOC |
-| 4 | ⏳ HARDEST | Edit-mode shape handles misaligned | `FabricEditCanvas.jsx` + `PageAnnotationLayer.jsx` + `SVGSelectionOverlay.jsx` | high, needs cross-file instrumentation — **earmark own `/clear` session** |
+| **3** | ✅ `056dc1cf` | **Blue glow + line/arrow stroke + handle dampening** | Three codepaths: (a) `SVGSelectionOverlay.jsx` bbox → use `vector-effect="non-scaling-stroke"` instead of `* inverseScale` math; (b) `SVGAnnotationLayer.jsx` line/arrow hover highlight + endpoint handles bypass SVGSelectionOverlay entirely, same fix + removed buggy double-apply of `* inverseScale`; (c) `svgAnnotationRenderers.jsx` line/arrow annotation body — REMOVED `non-scaling-stroke` since `renderLine` already bakes scaleX/scaleY into coords, so a plain `strokeWidth` gives Fabric `strokeUniform` behavior for free AND lets strokes scale with viewBox zoom as annotation content should. Also dampened handle sizing with `Math.sqrt(inverseScale)` at user's request — linear 1:1 inverse scaling was too dramatic. | — |
+| 4 | ⏳ NEXT | Edit-mode shape handles misaligned | `FabricEditCanvas.jsx` + `PageAnnotationLayer.jsx` + `SVGSelectionOverlay.jsx` | high, needs cross-file instrumentation — **earmark own `/clear` session** |
 
 ## Key insight (bug #2.6) — add to CLAUDE.md in cleanup pass
 
@@ -47,13 +48,23 @@ Same class of root cause as the 2026-03-22 canvas sizing gotcha: **trust pdf.js 
 
 Bug #2.6 also added synchronous `setScale()` calls in all four zoom-mode branches, which incidentally eliminated the "click twice" UX — bug #2.7 was an amplification of #2.6 rather than a separate root cause. A diagnostic polling interval caught only initial-load Syncfusion transients during bug #2.6 diagnosis, no hidden code path.
 
+## Key insight (bug #3) — add to CLAUDE.md in cleanup pass
+
+**Fabric.js `strokeUniform: true` is NOT equivalent to SVG `vector-effect="non-scaling-stroke"`.** They mean different things and conflating them produces visible bugs:
+
+- **Fabric `strokeUniform: true`** — stroke width does not scale with the object's own `scaleX/scaleY` during a resize drag. But the stroke DOES scale with canvas zoom, just like any other content in the canvas.
+- **SVG `non-scaling-stroke`** — stroke width stays at fixed screen pixels regardless of ANY transform, including ancestor `viewBox` zoom.
+
+When an SVG renderer bakes `scaleX/scaleY` into the emitted coordinates (rather than applying them as an SVG transform), a plain `strokeWidth` attribute already gives you Fabric `strokeUniform` behavior for free — the stroke doesn't react to object.scaleX/scaleY (desired) but does scale with viewBox zoom (also desired, since annotations are content that should visually shrink when the document shrinks). Adding `non-scaling-stroke` on top BREAKS the second half: strokes pin to screen pixels and look disproportionately bold at low zoom.
+
+**Rule of thumb:** only use `non-scaling-stroke` on SVG elements that represent UI chrome (selection bboxes, handles) where you explicitly want them to stay at constant screen-pixel thickness. For annotation content, never use it — rely on the renderer baking scale into coords.
+
 ## First actions in next session
 
 1. Read this file
 2. Read `.planning/phases/12-shape-edit-polish/.continue-here.md`
-3. Ask user: "All five zoom-family bugs (#1, #1b, #2, #2.5, #2.6) are user-verified. Ready to start bug #3 (blue glow scales with zoom)?"
-4. Bug #3 — open `src/components/SVGSelectionOverlay.jsx`, grep for the glow/stroke element, add `vector-effect="non-scaling-stroke"`. Ship as atomic commit. User verifies by zooming with a shape selected — glow thickness should stay constant.
-5. Bug #4 — **get its own `/clear` session**. Cross-file work across `FabricEditCanvas.jsx`, `PageAnnotationLayer.jsx`, `SVGSelectionOverlay.jsx`. Logs will be large.
+3. Ask user: "All six gap bugs (#1–#3) are user-verified. Ready to start bug #4 (edit-mode shape handles misaligned)?"
+4. Bug #4 — instrument handle positioning in `FabricEditCanvas.jsx`, have user repro clicking handles at <50% zoom, save console to `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log`, diagnose from logs, ship minimal atomic fix.
 
 After bug #4 clears → user re-runs the full 15-check manual checklist → write `12-01-SUMMARY.md` → advance `STATE.md` → start Wave 2 (Plan 12-02 EDIT-12 RotationInputField) → write `12-RECONCILIATION.md` before closing Phase 12.
 
