@@ -12,7 +12,7 @@ export const DEFAULT_ZOOM_PREFERENCES = {
   manualScale: 1.0
 };
 
-const MIN_SCALE = 0.5;
+const MIN_SCALE = 0.1;
 const MAX_SCALE = 5.0;
 const SCALE_EPSILON = 0.0001;
 

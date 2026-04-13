@@ -21996,7 +21996,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
-    const clamped = Math.min(Math.max(parsed, 50), 500);
+    const clamped = Math.min(Math.max(parsed, 10), 500);
     const controller = zoomControllerRef.current;
     if (controller) {
       const normalized = clampScale(clamped / 100);
