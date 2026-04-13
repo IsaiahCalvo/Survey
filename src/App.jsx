@@ -12774,10 +12774,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [pdfDoc, pageSizes]);
 
   useEffect(() => {
+    // In Syncfusion mode, the viewer owns zoom persistence across page navigation
+    // (fitToPage/fitToWidth maintain themselves as the user scrolls), and the
+    // zoomController's internal mode is never updated from handleZoomModeSelect's
+    // Syncfusion branches — so applyZoom() here would use a stale mode and re-zoom
+    // to the wrong value on every pageChange, disrupting scroll geometry and
+    // cascading into runaway pageChange events at low zoom levels. See bug #2.5.
+    if (useSyncfusionRenderer) return;
     if (zoomMode !== ZOOM_MODES.MANUAL) {
       zoomControllerRef.current?.applyZoom({ persist: false, force: true });
     }
-  }, [pageNum, zoomMode]);
+  }, [pageNum, zoomMode, useSyncfusionRenderer]);
 
   useEffect(() => {
     zoomControllerRef.current?.applyZoom({ persist: false, force: true });
