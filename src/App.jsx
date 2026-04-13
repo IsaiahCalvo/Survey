@@ -12649,7 +12649,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         syncfusionZoomSourceRef.current = mode;
         setZoomMode(mode);
         if (mode === ZOOM_MODES.FIT_PAGE) {
-          magnification.fitToPage();
+          // magnification.fitToPage() triggers runaway pageChange cascades on
+          // continuous scroll (~90 events/sec). Same DOM-measurement pattern
+          // as bug #2 fit-height fix: compute min(widthScale, heightScale) from
+          // live Syncfusion page div, call zoomTo directly. See bug #2.5.
+          const wrapperEl = syncfusionWrapperRef.current;
+          const pageDiv = wrapperEl?.querySelector('.e-pv-page-div');
+          const currentZoomPercent = (typeof magnification.zoomFactor === 'number'
+            ? magnification.zoomFactor
+            : (typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null));
+          const wrapperW = wrapperEl?.clientWidth || 0;
+          const wrapperH = wrapperEl?.clientHeight || 0;
+          const pageDivW = pageDiv?.offsetWidth || 0;
+          const pageDivH = pageDiv?.offsetHeight || 0;
+          if (wrapperW > 0 && wrapperH > 0 && pageDivW > 0 && pageDivH > 0 && typeof currentZoomPercent === 'number' && currentZoomPercent > 0) {
+            const z = currentZoomPercent / 100;
+            const realPageW = pageDivW / z;
+            const realPageH = pageDivH / z;
+            const widthScale = wrapperW / realPageW;
+            const heightScale = wrapperH / realPageH;
+            const pageScale = Math.max(0.1, Math.min(5.0, Math.min(widthScale, heightScale)));
+            magnification.zoomTo(Math.round(pageScale * 100));
+          } else {
+            magnification.fitToPage();
+          }
         } else if (mode === ZOOM_MODES.FIT_WIDTH) {
           magnification.fitToWidth();
         } else if (mode === ZOOM_MODES.FIT_HEIGHT) {
