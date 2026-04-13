@@ -12611,6 +12611,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const pageNumRef = useRef(1);
   const pageSizesRef = useRef({});
   const manualZoomScaleRef = useRef(initialZoomPreferences.manualScale);
+  // Bug #2.6 calibration: Syncfusion's page div at 100% is pdfPageSize.width * electronFactor
+  // CSS pixels (Electron/browser zoom factor). Calibrated on first known-good measurement
+  // and reused for fit-page/fit-height so we never divide pageDiv by the racy getZoomValue().
+  const syncfusionElectronFactorRef = useRef(null);
 
   const persistZoomPreferences = useCallback((overrides = {}) => {
     const merged = {
@@ -12639,61 +12643,83 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const magnification = viewer?.magnificationModule;
       if (!magnification) return;
 
+      // Bug #2.6 helper: calibrate the Electron zoom factor from a KNOWN commanded
+      // scale. Scheduled via rAF so the DOM has relaid before we measure. Writes to
+      // syncfusionElectronFactorRef so fit-page/fit-height don't need to divide live
+      // pageDiv by the racy getZoomValue() API (which leads the DOM re-layout).
+      const calibrateElectronFactor = (knownScale) => {
+        requestAnimationFrame(() => {
+          const pageDiv = syncfusionWrapperRef.current?.querySelector('.e-pv-page-div');
+          const pdfPageSize = pageSizesRef.current?.[pageNumRef.current]
+            || (pageSizesRef.current && Object.values(pageSizesRef.current)[0]);
+          if (!pageDiv || !pdfPageSize?.width || !(knownScale > 0)) return;
+          const factor = pageDiv.offsetWidth / (pdfPageSize.width * knownScale);
+          if (factor > 0.3 && factor < 5) {
+            syncfusionElectronFactorRef.current = factor;
+          }
+        });
+      };
+
       if (mode === ZOOM_MODES.MANUAL) {
         syncfusionZoomSourceRef.current = ZOOM_MODES.MANUAL;
         setZoomMode(ZOOM_MODES.MANUAL);
         const manualScale = manualZoomScaleRef.current || DEFAULT_ZOOM_PREFERENCES.manualScale;
         magnification.zoomTo(manualScale * 100);
+        setScale(manualScale);
+        calibrateElectronFactor(manualScale);
         persistZoomPreferences({ mode: ZOOM_MODES.MANUAL, manualScale });
       } else {
         syncfusionZoomSourceRef.current = mode;
         setZoomMode(mode);
+
+        // Bug #2.6: derive real page dimensions from pdf.js pageSize (scale-invariant,
+        // in PDF points) × calibrated Electron zoom factor. Never divide live pageDiv by
+        // getZoomValue() — that API leads the DOM re-layout and produces catastrophic
+        // values (e.g. 14360-px "real" page → clamped to 10% zoom).
+        const wrapperEl = syncfusionWrapperRef.current;
+        const wrapperW = wrapperEl?.clientWidth || 0;
+        const wrapperH = wrapperEl?.clientHeight || 0;
+        const pdfPageSize = pageSizesRef.current?.[pageNumRef.current]
+          || (pageSizesRef.current && Object.values(pageSizesRef.current)[0]);
+        // Fallback to 1.0 on first click before any calibration has happened.
+        // Safe default: may produce a slightly off fit on the very first session click,
+        // but never the 10% catastrophic fail. Subsequent clicks self-correct.
+        const electronFactor = syncfusionElectronFactorRef.current || 1.0;
+
         if (mode === ZOOM_MODES.FIT_PAGE) {
-          // magnification.fitToPage() triggers runaway pageChange cascades on
-          // continuous scroll (~90 events/sec). Same DOM-measurement pattern
-          // as bug #2 fit-height fix: compute min(widthScale, heightScale) from
-          // live Syncfusion page div, call zoomTo directly. See bug #2.5.
-          const wrapperEl = syncfusionWrapperRef.current;
-          const pageDiv = wrapperEl?.querySelector('.e-pv-page-div');
-          const currentZoomPercent = (typeof magnification.zoomFactor === 'number'
-            ? magnification.zoomFactor
-            : (typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null));
-          const wrapperW = wrapperEl?.clientWidth || 0;
-          const wrapperH = wrapperEl?.clientHeight || 0;
-          const pageDivW = pageDiv?.offsetWidth || 0;
-          const pageDivH = pageDiv?.offsetHeight || 0;
-          if (wrapperW > 0 && wrapperH > 0 && pageDivW > 0 && pageDivH > 0 && typeof currentZoomPercent === 'number' && currentZoomPercent > 0) {
-            const z = currentZoomPercent / 100;
-            const realPageW = pageDivW / z;
-            const realPageH = pageDivH / z;
+          if (wrapperW > 0 && wrapperH > 0 && pdfPageSize?.width > 0 && pdfPageSize?.height > 0) {
+            const realPageW = pdfPageSize.width * electronFactor;
+            const realPageH = pdfPageSize.height * electronFactor;
             const widthScale = wrapperW / realPageW;
             const heightScale = wrapperH / realPageH;
             const pageScale = Math.max(0.1, Math.min(5.0, Math.min(widthScale, heightScale)));
             magnification.zoomTo(Math.round(pageScale * 100));
+            setScale(pageScale);
+            calibrateElectronFactor(pageScale);
           } else {
             magnification.fitToPage();
           }
         } else if (mode === ZOOM_MODES.FIT_WIDTH) {
           magnification.fitToWidth();
+          // fitToWidth() works natively and doesn't have the scroll-cascade bug fit-page had.
+          // Calibrate from the post-call getZoomValue one rAF later so FIT_WIDTH usage
+          // calibrates the factor for subsequent FIT_PAGE clicks.
+          requestAnimationFrame(() => {
+            const postZoom = (typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null);
+            if (typeof postZoom === 'number' && postZoom > 0) {
+              const postScale = postZoom / 100;
+              setScale(postScale);
+              calibrateElectronFactor(postScale);
+            }
+          });
         } else if (mode === ZOOM_MODES.FIT_HEIGHT) {
-          // Syncfusion does not expose a direct fit-height API. The zoomController
-          // path reads pageSize from pdf.js in PDF points, but Syncfusion renders at
-          // a different baseline (CSS pixels * Electron/browser zoom factor), so the
-          // ratio wrapper_h / pdf_point_h is wrong. Measure Syncfusion's live page
-          // div, normalize by current zoom to get the real 100% height, then fit.
-          const wrapperEl = syncfusionWrapperRef.current;
-          const pageDiv = wrapperEl?.querySelector('.e-pv-page-div');
-          const currentZoomPercent = (typeof magnification.zoomFactor === 'number'
-            ? magnification.zoomFactor
-            : (typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null));
-          const wrapperH = wrapperEl?.clientHeight || 0;
-          const pageDivH = pageDiv?.offsetHeight || 0;
-          if (wrapperH > 0 && pageDivH > 0 && typeof currentZoomPercent === 'number' && currentZoomPercent > 0) {
-            const realPageHeightAt100 = pageDivH / (currentZoomPercent / 100);
-            const heightScale = Math.max(0.1, Math.min(5.0, wrapperH / realPageHeightAt100));
+          if (wrapperH > 0 && pdfPageSize?.height > 0) {
+            const realPageH = pdfPageSize.height * electronFactor;
+            const heightScale = Math.max(0.1, Math.min(5.0, wrapperH / realPageH));
             magnification.zoomTo(Math.round(heightScale * 100));
+            setScale(heightScale);
+            calibrateElectronFactor(heightScale);
           } else {
-            // DOM not measurable (first-frame, orphaned page div) — fall back to controller.
             zoomControllerRef.current?.setMode(mode);
           }
         }
@@ -12714,7 +12740,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   useEffect(() => {
     scaleRef.current = scale;
-  }, [scale]);
+    // Bug #2.6 opportunistic calibration: at the first post-load scale change where
+    // pdf.js pageSizes are available, measure the Electron factor from pageDiv vs
+    // pdf.js pageSize. Trusts that onDocumentLoad's bug #1b reconciliation has put
+    // React scale in sync with DOM by this point.
+    if (useSyncfusionRenderer && !syncfusionElectronFactorRef.current && scale > 0) {
+      requestAnimationFrame(() => {
+        if (syncfusionElectronFactorRef.current) return;
+        const pageDiv = syncfusionWrapperRef.current?.querySelector('.e-pv-page-div');
+        const pdfPageSize = pageSizesRef.current?.[pageNumRef.current]
+          || (pageSizesRef.current && Object.values(pageSizesRef.current)[0]);
+        if (!pageDiv || !pdfPageSize?.width) return;
+        const factor = pageDiv.offsetWidth / (pdfPageSize.width * scale);
+        if (factor > 0.3 && factor < 5) {
+          syncfusionElectronFactorRef.current = factor;
+        }
+      });
+    }
+  }, [scale, useSyncfusionRenderer]);
 
   useEffect(() => {
     pageNumRef.current = pageNum;
