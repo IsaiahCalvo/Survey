@@ -12201,6 +12201,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const prevScale = scaleRef.current;
     scaleRef.current = nextScale;
 
+    // Live-update zoom input display — decoupled from deferred setScale so the
+    // toolbar % matches the canvas during rapid zoom (setScale lags ~1000ms
+    // while zoomOverlayTransformActiveRef gates PAL unmount churn).
+    if (document.activeElement !== zoomInputRef.current) {
+      setZoomInputValue(String(Math.round(nextScale * 100)));
+    }
+
     // ── Activate zoom overlay transform on first zoom event ──
     // MUST happen BEFORE shouldDeferScaleCommit check so that
     // the first zoom event also defers setScale() and prevents
