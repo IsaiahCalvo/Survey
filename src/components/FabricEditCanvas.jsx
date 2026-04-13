@@ -733,8 +733,14 @@ const FabricEditCanvas = memo(({
         annWidth = textBoxWidth || 160;
         annHeight = 30;
       } else if (annotationDataRef.current) {
-        annWidth = (annotationDataRef.current.width || 200) * (annotationDataRef.current.scaleX || 1);
-        annHeight = (annotationDataRef.current.height || 30) * (annotationDataRef.current.scaleY || 1);
+        // Use getAnnotationDims so circle/ellipse read radius/rx/ry instead of
+        // hitting the 200/30 fallback — that fallback undersized the canvas for
+        // shapes without width/height on first edit, clipping the bottom half
+        // of handles. Second entry worked only because the first commit path
+        // wrote width/height back to the annotation JSON.
+        const dims = getAnnotationDims(annotationDataRef.current);
+        annWidth = dims.width;
+        annHeight = dims.height;
       } else {
         annWidth = 200;
         annHeight = 40;
@@ -1039,7 +1045,11 @@ const FabricEditCanvas = memo(({
         evented: true,
         hasControls: true,
         hasBorders: false,
-        padding: 2,
+        // padding:0 puts handles AT the fabric fill bbox corner, which sits
+        // ~1–2 screen px inside the SVG shape's outer stroke edge → handles
+        // land on the stroke center visually. padding:2 pushed them outside
+        // the stroke for a noticeable "off the border" offset.
+        padding: 0,
         cornerStyle: 'circle',
         cornerSize: 14,
         cornerColor: '#ffffff',
