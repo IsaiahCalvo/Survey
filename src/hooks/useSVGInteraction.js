@@ -649,6 +649,30 @@ export function useSVGInteraction({
 
     // Imported paths: derive position/size from bbox
     const imported = isImportedPath(obj);
+
+    // Raw unscaled dimensions — the value that, multiplied by newScaleX, gives
+    // the new rendered width. Must match how the SVG renderer treats "raw" for
+    // each type: rect/text use obj.width, circle uses radius*2, ellipse uses
+    // rx*2. Without this, circle/ellipse fall through to obj.width ?? 0 and
+    // the resize math collapses the shape to its anchor corner on first drag.
+    let rawWidth, rawHeight;
+    if (imported) {
+      rawWidth = bbox.width;
+      rawHeight = bbox.height;
+    } else {
+      const type = String(obj.type || '').toLowerCase();
+      if (type === 'circle') {
+        rawWidth = (obj.radius ?? 0) * 2;
+        rawHeight = (obj.radius ?? 0) * 2;
+      } else if (type === 'ellipse') {
+        rawWidth = (obj.rx ?? 0) * 2;
+        rawHeight = (obj.ry ?? 0) * 2;
+      } else {
+        rawWidth = obj.width ?? 0;
+        rawHeight = obj.height ?? 0;
+      }
+    }
+
     dragStateRef.current = {
       active: true,
       mode,
@@ -660,8 +684,8 @@ export function useSVGInteraction({
         scaleX: imported ? 1 : (obj.scaleX ?? 1),
         scaleY: imported ? 1 : (obj.scaleY ?? 1),
         angle: obj.angle ?? 0,
-        width: imported ? bbox.width : (obj.width ?? 0),
-        height: imported ? bbox.height : (obj.height ?? 0),
+        width: rawWidth,
+        height: rawHeight,
       },
       annotationIndex: selectedIndex,
       ctmInverse,

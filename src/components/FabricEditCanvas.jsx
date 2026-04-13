@@ -66,6 +66,168 @@ const CUSTOM_PROPS = [
 const BBOX_PADDING = 20;
 
 /**
+ * Compute Fabric edit-mode shape handle sizing so edit handles match SVGSelectionOverlay
+ * display handles EXACTLY in both screen diameter and position. This function mirrors
+ * SVGSelectionOverlay / SVGAnnotationLayer math directly — do not "improve" without
+ * re-reading those files first.
+ *
+ * Position: `getAnnotationBBox` returns the stroke-agnostic geometric rect
+ * (svgBoundingBox.js getRectBBox/getCircleBBox). SVGAnnotationLayer passes
+ * `padding=0` for rect (border-flush) and `padding=2 page units` for circle/
+ * ellipse/triangle (line 708). That puts display handles at the stroke CENTER
+ * for rect, and 2 page units outside the geometric rect for circle/ellipse.
+ * With Fabric `strokeWidth: 0` (forced on load), Fabric's bounding rect == the
+ * geometric rect — same bbox SVG uses. So we just mirror SVG's padding in
+ * Fabric units.
+ *
+ * Fabric padding (verified in fabric.js line 17140 `calcLineCoords`) is applied
+ * to the line coords AFTER the viewport transform (`transformPoint(aCoords, vpt)`),
+ * which means in normal mode (canvas.setZoom(es)), padding is in VIEWPORT SCREEN
+ * PIXELS — not canvas-coords. To replicate SVG's `svgOverlayPadding` page units,
+ * we set `padding = svgOverlayPadding * es` screen px.
+ *
+ * Size: SVGSelectionOverlay draws handles at `r = 7 * sqrt(inverseScale)` in
+ * page units, which after the viewBox scales by es becomes `14 * sqrt(es)`
+ * viewport screen px. Fabric's control rendering does
+ * `ctx.setTransform(retinaScaling, 0, 0, retinaScaling, 0, 0)` (fabric.js line
+ * 18048), so `cornerSize` is directly canvas-local screen px — no zoom applied.
+ * So `cornerSize = 14 * sqrt(es)` directly.
+ *
+ * pageSpaceMode (rotated shapes): canvas is at `setZoom(1)` and the container
+ * DOM has `transform: scale(es)`. Canvas-local pixels are CSS-scaled by es to
+ * viewport px, which inverts both formulas:
+ *   - `cornerSize * es = 14 * sqrt(es)`  →  `cornerSize = 14 / sqrt(es)`
+ *   - `padding * es = svgOverlayPadding * es`  →  `padding = svgOverlayPadding`
+ */
+function computeShapeHandleSizing(obj, effectiveScale, isPageSpaceMode) {
+  const objType = String(obj.type || '').toLowerCase();
+  const svgOverlayPadding = (objType === 'rect') ? 0 : 2;
+  const es = effectiveScale > 0 ? effectiveScale : 1;
+  if (isPageSpaceMode) {
+    return {
+      cornerSize: 14 / Math.sqrt(es),
+      padding: svgOverlayPadding,
+    };
+  }
+  return {
+    cornerSize: 14 * Math.sqrt(es),
+    padding: svgOverlayPadding * es,
+  };
+}
+
+/**
+ * Returns the canvas-local → viewport scale factor for a given effectiveScale
+ * and mode. Normal mode: canvas is 1:1 viewport, so visualScale = sqrt(es) to
+ * get SVG's sqrt(es) CSS-px dimensions. pageSpaceMode: canvas-local × es =
+ * viewport, so visualScale = 1/sqrt(es) to get the same sqrt(es) viewport size.
+ */
+function getHandleVisualScale(fabricObject) {
+  const es = fabricObject._svgEffectiveScale > 0 ? fabricObject._svgEffectiveScale : 1;
+  const isPage = fabricObject._svgIsPageSpaceMode === true;
+  return isPage ? (1 / Math.sqrt(es)) : Math.sqrt(es);
+}
+
+/**
+ * Custom Fabric control renderer that mirrors SVGSelectionOverlay's visual stroke
+ * curve. Fabric's default `renderCircleControl` hardcodes `ctx.lineWidth = 1`
+ * (fabric.js:7602), so at any zoom ≠ 1 the edit-mode handle ring is a constant
+ * 1 CSS px while SVG display uses `strokeWidth={1 * sqrt(inverseScale)}` in page
+ * units → `sqrt(es)` CSS px after the viewBox scales.
+ */
+function renderDampedCircleControl(ctx, left, top, styleOverride, fabricObject) {
+  const size = fabricObject.cornerSize;
+  const strokeWidth = getHandleVisualScale(fabricObject);
+  ctx.save();
+  ctx.fillStyle = (styleOverride && styleOverride.cornerColor) || fabricObject.cornerColor || '#ffffff';
+  ctx.strokeStyle = (styleOverride && styleOverride.cornerStrokeColor) || fabricObject.cornerStrokeColor || '#d1d1d1';
+  ctx.lineWidth = strokeWidth;
+  ctx.beginPath();
+  ctx.arc(left, top, size / 2, 0, 2 * Math.PI, false);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Rounded rect (pill) renderer that matches SVGSelectionOverlay's middle handles.
+ * SVG pills are 36*sqrt(es) × 10*sqrt(es) CSS px (horizontal: mt/mb) or
+ * 10*sqrt(es) × 36*sqrt(es) (vertical: ml/mr), with rx = 5*sqrt(es) and
+ * strokeWidth = sqrt(es). Fabric's default middle-control renderer is
+ * `renderSquareControl` using cornerSize — completely wrong shape.
+ *
+ * Returned function is assigned to `obj.controls[mt/mb/ml/mr].render`.
+ */
+function makeDampedPillControl(orientation) {
+  return function renderDampedPillControl(ctx, left, top, styleOverride, fabricObject) {
+    const vs = getHandleVisualScale(fabricObject);
+    const pillLong = 36 * vs;
+    const pillShort = 10 * vs;
+    const w = orientation === 'horizontal' ? pillLong : pillShort;
+    const h = orientation === 'horizontal' ? pillShort : pillLong;
+    const rx = Math.min(5 * vs, w / 2, h / 2);
+    ctx.save();
+    ctx.fillStyle = (styleOverride && styleOverride.cornerColor) || fabricObject.cornerColor || '#ffffff';
+    ctx.strokeStyle = (styleOverride && styleOverride.cornerStrokeColor) || fabricObject.cornerStrokeColor || '#d1d1d1';
+    ctx.lineWidth = vs;
+    const x = left - w / 2;
+    const y = top - h / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + rx, y);
+    ctx.lineTo(x + w - rx, y);
+    ctx.arcTo(x + w, y, x + w, y + rx, rx);
+    ctx.lineTo(x + w, y + h - rx);
+    ctx.arcTo(x + w, y + h, x + w - rx, y + h, rx);
+    ctx.lineTo(x + rx, y + h);
+    ctx.arcTo(x, y + h, x, y + h - rx, rx);
+    ctx.lineTo(x, y + rx);
+    ctx.arcTo(x, y, x + rx, y, rx);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  };
+}
+
+const renderDampedHPill = makeDampedPillControl('horizontal');
+const renderDampedVPill = makeDampedPillControl('vertical');
+
+/**
+ * Install the damped corner + pill renderers on a shape object, and wire the
+ * per-control sizeX/sizeY hit areas to match each handle's visual extent.
+ * Called at load and at every zoom-settle so hit areas stay accurate.
+ */
+function installShapeHandleRenderers(obj) {
+  if (!obj || !obj.controls) return;
+  const vs = getHandleVisualScale(obj);
+  const pillLong = 36 * vs;
+  const pillShort = 10 * vs;
+  const corners = ['tl', 'tr', 'bl', 'br'];
+  corners.forEach((key) => {
+    if (obj.controls[key]) {
+      obj.controls[key].render = renderDampedCircleControl;
+      obj.controls[key].sizeX = obj.cornerSize;
+      obj.controls[key].sizeY = obj.cornerSize;
+    }
+  });
+  // Horizontal pills (mt/mb): wide × short
+  ['mt', 'mb'].forEach((key) => {
+    if (obj.controls[key]) {
+      obj.controls[key].render = renderDampedHPill;
+      obj.controls[key].sizeX = pillLong;
+      obj.controls[key].sizeY = pillShort;
+    }
+  });
+  // Vertical pills (ml/mr): short × tall
+  ['ml', 'mr'].forEach((key) => {
+    if (obj.controls[key]) {
+      obj.controls[key].render = renderDampedVPill;
+      obj.controls[key].sizeX = pillShort;
+      obj.controls[key].sizeY = pillLong;
+    }
+  });
+}
+
+/**
  * Build CSS transform chain that replicates SVG's transformation order for rotated annotations.
  * SVG applies: viewBox non-uniform scale × rotate(angle, center) — rotation in page-space
  * before screen scaling. CSS must match this order: scale(sx,sy) first, then translate+rotate.
@@ -365,6 +527,13 @@ const FabricEditCanvas = memo(({
   const newTextScaleRef = useRef(null); // effectiveScale when new text uses zoom=1 pixel coords
   const pageSpaceModeRef = useRef(false); // true when using page-space CSS transform for rotated annotations
   const annotationDataRef = useRef(annotationData);
+  // Captured once per scale drag (on first object:scaling tick, cleared on
+  // object:modified). Holds the page-coord bbox top-left at drag start so
+  // Fabric's cumulative corner-anchored left/top offset can be translated
+  // into an absolute page-coord position each tick. Without this snapshot
+  // the SVG live preview and Fabric handles desync on any handle that moves
+  // obj.left or obj.top (tl/tr/bl/mt/ml/mb).
+  const scaleStartRef = useRef(null);
 
   // -------------------------------------------------------------------------
   // Commit logic
@@ -773,7 +942,7 @@ const FabricEditCanvas = memo(({
     if (editTypeRef.current === 'text') {
       loadTextAnnotation(canvas, effectiveScale);
     } else if (editTypeRef.current === 'shape') {
-      loadShapeAnnotation(canvas);
+      loadShapeAnnotation(canvas, effectiveScale);
     } else if (editTypeRef.current === 'callout') {
       loadCalloutAnnotation(canvas);
     }
@@ -1011,7 +1180,7 @@ const FabricEditCanvas = memo(({
   // -------------------------------------------------------------------------
   // Shape loading
   // -------------------------------------------------------------------------
-  const loadShapeAnnotation = useCallback((canvas) => {
+  const loadShapeAnnotation = useCallback((canvas, effectiveScale) => {
     if (!annotationDataRef.current) return;
 
     const annData = annotationDataRef.current;
@@ -1026,16 +1195,25 @@ const FabricEditCanvas = memo(({
       const obj = objects[0];
 
       // Shape edit: no dashed border, handles visually match SVGSelectionOverlay
-      // (white circles, ~14px diameter, centered exactly on the shape corner/midpoint
-      // — not outlined squares extending outward like Fabric's default).
-      // opacity: 0 hides the Fabric shape render while keeping the hit zone + handles
-      // interactive. SVGAnnotationLayer keeps the SVG shape visible for shape edits,
-      // making SVG the single visual truth (sidesteps Canvas 2D vs SVG rasterizer
-      // stroke difference — see CLAUDE.md 2026-04-10).
-      // Store real stroke properties for commit/live-preview, then zero strokeWidth
-      // so Fabric's bounding rect = fill rect (handles align with SVG geometry edges).
-      // The Fabric shape is opacity:0 — SVG is the visual truth.
+      // in both screen-diameter and position via computeShapeHandleSizing (see
+      // function docs above for full derivation).
+      //
+      // opacity:0 hides the Fabric shape render while keeping the hit zone +
+      // handles interactive. SVGAnnotationLayer keeps the SVG shape visible
+      // during edit, making SVG the single visual truth (sidesteps Canvas 2D
+      // vs SVG rasterizer stroke difference — see CLAUDE.md 2026-04-10).
+      //
+      // Store the real stroke width for the commit path (line ~454) and the
+      // stroke picker (line ~187 — writes to _realStrokeWidth only, never to
+      // obj.strokeWidth). Force strokeWidth: 0 so Fabric's bounding rect ===
+      // the stroke-agnostic geometric rect used by getAnnotationBBox — which
+      // is the bbox SVGSelectionOverlay is drawn against. That makes the
+      // Fabric bbox and SVG bbox literally identical, so the padding math in
+      // computeShapeHandleSizing can mirror SVGAnnotationLayer's padding 1:1.
       obj._realStrokeWidth = obj.strokeWidth || 0;
+      obj._svgEffectiveScale = effectiveScale;
+      obj._svgIsPageSpaceMode = pageSpaceModeRef.current === true;
+      const sizing = computeShapeHandleSizing(obj, effectiveScale, pageSpaceModeRef.current);
       obj.set({
         left: BBOX_PADDING,
         top: BBOX_PADDING,
@@ -1045,18 +1223,18 @@ const FabricEditCanvas = memo(({
         evented: true,
         hasControls: true,
         hasBorders: false,
-        // padding:0 puts handles AT the fabric fill bbox corner, which sits
-        // ~1–2 screen px inside the SVG shape's outer stroke edge → handles
-        // land on the stroke center visually. padding:2 pushed them outside
-        // the stroke for a noticeable "off the border" offset.
-        padding: 0,
+        padding: sizing.padding,
         cornerStyle: 'circle',
-        cornerSize: 14,
+        cornerSize: sizing.cornerSize,
         cornerColor: '#ffffff',
         cornerStrokeColor: '#d1d1d1',
         transparentCorners: false,
         opacity: 0,
       });
+
+      // Install damped corner circles + pill-shaped middle handles matching
+      // SVGSelectionOverlay exactly. See installShapeHandleRenderers for details.
+      installShapeHandleRenderers(obj);
 
       canvas.add(obj);
       canvas.setActiveObject(obj);
@@ -1105,6 +1283,31 @@ const FabricEditCanvas = memo(({
         const annData = annotationDataRef.current;
         if (!annData) return;
 
+        // Capture the page-coord bbox origin at drag start. Fabric reports
+        // obj.left/obj.top as CUMULATIVE offsets from its stored transform
+        // origin each tick, so we must anchor to a snapshot — otherwise we
+        // double-absorb across ticks.
+        if (!scaleStartRef.current) {
+          scaleStartRef.current = {
+            bboxOriginLeft: bboxOriginRef.current.left,
+            bboxOriginTop: bboxOriginRef.current.top,
+          };
+        }
+
+        // Fabric shifts obj.left/obj.top during corner/edge scaling to pin
+        // the opposite anchor (tl drag pins br, etc). Translate that canvas-
+        // space shift into page-coord left/top so the SVG live preview can
+        // render the shape at its new position — without this push, SVG
+        // grows from its stale tl while Fabric handles grow from the pinned
+        // anchor, and the two visibly desync. obj.left/obj.top are left
+        // untouched so Fabric handles remain aligned with the SVG shape
+        // (container CSS is also left anchored to its start position); the
+        // reset + container re-anchor happens in object:modified.
+        const fabricLeftOffset = (o.left ?? BBOX_PADDING) - BBOX_PADDING;
+        const fabricTopOffset = (o.top ?? BBOX_PADDING) - BBOX_PADDING;
+        const pageLeft = scaleStartRef.current.bboxOriginLeft + fabricLeftOffset;
+        const pageTop = scaleStartRef.current.bboxOriginTop + fabricTopOffset;
+
         const newScaleX = o.scaleX;
         const newScaleY = o.scaleY;
         const t = String(annData.type || '').toLowerCase();
@@ -1127,28 +1330,65 @@ const FabricEditCanvas = memo(({
         containerEl.style.height = ch + 'px';
         canvas.setDimensions({ width: cw, height: ch });
 
-        annotationDataRef.current = { ...annData, scaleX: newScaleX, scaleY: newScaleY };
+        annotationDataRef.current = {
+          ...annData,
+          scaleX: newScaleX,
+          scaleY: newScaleY,
+          left: pageLeft,
+          top: pageTop,
+        };
 
         if (onLivePreview && annotationIndex >= 0) {
           const updated = JSON.parse(JSON.stringify(annotationsRef.current || { objects: [] }));
           if (updated.objects[annotationIndex]) {
             updated.objects[annotationIndex].scaleX = newScaleX;
             updated.objects[annotationIndex].scaleY = newScaleY;
+            updated.objects[annotationIndex].left = pageLeft;
+            updated.objects[annotationIndex].top = pageTop;
             onLivePreview(updated);
           }
         }
       });
 
       canvas.on('object:modified', () => {
+        // Finalize an in-flight scale (if any): obj.left/top were left at the
+        // Fabric-computed offset during the drag so handles stayed aligned
+        // with the SVG shape. Now atomically:
+        //   1. Promote annotationDataRef.left/top (page-coord) into bboxOrigin
+        //   2. Snap obj.left/top back to BBOX_PADDING so subsequent moves
+        //      start from a clean origin
+        //   3. Re-anchor container CSS so the canvas re-centers on the
+        //      shape's new page-coord top-left
+        // The reset + re-anchor happen in the same synchronous block, so
+        // there's no visible jump.
+        if (scaleStartRef.current && annotationDataRef.current) {
+          bboxOriginRef.current = {
+            ...bboxOriginRef.current,
+            left: annotationDataRef.current.left ?? bboxOriginRef.current.left,
+            top: annotationDataRef.current.top ?? bboxOriginRef.current.top,
+          };
+          const activeObj = canvas.getActiveObject();
+          if (activeObj) {
+            activeObj.set({ left: BBOX_PADDING, top: BBOX_PADDING });
+            activeObj.setCoords();
+          }
+          scaleStartRef.current = null;
+        }
+
         const containerEl = containerRef.current;
         const parentEl = containerEl?.parentElement;
         if (containerEl && parentEl && pageWidth > 0) {
           const effectiveScale = parentEl.offsetWidth / pageWidth;
+          const newLeft = (bboxOriginRef.current.left - BBOX_PADDING) * effectiveScale;
+          const newTop = (bboxOriginRef.current.top - BBOX_PADDING) * effectiveScale;
+          containerEl.style.left = newLeft + 'px';
+          containerEl.style.top = newTop + 'px';
           setContainerStyle(prev => ({
             ...prev,
-            left: (bboxOriginRef.current.left - BBOX_PADDING) * effectiveScale,
-            top: (bboxOriginRef.current.top - BBOX_PADDING) * effectiveScale,
+            left: newLeft,
+            top: newTop,
           }));
+          canvas.renderAll();
         }
       });
 
@@ -1569,6 +1809,25 @@ const FabricEditCanvas = memo(({
             activeObj.selectionStart = cursorPositionRef.current;
             activeObj.selectionEnd = cursorPositionRef.current;
             canvas.renderAll();
+          }
+        }
+
+        // For shape: recompute dynamic cornerSize/padding against the new
+        // effectiveScale so edit handles keep matching SVG display handles
+        // across zoom changes. Also refresh the damped stroke scale so the
+        // custom control renderer picks up the new value.
+        if (editTypeRef.current === 'shape') {
+          const activeObj = canvas.getActiveObject();
+          if (activeObj) {
+            activeObj._svgEffectiveScale = effectiveScale;
+            activeObj._svgIsPageSpaceMode = pageSpaceModeRef.current === true;
+            const sizing = computeShapeHandleSizing(activeObj, effectiveScale, pageSpaceModeRef.current);
+            activeObj.set({ cornerSize: sizing.cornerSize, padding: sizing.padding });
+            // Refresh per-control sizeX/sizeY so pill hit areas and corner hit
+            // boxes track the new zoom.
+            installShapeHandleRenderers(activeObj);
+            activeObj.setCoords();
+            canvas.requestRenderAll();
           }
         }
       }, 200); // 200ms settle debounce per ZOOM-03
