@@ -127,8 +127,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 12-01-PLAN.md -- EDIT-11 soft Shift-snap (3° threshold) in `useSVGInteraction.js:391-408` + ZOOM-09 zoom floor 10% atomic bundle (`zoomController.js:15` MIN_SCALE 0.5→0.1 AND `App.jsx:21999` pre-clamp 50→10 in the SAME commit) — ~8 LOC, 3 files, low risk
-- [ ] 12-02-PLAN.md -- EDIT-12 rotation degree input field component (integration point TBD during /gsd:discuss-phase: SVGSelectionOverlay foreignObject vs new RotationInputField sibling vs HTML portal with absolute positioning) — ~60-120 LOC, new UI component, moderate risk, needs UX spec resolution
+- [ ] 12-01-PLAN.md — EDIT-11 soft Shift-snap (3° threshold) via new `snapAngleToNearest45` helper wired into `useSVGInteraction.js:391-408` + ZOOM-09 zoom floor 10% atomic bundle (`zoomController.js:15` MIN_SCALE 0.5→0.1 AND `App.jsx:21999` pre-clamp 50→10 in the SAME commit) + Wave 0 unit tests (snapAngleToNearest45 + clampScale boundary). 4 tasks, Wave 1, autonomous=false (1 user verify checkpoint), low risk.
+- [ ] 12-02-PLAN.md — EDIT-12 rotation degree input field via new `RotationInputField` HTML portal component (locked architecture from CONTEXT/UI-SPEC: createPortal into the existing SVGAnnotationLayer-hosting overlay div, hover-intent + drag-override visibility state machine, integer-only typed values, Enter/Escape/blur commit semantics, Arrow-key nudging) + Wave 0 `rotationInputHelpers` module + parent wiring in SVGAnnotationLayer.jsx. 5 tasks, Wave 2 (depends on 12-01 for wave ordering and to keep regression baseline clean), autonomous=false (1 user verify checkpoint), moderate risk.
 
 ## Progress
 
@@ -151,4 +151,4 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12
 | 12. Shape Edit Polish | v2.1 | 0/2 | Not started | - |
 
 ---
-*Last updated: 2026-04-12 — Phase 12 added for v2.1 Shape Edit Polish milestone*
+*Last updated: 2026-04-13 — Phase 12 plans 12-01 and 12-02 finalized via /gsd:plan-phase 12*
