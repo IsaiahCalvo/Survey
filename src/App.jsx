@@ -12102,6 +12102,38 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setZoomMode(ZOOM_MODES.MANUAL);
     setRenderedPages(new Set());
 
+    // Bug #1b — Syncfusion's React wrapper getZoomValue() lies at mount:
+    // it reports the last-persisted value while the viewer itself already
+    // rendered at its own fit-to-width default. Persisted 10% + actual 117%
+    // means scaleRef=0.1 is wrong, and the next user zoom click multiplies on
+    // that wrong basis (catastrophic shrink 1436→196px). Measure the real
+    // scale from the DOM and reconcile React state. Do NOT call zoomTo — it
+    // would trigger the zoom overlay transform flow with a bogus ratio.
+    const reconcileScaleFromDOM = () => {
+      const measured = measureSyncfusionPageScale(
+        restoredPage,
+        pageSizesRef.current || {},
+        syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+        0
+      );
+      if (!Number.isFinite(measured) || measured <= 0.05) return false;
+      if (Math.abs(measured - scaleRef.current) <= 0.01) return true;
+      scaleRef.current = measured;
+      setScale(measured);
+      setManualZoomScale(measured);
+      if (document.activeElement !== zoomInputRef.current) {
+        setZoomInputValue(String(Math.round(measured * 100)));
+      }
+      return true;
+    };
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!reconcileScaleFromDOM()) {
+        setTimeout(() => {
+          if (!reconcileScaleFromDOM()) setTimeout(reconcileScaleFromDOM, 500);
+        }, 150);
+      }
+    }));
+
     setPageNum(restoredPage);
     setPageInputValue(String(restoredPage));
     setIsPageInputDirty(false);
