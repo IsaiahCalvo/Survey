@@ -1,119 +1,91 @@
-# HANDOFF — Phase 12 gap bugs (bug #1 shipped, bugs #1b–#4 remaining)
+# HANDOFF — Phase 12 gap bugs (bugs #1, #1b, #2, #2.5 shipped — #3, #4 remaining)
 
-**Session:** 2026-04-12 evening · **Branch:** `post-v2.0/cleanup` · **Context at handoff:** 23%
+**Session:** 2026-04-12 late · **Branch:** `post-v2.0/cleanup` · **Context at handoff:** 12%
 
 ## Where we are
 
-Executing `/gsd:execute-phase 12`. Wave 1 (Plan 12-01: EDIT-11 + ZOOM-09) shipped 3 atomic commits with 79/79 tests green. User's manual verification surfaced 5 issues; #5 is just Wave 2 not built yet, the other 4 are real. Bug #1 was diagnosed from existing debug logs (no new instrumentation needed) and shipped as commit `b77405f`.
+Plan 12-01 checkpoint remains OPEN. Four gap bugs shipped and user-verified this session. Two remain before 12-01 can close.
 
-**Do NOT close Plan 12-01 or advance to Wave 2 until bugs #1b–#4 are resolved and the user re-verifies.**
+**Do NOT close Plan 12-01 or advance to Wave 2 (Plan 12-02 EDIT-12) until bugs #3 and #4 are resolved and the user re-verifies the full 15-check manual checklist.**
 
 ## Commits landed this session
 
 ```
-b77405f fix(12-01): live-update zoom input during deferred setScale (bug #1)
-9b0c6f1 feat(12-01): wire snapAngleToNearest45 into rotate branch — EDIT-11
-df43b0f feat(12-01): lower zoom floor 50%→10% — ZOOM-09 atomic 2-file commit
-8ed6b70 test(12-01): add snapAngleToNearest45 helper + test scaffolds
+0d0c3218 fix(12-01): replace fitToPage() with direct zoomTo() — bug #2.5 v2
+cd64c03d fix(12-01): skip pdf.js re-fit effect in Syncfusion mode — bug #2.5  (superseded by v2)
+4839f1e3 fix(12-01): compute fit-height from live Syncfusion DOM — bug #2
+3a3db09a fix(12-01): reconcile React scale from DOM at load — bug #1b
+b77405f2 fix(12-01): live-update zoom input during deferred setScale (bug #1)
+9b0c6f15 feat(12-01): wire snapAngleToNearest45 into rotate branch — EDIT-11
+df43b0f2 feat(12-01): lower zoom floor 50%→10% — ZOOM-09 atomic 2-file commit
+8ed6b703 test(12-01): add snapAngleToNearest45 helper + test scaffolds
 ```
 
-All on `post-v2.0/cleanup`. `dist/index.html` modified (build artifact, ignore).
+All on `post-v2.0/cleanup`. 79/79 tests green. Six App.jsx Always-Protected carve-outs justified in Plan 12-01 commit messages.
 
-## Bugs — ordered for momentum
+## Bugs — status
 
 | # | Status | Bug | File(s) | Risk |
 |---|--------|-----|---------|------|
-| 1 | ✅ SHIPPED `b77405f` | Zoom input display lag vs canvas | `App.jsx:~12202` | — |
-| 1b | ✅ SHIPPED `3a3db09` | Load-time React↔Syncfusion scale desync | `App.jsx` onDocumentLoad path | — |
-| 2 | ⏳ NEXT | Fit-to-height possibly broken | `App.jsx:~12623` handleZoomModeSelect FIT_HEIGHT branch — Syncfusion has no direct fit-height API, falls through to `zoomControllerRef.current?.setMode(mode)`. Likely the regression point. | low |
-| 3 | ⏳ | Blue glow/hitbox scales with zoom in selection mode | `SVGSelectionOverlay.jsx` — missing `vector-effect="non-scaling-stroke"` on glow shape | low |
-| 4 | ⏳ HARDEST | Edit-mode shape handles misaligned (circles hit/miss, rectangles slightly off, circles scale/transform unreliable) | `FabricEditCanvas.jsx` — container-aware measurement race at small zooms | high, needs heavy logging |
+| 1 | ✅ `b77405f` | Zoom input display lag | `App.jsx:~12202` | — |
+| 1b | ✅ `3a3db09` | Load-time React↔Syncfusion scale desync | `App.jsx` onDocumentLoad | — |
+| 2 | ✅ `4839f1e` | Fit-height wrong calc (pdf.js points vs Syncfusion render) | `App.jsx:12655 FIT_HEIGHT branch` | — |
+| 2.5 | ✅ `0d0c3218` | Fit-page continuous-scroll runaway cascade (~90 pageChange/sec) | `App.jsx:12651 FIT_PAGE branch` — root cause was `magnification.fitToPage()` itself (Syncfusion-internal side effect). Fix: replace with DOM-measured `zoomTo()` matching bug #2 pattern. | — |
+| 3 | ⏳ NEXT | Blue glow/hitbox scales with zoom in selection mode | `SVGSelectionOverlay.jsx` — almost certainly missing `vector-effect="non-scaling-stroke"` on the glow stroke element | low, ~1 LOC |
+| 4 | ⏳ HARDEST | Edit-mode shape handles misaligned (circles hit/miss, rects slightly off) | `FabricEditCanvas.jsx` + `PageAnnotationLayer.jsx` + `SVGSelectionOverlay.jsx` — container-aware measurement race at small zooms | high, needs heavy cross-file instrumentation, **earmark own `/clear` session** |
 
-Do not skip ahead. Each fix validates the testing apparatus for the next.
+## Key insight: Syncfusion zoom family
 
-## Bug #1 root cause (reference for similar classes)
+After bugs #2 and #2.5, the pattern is established: **in Syncfusion mode, never trust `magnification.fitToPage()` / `fitToWidth()` / `fitToHeight()` — always compute the target scale from the live DOM and call `magnification.zoomTo(percent)` directly.**
 
-`handleSyncfusionZoomChange` at `src/App.jsx:12193+` defers `setScale()` by up to 1000ms while `zoomOverlayTransformActiveRef` is active (prevents PAL unmount churn during rapid zoom, by design). Canvas updates instantly via CSS overlay transform at `App.jsx:12263-12278`. Zoom input reads `scale` state via `useEffect` at `App.jsx:21967` — so it waits for settle.
+- `magnification.fitToPage()` has a Syncfusion-internal side effect (exact mechanism unknown — possibly scroll-mode flag or wheel delta recalibration) that causes runaway pageChange cascades on continuous scroll at low zoom. Confirmed reproducible.
+- `zoomTo()` does NOT trigger the cascade.
+- Fit-width (`fitToWidth()`) does not seem to exhibit the cascade — left alone for now. If it surfaces later, apply the same DOM-measurement pattern.
 
-**Fix shipped** (7 LOC) right after `scaleRef.current = nextScale;` at `App.jsx:12202`:
+**The DOM-measurement formula** (used in both bug #2 and #2.5 v2):
 ```js
-if (document.activeElement !== zoomInputRef.current) {
-  setZoomInputValue(String(Math.round(nextScale * 100)));
-}
+const wrapperEl = syncfusionWrapperRef.current;
+const pageDiv = wrapperEl?.querySelector('.e-pv-page-div');
+const currentZoomPercent = magnification.zoomFactor ?? viewer.getZoomValue?.();
+const realPageW = pageDiv.offsetWidth / (currentZoomPercent / 100);
+const realPageH = pageDiv.offsetHeight / (currentZoomPercent / 100);
+// then compute widthScale / heightScale / min for fit-page
 ```
-`setZoomInputValue` only re-renders the toolbar input, not PAL — no churn risk.
 
-**User must verify:** hard-reload http://localhost:5173/, zoom rapidly with `Cmd+=` / `Cmd+-`, confirm the `%` number now tracks the canvas 1:1 with no lag. If good → proceed to #1b. If lag persists → diagnosis was wrong, re-investigate.
+This is the same class of root cause as the canvas sizing gotcha from 2026-03-22: **trust the DOM, not pdf.js point sizes, when Syncfusion is the renderer.** Consider adding to CLAUDE.md gotchas in a cleanup pass.
 
-## Bug #1b root cause + fix (SHIPPED `3a3db09`)
+## First bug #2.5 attempt (superseded)
 
-Diagnosis from instrumented `doc_load_scale_diag` + `_settled` debugMarks:
-- `payloadZoomValue: 10`, `viewerGetZoomValue: 10` (still 10 at 300ms AND 1500ms)
-- `measuredPageScale=1.1732` in DOM the whole time
-- `initialViewStateScale: null`, `restoreSnapshotTargetMode: null`
+The first bug #2.5 fix (`cd64c03d`) gated the `[pageNum, zoomMode]` effect with `!useSyncfusionRenderer` based on a wrong hypothesis about stale `ctrlMode`. That diagnosis was confirmed in logs (controller WAS stuck at fitWidth, effect WAS jumping zoom to 118%) but the fix did NOT eliminate the cascade — meaning the stale-ctrlMode re-zoom was a real-but-secondary bug, not the primary cascade cause.
 
-**Syncfusion's React wrapper `getZoomValue()` lies at mount** — it reports
-last-persisted state (10%) while the viewer itself has already rendered at
-its own fit-to-width default (117%). The original handoff's proposed fix
-("trust getZoomValue") would have reproduced the bug.
+**The gate on the effect is still valid and should stay** — it prevents a separate bug (brief 67→118% flash when clicking fit-page) that wasn't the user's primary complaint but is real. Do not revert `cd64c03d`.
 
-**Fix shipped:** measure scale from DOM via the existing
-`measureSyncfusionPageScale` helper, retry via RAF + setTimeout, update
-`scaleRef.current` + React `scale`/`manualZoomScale`/`zoomInputValue`. Did
-NOT call `magnificationModule.zoomTo` — would trigger the zoom overlay flow
-with a bogus 11.7x ratio. Third App.jsx carve-out in Plan 12-01.
+The primary fix is `0d0c3218` (replace fitToPage with zoomTo).
 
-**User must verify when resuming:** hard-reload, open PDF, wait 2s, single
-Cmd+= — page should grow from ~117% to ~140%, NOT shrink to 12%. Already
-verified this session.
-
-## Bug #2 hint (next)
-
-`handleZoomModeSelect` at `App.jsx:~12603` — FIT_HEIGHT branch at ~12623
-falls through to `zoomControllerRef.current?.setMode(mode)` because
-Syncfusion exposes no direct fit-height API. That zoomController path
-likely doesn't know about the Syncfusion renderer and sets the wrong scale.
-Instrument the FIT_HEIGHT branch first, reproduce, diagnose, ship.
-
-## User's workflow rule (enforce for #1b–#4)
-
-> "Implement the most aggressive and invasive debugging to record in the logs. Then I share the logs with you and you decipher them to diagnose and fix the issue."
-> "Fix each of these items one at a time. I don't want to be testing a million things because it makes it impossible to track."
-
-**Per-bug loop:**
-1. Instrument (or find existing logs if sufficient — #1 didn't need new instrumentation)
-2. User reproduces, saves console to `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log` (overwritten per bug — they reuse the same path)
-3. Diagnose from logs
-4. Ship minimal fix as its own commit
-5. Remove/gate the instrumentation
-6. User verifies one thing, not fifteen
-7. Next bug
-
-## Phase discipline reminders
-
-- `CLAUDE.md` Always Protected files: `App.jsx`, `PageAnnotationLayer.jsx`, `FabricDrawingCanvas.jsx` / `FabricEraserCanvas.jsx` / `FabricEditCanvas.jsx`, `SVGAnnotationLayer.jsx`, `package.json`, `vite.config.js`. Each carve-out must be surgical and justified in the commit message.
-- Plan 12-01 is NOT yet complete. Don't write `12-01-SUMMARY.md` or advance `STATE.md` until the user approves the checkpoint after all 4 bugs are fixed. Keep 12-01 open.
-- Plan 12-02 (EDIT-12 RotationInputField) has not started. Do not start it while 12-01 is open.
-- Phase 12 needs a `12-RECONCILIATION.md` before closing. Don't skip it.
-- Skip Wave 2 entirely in `/gsd:execute-phase 12` resume if bugs aren't cleared — the checkpoint on 12-01 blocks it anyway.
-
-## Environment
-
-- Dev server: should still be running at http://localhost:5173/ (PID 8990 per pre-checkpoint report — verify with `lsof -i:5173` before relying on it)
-- Test PDF: `Package 2 - Rev 4 -- IC.pdf`, page 6
-- User preference: laymen's explanations, terse output, no emojis, no multi-file testing, diagnostic logs over Kapture MCP
-- Tests: `npm test` — must stay at 79/79 or newer green baseline
-- User is on Electron wrapper (affects zoom factor — see CLAUDE.md gotcha 2026-03-22)
-
-## First actions in the new session
+## First actions in next session
 
 1. Read this file
 2. Read `.planning/phases/12-shape-edit-polish/.continue-here.md`
-3. Ask user: "Bugs #1 and #1b are both user-verified. Ready to start bug #2 (fit-to-height)?"
-4. If yes → instrument `handleZoomModeSelect` FIT_HEIGHT branch at App.jsx:~12623 and the `zoomControllerRef.setMode` path, ask user to repro, diagnose, ship.
-5. After bug #2 user-verifies → bug #3 (SVGSelectionOverlay glow, likely 1-line fix).
-6. Bug #4 gets its own `/clear` session — heavy cross-file work.
+3. Ask user: "Bugs #1, #1b, #2, and #2.5 are all user-verified. Ready to start bug #3 (blue glow scales with zoom)?"
+4. Bug #3 — open `src/components/SVGSelectionOverlay.jsx`, grep for the glow/stroke element, add `vector-effect="non-scaling-stroke"` attribute. Ship as atomic commit. User verifies.
+5. Bug #4 — **get its own `/clear` session**. Heavy cross-file work across `FabricEditCanvas.jsx`, `PageAnnotationLayer.jsx`, `SVGSelectionOverlay.jsx`. Logs will be large. Do NOT start in an already-used context.
 
-## Context-budget suggestion
+After bug #4 clears → user re-runs the full 15-check manual checklist from the original Plan 12-01 checkpoint → write `12-01-SUMMARY.md` → advance `STATE.md` → start Wave 2 (Plan 12-02 EDIT-12 RotationInputField) → write `12-RECONCILIATION.md` before closing Phase 12.
 
-Bugs #1b, #2, #3 should comfortably fit in one fresh session (~40% context each or less). Bug #4 is the big one — get its own fresh session with `/clear` right before, because edit-mode handle diagnosis will need heavy instrumentation across `FabricEditCanvas.jsx`, `PageAnnotationLayer.jsx`, and `SVGSelectionOverlay.jsx`, and the logs will be large.
+## Environment
+
+- Dev server: http://localhost:5173/ (verify PID with `lsof -i:5173`)
+- Test PDF: `Package 2 - Rev 4 -- IC.pdf`, page 6
+- User preference: laymen's explanations, terse output, no emojis, one-bug-at-a-time, diagnostic logs over Kapture MCP
+- Tests: `npm test` — 79/79 green baseline
+- User is on Electron wrapper
+
+## User's workflow rule (enforce for #3 and #4)
+
+Per-bug loop:
+1. Instrument aggressively (or use existing logs)
+2. User reproduces, saves console to `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log` (overwritten per bug)
+3. Diagnose from logs
+4. Ship minimal fix as own commit (remove instrumentation in same commit)
+5. User verifies ONE thing, not fifteen
+6. Next bug
