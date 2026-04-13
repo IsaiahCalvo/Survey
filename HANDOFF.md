@@ -24,8 +24,8 @@ All on `post-v2.0/cleanup`. `dist/index.html` modified (build artifact, ignore).
 | # | Status | Bug | File(s) | Risk |
 |---|--------|-----|---------|------|
 | 1 | ✅ SHIPPED `b77405f` | Zoom input display lag vs canvas | `App.jsx:~12202` | — |
-| 1b | ⏳ NEXT | Load-time React↔Syncfusion scale desync | `App.jsx` onDocumentLoad path | low |
-| 2 | ⏳ | Fit-to-height possibly broken | unknown — find `ZOOM_MODES.FIT_HEIGHT` handler | low |
+| 1b | ✅ SHIPPED `3a3db09` | Load-time React↔Syncfusion scale desync | `App.jsx` onDocumentLoad path | — |
+| 2 | ⏳ NEXT | Fit-to-height possibly broken | `App.jsx:~12623` handleZoomModeSelect FIT_HEIGHT branch — Syncfusion has no direct fit-height API, falls through to `zoomControllerRef.current?.setMode(mode)`. Likely the regression point. | low |
 | 3 | ⏳ | Blue glow/hitbox scales with zoom in selection mode | `SVGSelectionOverlay.jsx` — missing `vector-effect="non-scaling-stroke"` on glow shape | low |
 | 4 | ⏳ HARDEST | Edit-mode shape handles misaligned (circles hit/miss, rectangles slightly off, circles scale/transform unreliable) | `FabricEditCanvas.jsx` — container-aware measurement race at small zooms | high, needs heavy logging |
 
@@ -45,18 +45,35 @@ if (document.activeElement !== zoomInputRef.current) {
 
 **User must verify:** hard-reload http://localhost:5173/, zoom rapidly with `Cmd+=` / `Cmd+-`, confirm the `%` number now tracks the canvas 1:1 with no lag. If good → proceed to #1b. If lag persists → diagnosis was wrong, re-investigate.
 
-## Bug #1b root cause (discovered, not fixed)
+## Bug #1b root cause + fix (SHIPPED `3a3db09`)
 
-Proof in `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log` lines 1-1507 (the log the user shared this session):
-- Before any zoom: `syncfusionViewerScale=0.1` (React state) while `measuredPageScale=1.1732` (actual rendered DOM)
-- First zoom+ click: `zoom_start scale=0.1 → 0.12` — multiplier ran on stale React scale
-- Result line 1509: container shrinks `1436 → 196px` in one click
+Diagnosis from instrumented `doc_load_scale_diag` + `_settled` debugMarks:
+- `payloadZoomValue: 10`, `viewerGetZoomValue: 10` (still 10 at 300ms AND 1500ms)
+- `measuredPageScale=1.1732` in DOM the whole time
+- `initialViewStateScale: null`, `restoreSnapshotTargetMode: null`
 
-React `scale` at `App.jsx:9146` initializes from `initialViewState?.scale || initialZoomPreferences.manualScale` — persisted from last session. Syncfusion opens at its own default (~1.17x). Nothing reconciles them at mount. Was hidden before ZOOM-09 because the old 50% floor clamped persisted values up to 0.5 where the mismatch was smaller / less catastrophic.
+**Syncfusion's React wrapper `getZoomValue()` lies at mount** — it reports
+last-persisted state (10%) while the viewer itself has already rendered at
+its own fit-to-width default (117%). The original handoff's proposed fix
+("trust getZoomValue") would have reproduced the bug.
 
-**Proposed fix:** in `handleSyncfusionDocumentLoad` (or the first `handleSyncfusionZoomChange` call post-mount), read `syncfusionViewerRef.current.getZoomValue()` and reconcile React `scale` + `zoomInputValue` to match. Do NOT call `controller.setScale(persisted)` — that fights Syncfusion's own fit-to-width default. Just trust Syncfusion's reported zoom as source of truth at mount.
+**Fix shipped:** measure scale from DOM via the existing
+`measureSyncfusionPageScale` helper, retry via RAF + setTimeout, update
+`scaleRef.current` + React `scale`/`manualZoomScale`/`zoomInputValue`. Did
+NOT call `magnificationModule.zoomTo` — would trigger the zoom overlay flow
+with a bogus 11.7x ratio. Third App.jsx carve-out in Plan 12-01.
 
-Second App.jsx carve-out needed. Keep surgical.
+**User must verify when resuming:** hard-reload, open PDF, wait 2s, single
+Cmd+= — page should grow from ~117% to ~140%, NOT shrink to 12%. Already
+verified this session.
+
+## Bug #2 hint (next)
+
+`handleZoomModeSelect` at `App.jsx:~12603` — FIT_HEIGHT branch at ~12623
+falls through to `zoomControllerRef.current?.setMode(mode)` because
+Syncfusion exposes no direct fit-height API. That zoomController path
+likely doesn't know about the Syncfusion renderer and sets the wrong scale.
+Instrument the FIT_HEIGHT branch first, reproduce, diagnose, ship.
 
 ## User's workflow rule (enforce for #1b–#4)
 
@@ -91,9 +108,11 @@ Second App.jsx carve-out needed. Keep surgical.
 ## First actions in the new session
 
 1. Read this file
-2. Read `.planning/STATE.md` and the Session Moments file at `/Users/isaiahcalvo/.claude/projects/-Users-isaiahcalvo-Desktop-Survey-BetaSafeS2/memory/session-moments/2026-04-12.md` (critical — has all 4 INSIGHT/SHIFT entries from this session)
-3. Ask user: "Did bug #1 fix (`b77405f`) verify — does zoom input now track canvas 1:1? If yes, I'll start bug #1b."
-4. Do NOT start instrumenting bug #1b until user confirms #1 is good. If they say no, re-investigate #1 — don't move on.
+2. Read `.planning/phases/12-shape-edit-polish/.continue-here.md`
+3. Ask user: "Bugs #1 and #1b are both user-verified. Ready to start bug #2 (fit-to-height)?"
+4. If yes → instrument `handleZoomModeSelect` FIT_HEIGHT branch at App.jsx:~12623 and the `zoomControllerRef.setMode` path, ask user to repro, diagnose, ship.
+5. After bug #2 user-verifies → bug #3 (SVGSelectionOverlay glow, likely 1-line fix).
+6. Bug #4 gets its own `/clear` session — heavy cross-file work.
 
 ## Context-budget suggestion
 
