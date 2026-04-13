@@ -30,7 +30,9 @@ const SVGSelectionOverlay = memo(({
 
   const { left, top, width, height, angle } = bbox;
   const handles = getHandlePositions(bbox, padding);
-  const is = inverseScale; // shorthand
+  // Dampened inverse scale: sqrt curve softens handle sizing at extreme zooms
+  // so handles don't balloon at low zoom or vanish at high zoom.
+  const is = Math.sqrt(inverseScale);
 
   // Center of the bounding box for rotation transform
   const cx = left + width / 2;
@@ -73,8 +75,9 @@ const SVGSelectionOverlay = memo(({
           fill="none"
           stroke="#4a90e2"
           strokeOpacity={strokeOpacity}
-          strokeWidth={2 * is}
-          strokeDasharray={`${4 * is},${4 * is}`}
+          strokeWidth={2}
+          strokeDasharray="4,4"
+          vectorEffect="non-scaling-stroke"
           style={{ pointerEvents: 'none' }}
         />
       )}

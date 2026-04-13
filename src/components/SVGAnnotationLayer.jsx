@@ -532,7 +532,7 @@ const SVGAnnotationLayer = memo(({
                   x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
                   stroke="#4a90e2"
                   strokeOpacity={0.4}
-                  strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4) * inverseScale}
+                  strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
                   strokeLinecap="round"
                   vectorEffect="non-scaling-stroke"
                   style={{ pointerEvents: 'none' }}
@@ -542,7 +542,7 @@ const SVGAnnotationLayer = memo(({
               <line
                 x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
                 stroke="transparent"
-                strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10) * inverseScale}
+                strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
                 strokeLinecap="round"
                 vectorEffect="non-scaling-stroke"
                 pointerEvents={isInteractive && isObjectInteractive ? 'stroke' : 'none'}
@@ -667,9 +667,11 @@ const SVGAnnotationLayer = memo(({
           const isArrow = obj.tool === 'arrow';
           // Arrow: handle at arrowhead tip (ep2) and line start (ep1)
           // Line: handles at both endpoints
-          const handleR = 7 * inverseScale;
+          // Dampened inverse scale (sqrt) to match SVGSelectionOverlay handle sizing
+          const handleIs = Math.sqrt(inverseScale);
+          const handleR = 7 * handleIs;
           const handleStyle = {
-            filter: `drop-shadow(0 ${1 * inverseScale}px ${3 * inverseScale}px rgba(0,0,0,0.15))`,
+            filter: `drop-shadow(0 ${1 * handleIs}px ${3 * handleIs}px rgba(0,0,0,0.15))`,
             cursor: 'grab',
             pointerEvents: 'auto',
           };
@@ -681,7 +683,8 @@ const SVGAnnotationLayer = memo(({
                 r={handleR}
                 fill="#ffffff"
                 stroke="#4a90e2"
-                strokeWidth={1.5 * inverseScale}
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
                 style={handleStyle}
                 onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p1'); }}
               />
@@ -691,7 +694,8 @@ const SVGAnnotationLayer = memo(({
                 r={handleR}
                 fill="#ffffff"
                 stroke="#4a90e2"
-                strokeWidth={1.5 * inverseScale}
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
                 style={handleStyle}
                 onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p2'); }}
               />

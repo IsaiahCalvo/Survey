@@ -167,7 +167,6 @@ export const renderLine = (obj, index) => {
           stroke={strokeColor}
           strokeWidth={sw}
           strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
         />
         <polygon
           points={`${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`}
@@ -188,7 +187,6 @@ export const renderLine = (obj, index) => {
       stroke={strokeColor}
       strokeWidth={sw}
       strokeLinecap="round"
-      vectorEffect="non-scaling-stroke"
       opacity={obj.opacity ?? 1}
     />
   );
@@ -241,7 +239,6 @@ export const renderArrow = (obj, index) => {
         stroke={obj.stroke || '#000'}
         strokeWidth={obj.strokeWidth || 2}
         strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
       />
       {arrowHead && (
         <polygon
