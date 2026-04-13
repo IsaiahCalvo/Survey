@@ -108,3 +108,20 @@ export function getCursorForHandle(handleId, angleDegrees) {
   const rotationOffset = Math.round(((angleDegrees % 360 + 360) % 360) / 45) % 8;
   return cursors[(baseIndex + rotationOffset) % 8];
 }
+
+/**
+ * Snap a degree value to the nearest 45° increment IF within `threshold` degrees of it.
+ * Soft snap — outside the threshold, returns the input unchanged.
+ * The `% 360` defensive wrap prevents `Math.round(358/45)*45 = 360` from persisting.
+ *
+ * @param {number} angle - Angle in degrees, expected in [0, 360)
+ * @param {number} threshold - Snap engages only when |angle - nearest45| <= threshold (default 3)
+ * @returns {number} Snapped angle in [0, 360), or input unchanged if outside threshold
+ */
+export function snapAngleToNearest45(angle, threshold = 3) {
+  const nearest45 = Math.round(angle / 45) * 45;
+  if (Math.abs(angle - nearest45) <= threshold) {
+    return nearest45 % 360;
+  }
+  return angle;
+}
