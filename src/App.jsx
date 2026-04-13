@@ -12653,9 +12653,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         } else if (mode === ZOOM_MODES.FIT_WIDTH) {
           magnification.fitToWidth();
         } else if (mode === ZOOM_MODES.FIT_HEIGHT) {
-          // Syncfusion does not expose a direct fit-height API in the public module.
-          // Keep parity with existing behavior by using the current controller calculation.
-          zoomControllerRef.current?.setMode(mode);
+          // Syncfusion does not expose a direct fit-height API. The zoomController
+          // path reads pageSize from pdf.js in PDF points, but Syncfusion renders at
+          // a different baseline (CSS pixels * Electron/browser zoom factor), so the
+          // ratio wrapper_h / pdf_point_h is wrong. Measure Syncfusion's live page
+          // div, normalize by current zoom to get the real 100% height, then fit.
+          const wrapperEl = syncfusionWrapperRef.current;
+          const pageDiv = wrapperEl?.querySelector('.e-pv-page-div');
+          const currentZoomPercent = (typeof magnification.zoomFactor === 'number'
+            ? magnification.zoomFactor
+            : (typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null));
+          const wrapperH = wrapperEl?.clientHeight || 0;
+          const pageDivH = pageDiv?.offsetHeight || 0;
+          if (wrapperH > 0 && pageDivH > 0 && typeof currentZoomPercent === 'number' && currentZoomPercent > 0) {
+            const realPageHeightAt100 = pageDivH / (currentZoomPercent / 100);
+            const heightScale = Math.max(0.1, Math.min(5.0, wrapperH / realPageHeightAt100));
+            magnification.zoomTo(Math.round(heightScale * 100));
+          } else {
+            // DOM not measurable (first-frame, orphaned page div) — fall back to controller.
+            zoomControllerRef.current?.setMode(mode);
+          }
         }
         persistZoomPreferences({ mode });
       }
