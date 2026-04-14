@@ -128,6 +128,8 @@ const SVGAnnotationLayer = memo(({
     handleSvgPointerDown, handleHandlePointerDown,
     handlePointerMove, handlePointerUp,
     isSelected, deleteSelected,
+    // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint
+    applyOptimisticRotation, clearOptimisticRotation,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
@@ -354,23 +356,87 @@ const SVGAnnotationLayer = memo(({
     };
   }, [selectedAnnotationIndex, annotations]);
 
+  // EDIT-12 Gap 1 fix (Plan 12-03): track pending optimistic rotation so the
+  // cleanup useEffect (below) can clear visualTransform once the persisted
+  // annotation angle catches up. Stored in a ref (not state) so setting it
+  // does not trigger a re-render.
+  const pendingOptimisticRotationRef = useRef(null);
+
   const handleRotationInputCommit = useCallback((annotationIndex, newAngle) => {
     if (annotationIndex === null || annotationIndex === undefined) return;
+
+    // EDIT-12 Gap 1 fix: optimistic visual paint FIRST — cheap SVG transform
+    // that makes the shape appear at the new angle on the next frame. This
+    // matches the drag-rotate pattern (useSVGInteraction.js handlePointerMove
+    // rotate branch) where visualTransform.rotate is set on every tick and
+    // onSaveAnnotations only fires on pointerup. Drag feels instant because
+    // the user sees the optimistic paint before the heavy save pipeline runs.
+    // Typed-commit lag (UAT Gap 1) came from skipping this step and going
+    // straight to onSaveAnnotations, which runs history fingerprinting +
+    // JSON.stringify + deep-compare before React can re-render.
+    applyOptimisticRotation(annotationIndex, newAngle);
+    pendingOptimisticRotationRef.current = { annotationIndex, angle: newAngle };
+
+    // Existing heavy save path — unchanged. Runs in parallel with the optimistic
+    // paint; when the persisted annotation eventually reflects the new angle,
+    // the cleanup useEffect below clears visualTransform.
     const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
-    if (!updatedAnnotations.objects?.[annotationIndex]) return;
+    if (!updatedAnnotations.objects?.[annotationIndex]) {
+      pendingOptimisticRotationRef.current = null;
+      clearOptimisticRotation();
+      return;
+    }
     updatedAnnotations.objects[annotationIndex].angle = newAngle;
     onSaveAnnotations(updatedAnnotations, {
       source: 'rotation-input',
       action: 'rotate',
       checkpointPolicy: 'normal',
     });
-  }, [annotations, onSaveAnnotations]);
+  }, [annotations, onSaveAnnotations, applyOptimisticRotation, clearOptimisticRotation]);
+
+  // EDIT-12 Gap 1 fix (Plan 12-03): clear the optimistic visualTransform
+  // once the persisted annotation angle catches up to the pending commit.
+  // This is the counterpart to the optimistic set in handleRotationInputCommit.
+  //
+  // We round both angles to integers before comparing because the input UI
+  // only displays/accepts integer degrees (per 12-CONTEXT.md "Integer degrees
+  // only"); the persisted angle may be a float from drag-rotate or from
+  // prior edits. Rounding avoids a false "still pending" state when the
+  // stored angle is e.g. 135.0000001.
+  //
+  // Running on `annotations` prop change means this fires on the React
+  // render that includes the new angle — exactly the moment the optimistic
+  // paint becomes redundant and can be cleared. We do NOT read or write
+  // visualTransform directly here (it's owned by useSVGInteraction);
+  // clearOptimisticRotation() routes through the hook's setter.
+  useEffect(() => {
+    const pending = pendingOptimisticRotationRef.current;
+    if (!pending) return;
+    const persistedObj = annotations?.objects?.[pending.annotationIndex];
+    if (!persistedObj) {
+      pendingOptimisticRotationRef.current = null;
+      clearOptimisticRotation();
+      return;
+    }
+    const persistedAngle = persistedObj.angle || 0;
+    if (Math.round(persistedAngle) === Math.round(pending.angle)) {
+      pendingOptimisticRotationRef.current = null;
+      clearOptimisticRotation();
+    }
+  }, [annotations, clearOptimisticRotation]);
 
   const handleRotationInputCancel = useCallback(() => {
-    // No-op — input handles its own state revert. Parent doesn't track
-    // typed value. Escape simply blurs the input and the displayed angle
-    // snaps back to props.angle (the persisted value).
-  }, []);
+    // EDIT-12 Gap 1 fix (Plan 12-03): drop any in-flight optimistic paint on
+    // Escape. Prevents a brief visual flash if the user types + Enter and
+    // then Escape in quick succession.
+    if (pendingOptimisticRotationRef.current) {
+      pendingOptimisticRotationRef.current = null;
+      clearOptimisticRotation();
+    }
+    // No-op otherwise — input handles its own state revert. Parent doesn't
+    // track typed value. Escape simply blurs the input and the displayed
+    // angle snaps back to props.angle (the persisted value).
+  }, [clearOptimisticRotation]);
 
   // Issue 4 flicker fix: handleRotationInputHoverChange is a child callback,
   // so its identity matters — every reference change invalidates the child's
