@@ -1072,20 +1072,7 @@ const SVGAnnotationLayer = memo(({
         // counter hover branch alone. Coordinate via the user first.
         const editIsCounter = obj.data?.type === 'counter';
         const isBeingEditedNow = editingAnnotationIndex != null && selectedIndex === editingAnnotationIndex;
-        // [COUNTER WIP — DO NOT TOUCH] Counter edit-mode short-circuit stays
-        // identical — unrelated to Gap 4. Counter branch below is owned by
-        // another session.
-        if (isBeingEditedNow && editIsCounter) return null;
-        // EDIT-14 (Phase 13 Plan 13-02): Border-flush shapes at angle=0 still
-        // short-circuit (clean edit surface, no SVG chrome). Border-flush
-        // shapes at angle !== 0 fall through to render SVGSelectionOverlay
-        // with isEditing=true, which emits an mtr-only visual-only overlay.
-        // Fix A / Architecture Option C. See `.planning/phases/13-.../13-02-PLAN.md`.
-        // Read `obj.angle` directly (NOT `bbox.angle`) — bbox is computed
-        // below at :~1179, not in scope yet. getAnnotationBBox propagates
-        // obj.angle ?? 0 so these are equivalent for this check.
-        const editAngle = obj.angle || 0;
-        if (isBeingEditedNow && editIsBorderFlush && editAngle === 0) return null;
+        if (isBeingEditedNow && (editIsBorderFlush || editIsCounter)) return null;
 
         // Counter selection (not in edit mode): render only the rotation handle at the
         // nubbin tip. No dashed bbox, no resize handles — Shottr-style minimal chrome.
@@ -1272,7 +1259,6 @@ const SVGAnnotationLayer = memo(({
               isGroupSelection={isBeingEditedNow}
               hideBoundingBox={isBorderFlush}
               padding={isBorderFlush ? 0 : 2}
-              isEditing={isBeingEditedNow}
             />
           </g>
         );
