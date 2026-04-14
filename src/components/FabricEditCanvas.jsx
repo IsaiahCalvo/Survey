@@ -1316,6 +1316,7 @@ const FabricEditCanvas = memo(({
       // work via the standard shape edit flow.
       const isCounter = obj.data && obj.data.type === 'counter';
       const sizing = computeShapeHandleSizing(obj, effectiveScale, pageSpaceModeRef.current);
+      console.log('[EDIT-14 probe] shape-edit path — hasControls:false for type:', obj.type, 'isCounter:', isCounter);
       obj.set({
         left: BBOX_PADDING,
         top: BBOX_PADDING,
@@ -1323,7 +1324,10 @@ const FabricEditCanvas = memo(({
         strokeWidth: isCounter ? (obj._realStrokeWidth || 1.5) : 0,
         selectable: true,
         evented: true,
-        hasControls: !isCounter,
+        // Phase 13 EDIT-14: no transform handles in edit mode for ANY shape.
+        // Edit mode is for content editing only (fill/stroke/text). To resize
+        // or rotate, exit edit mode back to select mode. Figma-style separation.
+        hasControls: false,
         hasBorders: false,
         padding: sizing.padding,
         cornerStyle: 'circle',
@@ -1569,8 +1573,11 @@ const FabricEditCanvas = memo(({
           obj.set({
             selectable: true,
             evented: true,
-            hasControls: true,
-            hasBorders: true,
+            // Phase 13 EDIT-14: no transform handles in edit mode (full-page
+            // callout path). Matches the shape-edit path above — edit mode is
+            // content editing only, transforms happen in select mode.
+            hasControls: false,
+            hasBorders: false,
           });
         } else {
           obj.set({
