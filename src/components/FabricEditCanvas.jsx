@@ -1316,7 +1316,6 @@ const FabricEditCanvas = memo(({
       // work via the standard shape edit flow.
       const isCounter = obj.data && obj.data.type === 'counter';
       const sizing = computeShapeHandleSizing(obj, effectiveScale, pageSpaceModeRef.current);
-      console.log('[EDIT-14 probe] shape-edit path — hasControls:false for type:', obj.type, 'isCounter:', isCounter);
       obj.set({
         left: BBOX_PADDING,
         top: BBOX_PADDING,
