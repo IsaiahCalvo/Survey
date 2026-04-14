@@ -51,34 +51,34 @@ export function normalizeTypedDegrees(rawValue) {
  * The pill itself is always axis-aligned to the screen (upright, never
  * rotated with the shape). Only the *anchor point* rotates.
  *
- * Issue 3 second pass — edge-to-edge constant gap:
+ * Issue 3 third pass — CONSTANT radius from shape center:
  *
- * The user's exact spec: "the nearest border of the rotation handle needs
- * to maintain the same distance to the nearest border of the pill, all the
- * way around." The previous formula used only the pill's support function
- * (and an even earlier one used halfDiag), measuring from the handle CENTER
- * to the pill EDGE. That made the pill closer than expected at the cardinals
- * because the handle has its own non-zero size that wasn't being subtracted.
+ * User feedback: "The pill changes width as digit count changes, and an
+ * edge-to-edge constant gap makes it LOOK like the pill is drifting farther
+ * from the handle when width grows. Instead, keep the pill at a fixed
+ * distance from the shape, computed at the worst-case orientation (handle
+ * horizontal, pill width facing the shape). That distance, once computed,
+ * is held constant around the full orbit."
  *
- * Correct formula uses BOTH the handle's support function AND the pill's
- * support function along the same direction:
+ * Correct formula uses worst-case AABB projections (the MAX of each rect's
+ * width/height halves) so the pill's distance from the handle is a single
+ * compile-time constant — and therefore the pill's distance from the shape
+ * center (handleRadius + EXTENSION) is constant across all rotations:
  *
- *   projHandle = |ux| * handleHalfW + |uy| * handleHalfH
- *   projPill   = |ux| * pillHalfW   + |uy| * pillHalfH
- *   d          = projHandle + GAP_EDGE_TO_EDGE + projPill
- *   pillCenter = handleCenter + unit * d
+ *   EXTENSION  = max(handleW, handleH)/2 + GAP + max(pillW, pillH)/2
+ *   pillCenter = handleCenter + unit * EXTENSION
+ *              = shapeCenter  + unit * (|handleCenter - shapeCenter| + EXTENSION)
  *
  * For a 16x16 handle and 60x28 pill with GAP=16:
- *   0°    unit (0,-1):  projHandle=8  projPill=14  d=8+16+14=38
- *   90°   unit (1, 0):  projHandle=8  projPill=30  d=8+16+30=54
- *   180°  unit (0, 1):  projHandle=8  projPill=14  d=38
- *   270°  unit (-1,0):  projHandle=8  projPill=30  d=54
+ *   EXTENSION = 8 + 16 + 30 = 54  (constant at every angle)
+ *   Edge-to-edge gap at 90°/270° (pill width facing handle) = 16 (spec minimum)
+ *   Edge-to-edge gap at 0°/180°  (pill height facing handle) = 32 (larger by design)
  *
- * The actual edge-to-edge distance (verified by minAABBDistance in the
- * unit tests) is exactly GAP_EDGE_TO_EDGE at every cardinal, regardless
- * of handle or pill aspect ratio. At off-axis directions the rectangles'
- * corners face each other so the perpendicular gap is slightly larger —
- * accepted, the minimum is always >= GAP_EDGE_TO_EDGE.
+ * The edge-to-edge gap now VARIES by angle, but the user explicitly wants
+ * visual constancy MEASURED FROM THE SHAPE — not constant edge-to-edge.
+ * Since the handle orbits the shape center at a fixed radius (a given shape
+ * has a fixed handle offset), constant pillOffset-from-handle ⇒ constant
+ * pillRadius-from-shape. That is the user-specified invariant.
  *
  * After radial placement, the pill is clamped to the host div with a 4px
  * edge margin so it never renders off-screen near page edges.
@@ -112,13 +112,27 @@ export function computeInputPosition(
   const handleCenterY = handleRect.top + handleRect.height / 2;
 
   if (shapeCenter && Number.isFinite(shapeCenter.x) && Number.isFinite(shapeCenter.y)) {
-    // Radial placement with edge-to-edge constant gap. The pill sits along
-    // the (shapeCenter → handleCenter) ray, offset OUTWARD from the handle
-    // so the perpendicular distance between the handle's nearest edge and
-    // the pill's nearest edge is exactly `gapAbove` at every cardinal angle.
+    // Constant-radius placement: the pill sits along the
+    // (shapeCenter → handleCenter) ray at a FIXED offset from the handle
+    // center. Offset uses the worst-case AABB projection (the max half of
+    // each rect) so that at the orientation where pill width faces the
+    // shape, the edge-to-edge gap is exactly `gapAbove` — and at every
+    // other orientation the gap is larger (pill never touches the handle).
+    // The consequence: pill-center-to-shape-center distance is constant
+    // across rotations, which is the user-specified visual invariant.
     const vecX = handleCenterX - shapeCenter.x;
     const vecY = handleCenterY - shapeCenter.y;
     const len = Math.hypot(vecX, vecY);
+
+    // UX: single worst-case extension — independent of rotation angle. Uses
+    // the LONGEST half-dimension of each rect so the pill width (pill's
+    // long axis) is always fully cleared even when it's the axis facing
+    // the shape (90°/270° orientation). At other angles the pill sits
+    // farther than strictly needed, but constant distance-from-shape is
+    // the user's priority, not constant edge-to-edge.
+    const handleHalfMax = Math.max(handleRect.width, handleRect.height) / 2;
+    const pillHalfMax = Math.max(inputWidth, inputHeight) / 2;
+    const EXTENSION = handleHalfMax + gapAbove + pillHalfMax;
 
     let pillCenterScreenX;
     let pillCenterScreenY;
@@ -126,26 +140,14 @@ export function computeInputPosition(
     if (len > 0.0001) {
       const unitX = vecX / len;
       const unitY = vecY / len;
-      const handleHalfW = handleRect.width / 2;
-      const handleHalfH = handleRect.height / 2;
-      const pillHalfW = inputWidth / 2;
-      const pillHalfH = inputHeight / 2;
-      // Support function for each AABB in direction (|unitX|, |unitY|).
-      // projHandle = distance from handleCenter to the handle's edge along the ray.
-      // projPill   = distance from pillCenter   to the pill's   edge along the ray.
-      const projHandle = Math.abs(unitX) * handleHalfW + Math.abs(unitY) * handleHalfH;
-      const projPill = Math.abs(unitX) * pillHalfW + Math.abs(unitY) * pillHalfH;
-      // Center-to-center distance: handle's outer edge + 16px gap + pill's outer edge.
-      const d = projHandle + gapAbove + projPill;
-      pillCenterScreenX = handleCenterX + unitX * d;
-      pillCenterScreenY = handleCenterY + unitY * d;
+      pillCenterScreenX = handleCenterX + unitX * EXTENSION;
+      pillCenterScreenY = handleCenterY + unitY * EXTENSION;
     } else {
       // Degenerate: handle exactly at shape center (zero-size shape).
       // Fall back to "above the handle" so we never divide by zero.
-      // Use the same edge-to-edge formula at unit = (0, -1):
-      //   d = handleHalfH + gapAbove + pillHalfH
+      // Use the same constant EXTENSION at unit = (0, -1).
       pillCenterScreenX = handleCenterX;
-      pillCenterScreenY = handleCenterY - ((handleRect.height / 2) + gapAbove + (inputHeight / 2));
+      pillCenterScreenY = handleCenterY - EXTENSION;
     }
 
     // Convert pill CENTER (screen) → pill TOP-LEFT (host-relative)

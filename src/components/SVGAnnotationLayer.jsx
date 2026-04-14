@@ -29,6 +29,7 @@ import {
   renderEllipse,
   renderText,
   renderCallout,
+  renderCounter,
 } from '../utils/svgAnnotationRenderers';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
@@ -112,6 +113,10 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   const svgRef = useRef(null);
   const importedDebugRef = useRef(null);
+  // Tracks an in-flight counter rotation drag so pointermove updates can carry
+  // the counter center (in viewBox/page space) without recomputing it each frame.
+  // Cleared on pointerup.
+  const counterRotateDragRef = useRef(null);
 
   // ---------------------------------------------------------------------------
   // Interaction hook (Phase 9)
@@ -264,11 +269,19 @@ const SVGAnnotationLayer = memo(({
       // UX: 500ms grace close gives the user time to travel ~100px from the
       // handle to the input pill and click into it. Only fires the actual
       // hide if the cursor still isn't over the input or handle when the
-      // timer expires.
+      // timer expires AND the pill input doesn't currently hold focus.
+      // The activeElement guard is the load-bearing fix: pointerenter on the
+      // portaled pill div doesn't always fire (cursor can teleport over it
+      // during a click), so hover state alone is unreliable. If the user is
+      // typing in the input, we know they're engaged regardless of hover.
       if (rotInputVisibleRef.current && !rotInputCloseTimerRef.current) {
         console.log(`[SVGAnnotationLayer] pointerleave — scheduling 500ms grace timer`);
         rotInputCloseTimerRef.current = setTimeout(() => {
-          if (!rotInputHoveredRef.current) {
+          const ae = document.activeElement;
+          const focusedInPill = !!(ae && ae.closest && ae.closest('[data-rotation-input-field]'));
+          if (focusedInPill) {
+            console.log(`[SVGAnnotationLayer] grace timer expired but pill input is focused, NOT hiding`);
+          } else if (!rotInputHoveredRef.current) {
             setRotInputVisibleDbg(false, '500ms grace expired (mtr leave path)');
           } else {
             console.log(`[SVGAnnotationLayer] grace timer expired but cursor over pill, NOT hiding`);
@@ -385,7 +398,13 @@ const SVGAnnotationLayer = memo(({
       if (rotInputVisibleRef.current && !rotInputCloseTimerRef.current && !isRotatingRef.current) {
         console.log(`[SVGAnnotationLayer] pill onHoverChange(false) — scheduling 500ms grace`);
         rotInputCloseTimerRef.current = setTimeout(() => {
-          if (!rotInputHoveredRef.current) {
+          // Same activeElement guard as the mtr-leave path — if the user is
+          // currently typing in the pill input, never hide regardless of hover.
+          const ae = document.activeElement;
+          const focusedInPill = !!(ae && ae.closest && ae.closest('[data-rotation-input-field]'));
+          if (focusedInPill) {
+            console.log(`[SVGAnnotationLayer] grace timer expired but pill input is focused, NOT hiding`);
+          } else if (!rotInputHoveredRef.current) {
             setRotInputVisibleDbg(false, '500ms grace expired (pill leave path)');
           } else {
             console.log(`[SVGAnnotationLayer] grace timer expired but cursor came back, NOT hiding`);
@@ -541,7 +560,10 @@ const SVGAnnotationLayer = memo(({
       const objectType = String(obj.type || '').toLowerCase();
       let element = null;
 
-      if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
+      if (obj.data && obj.data.type === 'counter') {
+        console.log(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
+        element = renderCounter(obj, i);
+      } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
         element = renderPath(obj, i);
       } else if (objectType === 'rect') {
         element = renderRect(obj, i);
@@ -771,31 +793,129 @@ const SVGAnnotationLayer = memo(({
         <g style={{ pointerEvents: 'none' }}>
           {renderElement}
         </g>
-        {/* Hover outline + hit area — line-type uses line-shaped hit, others use rect */}
-        {String(renderObj.type || '').toLowerCase() === 'line' ? (() => {
-          const ep = getLineEndpoints(renderObj);
-          return (
-            <g>
-              {/* Hover highlight along the line */}
-              {annotationIsHovered && (
+        {/* Hover outline + hit area — line uses line-shaped hit, counter uses
+            pin-shaped outline matching renderCounter, others use rect */}
+        {(() => {
+          const objTypeLower = String(renderObj.type || '').toLowerCase();
+          const isCounterObj = renderObj.data?.type === 'counter';
+
+          if (objTypeLower === 'line') {
+            const ep = getLineEndpoints(renderObj);
+            return (
+              <g>
+                {/* Hover highlight along the line */}
+                {annotationIsHovered && (
+                  <line
+                    x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
+                    stroke="#4a90e2"
+                    strokeOpacity={0.4}
+                    strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                {/* Invisible thick line hit area */}
                 <line
                   x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
-                  stroke="#4a90e2"
-                  strokeOpacity={0.4}
-                  strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
+                  stroke="transparent"
+                  strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
                   strokeLinecap="round"
                   vectorEffect="non-scaling-stroke"
+                  pointerEvents={isInteractive && isObjectInteractive ? 'stroke' : 'none'}
+                  onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                  onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                  onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                  onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                />
+              </g>
+            );
+          }
+
+          if (isCounterObj) {
+            // UX: counter hover outline hugs the pin shape (circle body + nub),
+            // NOT the enclosing bbox rect — a square-glow around a pin-shaped
+            // counter looks wrong. Geometry mirrors renderCounter exactly so
+            // the glow tracks the nub direction via data.pointerAngle. Tangent
+            // + long-arc path matches svgAnnotationRenderers.jsx:541-564.
+            const r = (renderObj.radius || 14) * Math.abs(renderObj.scaleX || 1);
+            const cx = (renderObj.left || 0) + r;
+            const cy = (renderObj.top || 0) + r;
+            const pointerAngleDeg = renderObj.data?.pointerAngle ?? 225;
+            const angleRad = (pointerAngleDeg * Math.PI) / 180;
+            const tipExt = Math.max(5, r * 0.5);
+            const tipDistance = r + tipExt;
+            const tipX = cx + Math.cos(angleRad) * tipDistance;
+            const tipY = cy + Math.sin(angleRad) * tipDistance;
+            const tangentHalfAngle = Math.acos(r / tipDistance);
+            const t1a = angleRad + tangentHalfAngle;
+            const t2a = angleRad - tangentHalfAngle;
+            const t1x = cx + Math.cos(t1a) * r;
+            const t1y = cy + Math.sin(t1a) * r;
+            const t2x = cx + Math.cos(t2a) * r;
+            const t2y = cy + Math.sin(t2a) * r;
+            const pinPathD = `M ${tipX},${tipY} L ${t1x},${t1y} A ${r},${r} 0 1 1 ${t2x},${t2y} Z`;
+            return (
+              <g>
+                {/* Pin-shaped hover glow — stroke only so the number + fill
+                    show through. pointer-events none; hit detection stays on
+                    the invisible hit-area rect below. */}
+                {annotationIsHovered && (
+                  <path
+                    d={pinPathD}
+                    fill="none"
+                    stroke="#4a90e2"
+                    strokeOpacity={0.4}
+                    strokeWidth={2 * inverseScale}
+                    vectorEffect="non-scaling-stroke"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                {/* Invisible hit-area rect — unchanged from generic branch.
+                    Counter pin extends beyond the circle bbox via the nub, but
+                    click target remains the circle bbox for simplicity. */}
+                <rect
+                  x={bbox.left}
+                  y={bbox.top}
+                  width={Math.max(bbox.width, 10)}
+                  height={Math.max(bbox.height, 10)}
+                  fill="transparent"
+                  stroke="none"
+                  pointerEvents={isInteractive && isObjectInteractive ? 'all' : 'none'}
+                  onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                  onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                  onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                  onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                />
+              </g>
+            );
+          }
+
+          return (
+            <g transform={bbox.angle ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})` : undefined}>
+              {/* Hover outline (shown before click, not when already selected) */}
+              {annotationIsHovered && (
+                <rect
+                  x={bbox.left}
+                  y={bbox.top}
+                  width={bbox.width}
+                  height={bbox.height}
+                  fill="none"
+                  stroke="#4a90e2"
+                  strokeOpacity={0.4}
+                  strokeWidth={2 * inverseScale}
                   style={{ pointerEvents: 'none' }}
                 />
               )}
-              {/* Invisible thick line hit area */}
-              <line
-                x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
-                stroke="transparent"
-                strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
-                strokeLinecap="round"
-                vectorEffect="non-scaling-stroke"
-                pointerEvents={isInteractive && isObjectInteractive ? 'stroke' : 'none'}
+              {/* Invisible hit-area rect ON TOP for easier clicking */}
+              <rect
+                x={bbox.left}
+                y={bbox.top}
+                width={Math.max(bbox.width, 10)}
+                height={Math.max(bbox.height, 10)}
+                fill="transparent"
+                stroke="none"
+                pointerEvents={isInteractive && isObjectInteractive ? 'all' : 'none'}
                 onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                 onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                 onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -803,38 +923,7 @@ const SVGAnnotationLayer = memo(({
               />
             </g>
           );
-        })() : (
-        <g transform={bbox.angle ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})` : undefined}>
-          {/* Hover outline (shown before click, not when already selected) */}
-          {annotationIsHovered && (
-            <rect
-              x={bbox.left}
-              y={bbox.top}
-              width={bbox.width}
-              height={bbox.height}
-              fill="none"
-              stroke="#4a90e2"
-              strokeOpacity={0.4}
-              strokeWidth={2 * inverseScale}
-              style={{ pointerEvents: 'none' }}
-            />
-          )}
-          {/* Invisible hit-area rect ON TOP for easier clicking */}
-          <rect
-            x={bbox.left}
-            y={bbox.top}
-            width={Math.max(bbox.width, 10)}
-            height={Math.max(bbox.height, 10)}
-            fill="transparent"
-            stroke="none"
-            pointerEvents={isInteractive && isObjectInteractive ? 'all' : 'none'}
-            onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
-            onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
-            onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
-            onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
-          />
-        </g>
-        )}
+        })()}
       </g>
     );
   });
@@ -879,10 +968,121 @@ const SVGAnnotationLayer = memo(({
         // (rect, text) there's no dashed bbox to preserve, so hide the overlay entirely.
         // For non-border-flush types (circle, ellipse, triangle), keep the dashed bbox
         // visible but strip the handles (Fabric provides those).
+        // Counter is a special case: bbox + resize handles are never shown — Shottr UX is
+        // a single rotation handle at the nubbin tip in selection mode, and the floating
+        // mini-toolbar (color + size) in edit mode. Selection-mode rotation handle is
+        // rendered below; edit-mode short-circuit returns null to clear the SVG selection
+        // chrome and let FabricEditCanvas + MiniToolbar own the surface.
         const editObjType = String(obj.type || '').toLowerCase();
         const editIsBorderFlush = editObjType === 'text' || editObjType === 'textbox' || editObjType === 'i-text' || editObjType === 'rect';
+        // [COUNTER WIP — DO NOT TOUCH] Counter select-mode rotation handle
+        // and counter hover-outline path are mid-debug as of 2026-04-14.
+        // Another session: leave editIsCounter / counterRotateDragRef /
+        // counter hover branch alone. Coordinate via the user first.
+        const editIsCounter = obj.data?.type === 'counter';
         const isBeingEditedNow = editingAnnotationIndex != null && selectedIndex === editingAnnotationIndex;
-        if (isBeingEditedNow && editIsBorderFlush) return null;
+        if (isBeingEditedNow && (editIsBorderFlush || editIsCounter)) return null;
+
+        // Counter selection (not in edit mode): render only the rotation handle at the
+        // nubbin tip. No dashed bbox, no resize handles — Shottr-style minimal chrome.
+        // Drag updates `data.pointerAngle` live with checkpointPolicy:'skip', then commits
+        // a single normal checkpoint on pointerup so the rotation is one undo entry.
+        if (editIsCounter) {
+          // Apply visualTransform translate so the rotation handle follows the counter
+          // during a live drag (otherwise the handle stays anchored to the stored
+          // position while the SVG counter visually moves with visualTransform.dx/dy).
+          const counterDragTransform = (visualTransform && typeof visualTransform.id === 'number'
+              && visualTransform.id === selectedIndex && !visualTransform.resize && !visualTransform.rotate)
+            ? `translate(${visualTransform.dx || 0}, ${visualTransform.dy || 0})`
+            : undefined;
+          const radius = (obj.radius || 14) * Math.abs(obj.scaleX || 1);
+          const cx = (obj.left || 0) + radius;
+          const cy = (obj.top || 0) + radius;
+          // Use existing data.pointerAngle (default 225°, matches renderCounter default).
+          const pointerAngleDeg = obj.data?.pointerAngle ?? 225;
+          const angleRad = (pointerAngleDeg * Math.PI) / 180;
+          // Match renderCounter's tipExtension formula exactly so the handle sits ON
+          // the visible nubbin tip, not floating beside it.
+          const tipExtension = Math.max(5, radius * 0.5);
+          const tipX = cx + Math.cos(angleRad) * (radius + tipExtension);
+          const tipY = cy + Math.sin(angleRad) * (radius + tipExtension);
+          // Screen-pixel-sized handle so it stays a constant ~7px regardless of zoom.
+          // Matches the line-endpoint handle sizing pattern at line ~680 below.
+          const handleR = 7 * inverseScale;
+          return (
+            <g key={`counter-rotate-wrapper-${selectedIndex}`} transform={counterDragTransform}>
+              <circle
+                cx={tipX}
+                cy={tipY}
+                r={handleR}
+                fill="#ffffff"
+                stroke="#4a90e2"
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
+                style={{
+                  // UX: rotation handle is the only interactive chrome in counter
+                  // selection mode (Shottr UX). Cursor 'grab' signals draggability;
+                  // pointer-events 'auto' so it remains hit-testable even though the
+                  // surrounding SVG layer flips to pointer-events:none in edit mode.
+                  cursor: 'grab',
+                  pointerEvents: 'auto',
+                  filter: `drop-shadow(0 ${1 * inverseScale}px ${3 * inverseScale}px rgba(0,0,0,0.25))`,
+                }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+                  counterRotateDragRef.current = {
+                    annotationIndex: selectedIndex,
+                    centerX: cx,
+                    centerY: cy,
+                  };
+                }}
+                onPointerMove={(e) => {
+                  const drag = counterRotateDragRef.current;
+                  if (!drag || drag.annotationIndex !== selectedIndex) return;
+                  const svgEl = svgRef.current;
+                  if (!svgEl) return;
+                  // Convert client coords to viewBox (page-space) coords.
+                  // The SVG viewBox is "0 0 width height" with preserveAspectRatio:'none',
+                  // so a simple linear mapping works.
+                  const rect = svgEl.getBoundingClientRect();
+                  if (rect.width === 0 || rect.height === 0) return;
+                  const px = ((e.clientX - rect.left) / rect.width) * width;
+                  const py = ((e.clientY - rect.top) / rect.height) * height;
+                  const newAngleDeg = Math.atan2(py - drag.centerY, px - drag.centerX) * 180 / Math.PI;
+                  const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+                  const targetObj = updatedAnnotations.objects?.[selectedIndex];
+                  if (!targetObj) return;
+                  targetObj.data = { ...(targetObj.data || {}), pointerAngle: newAngleDeg };
+                  onSaveAnnotations(updatedAnnotations, {
+                    source: 'counter:rotate-live',
+                    action: 'counter-rotate',
+                    checkpointPolicy: 'skip',
+                  });
+                }}
+                onPointerUp={(e) => {
+                  const drag = counterRotateDragRef.current;
+                  counterRotateDragRef.current = null;
+                  try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                  if (!drag || drag.annotationIndex !== selectedIndex) return;
+                  // Commit a single normal checkpoint so the entire rotation is one
+                  // undo step. The SVG already shows the final angle from the last
+                  // skip-checkpointed save, so we re-save the same JSON with normal
+                  // policy to flush the checkpoint.
+                  if (!annotations?.objects?.[selectedIndex]) return;
+                  onSaveAnnotations(annotations, {
+                    source: 'counter:rotate-commit',
+                    action: 'counter-rotate',
+                    checkpointPolicy: 'normal',
+                  });
+                }}
+                onPointerCancel={() => {
+                  counterRotateDragRef.current = null;
+                }}
+              />
+            </g>
+          );
+        }
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
         let bbox = getAnnotationBBox(obj);

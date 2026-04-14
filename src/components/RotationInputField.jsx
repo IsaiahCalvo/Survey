@@ -13,8 +13,10 @@
  * - 16px above the handle's top edge in screen pixels, always upright (never
  *   rotates with the shape).
  * - Single source of truth: the live drag angle is read from `angle` prop —
- *   the component does NOT maintain its own angle state. Internal state ONLY
- *   tracks the typed (uncommitted) value while the input has focus.
+ *   the component does NOT maintain its own angle state. The input itself is
+ *   uncontrolled (defaultValue + ref reads on commit) so user keystrokes are
+ *   never lost to React reconciliation. A sync useEffect pushes external
+ *   angle changes into input.value when the user is not focused.
  *
  * Visibility (parent-owned state machine — see SVGAnnotationLayer.jsx):
  * - Hidden by default
@@ -33,10 +35,10 @@
  * - Invalid input (non-numeric, empty) on commit/blur = silent revert
  *
  * Drag-wins rule (Pitfall 9):
- * - If the user starts a rotation drag while the input has focus and a
- *   pending typed value, the drag's live angle overwrites the displayed value
- *   character-by-character. Drag always wins; the typed value is silently
- *   discarded. Implemented by clearing typedValue when isRotating becomes true.
+ * - If the user starts a rotation drag, the sync useEffect pushes the live
+ *   drag angle into input.value even while focused (isRotating overrides the
+ *   isFocused guard). Drag always wins; any in-progress typing is overwritten
+ *   character-by-character.
  *
  * Visual contract (UI-SPEC LOCKED — no new tokens may be introduced here):
  * - Container: 60×28px, #2D2D2D bg, 1px solid #3A3A3A border (focused: #4A9EFF),
@@ -71,7 +73,7 @@ const EDGE_MARGIN = 4;
 
 // Debug logging toggle. Set to false to silence all [RotationInputField] logs.
 // Live-angle log is throttled to ~100ms so it doesn't spam the console at 60fps.
-const LOG = true;
+const LOG = false;
 const LIVE_LOG_THROTTLE_MS = 100;
 
 function RotationInputField({
@@ -87,9 +89,12 @@ function RotationInputField({
   onCancel,           // () => void — parent reverts/clears any pending state
   onHoverChange,      // (hovered: boolean) => void — drives 500ms grace timer
 }) {
-  // Internal state ONLY tracks the typed (uncommitted) value while focused.
-  // Live drag angle is read from props — single source of truth (Pitfall 9).
-  const [typedValue, setTypedValue] = useState(null);
+  // UNCONTROLLED INPUT (Round 5 fix): we use defaultValue + read inputRef on
+  // commit instead of a controlled `value={...}` prop. The controlled-input
+  // pattern was racing with React re-renders during typing and silently
+  // dropping keystrokes (no `input` event despite valid keydowns). With an
+  // uncontrolled input, React touches input.value only on mount and via the
+  // sync useEffect below; user keystrokes flow through normally.
   const [isFocused, setIsFocused] = useState(false);
   const [position, setPosition] = useState({ left: 0, top: 0 });
 
@@ -201,6 +206,83 @@ function RotationInputField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVisible]);
 
+  // Round 7 diagnostic A — TRUE component lifecycle (empty deps). Distinct
+  // from Debug log 1 above, which is gated on isVisible. This fires ONCE
+  // when the React component instance mounts and ONCE on cleanup. If the
+  // user types in the input and we see a cleanup→mount cycle here, the
+  // parent (SVGAnnotationLayer) is unmounting/remounting RotationInputField,
+  // which would explain focus loss.
+  useEffect(() => {
+    if (!LOG) return;
+    console.log(`[RotationInputField] LIFECYCLE mount — instance created`);
+    return () => {
+      console.log(`[RotationInputField] LIFECYCLE unmount — instance destroyed`);
+    };
+  }, []);
+
+  // Round 7 diagnostic B — document-level focusout listener with
+  // relatedTarget, attached only when this instance is visible. The
+  // relatedTarget property of focusout is the element that RECEIVES focus
+  // next — this tells us conclusively WHO is stealing focus from our input.
+  // Replaces the previous prototype monkey-patch which was broken at scale
+  // (there are 7 RotationInputField instances mounted, one per PDF page,
+  // and 7 nested prototype patches corrupted HTMLInputElement.prototype.blur).
+  useEffect(() => {
+    if (!LOG || !isVisible) return;
+    const handleFocusOut = (e) => {
+      if (e.target !== inputRef.current) return;
+      const rt = e.relatedTarget;
+      const rtTag = rt?.tagName ?? 'null';
+      const rtAria = rt?.getAttribute?.('aria-label') ?? '';
+      const rtCls = (rt?.className?.toString?.() ?? '').slice(0, 60);
+      const rtId = rt?.id ?? '';
+      const rtTxt = (rt?.textContent ?? '').trim().slice(0, 30);
+      console.log(
+        `[RotationInputField] FOCUSOUT — relatedTarget=${rtTag}${rtAria ? `(${rtAria})` : ''}${rtId ? ` id=${rtId}` : ''}${rtTxt ? ` text="${rtTxt}"` : ''}${rtCls ? ` class="${rtCls}"` : ''}`
+      );
+    };
+    document.addEventListener('focusout', handleFocusOut, true);
+    return () => document.removeEventListener('focusout', handleFocusOut, true);
+  }, [isVisible]);
+
+  // Round 7 diagnostic E — native input event listener on the input itself.
+  // Confirms whether the browser actually inserted characters into
+  // input.value after each keydown. If we see keydowns (line 224-225 of
+  // 1.log) but no INPUT events, something is preventing default insertion.
+  // If we see INPUT events but the value reverts, the sync useEffect is
+  // overwriting valid typed chars after focus loss.
+  useEffect(() => {
+    if (!LOG || !isVisible || !inputRef.current) return;
+    const inputEl = inputRef.current;
+    const handler = (e) => {
+      console.log(`[RotationInputField] INPUT event value="${e.target.value}"`);
+    };
+    inputEl.addEventListener('input', handler);
+    return () => inputEl.removeEventListener('input', handler);
+  }, [isVisible]);
+
+  // Round 7 diagnostic C — track input DOM element identity across renders.
+  // If React reconciles the <input> as a new element (different node than
+  // the previous render), focus is lost as a side effect. Runs after every
+  // render with no deps. Logs only when identity actually changes.
+  // NOTE: never pass DOM nodes directly to console.log — Vite's HMR overlay
+  // will JSON.stringify the args and crash on the React fiber circular ref.
+  // Log stable descriptors (presence + tagName) instead.
+  const lastInputElRef = useRef(null);
+  const inputIdentityCounterRef = useRef(0);
+  useEffect(() => {
+    if (!LOG) return;
+    if (lastInputElRef.current !== inputRef.current) {
+      inputIdentityCounterRef.current += 1;
+      const prevTag = lastInputElRef.current ? lastInputElRef.current.tagName : 'null';
+      const nextTag = inputRef.current ? inputRef.current.tagName : 'null';
+      console.log(
+        `[RotationInputField] INPUT IDENTITY CHANGED #${inputIdentityCounterRef.current} prev=${prevTag} next=${nextTag}`
+      );
+      lastInputElRef.current = inputRef.current;
+    }
+  });
+
   // Debug log 6 + 7 — track rotation drag start (one-shot per drag session)
   // and live-angle updates (throttled to LIVE_LOG_THROTTLE_MS).
   useEffect(() => {
@@ -222,94 +304,136 @@ function RotationInputField({
     }
   }, [isRotating, angle]);
 
-  // Drag-wins rule (Pitfall 9): when isRotating becomes true, clear any
-  // pending typed value so the displayed value snaps back to the live drag
-  // angle. Typed input during an active drag is silently discarded.
+  // Sync external angle into the uncontrolled input.value when:
+  // (a) the user is NOT focused (live updates from props/persisted state)
+  // (b) OR a rotation drag is active (drag wins — Pitfall 9)
+  // When the user has focus and is NOT dragging, we leave input.value alone
+  // so their in-progress typing is never clobbered.
   useEffect(() => {
-    if (isRotating && typedValue !== null) {
-      // Issue 4 diagnostic: log when drag clobbers a pending typed value.
-      // If this fires unexpectedly on every keystroke, the drag-wins rule
-      // is misfiring and silently dropping the user's input.
-      if (LOG) {
-        console.log(`[RotationInputField] DRAG RESETS typedValue="${typedValue}" → null (drag-wins rule)`);
+    if (!inputRef.current) return;
+    if (!isFocused || isRotating) {
+      const next = String(Math.round(angle));
+      if (inputRef.current.value !== next) {
+        inputRef.current.value = next;
       }
-      setTypedValue(null);
     }
-  }, [isRotating, typedValue]);
+  }, [angle, isFocused, isRotating]);
 
-  // Display value: live drag angle wins over typed value. When not rotating
-  // and no pending typed value, show the integer-rounded current angle
-  // (CONTEXT.md: "integer degrees only — display and accept whole numbers 0-359").
-  const displayValue = (isRotating || typedValue === null)
-    ? String(Math.round(angle))
-    : typedValue;
+  // Round 6 fix: window-capture keydown guard. Runs FIRST in the DOM event
+  // flow (before any document-capture listener including Syncfusion's PDF
+  // viewer intercept). When our input has focus, this guard calls
+  // e.stopPropagation() to prevent any downstream listener from firing —
+  // crucially, no other listener can call preventDefault() on the keydown,
+  // so the browser's default text-insertion action proceeds normally.
+  // Digit-only filtering and Enter/Escape/Arrow handling move here too,
+  // so the React onKeyDown handler on the input becomes redundant (kept as
+  // a no-op stopPropagation safety net).
+  useEffect(() => {
+    if (!isVisible) return;
+    const guard = (e) => {
+      if (!inputRef.current || document.activeElement !== inputRef.current) return;
+      // Stop propagation so Syncfusion / PAL / App handlers can't see this
+      // event and can't preventDefault on it.
+      e.stopPropagation();
+      if (LOG) {
+        console.log(`[RotationInputField] guard keydown key=${e.key} defaultPrevented=${e.defaultPrevented}`);
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitTypedRef.current?.();
+        inputRef.current?.blur();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (inputRef.current) inputRef.current.value = String(Math.round(angleRef.current));
+        onCancelRef.current?.();
+        inputRef.current?.blur();
+        return;
+      }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const step = (e.shiftKey ? 45 : 1) * (e.key === 'ArrowUp' ? 1 : -1);
+        const cur = Number(inputRef.current?.value);
+        const base = Number.isFinite(cur) ? cur : Math.round(angleRef.current);
+        const next = normalizeTypedDegrees(base + step);
+        if (next !== null) {
+          if (inputRef.current) inputRef.current.value = String(next);
+          onCommitRef.current?.(annotationIndexRef.current, next);
+        }
+        return;
+      }
+      // Navigation/edit keys — let the browser handle natively.
+      const NAV = new Set(['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab']);
+      if (NAV.has(e.key)) return;
+      // Single printable char — accept digits 0-9, block everything else.
+      if (e.key.length === 1 && !/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+      }
+      // Multi-char keys (F1-F12, etc.) — let through.
+    };
+    window.addEventListener('keydown', guard, { capture: true });
+    return () => window.removeEventListener('keydown', guard, { capture: true });
+  }, [isVisible]);
 
-  // Issue 4 diagnostic: log every render with the full input-state snapshot
-  // so we can see whether typedValue is being reset between user keystrokes.
-  // Critical sequence to watch for in DevTools:
-  //   onChange prevTyped=null newValue="9"  ← user typed
-  //   render typedValue="9" displayValue="9"  ← React reflected the new state
-  // If you see:
-  //   onChange prevTyped=null newValue="9"
-  //   render typedValue=null displayValue="0"  ← typedValue was clobbered
-  // …then something is resetting typedValue between onChange and the next render.
+  // Refs for the latest values so the window-capture guard (which has empty
+  // deps) can read them without re-attaching on every render.
+  const angleRef = useRef(angle);
+  const annotationIndexRef = useRef(annotationIndex);
+  const commitTypedRef = useRef(null);
+  const onCommitRef = useRef(onCommit);
+  const onCancelRef = useRef(onCancel);
+  useEffect(() => { angleRef.current = angle; }, [angle]);
+  useEffect(() => { annotationIndexRef.current = annotationIndex; }, [annotationIndex]);
+  useEffect(() => { onCommitRef.current = onCommit; }, [onCommit]);
+  useEffect(() => { onCancelRef.current = onCancel; }, [onCancel]);
+
   if (LOG) {
     console.log(
-      `[RotationInputField] render typedValue=${JSON.stringify(typedValue)} displayValue="${displayValue}" angle=${angle} isRotating=${isRotating} isFocused=${isFocused} isVisible=${isVisible}`
+      `[RotationInputField] render angle=${angle} isRotating=${isRotating} isFocused=${isFocused} isVisible=${isVisible}`
     );
   }
 
-  // Commit the typed value (Enter or blur).
+  // Commit the typed value (Enter or blur). Reads directly from inputRef.
   const commitTyped = useCallback(() => {
-    if (typedValue === null) return;  // No pending typed value to commit
-    const normalized = normalizeTypedDegrees(typedValue);
+    const raw = inputRef.current?.value;
+    if (raw == null || raw === '') {
+      // Empty = silent revert. Restore display to current persisted angle.
+      if (inputRef.current) inputRef.current.value = String(Math.round(angle));
+      onCancel?.();
+      return;
+    }
+    const normalized = normalizeTypedDegrees(raw);
     if (normalized === null) {
-      // Silent revert — CONTEXT.md: "Invalid input (non-numeric, empty) =
-      // silently revert on commit/blur". No error UI, no red border, no toast.
-      setTypedValue(null);
+      // CONTEXT.md: "Invalid input (non-numeric, empty) = silently revert".
+      if (inputRef.current) inputRef.current.value = String(Math.round(angle));
       onCancel?.();
       return;
     }
     onCommit?.(annotationIndex, normalized);
-    setTypedValue(null);
-  }, [typedValue, annotationIndex, onCommit, onCancel]);
+  }, [angle, annotationIndex, onCommit, onCancel]);
 
-  const handleChange = useCallback((e) => {
-    // Issue 4 diagnostic: log every onChange so we can verify the controlled
-    // input is actually receiving keystrokes from the browser. If onChange
-    // never fires after a keydown, that means a capture-phase listener
-    // somewhere is calling preventDefault on the keydown before the browser
-    // can perform the default text-insertion action.
-    if (LOG) {
-      console.log(`[RotationInputField] onChange prevTyped=${JSON.stringify(typedValue)} newValue="${e.target.value}" angle=${angle}`);
-    }
-    setTypedValue(e.target.value);
-  }, [typedValue, angle]);
+  // Sync commitTyped into ref for the window-capture guard.
+  useEffect(() => { commitTypedRef.current = commitTyped; }, [commitTyped]);
 
   const handleKeyDown = useCallback((e) => {
-    // UX: ALL keydowns inside the input are isolated from document/window-level
-    // shortcut handlers so Backspace/Delete don't delete the underlying shape
-    // and ArrowLeft/ArrowRight don't flip pages in single-scroll mode. The
-    // shape stays SELECTED — only the KEYBOARD events are stopped at the pill
-    // boundary. We stop propagation FIRST so even branches that early-return
-    // below still block the bubble.
-    //
-    // Belt-and-suspenders: stop both the React synthetic event and the native
-    // event. nativeEvent.stopImmediatePropagation() prevents any subsequent
-    // bubble-phase listener from receiving the event (capture-phase listeners
-    // that already ran before this React handler can't be undone — they rely
-    // on their own document.activeElement guards, which are present in all
-    // known cases at App.jsx, PageAnnotationLayer.jsx, SVGAnnotationLayer.jsx,
-    // and Callout/index.jsx).
+    // React onKeyDown is a no-op now — all key handling moved to the
+    // window-capture guard below (see Round 6 fix). Reason: something in the
+    // capture-phase chain (suspected: Syncfusion's PDF viewer document-level
+    // listener, or Electron's keyboard intercept) was preventDefault-ing
+    // digit keystrokes BEFORE they reached the input, blocking text
+    // insertion entirely. The window-capture guard runs first in the event
+    // flow and calls stopPropagation, so no other listener ever sees the
+    // event — including the one that was killing default text insertion.
     e.stopPropagation();
-    if (e.nativeEvent && typeof e.nativeEvent.stopImmediatePropagation === 'function') {
-      e.nativeEvent.stopImmediatePropagation();
-    }
 
-    // Debug log 4 — every keydown the input sees, with the stopPropagation
-    // confirmation so the user can verify the bubble-block is actually firing.
+    // Debug log 4 — every keydown the input sees, with stopPropagation +
+    // activeElement so we can verify focus is actually on the input.
     if (LOG) {
-      console.log(`[RotationInputField] keydown key=${e.key} stopPropagation=true`);
+      const ae = document.activeElement;
+      const aeTag = ae?.tagName || 'null';
+      const aeLabel = ae?.getAttribute?.('aria-label') || '';
+      console.log(`[RotationInputField] keydown key=${e.key} activeEl=${aeTag}${aeLabel ? `(${aeLabel})` : ''} stopPropagation=true`);
     }
 
     if (e.key === 'Enter') {
@@ -332,42 +456,60 @@ function RotationInputField({
       // jumps by 45° (the Phase 12 snap increment) so users can quickly cycle
       // 0/45/90/135. Scoped to this input — no global keydown listener.
       const step = e.shiftKey ? 45 : 1;
-      const base = typedValue !== null
-        ? (Number(typedValue) || 0)
-        : Math.round(angle);
+      const current = Number(inputRef.current?.value);
+      const base = Number.isFinite(current) ? current : Math.round(angle);
       const newValue = normalizeTypedDegrees(base + step);
       if (newValue !== null) {
+        if (inputRef.current) inputRef.current.value = String(newValue);
         onCommit?.(annotationIndex, newValue);
-        setTypedValue(null);
       }
       return;
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       const step = e.shiftKey ? 45 : 1;
-      const base = typedValue !== null
-        ? (Number(typedValue) || 0)
-        : Math.round(angle);
+      const current = Number(inputRef.current?.value);
+      const base = Number.isFinite(current) ? current : Math.round(angle);
       const newValue = normalizeTypedDegrees(base - step);
       if (newValue !== null) {
+        if (inputRef.current) inputRef.current.value = String(newValue);
         onCommit?.(annotationIndex, newValue);
-        setTypedValue(null);
       }
       return;
     }
-    // All other keys (digits, Backspace, Delete, letters) flow through to the
-    // browser's native input handling — already stopPropagation'd above so
-    // they NEVER reach SVGAnnotationLayer's Delete/Backspace shortcut.
-  }, [typedValue, angle, annotationIndex, onCommit, commitTyped]);
+
+    // UX: whole-integer-only input. The user wants the pill to accept 0-9
+    // digits and nothing else — no letters, no spaces, no periods/minus
+    // signs, no symbols. Navigation keys (Tab, Home, End, left/right arrow)
+    // and text-editing keys (Backspace, Delete) are explicitly allowed so
+    // the user can position the cursor and erase mistakes. Modifier-only
+    // keystrokes (Shift, Ctrl, Alt, Meta) are multi-char `e.key` values and
+    // so are not blocked by the single-printable-char filter below.
+    const NAV_AND_EDIT_KEYS = new Set([
+      'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab',
+    ]);
+    if (NAV_AND_EDIT_KEYS.has(e.key)) {
+      // Let the browser handle cursor positioning and deletion natively.
+      return;
+    }
+    if (e.key.length === 1) {
+      // Printable single-character key. Accept only 0-9; block everything
+      // else (letters, spaces, punctuation, symbols) via preventDefault so
+      // no non-digit character ever reaches the input's value.
+      if (!/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+      }
+      return;
+    }
+    // Multi-char keys (F1-F12, PageUp, etc.) — harmless, let through.
+  }, [angle, annotationIndex, onCommit, commitTyped]);
 
   // UX: also stop keyup so any global shortcut listening on keyup (less common
-  // but possible) can't fire while the pill has focus. Symmetric with keydown,
-  // and uses the same React + native stop pattern.
+  // but possible) can't fire while the pill has focus. Symmetric with keydown.
+  // NOTE: only the React synthetic stopPropagation — not nativeEvent
+  // stopImmediatePropagation — for the same reason as handleKeyDown.
   const handleKeyUp = useCallback((e) => {
     e.stopPropagation();
-    if (e.nativeEvent && typeof e.nativeEvent.stopImmediatePropagation === 'function') {
-      e.nativeEvent.stopImmediatePropagation();
-    }
   }, []);
 
   const handleFocus = useCallback(() => {
@@ -404,10 +546,16 @@ function RotationInputField({
       data-rotation-input-field
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
-      // UX: stop pointer/mouse events from propagating to the SVG layer below
-      // so clicking into the input doesn't trigger a deselect or a new drag.
+      // UX: stop the FULL click cycle (down → up → click) from propagating to
+      // the SVG layer below. Stopping only the down events let the up/click
+      // events bubble to a parent handler that was stealing focus on mouseup
+      // — symptom: "if I hold mouse down I can type, but releasing dismisses
+      // the input." Stopping both down AND up events keeps focus stable.
       onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
       style={{
         position: 'absolute',
         left: position.left,
@@ -443,8 +591,11 @@ function RotationInputField({
         inputMode="numeric"
         pattern="[0-9]*"
         aria-label="Rotation angle in degrees"
-        value={displayValue}
-        onChange={handleChange}
+        // UNCONTROLLED: defaultValue seeds the initial render only; subsequent
+        // external angle updates are pushed via the sync useEffect above.
+        // Round 5 fix: controlled `value=` was racing with re-renders during
+        // typing and dropping keystrokes silently.
+        defaultValue={String(Math.round(angle))}
         onKeyDown={handleKeyDown}
         onKeyUp={handleKeyUp}
         // UX: belt-and-suspenders click stop — focusing the input via click
