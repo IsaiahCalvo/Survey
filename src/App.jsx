@@ -23,6 +23,7 @@ import PageAnnotationLayer, { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from '.
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
+import { renumberCounters } from './utils/counterNumbering';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
@@ -10925,6 +10926,40 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const editModeCooldownRef = useRef(0); // timestamp — prevents re-entering edit mode immediately after dismiss
   const textToolDragRef = useRef(null); // { startX, startY, pageNumber, rect, effectiveScale } for drag-to-create
 
+  // [COUNTER WIP — DO NOT TOUCH] Counter drag-to-place state.
+  // UX: Shottr-style drag-to-place + Shift-twist. mouseDown spawns a preview pin
+  // under the cursor. While the mouse is held, moving the cursor slides the pin.
+  // Holding Shift mid-drag freezes the TIP of the pin at its current canvas
+  // position; subsequent mouse movement orbits the body around that frozen tip
+  // (the cursor "drags" the body around an invisible circle of radius
+  // tipDistance centered on the tip). Releasing Shift returns to slide mode
+  // with a small offset so there's no visual jump where the body was vs where
+  // the cursor is. Escape mid-drag cancels (removes the preview, no commit, no
+  // undo entry). Mouseup commits with a normal checkpoint.
+  // Shape:
+  // {
+  //   active: bool,
+  //   pageKey: number|string,    // which page the drag started on
+  //   pointerId: number,         // for setPointerCapture cleanup
+  //   rect: DOMRect,             // overlay div bounding rect at pointerdown
+  //   effectiveScale: number,    // px-per-page-unit (= rect.width / pageWidth)
+  //   bodyX: number,             // current body center, page coords
+  //   bodyY: number,
+  //   angle: number,             // current pointerAngle in degrees (0=right, 90=down)
+  //   radius: number,            // counter circle radius
+  //   tipDistance: number,       // radius + max(5, radius*0.5) — matches renderCounter
+  //   color: string,             // counter fill color
+  //   dragSessionId: number,     // unique id stamped on the pending counter for find/remove
+  //   shiftActive: bool,         // is Shift currently held?
+  //   tipX: number|null,         // when shiftActive: frozen tip canvas position, page coords
+  //   tipY: number|null,
+  //   cursorOffsetX: number,     // post-Shift-release offset: bodyX = cursorPageX + cursorOffsetX
+  //   cursorOffsetY: number,
+  //   lastCursorPageX: number,   // remembered last cursor for Shift-down/up transitions
+  //   lastCursorPageY: number,
+  // }
+  const counterDragRef = useRef(null);
+
   // Disable ALL Syncfusion interactive layers during annotation edit mode via injected <style>.
   // Covers .e-pv-text-layer, .e-pv-annotation-canvas, and any other Syncfusion overlay.
   // Using a <style> tag instead of querySelectorAll ensures dynamically-added elements are caught.
@@ -11126,6 +11161,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Track last used tool for each category to keep icons persistent
   useEffect(() => {
     // Debug: log tool activation for line/arrow/callout
+    if (activeTool === 'counter') {
+      console.log(`[Counter] TOOL ACTIVATED — activeTool=counter, lastShapeTool=${lastShapeTool}, ref will sync next render`);
+    }
     if (['line', 'arrow', 'callout'].includes(activeTool)) {
       const isDrawingTool = ['pen', 'highlighter', 'rect', 'ellipse', 'line', 'arrow'].includes(activeTool);
       console.log(`[App] TOOL ACTIVATED: ${activeTool}`, {
@@ -11145,7 +11183,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       try {
         localStorage.setItem('lastDrawTool', activeTool);
       } catch (e) { }
-    } else if (['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
+    } else if (['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(activeTool)) {
       setLastShapeTool(activeTool);
       try {
         localStorage.setItem('lastShapeTool', activeTool);
@@ -22281,6 +22319,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return;
       }
 
+      // 'C' key to switch to Counter Tool (Shottr-style numbered drops)
+      // [COUNTER WIP — DO NOT TOUCH] Counter feature is mid-debug as of
+      // 2026-04-14. Another session running on this repo: leave counter
+      // keybind + handler + tool registration alone. Coordinate via the
+      // user before modifying anything tagged [COUNTER WIP].
+      if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isFormField) {
+          return;
+        }
+        e.preventDefault();
+        setActiveTool('counter');
+        return;
+      }
+
       if (!isFormField && (e.metaKey || e.ctrlKey)) {
         const key = e.key.toLowerCase();
 
@@ -22473,6 +22525,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (source_.includes('text')) {
       console.log(`[App p${pageNumber}] handleSaveAnnotations TEXT — source=${source_}, prevObjects=${prevCount_}, nextObjects=${nextCount_}, delta=${nextCount_ - prevCount_}`);
     }
+    if (source_.includes('counter')) {
+      const counterObjs = (json?.objects || []).filter(o => o?.data?.type === 'counter');
+      console.log(`[Counter p${pageNumber}] handleSaveAnnotations ENTRY — source=${source_}, prevObjects=${prevCount_}, nextObjects=${nextCount_}, delta=${nextCount_ - prevCount_}, counterObjsInJson=${counterObjs.length}, firstCounter=${JSON.stringify(counterObjs[0]?.data || null)}`);
+    }
     const currentPageAnnotations = annotationsByPageRef.current?.[pageNumber];
     const normalizedCurrentAnnotations = normalizeCanvasJsonForHistory(currentPageAnnotations);
     const normalizedIncomingAnnotations = normalizeCanvasJsonForHistory(json);
@@ -22620,15 +22676,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const nextC = normalizedIncomingAnnotations?.objects?.length ?? 0;
         console.log(`[App p${pageNumber}] setAnnotationsByPage TEXT — APPLYING state update: ${prevC} → ${nextC} objects`);
       }
-      return {
+      const next = {
         ...prev,
         [pageNumber]: normalizedIncomingAnnotations
       };
+      // Re-derive counter display numbers across the whole document so
+      // delete-renumber works automatically (Shottr+ behavior).
+      renumberCounters(next);
+      if (source_.includes('counter')) {
+        const allCounters = [];
+        for (const k of Object.keys(next)) {
+          (next[k]?.objects || []).forEach(o => {
+            if (o?.data?.type === 'counter') {
+              allCounters.push({ page: k, dn: o.data.displayNumber, ca: o.data.createdAt });
+            }
+          });
+        }
+        console.log(`[Counter] setAnnotationsByPage reducer — after renumber, total counters in doc: ${allCounters.length}, list: ${JSON.stringify(allCounters)}`);
+      }
+      return next;
     });
-    annotationsByPageRef.current = {
+    annotationsByPageRef.current = renumberCounters({
       ...(annotationsByPageRef.current || {}),
       [pageNumber]: normalizedIncomingAnnotations
-    };
+    });
   }, [
     addHistoryCheckpoint,
     getHistoryFingerprint,
@@ -22637,6 +22708,238 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     pushHistoryDebugEvent,
     summarizeAnnotationPageTransitionForDebug
   ]);
+
+  // [COUNTER WIP — DO NOT TOUCH] Counter drag-to-place helpers.
+  // Shared by the inline pointer handlers in the counter overlays and by the
+  // window-level Shift/Escape keyboard listener defined below. The pointer
+  // handlers (onPointerDown/Move/Up in the JSX) call commitCounterDrag and
+  // applyCounterDragMove directly; the keyboard listener calls them in
+  // response to Shift / Escape events while a drag is active.
+
+  // applyCounterDragMove: re-compute body position + pointer angle from the
+  // current cursor + drag mode, then patch the in-progress counter on the
+  // page via handleSaveAnnotations with checkpointPolicy:'skip' so the undo
+  // stack stays clean during the drag. Slide mode: body follows cursor with
+  // the post-Shift-release offset (zero immediately after pointerdown).
+  // Shift-rotate mode: tip is frozen at drag.tipX/drag.tipY and the body
+  // orbits the tip on a circle of radius tipDistance, in the direction of
+  // the cursor relative to the tip.
+  const applyCounterDragMove = useCallback((cursorPageX, cursorPageY) => {
+    const drag = counterDragRef.current;
+    console.log(`[CDrag apply] ENTRY cursor=(${cursorPageX?.toFixed?.(1)}, ${cursorPageY?.toFixed?.(1)}) dragActive=${!!drag?.active} shiftActive=${!!drag?.shiftActive} pageKey=${drag?.pageKey} createdAt=${drag?.dragCreatedAt}`);
+    if (!drag || !drag.active) {
+      console.log(`[CDrag apply] EARLY RETURN — no active drag`);
+      return;
+    }
+
+    drag.lastCursorPageX = cursorPageX;
+    drag.lastCursorPageY = cursorPageY;
+
+    let bodyX, bodyY, angleDeg;
+
+    if (drag.shiftActive) {
+      // Shift-rotate mode: TIP frozen at (drag.tipX, drag.tipY). The body
+      // sits on a circle of radius tipDistance around the tip in the
+      // direction of the cursor relative to the tip. Cursor radial distance
+      // is ignored — only the cursor's angle around the tip matters.
+      const dx = cursorPageX - drag.tipX;
+      const dy = cursorPageY - drag.tipY;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 0.001) {
+        // Cursor sitting exactly on the frozen tip — keep previous pose so
+        // we don't divide by zero or snap to a garbage angle.
+        bodyX = drag.bodyX;
+        bodyY = drag.bodyY;
+        angleDeg = drag.angle;
+      } else {
+        const dirX = dx / dist;
+        const dirY = dy / dist;
+        bodyX = drag.tipX + drag.tipDistance * dirX;
+        bodyY = drag.tipY + drag.tipDistance * dirY;
+        // pointerAngle (renderCounter convention) is the direction FROM the
+        // body TO the tip. tip = body + r*(cos θ, sin θ), so the unit
+        // vector body→tip is (-dirX, -dirY) → θ = atan2(-dirY, -dirX).
+        const angleRad = Math.atan2(-dirY, -dirX);
+        angleDeg = (angleRad * 180 / Math.PI + 360) % 360;
+      }
+    } else {
+      // Slide mode: body center follows the cursor (with the offset that
+      // was captured at the last Shift-release, if any). Angle is preserved.
+      bodyX = cursorPageX + drag.cursorOffsetX;
+      bodyY = cursorPageY + drag.cursorOffsetY;
+      angleDeg = drag.angle;
+    }
+
+    // [COUNTER WIP — DO NOT TOUCH] Clamp body to page bounds so the pin
+    // stays fully inside the visible page even when the cursor leaves it.
+    // We only clamp the body center; the small pointer tip is allowed to
+    // extend past the edge if it has to. Clamping is by half-radius on each
+    // side so the entire circle stays visible. The drag.rect we captured at
+    // pointerdown is the overlay's CSS bounding rect; rect.width/effectiveScale
+    // converts to page coordinates (same coordinate space as bodyX/bodyY).
+    // Clamping is applied in BOTH slide and shift-rotate modes — in shift-rotate
+    // the orbit math may briefly mean the body sticks at the edge instead of
+    // following a perfect circle when the tip is pinned near the edge, which
+    // is the right trade: "stays on page" wins over "perfect orbit at edge."
+    if (drag.rect && drag.effectiveScale) {
+      const pageWidthPdf = drag.rect.width / drag.effectiveScale;
+      const pageHeightPdf = drag.rect.height / drag.effectiveScale;
+      bodyX = Math.max(drag.radius, Math.min(pageWidthPdf - drag.radius, bodyX));
+      bodyY = Math.max(drag.radius, Math.min(pageHeightPdf - drag.radius, bodyY));
+    }
+
+    drag.bodyX = bodyX;
+    drag.bodyY = bodyY;
+    drag.angle = angleDeg;
+
+    const currentPage = annotationsByPageRef.current?.[drag.pageKey];
+    if (!currentPage?.objects) {
+      console.log(`[CDrag apply] EARLY RETURN — currentPage missing or has no objects, pageKey=${drag.pageKey}`);
+      return;
+    }
+    const idx = currentPage.objects.findIndex(o => o?.data?.createdAt === drag.dragCreatedAt);
+    console.log(`[CDrag apply] find idx=${idx} totalObjs=${currentPage.objects.length} createdAt=${drag.dragCreatedAt}`);
+    if (idx < 0) {
+      console.log(`[CDrag apply] EARLY RETURN — counter not found in page by createdAt`);
+      return;
+    }
+    const old = currentPage.objects[idx];
+    const updated = {
+      ...old,
+      left: bodyX - drag.radius,
+      top: bodyY - drag.radius,
+      data: {
+        ...(old.data || {}),
+        pointerAngle: angleDeg,
+      },
+    };
+    const updatedJSON = {
+      ...currentPage,
+      objects: [
+        ...currentPage.objects.slice(0, idx),
+        updated,
+        ...currentPage.objects.slice(idx + 1),
+      ],
+    };
+    console.log(`[CDrag apply] saving — bodyX=${bodyX.toFixed(1)} bodyY=${bodyY.toFixed(1)} angle=${angleDeg.toFixed(1)} idx=${idx}`);
+    handleSaveAnnotations(drag.pageKey, updatedJSON, {
+      source: 'counter:drag-preview',
+      tool: 'counter',
+      checkpointPolicy: 'skip',
+    });
+  }, [handleSaveAnnotations]);
+
+  // cancelCounterDrag: invoked by Escape mid-drag (or pointercancel). Removes
+  // the in-progress counter from the page entirely with checkpointPolicy:'skip'
+  // so the cancelled drag leaves no entry in undo history — it's as if the
+  // user never started.
+  const cancelCounterDrag = useCallback(() => {
+    const drag = counterDragRef.current;
+    console.log(`[CDrag cancel] ENTRY active=${!!drag?.active} createdAt=${drag?.dragCreatedAt}`);
+    if (!drag || !drag.active) return;
+
+    const currentPage = annotationsByPageRef.current?.[drag.pageKey];
+    if (currentPage?.objects) {
+      const filtered = currentPage.objects.filter(o => o?.data?.createdAt !== drag.dragCreatedAt);
+      if (filtered.length !== currentPage.objects.length) {
+        handleSaveAnnotations(drag.pageKey, {
+          ...currentPage,
+          objects: filtered,
+        }, {
+          source: 'counter:drag-cancel',
+          tool: 'counter',
+          checkpointPolicy: 'skip',
+        });
+      }
+    }
+
+    counterDragRef.current = null;
+  }, [handleSaveAnnotations]);
+
+  // commitCounterDrag: invoked by pointerup. Re-saves the page with normal
+  // checkpoint policy so the entire drag becomes ONE undo entry. The counter
+  // already has its final position/angle (the live drag wrote them via
+  // applyCounterDragMove with skip checkpoint); we just need a normal save
+  // to put the change in undo history.
+  const commitCounterDrag = useCallback(() => {
+    const drag = counterDragRef.current;
+    console.log(`[CDrag commit] ENTRY active=${!!drag?.active} createdAt=${drag?.dragCreatedAt} bodyX=${drag?.bodyX?.toFixed?.(1)} bodyY=${drag?.bodyY?.toFixed?.(1)} angle=${drag?.angle?.toFixed?.(1)}`);
+    if (!drag || !drag.active) return;
+
+    const currentPage = annotationsByPageRef.current?.[drag.pageKey];
+    if (currentPage?.objects) {
+      handleSaveAnnotations(drag.pageKey, currentPage, {
+        source: 'counter:create',
+        tool: 'counter',
+      });
+    }
+
+    counterDragRef.current = null;
+  }, [handleSaveAnnotations]);
+
+  // [COUNTER WIP — DO NOT TOUCH] Window-level Shift/Escape listener for the
+  // counter drag-to-place flow. Only acts when activeTool === 'counter' AND a
+  // drag is currently active so it doesn't interfere with other tools, text
+  // editing, or other Escape handlers (e.g. closing dialogs). preventDefault
+  // + stopPropagation are used ONLY when handling, never blanket.
+  useEffect(() => {
+    if (activeTool !== 'counter') return;
+
+    const onKeyDown = (e) => {
+      const drag = counterDragRef.current;
+      if (!drag || !drag.active) return;
+      console.log(`[CDrag keydown] key="${e.key}" shiftActive(was)=${drag.shiftActive}`);
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelCounterDrag();
+        return;
+      }
+
+      if (e.key === 'Shift' && !drag.shiftActive) {
+        // Lock the tip at its CURRENT canvas position so the body can orbit
+        // around it. tip = body + r*(cos angle, sin angle), where r is the
+        // tipDistance from renderCounter (radius + max(5, radius*0.5)).
+        const angleRad = drag.angle * Math.PI / 180;
+        drag.tipX = drag.bodyX + drag.tipDistance * Math.cos(angleRad);
+        drag.tipY = drag.bodyY + drag.tipDistance * Math.sin(angleRad);
+        drag.shiftActive = true;
+        // Re-apply with the last known cursor so the user sees the new
+        // (Shift-rotate) pose even if they don't move the mouse first. This
+        // lines up the body with the cursor's current direction from the
+        // frozen tip immediately on Shift-down.
+        applyCounterDragMove(drag.lastCursorPageX, drag.lastCursorPageY);
+      }
+    };
+
+    const onKeyUp = (e) => {
+      const drag = counterDragRef.current;
+      if (!drag || !drag.active) return;
+      console.log(`[CDrag keyup] key="${e.key}" shiftActive(was)=${drag.shiftActive}`);
+
+      if (e.key === 'Shift' && drag.shiftActive) {
+        // Hand control of the body back to the cursor. To avoid a visible
+        // jump, capture the offset between the current body and the cursor
+        // and use it for subsequent moves — the body stays exactly where it
+        // is at release, then the cursor "catches up" gradually.
+        drag.cursorOffsetX = drag.bodyX - drag.lastCursorPageX;
+        drag.cursorOffsetY = drag.bodyY - drag.lastCursorPageY;
+        drag.shiftActive = false;
+        drag.tipX = null;
+        drag.tipY = null;
+      }
+    };
+
+    // Capture-phase so the listener sees the event before any in-page
+    // handler that might stopPropagation (e.g. Syncfusion's own listeners).
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+    };
+  }, [activeTool, applyCounterDragMove, cancelCounterDrag]);
 
   // Helper function to check if two bounds match (with tolerance for floating point)
   const boundsMatch = (bounds1, bounds2, tolerance = 5) => {
@@ -25175,6 +25478,152 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 </div>
                               )}
 
+                              {/* [COUNTER WIP — DO NOT TOUCH] Counter tool drag-to-place overlay
+                                  (Shottr-style). PAL is not mounted in SVG mode, so counter
+                                  pointer events are handled here directly. mouseDown spawns a
+                                  preview pin and starts a drag; mouseMove repositions the pin
+                                  (or rotates it around a frozen tip if Shift is held);
+                                  mouseUp commits with one undo entry. Escape cancels and
+                                  removes the preview entirely. Tool stays active for rapid
+                                  drops. See counterDragRef + applyCounterDragMove +
+                                  commitCounterDrag + cancelCounterDrag at the top of App.jsx. */}
+                              {activeTool === 'counter' && (
+                                <div
+                                  data-counter-overlay={pageNumber}
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0, left: 0, right: 0, bottom: 0,
+                                    cursor: 'crosshair',
+                                    zIndex: 102,
+                                    pointerEvents: 'auto',
+                                  }}
+                                  onPointerDown={(e) => {
+                                    if (Date.now() - editModeCooldownRef.current < 300) return;
+                                    if (counterDragRef.current?.active) return; // safety: ignore re-entrancy
+                                    e.stopPropagation();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const pageW = resolvedPageSize.width;
+                                    if (!pageW || rect.width === 0) return;
+                                    const effectiveScale = rect.width / pageW;
+                                    const x = (e.clientX - rect.left) / effectiveScale;
+                                    const y = (e.clientY - rect.top) / effectiveScale;
+                                    // UX: Counter radius driven by the bottom toolbar Size input.
+                                    // useDocumentToolPreferences persists strokeWidth per-tool, so each
+                                    // tool (counter, pen, etc.) gets its own remembered size automatically.
+                                    // Floor of 4 keeps the counter clickable even at the smallest slider value.
+                                    const COUNTER_RADIUS = Math.max(4, Number(strokeWidth) || 14);
+                                    // tipDistance MUST match renderCounter's formula so the
+                                    // tip math (Shift-rotate) lines up with what the user sees.
+                                    const tipDistance = COUNTER_RADIUS + Math.max(5, COUNTER_RADIUS * 0.5);
+                                    // dragCreatedAt is the find key used by applyCounterDragMove
+                                    // and commit/cancel. We use createdAt (preserved by the
+                                    // history normalizer) instead of a custom sentinel because
+                                    // normalizeCanvasJsonForHistory strips unknown keys like
+                                    // _dragSessionId. createdAt at pointerdown is unique enough
+                                    // since only one drag can be active at a time.
+                                    const dragCreatedAt = Date.now();
+                                    const initialAngle = 225; // existing default — points southwest
+                                    const color = strokeColor || '#ef4444';
+                                    const counter = {
+                                      type: 'circle',
+                                      left: x - COUNTER_RADIUS,
+                                      top: y - COUNTER_RADIUS,
+                                      radius: COUNTER_RADIUS,
+                                      fill: color,
+                                      stroke: '#ffffff',
+                                      strokeWidth: 1.5,
+                                      strokeUniform: true,
+                                      hasControls: false,
+                                      lockScalingX: true,
+                                      lockScalingY: true,
+                                      lockRotation: true,
+                                      data: {
+                                        type: 'counter',
+                                        createdAt: dragCreatedAt,
+                                        pointerAngle: initialAngle,
+                                        displayNumber: 1,
+                                      },
+                                    };
+                                    const currentPage = annotationsByPageRef.current?.[pageNumber] || { version: '5.3.0', objects: [] };
+                                    const updatedJSON = {
+                                      ...currentPage,
+                                      objects: [...(currentPage.objects || []), counter],
+                                    };
+                                    console.log(`[Counter p${pageNumber}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}`);
+                                    counterDragRef.current = {
+                                      active: true,
+                                      pageKey: pageNumber,
+                                      pointerId: e.pointerId,
+                                      rect,
+                                      effectiveScale,
+                                      bodyX: x,
+                                      bodyY: y,
+                                      angle: initialAngle,
+                                      radius: COUNTER_RADIUS,
+                                      tipDistance,
+                                      color,
+                                      dragCreatedAt,
+                                      shiftActive: false,
+                                      tipX: null,
+                                      tipY: null,
+                                      cursorOffsetX: 0,
+                                      cursorOffsetY: 0,
+                                      lastCursorPageX: x,
+                                      lastCursorPageY: y,
+                                    };
+                                    // [COUNTER WIP — DO NOT TOUCH] Push the checkpoint HERE,
+                                    // not at commit. drag-start is the only point in the drag
+                                    // where the previous state (no new pin) differs from the
+                                    // incoming state (with new pin), so it's the only place
+                                    // handleSaveAnnotations will actually add an undo entry.
+                                    // The drag-preview saves use 'skip', and commitCounterDrag
+                                    // is intentionally a fingerprint noop (state hasn't moved
+                                    // by the time it fires) — drag-start is the single source
+                                    // of truth for "the user created a counter, undo it."
+                                    handleSaveAnnotations(pageNumber, updatedJSON, {
+                                      source: 'counter:drag-start',
+                                      tool: 'counter',
+                                    });
+                                    // setPointerCapture so move/up come through even when the
+                                    // cursor leaves the overlay div.
+                                    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+                                  }}
+                                  onPointerMove={(e) => {
+                                    const drag = counterDragRef.current;
+                                    console.log(`[CDrag move#1 p${pageNumber}] FIRED dragActive=${!!drag?.active} dragPageKey=${drag?.pageKey} clientX=${e.clientX.toFixed(1)} clientY=${e.clientY.toFixed(1)}`);
+                                    if (!drag || !drag.active) return;
+                                    if (drag.pageKey !== pageNumber) {
+                                      console.log(`[CDrag move#1 p${pageNumber}] SKIP — drag belongs to page ${drag.pageKey}`);
+                                      return;
+                                    }
+                                    e.stopPropagation();
+                                    // Convert client coords → page coords using the rect and
+                                    // scale captured at pointerdown. We trust those because
+                                    // the user is mid-drag; they're not zooming.
+                                    const cursorPageX = (e.clientX - drag.rect.left) / drag.effectiveScale;
+                                    const cursorPageY = (e.clientY - drag.rect.top) / drag.effectiveScale;
+                                    applyCounterDragMove(cursorPageX, cursorPageY);
+                                  }}
+                                  onPointerUp={(e) => {
+                                    const drag = counterDragRef.current;
+                                    console.log(`[CDrag up#1 p${pageNumber}] FIRED dragActive=${!!drag?.active} dragPageKey=${drag?.pageKey}`);
+                                    if (!drag || !drag.active) return;
+                                    if (drag.pageKey !== pageNumber) return;
+                                    e.stopPropagation();
+                                    commitCounterDrag();
+                                    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                                  }}
+                                  onPointerCancel={(e) => {
+                                    const drag = counterDragRef.current;
+                                    console.log(`[CDrag cancel#1 p${pageNumber}] FIRED dragActive=${!!drag?.active}`);
+                                    if (!drag || !drag.active) return;
+                                    if (drag.pageKey !== pageNumber) return;
+                                    cancelCounterDrag();
+                                    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                                  }}
+                                />
+                              )}
+
                               {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
                               {isEditMode && (
                                 <FabricEditCanvas
@@ -26041,6 +26490,134 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     </div>
                                   )}
 
+                                  {/* [COUNTER WIP — DO NOT TOUCH] Counter tool drag-to-place
+                                      overlay (Shottr-style). Mirror of the primary overlay
+                                      above (~line 25218) for the alternate render path that
+                                      uses pageNum / pageSizes. Keep these two blocks in sync. */}
+                                  {activeTool === 'counter' && (
+                                    <div
+                                      data-counter-overlay={pageNum}
+                                      style={{
+                                        position: 'absolute',
+                                        top: 0, left: 0, right: 0, bottom: 0,
+                                        cursor: 'crosshair',
+                                        zIndex: 102,
+                                        pointerEvents: 'auto',
+                                      }}
+                                      onPointerDown={(e) => {
+                                        if (Date.now() - editModeCooldownRef.current < 300) return;
+                                        if (counterDragRef.current?.active) return; // safety: ignore re-entrancy
+                                        e.stopPropagation();
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        const pageW = pageSizes[pageNum]?.width;
+                                        if (!pageW || rect.width === 0) return;
+                                        const effectiveScale = rect.width / pageW;
+                                        const x = (e.clientX - rect.left) / effectiveScale;
+                                        const y = (e.clientY - rect.top) / effectiveScale;
+                                        // UX: Counter radius driven by the bottom toolbar Size input.
+                                        // useDocumentToolPreferences persists strokeWidth per-tool, so each
+                                        // tool (counter, pen, etc.) gets its own remembered size automatically.
+                                        // Floor of 4 keeps the counter clickable even at the smallest slider value.
+                                        const COUNTER_RADIUS = Math.max(4, Number(strokeWidth) || 14);
+                                        // tipDistance MUST match renderCounter's formula so the
+                                        // tip math (Shift-rotate) lines up with what the user sees.
+                                        const tipDistance = COUNTER_RADIUS + Math.max(5, COUNTER_RADIUS * 0.5);
+                                        // See overlay #1 for why we use createdAt as the find
+                                        // key instead of a custom sentinel.
+                                        const dragCreatedAt = Date.now();
+                                        const initialAngle = 225; // existing default — points southwest
+                                        const color = strokeColor || '#ef4444';
+                                        const counter = {
+                                          type: 'circle',
+                                          left: x - COUNTER_RADIUS,
+                                          top: y - COUNTER_RADIUS,
+                                          radius: COUNTER_RADIUS,
+                                          fill: color,
+                                          stroke: '#ffffff',
+                                          strokeWidth: 1.5,
+                                          strokeUniform: true,
+                                          hasControls: false,
+                                          lockScalingX: true,
+                                          lockScalingY: true,
+                                          lockRotation: true,
+                                          data: {
+                                            type: 'counter',
+                                            createdAt: dragCreatedAt,
+                                            pointerAngle: initialAngle,
+                                            displayNumber: 1,
+                                          },
+                                        };
+                                        const currentPage = annotationsByPageRef.current?.[pageNum] || { version: '5.3.0', objects: [] };
+                                        const updatedJSON = {
+                                          ...currentPage,
+                                          objects: [...(currentPage.objects || []), counter],
+                                        };
+                                        console.log(`[Counter p${pageNum}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}`);
+                                        counterDragRef.current = {
+                                          active: true,
+                                          pageKey: pageNum,
+                                          pointerId: e.pointerId,
+                                          rect,
+                                          effectiveScale,
+                                          bodyX: x,
+                                          bodyY: y,
+                                          angle: initialAngle,
+                                          radius: COUNTER_RADIUS,
+                                          tipDistance,
+                                          color,
+                                          dragCreatedAt,
+                                          shiftActive: false,
+                                          tipX: null,
+                                          tipY: null,
+                                          cursorOffsetX: 0,
+                                          cursorOffsetY: 0,
+                                          lastCursorPageX: x,
+                                          lastCursorPageY: y,
+                                        };
+                                        // [COUNTER WIP — DO NOT TOUCH] Push the checkpoint HERE,
+                                        // not at commit. See the matching comment in counter
+                                        // overlay #1 (~line 25559) for the full rationale —
+                                        // both overlays are mirrored line-for-line and must
+                                        // stay in sync.
+                                        handleSaveAnnotations(pageNum, updatedJSON, {
+                                          source: 'counter:drag-start',
+                                          tool: 'counter',
+                                        });
+                                        try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+                                      }}
+                                      onPointerMove={(e) => {
+                                        const drag = counterDragRef.current;
+                                        console.log(`[CDrag move#2 p${pageNum}] FIRED dragActive=${!!drag?.active} dragPageKey=${drag?.pageKey} clientX=${e.clientX.toFixed(1)} clientY=${e.clientY.toFixed(1)}`);
+                                        if (!drag || !drag.active) return;
+                                        if (drag.pageKey !== pageNum) {
+                                          console.log(`[CDrag move#2 p${pageNum}] SKIP — drag belongs to page ${drag.pageKey}`);
+                                          return;
+                                        }
+                                        e.stopPropagation();
+                                        const cursorPageX = (e.clientX - drag.rect.left) / drag.effectiveScale;
+                                        const cursorPageY = (e.clientY - drag.rect.top) / drag.effectiveScale;
+                                        applyCounterDragMove(cursorPageX, cursorPageY);
+                                      }}
+                                      onPointerUp={(e) => {
+                                        const drag = counterDragRef.current;
+                                        console.log(`[CDrag up#2 p${pageNum}] FIRED dragActive=${!!drag?.active} dragPageKey=${drag?.pageKey}`);
+                                        if (!drag || !drag.active) return;
+                                        if (drag.pageKey !== pageNum) return;
+                                        e.stopPropagation();
+                                        commitCounterDrag();
+                                        try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                                      }}
+                                      onPointerCancel={(e) => {
+                                        const drag = counterDragRef.current;
+                                        console.log(`[CDrag cancel#2 p${pageNum}] FIRED dragActive=${!!drag?.active}`);
+                                        if (!drag || !drag.active) return;
+                                        if (drag.pageKey !== pageNum) return;
+                                        cancelCounterDrag();
+                                        try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                                      }}
+                                    />
+                                  )}
+
                                   {isEditMode && (
                                     <FabricEditCanvas
                                       key={`edit-${pageNum}-${editingAnnotation?.index ?? 'new'}`}
@@ -26230,7 +26807,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   { id: 'rect', label: 'Rectangle', iconName: 'rect' },
                   { id: 'ellipse', label: 'Ellipse', iconName: 'ellipse' },
                   { id: 'line', label: 'Line', iconName: 'line' },
-                  { id: 'arrow', label: 'Arrow', iconName: 'arrow' }
+                  { id: 'arrow', label: 'Arrow', iconName: 'arrow' },
+                  { id: 'counter', label: 'Counter', iconName: 'counter' }
                 ].map(t => (
                   <button
                     key={t.id}
@@ -26396,7 +26974,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 const isActive = activeCategoryDropdown === 'shape';
                 setActiveCategoryDropdown(isActive ? null : 'shape');
                 if (!isActive) {
-                  if (!['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
+                  if (!['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(activeTool)) {
                     setActiveTool(lastShapeTool);
                   }
                 }
@@ -26406,7 +26984,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                 setTooltip({ visible: true, text: 'Shapes', x: rect.left + rect.width / 2, y: rect.top - 10 });
               }}
               onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
+              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Shapes"
             >
