@@ -297,55 +297,66 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
   }, [fabricRef]);
 
   // UX: mini-bar floats just above the shape in screen space and must follow
-  // the shape's CURRENT visible top edge in real time while the user scales,
+  // the shape's CURRENT visible edges in real time while the user scales,
   // moves, or pans. Tracking the container's bounding rect alone is NOT
-  // sufficient: during vertical edit-mode scaling (dragging the top handle)
-  // Fabric anchors the opposite edge and the shape's `obj.top` drifts inside
-  // the canvas — the container CSS position stays fixed, so a container-rect-
-  // only tracker leaves the mini-bar stranded 44px above the container while
-  // the shape's actual top edge moves down toward the middle of the canvas.
-  // Fix: on every frame, read the active object's `obj.top * canvas.zoom` and
-  // add that to the container's screen-space top to get the shape's real
-  // visible top — this is what the mini-bar anchors off. `obj.top` is
-  // clamped at BBOX_PADDING in page coords when no scaling is happening
-  // (move/rotate reset it), so the extra offset is zero except during an
-  // in-flight scale drag, which is exactly when we need it to move.
+  // sufficient on EITHER axis:
+  //
+  // - Vertical (Bug #6): during top-handle drags Fabric anchors the bottom
+  //   edge and `obj.top` drifts inside the canvas. A container-only tracker
+  //   leaves the mini-bar stranded 44px above the container while the shape
+  //   moves down toward the middle of the canvas.
+  // - Horizontal (Bug #9): during left/right handle drags Fabric anchors the
+  //   opposite side and `obj.left` drifts inside the canvas. The centering
+  //   formula `toolbarPos.left + (toolbarPos.width - toolbarWidth)/2` stays
+  //   centered on the CONTAINER, which is off-center over the drifted SHAPE.
+  //
+  // Fix: on every frame, read the active object's `obj.left` and `obj.top`
+  // (multiplied by `canvas.getZoom()` to get screen px) and add them as
+  // signed offsets to the container's screen-space origin. The offsets are
+  // zero at rest (`obj.left == obj.top == BBOX_PADDING`) and become non-zero
+  // only during an in-flight scale drag, which is exactly when we need the
+  // mini-bar to follow. Both offsets are SIGNED — they must be allowed to
+  // go negative when the user grows past BBOX_PADDING, otherwise the mini-
+  // bar hits a wall and stops following mid-drag.
   useEffect(() => {
     let rafId;
     const track = () => {
       const el = containerRef.current;
       if (el) {
         const r = el.getBoundingClientRect();
-        // Shape top offset inside container (in screen px). Reads the active
-        // object live — during object:scaling, obj.top drifts and this offset
-        // becomes non-zero, which is what causes the mini-bar to track the
-        // shape. Falls back to 0 (mini-bar sits at container top) when there
-        // is no active object or the canvas isn't ready yet.
+        // Shape top/left offsets inside container (in screen px). Reads the
+        // active object live — during object:scaling, obj.top/obj.left drift
+        // and these offsets become non-zero, causing the mini-bar to track
+        // the shape. Fall back to 0 (mini-bar sits at container origin) when
+        // there is no active object or the canvas isn't ready yet.
         const canvas = fabricRef.current;
         let shapeTopOffsetPx = 0;
+        let shapeLeftOffsetPx = 0;
         if (canvas) {
           const obj = canvas.getActiveObject();
-          if (obj && typeof obj.top === 'number') {
+          if (obj && typeof obj.top === 'number' && typeof obj.left === 'number') {
             const zoom = canvas.getZoom() || 1;
-            // Offset is signed: positive when the shape has drifted DOWN
-            // inside the canvas (user dragged top handle down to shrink,
-            // Fabric anchored the bottom edge), negative when it has drifted
-            // UP (user dragged top handle up to grow, Fabric moved obj.top
-            // below BBOX_PADDING — possibly negative in canvas coords).
+            // Offsets are SIGNED: positive when the shape has drifted DOWN
+            // or RIGHT inside the canvas (user dragged a top/left handle
+            // toward the opposite edge), negative when it has drifted UP or
+            // LEFT (user grew the shape past BBOX_PADDING and Fabric moved
+            // the origin outside the canvas).
+            //
             // DO NOT clamp at zero: clamping creates a "wall" where the
-            // mini-bar stops tracking once obj.top falls below BBOX_PADDING,
-            // because the offset gets floored to 0 and the mini-bar locks
-            // to `container.top - 44`. Letting the offset go negative lets
-            // the mini-bar continue moving up with the shape for as long as
-            // the user keeps dragging.
+            // mini-bar stops tracking the moment `obj.top`/`obj.left` crosses
+            // BBOX_PADDING, locking the bar to the container origin. Letting
+            // the offsets go negative lets the mini-bar continue moving with
+            // the shape as long as the user keeps dragging.
             shapeTopOffsetPx = (obj.top - BBOX_PADDING) * zoom;
+            shapeLeftOffsetPx = (obj.left - BBOX_PADDING) * zoom;
           }
         }
         const effectiveTop = r.top + shapeTopOffsetPx;
+        const effectiveLeft = r.left + shapeLeftOffsetPx;
         setToolbarPos(prev => {
-          if (prev && Math.abs(prev.left - r.left) < 0.5 && Math.abs(prev.top - effectiveTop) < 0.5 &&
+          if (prev && Math.abs(prev.left - effectiveLeft) < 0.5 && Math.abs(prev.top - effectiveTop) < 0.5 &&
               Math.abs(prev.width - r.width) < 0.5 && Math.abs(prev.height - r.height) < 0.5) return prev;
-          return { left: r.left, top: effectiveTop, width: r.width, height: r.height };
+          return { left: effectiveLeft, top: effectiveTop, width: r.width, height: r.height };
         });
       }
       rafId = requestAnimationFrame(track);
