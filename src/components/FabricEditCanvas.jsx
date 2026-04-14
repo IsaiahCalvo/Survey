@@ -63,7 +63,24 @@ const CUSTOM_PROPS = [
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType',
 ];
 
-const BBOX_PADDING = 20;
+// UX: BBOX_PADDING is the page-unit buffer added on every side of a shape
+// when sizing the edit canvas. It determines how much PIXEL SPACE Fabric has
+// to render corner/edge handles OUTSIDE the shape's geometric bounds without
+// running out of canvas drawing surface — canvas 2D drawing is physically
+// clipped to the element's pixel buffer, so any part of a handle that falls
+// outside `setDimensions(w, h)` simply doesn't exist and looks "cut off".
+//
+// Screen buffer per side = BBOX_PADDING * effectiveScale. Fabric handles are
+// ~13px cornerSize, so we want at least ~16px buffer per side to render the
+// full handle plus a safety margin. 32 page-units gives:
+//   - es=1.33 (Electron normal)  → 42px per side
+//   - es=1.00 (browser normal)   → 32px per side
+//   - es=0.50                    → 16px per side (tight but handles fit)
+//   - es=0.10 (new zoom floor)   → ~3px (clipped, but shape itself is tiny)
+// Previously 20, which clipped handles on small shapes / small zoom levels.
+// Do not lower without auditing all BBOX_PADDING call sites and verifying
+// handle visibility across the full zoom range.
+const BBOX_PADDING = 32;
 
 /**
  * Compute Fabric edit-mode shape handle sizing so edit handles match SVGSelectionOverlay
@@ -279,17 +296,56 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
     setStrokeW(obj._realStrokeWidth ?? obj.strokeWidth ?? 3);
   }, [fabricRef]);
 
-  // Track container position via rAF so toolbar follows during pan/scroll/zoom
+  // UX: mini-bar floats just above the shape in screen space and must follow
+  // the shape's CURRENT visible top edge in real time while the user scales,
+  // moves, or pans. Tracking the container's bounding rect alone is NOT
+  // sufficient: during vertical edit-mode scaling (dragging the top handle)
+  // Fabric anchors the opposite edge and the shape's `obj.top` drifts inside
+  // the canvas — the container CSS position stays fixed, so a container-rect-
+  // only tracker leaves the mini-bar stranded 44px above the container while
+  // the shape's actual top edge moves down toward the middle of the canvas.
+  // Fix: on every frame, read the active object's `obj.top * canvas.zoom` and
+  // add that to the container's screen-space top to get the shape's real
+  // visible top — this is what the mini-bar anchors off. `obj.top` is
+  // clamped at BBOX_PADDING in page coords when no scaling is happening
+  // (move/rotate reset it), so the extra offset is zero except during an
+  // in-flight scale drag, which is exactly when we need it to move.
   useEffect(() => {
     let rafId;
     const track = () => {
       const el = containerRef.current;
       if (el) {
         const r = el.getBoundingClientRect();
+        // Shape top offset inside container (in screen px). Reads the active
+        // object live — during object:scaling, obj.top drifts and this offset
+        // becomes non-zero, which is what causes the mini-bar to track the
+        // shape. Falls back to 0 (mini-bar sits at container top) when there
+        // is no active object or the canvas isn't ready yet.
+        const canvas = fabricRef.current;
+        let shapeTopOffsetPx = 0;
+        if (canvas) {
+          const obj = canvas.getActiveObject();
+          if (obj && typeof obj.top === 'number') {
+            const zoom = canvas.getZoom() || 1;
+            // Offset is signed: positive when the shape has drifted DOWN
+            // inside the canvas (user dragged top handle down to shrink,
+            // Fabric anchored the bottom edge), negative when it has drifted
+            // UP (user dragged top handle up to grow, Fabric moved obj.top
+            // below BBOX_PADDING — possibly negative in canvas coords).
+            // DO NOT clamp at zero: clamping creates a "wall" where the
+            // mini-bar stops tracking once obj.top falls below BBOX_PADDING,
+            // because the offset gets floored to 0 and the mini-bar locks
+            // to `container.top - 44`. Letting the offset go negative lets
+            // the mini-bar continue moving up with the shape for as long as
+            // the user keeps dragging.
+            shapeTopOffsetPx = (obj.top - BBOX_PADDING) * zoom;
+          }
+        }
+        const effectiveTop = r.top + shapeTopOffsetPx;
         setToolbarPos(prev => {
-          if (prev && Math.abs(prev.left - r.left) < 0.5 && Math.abs(prev.top - r.top) < 0.5 &&
-              Math.abs(prev.width - r.width) < 0.5) return prev;
-          return { left: r.left, top: r.top, width: r.width, height: r.height };
+          if (prev && Math.abs(prev.left - r.left) < 0.5 && Math.abs(prev.top - effectiveTop) < 0.5 &&
+              Math.abs(prev.width - r.width) < 0.5 && Math.abs(prev.height - r.height) < 0.5) return prev;
+          return { left: r.left, top: effectiveTop, width: r.width, height: r.height };
         });
       }
       rafId = requestAnimationFrame(track);
@@ -321,11 +377,27 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
   // Position: 8px above the edit Canvas container, using rAF-tracked screen coords.
   // Portaled to document.body to escape Syncfusion stacking contexts.
   const toolbarWidth = 240;
+  // UX: the mini-bar floats 44px above the edit container. When the user
+  // drags the shape's TOP handle upward in edit mode, the shape grows past
+  // the container's top edge (we set `wrapperEl.overflow: visible` to allow
+  // this) and visually enters the mini-bar's screen region. If the root div
+  // had `pointer-events: auto` (the default), the mini-bar would intercept
+  // those clicks and the top handles would feel "dead" or weird.
+  //
+  // Fix: make the mini-bar ROOT non-interactive (pointerEvents: 'none') so
+  // clicks over the bar's background fall through to the canvas below where
+  // the handles live. Interactive children (color swatches, stroke buttons,
+  // color grid) explicitly opt back in with `pointerEvents: 'auto'` on their
+  // own style, so Fill/Stroke/Width controls still work. Event bubbling is
+  // not blocked by pointer-events — the root's onMouseDown stopPropagation
+  // still fires for bubbled button clicks, keeping the shape from deselecting
+  // when user touches a toolbar control.
   const positionStyle = {
     position: 'fixed',
     left: toolbarPos ? toolbarPos.left + (toolbarPos.width - toolbarWidth) / 2 : -9999,
     top: toolbarPos ? toolbarPos.top - 44 : -9999,
     zIndex: 999999,
+    pointerEvents: 'none',
   };
 
   if (positionStyle.top < 0 && toolbarPos) {
@@ -353,6 +425,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
         gridTemplateColumns: 'repeat(4, 1fr)',
         gap: 4,
         zIndex: 103,
+        pointerEvents: 'auto',
       }}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -407,6 +480,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
             borderRadius: 2,
             border: '1px solid #555',
             cursor: 'pointer',
+            pointerEvents: 'auto',
             backgroundImage: fill === 'transparent' ? 'linear-gradient(45deg, #666 25%, transparent 25%, transparent 75%, #666 75%), linear-gradient(45deg, #666 25%, transparent 25%, transparent 75%, #666 75%)' : undefined,
             backgroundSize: fill === 'transparent' ? '8px 8px' : undefined,
             backgroundPosition: fill === 'transparent' ? '0 0, 4px 4px' : undefined,
@@ -432,6 +506,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
             borderRadius: 2,
             border: '1px solid #555',
             cursor: 'pointer',
+            pointerEvents: 'auto',
           }}
         />
         {showStrokePicker && renderColorGrid(stroke, (c) => {
@@ -454,6 +529,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
             color: '#FFF', fontSize: 14, cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: 0, lineHeight: 1,
+            pointerEvents: 'auto',
           }}
         >-</button>
         <span style={{ fontSize: 12, fontWeight: 400, color: '#FFFFFF', minWidth: 24, textAlign: 'center' }}>
@@ -467,6 +543,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
             color: '#FFF', fontSize: 14, cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: 0, lineHeight: 1,
+            pointerEvents: 'auto',
           }}
         >+</button>
       </div>
@@ -743,6 +820,16 @@ const FabricEditCanvas = memo(({
       enableRetinaScaling: true,
       stopContextMenu: true,
       renderOnAddRemove: false,
+      // UX: corner-handle scaling is FREE (width and height move independently)
+      // by default, and Shift LOCKS the aspect ratio. This matches SVG select
+      // mode exactly (see useSVGInteraction.js:360-362 — the SVG path is "free
+      // by default, Shift averages scaleX/scaleY to lock"). Fabric 5.x defaults
+      // `uniformScaling: true`, which is the OPPOSITE feel; leaving the default
+      // means double-clicking a shape to enter edit mode silently flips its
+      // transform behavior — user cannot free-stretch without holding a key.
+      // Fabric's built-in `uniScaleKey` defaults to 'shiftKey', so setting
+      // `uniformScaling: false` here gives us: free drag → Shift locks. Done.
+      uniformScaling: false,
     },
   });
 
@@ -1213,15 +1300,19 @@ const FabricEditCanvas = memo(({
       obj._realStrokeWidth = obj.strokeWidth || 0;
       obj._svgEffectiveScale = effectiveScale;
       obj._svgIsPageSpaceMode = pageSpaceModeRef.current === true;
+      // Counters (Shottr-style numbered badges) are fixed-size — no resize
+      // handles, locked scale, locked rotation. Move + recolor + delete still
+      // work via the standard shape edit flow.
+      const isCounter = obj.data && obj.data.type === 'counter';
       const sizing = computeShapeHandleSizing(obj, effectiveScale, pageSpaceModeRef.current);
       obj.set({
         left: BBOX_PADDING,
         top: BBOX_PADDING,
         angle: 0,
-        strokeWidth: 0,
+        strokeWidth: isCounter ? (obj._realStrokeWidth || 1.5) : 0,
         selectable: true,
         evented: true,
-        hasControls: true,
+        hasControls: !isCounter,
         hasBorders: false,
         padding: sizing.padding,
         cornerStyle: 'circle',
@@ -1229,6 +1320,9 @@ const FabricEditCanvas = memo(({
         cornerColor: '#ffffff',
         cornerStrokeColor: '#d1d1d1',
         transparentCorners: false,
+        lockScalingX: isCounter ? true : obj.lockScalingX,
+        lockScalingY: isCounter ? true : obj.lockScalingY,
+        lockRotation: isCounter ? true : obj.lockRotation,
         opacity: 0,
       });
 
@@ -1324,8 +1418,25 @@ const FabricEditCanvas = memo(({
           newH = (annData.height || 30) * Math.abs(newScaleY);
         }
 
-        const cw = Math.ceil((newW + BBOX_PADDING * 2) * effectiveScale);
-        const ch = Math.ceil((newH + BBOX_PADDING * 2) * effectiveScale);
+        // UX: During corner/edge scaling, Fabric pins the OPPOSITE anchor and
+        // shifts `o.left/o.top` inside the canvas — e.g. dragging the top-
+        // middle handle downward shrinks the shape by moving `o.top` DOWN
+        // (toward the middle of the canvas) while the bottom edge stays put.
+        // If we size the canvas to `(newW + BBOX_PADDING*2) * es` (shape size
+        // plus symmetric padding), it works great when `o.top` stays at
+        // BBOX_PADDING — but during a drift, the shape's far edge
+        // (o.top + newH) can end up BEYOND the canvas pixel buffer and the
+        // handles on that edge get clipped ("top handles appear cut off when
+        // shrinking downward"). Fix: size the canvas to fit the shape at its
+        // CURRENT drifted position — `effLeft/effTop + newW/newH + BBOX_PADDING`
+        // — so whichever direction Fabric has pushed the shape, the far side
+        // still has a full `BBOX_PADDING * es` of screen-pixel buffer for
+        // handle rendering. Matches SVG select mode behavior where handles
+        // are always fully visible regardless of drag direction.
+        const effLeft = Math.max(BBOX_PADDING, o.left ?? BBOX_PADDING);
+        const effTop = Math.max(BBOX_PADDING, o.top ?? BBOX_PADDING);
+        const cw = Math.ceil((effLeft + newW + BBOX_PADDING) * effectiveScale);
+        const ch = Math.ceil((effTop + newH + BBOX_PADDING) * effectiveScale);
         containerEl.style.width = cw + 'px';
         containerEl.style.height = ch + 'px';
         canvas.setDimensions({ width: cw, height: ch });
