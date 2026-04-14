@@ -227,6 +227,12 @@ function RotationInputField({
   // angle. Typed input during an active drag is silently discarded.
   useEffect(() => {
     if (isRotating && typedValue !== null) {
+      // Issue 4 diagnostic: log when drag clobbers a pending typed value.
+      // If this fires unexpectedly on every keystroke, the drag-wins rule
+      // is misfiring and silently dropping the user's input.
+      if (LOG) {
+        console.log(`[RotationInputField] DRAG RESETS typedValue="${typedValue}" → null (drag-wins rule)`);
+      }
       setTypedValue(null);
     }
   }, [isRotating, typedValue]);
@@ -237,6 +243,21 @@ function RotationInputField({
   const displayValue = (isRotating || typedValue === null)
     ? String(Math.round(angle))
     : typedValue;
+
+  // Issue 4 diagnostic: log every render with the full input-state snapshot
+  // so we can see whether typedValue is being reset between user keystrokes.
+  // Critical sequence to watch for in DevTools:
+  //   onChange prevTyped=null newValue="9"  ← user typed
+  //   render typedValue="9" displayValue="9"  ← React reflected the new state
+  // If you see:
+  //   onChange prevTyped=null newValue="9"
+  //   render typedValue=null displayValue="0"  ← typedValue was clobbered
+  // …then something is resetting typedValue between onChange and the next render.
+  if (LOG) {
+    console.log(
+      `[RotationInputField] render typedValue=${JSON.stringify(typedValue)} displayValue="${displayValue}" angle=${angle} isRotating=${isRotating} isFocused=${isFocused} isVisible=${isVisible}`
+    );
+  }
 
   // Commit the typed value (Enter or blur).
   const commitTyped = useCallback(() => {
@@ -254,8 +275,16 @@ function RotationInputField({
   }, [typedValue, annotationIndex, onCommit, onCancel]);
 
   const handleChange = useCallback((e) => {
+    // Issue 4 diagnostic: log every onChange so we can verify the controlled
+    // input is actually receiving keystrokes from the browser. If onChange
+    // never fires after a keydown, that means a capture-phase listener
+    // somewhere is calling preventDefault on the keydown before the browser
+    // can perform the default text-insertion action.
+    if (LOG) {
+      console.log(`[RotationInputField] onChange prevTyped=${JSON.stringify(typedValue)} newValue="${e.target.value}" angle=${angle}`);
+    }
     setTypedValue(e.target.value);
-  }, []);
+  }, [typedValue, angle]);
 
   const handleKeyDown = useCallback((e) => {
     // UX: ALL keydowns inside the input are isolated from document/window-level
