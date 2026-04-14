@@ -165,7 +165,7 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Rotation handle (mtr) */}
-          <g className="rotation-handle">
+          <g className="rotation-handle" data-rotation-handle="mtr">
             {/* Connector line from top-center of bbox to rotation handle */}
             <line
               x1={handles.mt.x}
