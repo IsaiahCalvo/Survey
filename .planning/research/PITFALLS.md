@@ -1,609 +1,345 @@
-# Pitfalls Research — v2.1 Stage 0 Shape Edit Polish
+# Pitfalls — v2.2 Rotation Handle Polish
 
-**Domain:** Polish milestone inside an existing PDF annotation codebase
-**Researched:** 2026-04-12
-**Confidence:** HIGH
-**Scope:** Only the three integration points confirmed by ARCHITECTURE.md
-(`useSVGInteraction.js:391-408`, `zoomController.js:15`, `App.jsx:21999`).
-Total diff footprint: ~5 LOC across 3 files.
+**Researched:** 2026-04-14
+**Scope:** Gap 3 (hover pill stale ref), Gap 4 (mtr clip in edit mode), Gap 2 (off-screen handle relocation)
+**Confidence:** HIGH (direct source inspection of SVGAnnotationLayer, FabricEditCanvas, SVGSelectionOverlay, RotationInputField, useSVGInteraction + `1.log` runtime evidence)
 
-> **TL;DR — Almost nothing to worry about at 5 LOC.**
->
-> The two features are independent, the integration points are well-funneled,
-> and CLAUDE.md's load-bearing invariants (container-aware sizing, `vector-effect:
-> non-scaling-stroke`, `zoomGeneration` signal) are not touched. The entire
-> pitfall surface for this milestone fits in a ~15-minute manual smoke test.
->
-> The real pitfalls here are **scope creep** (touching files beyond the 3
-> targets) and **mid-drag modifier state** (the one real UX gotcha in the
-> rotation snap). Everything else is "read the diff twice and ship."
+Only NEW pitfalls for v2.2. Graduated v2.0/v2.1 lessons assumed known.
+
+## Key Architectural Facts (verified in source)
+
+1. **`SVGSelectionOverlay` is React-memoized** and rerenders on bbox/inverseScale/etc. prop changes. The `<g className="rotation-handle" data-rotation-handle="mtr">` DOM node usually survives reconciliation via React's node-reuse, but during commits there is a window where `svgRef.current.querySelector('[data-rotation-handle="mtr"]')` can return the previous DOM node — especially when the selection overlay is conditionally unmounted via the edit-mode short-circuit at `SVGAnnotationLayer.jsx:1050`.
+2. **The hover-intent effect dep array is `[selectedIds, setRotInputVisibleDbg]`** (`SVGAnnotationLayer.jsx:313`), with an explicit `eslint-disable-next-line react-hooks/exhaustive-deps`. It is intentionally NOT reactive to `annotations`, `visualTransform`, or `editingAnnotationIndex` — this is the v2.1 Plan 12-02 fix for a 7-round flicker loop. Adding any of those to deps reintroduces the loop.
+3. **`FabricEditCanvas` container already has `overflow: visible`** (`:950, 965`) AND `wrapperEl.style.overflow = 'visible'` (`:1662`). **FEATURE-BACKLOG's Gap 4 suspicion about `overflow: hidden` is FALSE.**
+4. **Fabric shape in edit mode has `angle: 0` and `opacity: 0`** (`:1356, 1376`). The CSS `buildBboxTransform` rotates the entire container. Canvas pixel buffer is sized `(annWidth + BBOX_PADDING*2, annHeight + BBOX_PADDING*2)` with `BBOX_PADDING = 32`. Fabric's default mtr renders at `top - 40 * visualScale`. With shape at canvas-local `top: 32`, the mtr lives at canvas-local `y ≈ -8` — **physically outside the canvas pixel buffer**. At `angle === 0` the SVG overlay hides the clipped Fabric handle behind its own mtr, so the bug only manifests on pre-rotated shapes (where the SVG overlay short-circuits via `isBeingEditedNow` at `:1050`).
+5. **Counter-session WIP lane is load-bearing.** `src/components/FabricEditCanvas.jsx` is actively held by the counter-session. Any Gap 4 fix that edits this file creates a lane conflict and requires coordination.
 
 ---
 
-## Critical Pitfalls
+## Pitfall 1 — Gap 3 — Adding `annotations` / `visualTransform` / `editingAnnotationIndex` naively to hover-intent effect deps
 
-### Pitfall 1: `const newAngle` → `let newAngle` promotion is silently forgotten
+**Wrong answer:** "Effect captured a stale `handleEl`, so add `annotations` (or `visualTransform`) to the dep array so it re-runs and re-queries after React reconciles."
 
-**What goes wrong:**
-In `src/hooks/useSVGInteraction.js:396` the current code reads
-`const newAngle = normalizeAngle(radians);`. The Stage 0 change needs to
-reassign `newAngle` inside the `if (e.shiftKey)` branch. If the implementer
-writes `newAngle = Math.round(newAngle / 45) * 45;` without first promoting
-`const` → `let`, the build will fail with `Assignment to constant variable.`
+**Why it fails:** Reintroduces the exact flicker loop that `SVGAnnotationLayer.jsx:161-171, 306-312` document as already-fixed. Every drag-rotate tick mutates `annotations` (via `onSaveAnnotations` at commit) AND mutates `visualTransform` (every `pointermove` sets `visualTransform.rotate`). Adding any of these to deps tears down and re-attaches pointerenter/pointerleave listeners **at 60 fps during rotation**, eating pointer events and reproducing the original visibility flicker that required 7 rounds of debugging in v2.1 Plan 12-02.
 
-**Why it happens:**
-The existing rotate branch was written as a single assignment. A diff that
-reads "add an `if` block after the normalize call" is easy to propose
-without noticing the `const` keyword one line up.
+**Trigger path:** ESLint's `react-hooks/exhaustive-deps` rule yells at the current code (literal `eslint-disable-next-line` on line 312). A developer wanting to "fix the lint warning" walks right back into the loop.
 
-**How to avoid:**
-Single tiny note in PLAN.md for this change: "promote `const newAngle` to
-`let newAngle` on line 396 as part of the edit." Treat as one atomic change.
-If the dev server throws `Assignment to constant variable` on first save,
-this is the cause — zero other places in the rotate branch use `const newAngle`.
+**Correct approach — two viable strategies:**
 
-**Warning signs:**
-Vite HMR overlay red banner on first save.
+- **Strategy A — edit-commit generation counter.** Track previous `editingAnnotationIndex` via a ref. Increment `editCommitGeneration` only on the falling edge (non-null → null). Put the counter in the hover-intent effect dep array. This captures "user just exited edit mode" without re-running on every drag tick.
 
-**Phase to address:**
-Stage 0 phase PLAN.md — call out the `const → let` in the task description.
+- **Strategy B (preferred) — event delegation.** Query `handleEl` lazily inside `onEnter`/`onLeave` closures instead of capturing at effect-top. Attach listeners once to a stable ancestor (`svgRef.current`) with `e.target.closest('[data-rotation-handle="mtr"]')` filtering. Converts the effect from "attach listeners to a specific DOM node" to "delegate via event filtering on a stable node" — no stale refs possible by construction. The svg's `pointerEvents: isInteractive ? 'auto' : 'none'` (`:1009`) already gates correctly.
+
+**Warning signs mid-implementation:**
+- `hover-intent effect RUN` log firing more than ~1× per selection change (v2.1 baseline: exactly once per transition).
+- `hover-intent effect CLEANUP` during an active rotation drag.
+- Pill appears briefly then disappears during drag.
+- `handleEl NOT FOUND, bailing` after edit-commit — switch to lazy query (Strategy B) or add `requestAnimationFrame` guard (Strategy A fallback).
+
+**Counter-session lane:** Both strategies touch only `SVGAnnotationLayer.jsx`. Neither touches `FabricEditCanvas.jsx`.
 
 ---
 
-### Pitfall 2: Shift pressed MID-drag doesn't snap, user thinks feature is broken
+## Pitfall 2 — Gap 3 — Adopting `MutationObserver` to detect mtr node replacement
 
-**What goes wrong:**
-A user starts dragging the rotation handle at (say) 37°, mid-drag presses
-Shift, and expects the shape to instantly snap to 45°. With the proposed
-implementation, **nothing happens until the next `pointermove` event fires.**
-If the user holds Shift without further pointer motion, the shape stays at
-37° — no snap.
+**Wrong answer:** "Use a `MutationObserver` on svgRef with `{subtree: true, childList: true}` and re-attach listeners whenever the mtr element changes."
 
-The converse is also true: releasing Shift mid-drag doesn't visually "unstick"
-from the last snapped angle until the pointer moves again.
+**Why it fails:**
+1. MutationObserver fires for every SVG attribute tick. 60fps cost during drag-rotate = 10-20ms of observer callback per frame. Free perf regression.
+2. Callback is async-microtask; listener re-attach races with React's next render.
+3. `subtree: true` holds a strong reference to the entire SVG tree for page lifetime. Leak magnet.
 
-**Why it happens:**
-The implementation reads `e.shiftKey` inside `handlePointerMove`, so snap
-state is only re-evaluated when the pointer moves. This is a property of
-pointer-event-driven state — modifier changes alone don't fire `pointermove`.
-Illustrator, Figma, and Excalidraw all have the exact same behavior.
+**Correct approach:** Event delegation (Strategy B above).
 
-**How to avoid:**
-**Do not invent a workaround.** This matches the industry convention (per
-FEATURES.md competitor survey). The user's physical motion drives the snap,
-which is correct. The fix users actually want is "wiggle the pointer 1px
-while holding Shift" — which they will naturally do within 200ms without
-realizing it.
-
-**Explicitly do NOT:**
-- Add `keydown`/`keyup` listeners on `window` to force a re-eval
-- Cache `e.shiftKey` into a ref and re-run the rotate handler on key events
-- Simulate a `pointermove` on key state change
-
-Any of these would add complexity to the 3-LOC fix and introduce a new
-coupling between the pointer and keyboard event loops in `useSVGInteraction`.
-
-**Warning signs:**
-Only a concern if user feedback says "snap feels broken when I press Shift
-after starting the drag." The fix (if ever requested) is not in Stage 0.
-
-**Phase to address:**
-Stage 0 phase CONTEXT.md acceptance criteria — explicitly write: "Given a
-rotation drag is in progress, when Shift is pressed, then the snap takes
-effect on the next pointer move (not instantly). This matches Figma /
-Illustrator / Excalidraw and is accepted behavior."
+**Warning signs:** "MutationObserver" in any commit diff; new imports of `window.MutationObserver`; >100 events/sec lifecycle logs during drag.
 
 ---
 
-### Pitfall 3: Companion zoom input change shipped separately from the `MIN_SCALE` constant
+## Pitfall 3 — Gap 3 — Forgetting the `editingAnnotationIndex == null` gating
 
-**What goes wrong:**
-The zoom floor has two sites (STACK.md + ARCHITECTURE.md both flagged this):
-1. `src/utils/zoomController.js:15` — `const MIN_SCALE = 0.5`
-2. `src/App.jsx:21999` — `const clamped = Math.min(Math.max(parsed, 50), 500)`
+**Wrong answer:** "Just make the pill reappear whenever the cursor enters mtr."
 
-If a dev ships **only** the `zoomController.js` change, then typing `10`
-into the zoom input gets clamped to `50` by the App.jsx pre-clamp
-(line 21999) **before** it ever hits `clampScale`. The user would see the
-zoom snap back to 50% with no explanation.
+**Why it fails:** Root SVG has `pointerEvents: isInteractive ? 'auto' : 'none'` (`:1009`). During edit mode `isInteractive = false`, so pointer events don't flow to svg — but FabricEditCanvas is on top and receiving events. Without an explicit gate, the pill can:
+- Appear for a selection currently being edited (pill over Fabric edit canvas).
+- Fire pointerenter on a stale mtr during the commit→select transition window and stick "visible" forever.
 
-If a dev ships **only** the `App.jsx` change, then the value 0.1 gets past
-the input guard but `clampScale` at `zoomController.js:23` re-clamps to 0.5,
-same visible broken state.
+The current bailout is only `selectedIds.size !== 1`. When the user click-offs an edit, `selectedIds.size` stays 1 (preserved by `useSVGInteraction.js:96-107`).
 
-**Why it happens:**
-App.jsx is in the Always Protected list; a cautious developer might leave
-it alone and assume the `MIN_SCALE` constant is the only real change. Or
-they might ship the constant change in one commit "because it's simple"
-without noticing the hardcoded 50 in App.jsx.
-
-**How to avoid:**
-**Both changes MUST land in the same commit.** Put them in the same task in
-PLAN.md, not two tasks. Add an acceptance criterion: "Given I type `10` in
-the zoom input and press Enter, when the value is accepted, then the scale
-becomes 0.1 and the displayed zoom indicator reads `10%` — verify BOTH
-files were edited by grepping the diff for `MIN_SCALE` AND line 21999."
-
-**Warning signs:**
-User types 10, value snaps back to 50. Obvious within 10 seconds of the
-smoke test.
-
-**Phase to address:**
-Stage 0 phase PLAN.md — single task "zoom floor 10%" with both file edits,
-single commit.
-
----
-
-## Moderate Pitfalls
-
-### Pitfall 4: Scope creep into `FabricEditCanvas.jsx`
-
-**What goes wrong:**
-STACK.md's original Q1 recommendation proposed adding `obj.snapAngle=45` in
-`FabricEditCanvas.jsx`'s `loadShapeAnnotation` callback (~line 1050). A
-planner reading STACK.md without ARCHITECTURE.md would follow this advice.
-But ARCHITECTURE.md Q1c proved that shape rotation in FabricEditCanvas is
-**commit-lossy**: the commit path at `FabricEditCanvas.jsx:476-477`
-overwrites `json.angle` with the pre-edit angle. Adding snap there is pure
-dead code that touches the Always Protected file for no user-visible effect.
-
-**Why it happens:**
-Two research files in the same folder giving overlapping guidance. STACK.md
-was written before the Fabric commit-lossy discovery.
-
-**How to avoid:**
-Phase CONTEXT.md's DO NOT CHANGE section must include
-`src/components/FabricEditCanvas.jsx` explicitly, with the note:
-"FabricEditCanvas shape rotation is commit-lossy (angle force-zero on
-load, restore on commit). Do NOT add `snapAngle` here — it would have no
-user-visible effect and violates Always Protected boundaries."
-
-Cross-reference: ARCHITECTURE.md Q1c has the full file:line evidence
-(`FabricEditCanvas.jsx:1036` force-zero, `:476-477` restore override).
-
-**Warning signs:**
-Any diff against Stage 0 that touches `FabricEditCanvas.jsx` is a
-boundary violation. The phase-discipline hook should flag this.
-
-**Phase to address:**
-Stage 0 CONTEXT.md — include in DO NOT CHANGE with the rationale quoted
-above.
-
----
-
-### Pitfall 5: Scope creep into legacy PAL rotation path
-
-**What goes wrong:**
-`src/PageAnnotationLayer.jsx:6080-6355` contains a second complete rotation
-implementation (modifier-key rotate in Pan tool). A developer seeking
-"consistency" might propose adding Shift-snap here too. PAL is ~9,858 lines
-and Always Protected; touching it for a legacy code path the user rarely
-reaches is all risk, zero benefit.
-
-**Why it happens:**
-Grep-based thoroughness — "find all rotation math in the codebase, add snap
-to each." The developer doesn't realize this path is effectively dead in
-v2.0+.
-
-**How to avoid:**
-Phase CONTEXT.md DO NOT CHANGE must explicitly list
-`src/PageAnnotationLayer.jsx` with the note: "legacy modifier-rotate path
-at lines 6080-6355 is out of scope. SVG path in `useSVGInteraction.js` is
-the only rotation integration point for Stage 0."
-
-**Warning signs:**
-Any diff touching `PageAnnotationLayer.jsx` is a boundary violation.
-
-**Phase to address:**
-Stage 0 CONTEXT.md — include in DO NOT CHANGE.
-
----
-
-### Pitfall 6: Handles at very low zoom are hard to target (accepted, but easy to mis-classify as a defect)
-
-**What goes wrong:**
-At 10-25% zoom the rotation + resize handles in `SVGSelectionOverlay.jsx`
-are scaled by `inverseScale` (≈10 at 10% zoom) so they maintain constant
-screen size — but on a 61-pixel-wide page rendering, the handles occupy a
-large fraction of the visible shape. Handles may stack / occlude each other
-on small annotations. A bug report reader will see this and call it a
-regression.
-
-**Why it happens:**
-The 50% floor masked this edge case. At ≥50% a handle is always smaller than
-its parent shape; at 10% it may not be. This is a known convention
-(Illustrator/Photoshop/Excalidraw all ship with the same behavior — see
-FEATURES.md "Edge Case Analysis").
-
-**How to avoid:**
-- Add to phase CONTEXT.md acceptance criteria: "Given zoom is below 25%,
-  when the user tries to grab a resize/rotation handle, then handles may
-  be hard to target — this is accepted table-stakes behavior matching
-  Illustrator/Photoshop. The user is expected to zoom back in to edit.
-  This is NOT a defect."
-- Record in phase RECONCILIATION.md as a known carry-forward so future
-  sessions don't relitigate. If users complain, the fix is a v2.2 follow-up
-  (Figma-style hide-handles-below-threshold, ~20 LOC in `SVGAnnotationLayer`).
-
-**Warning signs:**
-User feedback "handles don't work at 10% zoom." Expected and not Stage 0's
-problem.
-
-**Phase to address:**
-Stage 0 CONTEXT.md acceptance criterion explicitly stating it is accepted
-behavior. Defer the real fix to v2.2.
-
----
-
-## Minor Pitfalls
-
-### Pitfall 7: Snapped angle of exactly 360° persisted instead of 0°
-
-**What goes wrong:**
-`normalizeAngle` at `src/utils/svgTransformMath.js:37` returns
-`((radians * 180 / Math.PI) + 90 + 360) % 360`, so its output is in
-`[0, 360)`. The snap expression `Math.round(newAngle / 45) * 45` can
-produce `360` from inputs in `[337.5, 360)` (because `Math.round(350/45) =
-Math.round(7.78) = 8`, and `8 * 45 = 360`). A persisted `obj.angle === 360`
-is semantically equivalent to `0` but may confuse any future equality check
-or animation interpolation.
-
-**Why it happens:**
-Snap rounding can push a value over the top of the `[0, 360)` half-open
-range.
-
-**Mitigation (defensive, 1 extra expression, 4 characters):**
+**Correct approach:** Add `editingAnnotationIndex == null` as explicit gate at effect top:
 ```js
-if (e.shiftKey) {
-  newAngle = (Math.round(newAngle / 45) * 45) % 360;
+if (editingAnnotationIndex != null) {
+  setRotInputVisible(false, 'in edit mode');
+  return;
 }
 ```
-The SVG renderer (`svgAnnotationRenderers.jsx:59-67, 116, 291, 336`) uses
-`transform="rotate(${obj.angle}, cx, cy)"` which handles any number
-correctly, and `getCursorForHandle` at `svgTransformMath.js:108` already
-wraps via `(angleDegrees % 360 + 360) % 360` — so nothing in the current
-codebase *breaks* on `360`. This mitigation is tidiness, not correctness.
+Doubles as Strategy A trigger.
 
-**How to avoid:**
-Add the trailing `% 360` in the snap expression. Optional but free.
+**Warning signs:** Pill visible while FabricEditCanvas is rendering; pill input swallows keystrokes meant for Fabric Textbox.
+
+---
+
+## Pitfall 4a — Gap 4 — Chasing `overflow: hidden` that doesn't exist
+
+**Wrong answer:** "The FEATURE-BACKLOG says suspect is `FabricEditCanvas container overflow: hidden`. Search for it, flip to `visible`, done."
+
+**Why it fails:** That `overflow: hidden` does NOT exist. Source inspection:
+- `FabricEditCanvas.jsx:950, 965`: `overflow: editType === 'shape' ? 'visible' : undefined`
+- `:1662`: `wrapperEl.style.overflow = 'visible'`
+
+Flipping overflow achieves nothing.
+
+**What's actually happening:** The clip is a **canvas pixel buffer clip**, not a CSS overflow clip. `canvas.setDimensions` (`:1054`) sets the physical `<canvas>` element's pixel buffer. Canvas 2D drawing ops outside `(0,0)→(w,h)` simply don't exist. Fabric's default mtr has `offsetY = -40`. With shape at `top = BBOX_PADDING = 32`, mtr renders at canvas-local y ≈ `-8`. (Note: Architecture research hypothesizes an additional Syncfusion ancestor `e-pv-page-div` clipper — needs live-DOM diagnostic to confirm which clipper owns the symptom.)
+
+At `angle: 0` the SVG overlay is on top and owns the selection chrome; Fabric's clipped handle is hidden behind it. For pre-rotated shapes, `:1050` short-circuits the SVG overlay during edit. The Fabric-drawn handle is the ONLY chrome visible — and it's clipped.
+
+**Correct approach — two orthogonal fixes:**
+
+### Fix A / Option C (structural, PREFERRED, lane-safe)
+Let SVGSelectionOverlay keep rendering the mtr handle during edit mode for rotated shapes. Change the `SVGAnnotationLayer.jsx:1050` early-return condition so it returns null ONLY for `editIsBorderFlush && angle === 0`, OR returns a stripped overlay (just the mtr handle, no bbox, no resize pills) when `editIsBorderFlush && angle !== 0`. Fabric provides resize chrome; SVG provides the rotation handle visual.
+
+The SVG root has `pointerEvents: isInteractive ? 'auto' : 'none'` so during edit the handle is visual-only — and that's fine. Edit-mode rotation is already descoped per PROJECT.md line 71. The SVG handle in edit mode only needs to APPEAR, not be draggable. Users rotate from select mode; typed RotationInputField is the in-edit rotation UI.
+
+**Touches:** `SVGAnnotationLayer.jsx` (modify short-circuit) + possibly `SVGSelectionOverlay.jsx`. **Zero counter-session conflict.**
+
+### Fix B / Option A (canvas sizing, deferred fallback)
+Grow `BBOX_PADDING` from 32 to ~72 so Fabric's mtr falls inside `(0, canvasHeight)`. Or install a custom Fabric Control for mtr with `offsetY: -20`.
+
+**Cost:** `BBOX_PADDING` block comment (`:66-83`) warns lowering was bad; raising enlarges the "dead zone" around small shapes where Fabric empty-click dismisses edit mode (`:1846-1883`). A counter ~20px inside an ~84px container already has a huge dead zone.
+
+**Touches:** `FabricEditCanvas.jsx` — **LANE CONFLICT with counter-session WIP.** Must coordinate stash before starting. Do NOT touch `counterRotate` custom control (`:1379-1479`) marked `[COUNTER WIP — DO NOT TOUCH]`.
+
+**Recommendation:** Fix A. Fix B only if Fix A is blocked AND counter-session coordinates.
 
 **Warning signs:**
-None today. Would only surface if a future feature added `if (obj.angle ===
-0)` expecting 360→0 coalescing. No such check exists now.
-
-**Phase to address:**
-Stage 0 — include the `% 360` wrap as a freebie. Or document as deferred
-cleanup. Either is acceptable.
+- Searching for `overflow: hidden` to flip — STOP, read `:882-1005`.
+- Modifying `wrapperEl.style.overflow` — already `visible`.
+- Fix A breaking border-flush edit at angle=0 — widened condition wrong.
+- Fix B requiring `BBOX_PADDING > 50` — counter dead-zone test regresses.
 
 ---
 
-### Pitfall 8: `commitZoomInput` pre-clamp restructured instead of literal-swapped
+## Pitfall 4b — Gap 4 — Deleting the edit-mode SVG overlay short-circuit entirely
 
-**What goes wrong:**
-A developer thinks "`clampScale` exists, this pre-clamp is redundant, I'll
-delete it for cleanliness." Deleting the pre-clamp (not just swapping 50→10)
-changes the error-recovery behavior of the zoom input — absurd values like
-`99999` would flow straight to `clampScale` instead of being capped at 500
-first. Also, `parsed` can legitimately be `NaN` (`parseInt('abc')`) and the
-`Math.min(Math.max(parsed, 50), 500)` guard indirectly participates in NaN
-propagation (`Math.max(NaN, 50) = NaN`, which `clampScale` then rejects via
-its `Number.isNaN` check).
+**Wrong answer:** "Just delete the `if (isBeingEditedNow && (editIsBorderFlush || editIsCounter)) return null;`. Render SVG overlay always."
 
-Deleting the pre-clamp is never strictly wrong, but it changes the input
-sanitization surface on a hot path that has existing production behavior.
-Out of scope for this milestone.
+**Why it fails:** Regresses v2.0 Phase 10/11 edit-chrome integration. Rendering BOTH Fabric edit chrome AND SVG selection overlay produces **doubled handles** — each corner + pill drawn twice with different anti-aliasing (per the 2026-04-10 Canvas 2D vs SVG rasterizer gotcha). Users see ghost handles.
 
-**Why it happens:**
-"Clean up while I'm in there" instinct.
-
-**How to avoid:**
-PLAN.md explicitly says: "Change exactly one literal on line 21999:
-`50` → `10`. Do not restructure the `Math.min(Math.max(...))` expression.
-Do not delete the guard. Do not introduce a helper."
-
-**Warning signs:**
-Diff shows more than one token changed on line 21999.
-
-**Phase to address:**
-Stage 0 PLAN.md — write the change as a literal-swap task with the exact
-before/after.
+**Correct approach:** Modify the condition narrowly. Only show the **mtr handle subtree**, only when `isBeingEditedNow && angle !== 0`.
 
 ---
 
-## Technical Debt Patterns
+## Pitfall 4c — Gap 4 — Applying `snapAngle: 45` or touching rotation interactivity
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Skip the `% 360` wrap on snapped angle | 4 chars saved | Future equality check could misbehave on a 360 value — tiny risk | Always, but adding the wrap is free and strictly better |
-| Ship zoom floor in one file only (thinking `clampScale` catches everything) | "Fewer App.jsx edits" | Broken zoom input UX for typed values | **Never** — companion edit is mandatory |
-| Add `snapAngle` to FabricEditCanvas for "consistency" | Appears to cover both rotation code paths | Dead code in a 9,000-line Always Protected file; no user-visible effect | **Never for Stage 0** — only if the commit-lossy force-zero at `FabricEditCanvas.jsx:1036` is fixed first |
-| Delete the pre-clamp at App.jsx:21999 | "Simpler" | Changes input-sanitization behavior on hot path | **Never in a polish milestone** |
+**Wrong answer:** "While fixing the mtr clip, also add `obj.snapAngle = 45` during Shift for edit-mode rotation snap."
 
----
+**Why it fails:** Fabric edit-mode shape rotation is **explicitly out of scope** per PROJECT.md line 71: *"Fabric edit canvas shape rotation snap (commit-lossy on force-zero/restore cycle) — SVG-path snap only for v2.1, Fabric-path rotation out of scope"*. The force-zero-at-edit-start / restore-at-commit cycle is commit-lossy.
 
-## Integration Gotchas (Two Features Interacting)
+**Correct approach:** Keep `angle: 0` and `lockRotation` as-is. Gap 4 is visibility only. Users have two rotation paths already (drag in select mode; type in pill).
 
-The two Stage 0 features are fully independent at the file level (different
-files, different call stacks). But they share a smoke-test surface that is
-worth calling out:
+**Also:** typing in RotationInputField NEVER applies Shift-snap even if Shift held (v2.1 locked decision). Any "while I'm here" addition of snap to typed input is an instant boundary violation.
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| Rotation snap + 10% zoom | "Test snap at 100% zoom only" | Also test snap at 10% zoom. At low zoom the rotation handle is hard to grab (Pitfall 6), so the test is: zoom to fit (≥50%), select a shape, start rotating with Shift held, then zoom out to 10% mid-drag via Cmd+- (if reachable without releasing), release, confirm the saved angle is a multiple of 45°. A simpler variant: zoom to 10% first, then Shift-drag rotate. This validates that the new lower scale doesn't break rotation math. |
-| Zoom floor + `zoomGeneration` signal | "Does lowering the floor fire extra zoomGeneration events?" | No — `zoomGeneration` is signaled inside `beginSyncfusionScaleConfirmPending`, which runs on every zoom commit regardless of value. Lowering the floor changes only *which* scale values are reachable, not *how* the signal fires. CLAUDE.md's "NEVER remove zoomGeneration" rule is respected by doing nothing to the signal. |
-| Zoom floor + container-aware sizing | "At 10% does `effectiveScale` blow up?" | No — `effectiveScale = parentEl.offsetWidth / pageWidth`. At 10% viewer zoom, `parentEl.offsetWidth ≈ 61px` for a 612pt page, so `effectiveScale ≈ 0.1`. Finite, positive, valid. `FabricEditCanvas.jsx:752` sets `canvas.setZoom(effectiveScale)` which Fabric.js 5.5.2 handles correctly. Dimensions use `Math.ceil` at `:1114-1115`, guaranteeing `≥1px` (no zero-size canvas even for tiny shapes). |
-| Zoom floor + `normalizeInteractionMeasuredScale` sanity band | "Does the `[0.55x, 1.8x]` band at `App.jsx:449-450` reject measurements at 10%?" | No — it's a **ratio** band against `viewerScale`, not an absolute floor. At `viewerScale=0.1`, the band is `[0.055, 0.18]`. Any measurement within 55%–180% of expected passes. A 1px jitter at 61px is 1.6% — comfortably inside the band. |
-| Zoom floor + `measureSyncfusionPageHostScale` floor | "Does `Math.max(0.1, ...)` at App.jsx:435 already support 0.1?" | Yes, exactly. That existing floor proves the codebase already anticipated 10% as a valid scale elsewhere. Lowering `MIN_SCALE` to match is consistent with existing logic. |
+**DO NOT CHANGE:** Fabric `lockRotation`, `snapAngle`, `angle: 0` at edit start, `commitAndClose` angle restore path.
 
 ---
 
-## Testing Smoke Test (the whole Stage 0 QA surface)
+## Pitfall 4d — Gap 4 — Breaking `buildBboxTransform` order
 
-**Prerequisite:** Dev server running, "Package 2 - Rev 4 -- IC.pdf" open on
-page 6. SVG mode active (default).
+**Wrong answer:** "Flip `buildBboxTransform` order from `scale × translate × rotate` to `translate × rotate × scale`."
 
-**Zoom floor smoke (3 minutes):**
+**Why it fails:** Comment at `:251`: *"When sx ≠ sy, scale × rotate ≠ rotate × scale, so order matters."* Under `preserveAspectRatio="none"`, SVG viewBox does page-space scale × rotate. CSS must match. Flipping reintroduces the rotation mismatch that v2.0 Phase 11 explicitly fixed.
 
-1. Click zoom input, type `10`, press Enter → expect zoom snaps to 10%,
-   page visibly shrinks, zoom indicator reads `10%`. (Fails Pitfall 3 if
-   value clamps back to 50.)
-2. Cmd+- repeatedly from fit-zoom → expect zoom buttons decrement through
-   each step down to 10% (they funnel through `clampScale`). Confirm minimum
-   stop at 10%.
-3. Cmd+= back up → expect zoom climbs normally, no stuck state. Confirm
-   annotations re-render cleanly at each intermediate level (25%, 50%, 75%,
-   100%).
-4. Fit-page / fit-width buttons → confirm they still work and do not bypass
-   the new floor (they go through `clampScale` via `computeScaleForMode`).
-5. At 10% zoom, confirm a selected shape's selection handles are visible
-   (they should be — `inverseScale * ~10` keeps them at constant screen
-   size even though the shape is ~6px tall on a 61px-wide page). Acceptance
-   is "visible but hard to grab" — see Pitfall 6.
+**Correct approach:** Don't touch `buildBboxTransform`.
 
-**Rotation snap smoke (3 minutes):**
-
-6. Create a rectangle annotation, select it, grab the rotation handle (mtr)
-   and drag freely → confirm no snap, smooth rotation, final angle is a
-   float.
-7. Repeat with Shift held → confirm visible stepping through 45°
-   increments. Release → confirm commit at a 45° multiple (inspect via
-   devtools or the annotation JSON).
-8. Start a rotation without Shift, then press Shift mid-drag, move pointer
-   1px → confirm snap kicks in on next move. (Validates Pitfall 2 is
-   accepted behavior.)
-9. Start with Shift, rotate to 45°, release Shift mid-drag, keep dragging →
-   confirm free float resumes from 45°. No "stickiness."
-10. **Cross-feature:** zoom to 10%, select shape, Shift+drag rotation
-    handle. At 10% the handle is small. Confirm snap still works. This
-    validates that lowering `MIN_SCALE` did not accidentally break the
-    snap-on-rotate pathway.
-
-**Regression watch (2 minutes):**
-
-11. Free rotate at 100% zoom → confirm unchanged (unmodified drag still
-    produces float angles, no unintended snap).
-12. Shift+resize at 100% zoom → confirm aspect-lock resize still works.
-    The existing `e.shiftKey` branch at `useSVGInteraction.js:361` is
-    adjacent to the new rotate-snap branch; verify the refactor didn't
-    touch it.
-13. Zoom wheel at default settings → confirm smooth zoom, no jitter at the
-    10% boundary.
-14. Pen tool at 10% zoom → confirm pen strokes render with
-    `vector-effect: non-scaling-stroke` (stroke width constant on screen).
-    No invisible strokes, no hit-test failures.
-
-**Total manual smoke time:** ~8 minutes. No automated tests.
-
-**Automated test harness status:**
-There is no Playwright/Jest rotation test in this codebase today (confirmed
-by absence of rotation test files). A rotation snap test could be added to
-a future harness but is **not required** for Stage 0 acceptance. The manual
-smoke above covers every pitfall in this file.
+**DO NOT CHANGE:** `:247-259` and call sites `:952, 1962`.
 
 ---
 
-## "Looks Done But Isn't" Checklist
+## Pitfall 5a — Gap 2 — "Nearest visible side" logic for rotated shapes
 
-- [ ] **Zoom floor change:** did BOTH `zoomController.js:15` AND `App.jsx:21999` ship? (grep the diff for both; Pitfall 3)
-- [ ] **Rotation snap change:** was `const newAngle` promoted to `let newAngle`? (Pitfall 1)
-- [ ] **Rotation snap change:** was the SVG path (`useSVGInteraction.js`) edited and the Fabric path (`FabricEditCanvas.jsx`) NOT edited? (Pitfall 4 — FabricEditCanvas is commit-lossy)
-- [ ] **DO NOT CHANGE list:** does the phase CONTEXT.md include `PageAnnotationLayer.jsx` (Pitfall 5), `FabricEditCanvas.jsx` (Pitfall 4), `SVGAnnotationLayer.jsx`, `FabricDrawingCanvas.jsx`, `FabricEraserCanvas.jsx`?
-- [ ] **Acceptance criteria:** does CONTEXT.md explicitly state "handles at <25% zoom are hard to grab — accepted table-stakes" (Pitfall 6)?
-- [ ] **Acceptance criteria:** does CONTEXT.md explicitly state "Shift pressed mid-drag snaps on next pointer move, not instantly" (Pitfall 2)?
-- [ ] **Smoke test step 10:** did the tester specifically try rotation snap at 10% zoom (integration pitfall)?
-- [ ] **Regression check 12:** did the tester verify Shift+resize (aspect lock) still works after the rotation snap edit?
+**Wrong answer:** "If mtr is off-screen, relocate to opposite side. Opposite of top = bottom, so use `mb`'s position."
+
+**Why it fails:** For a rotated shape, mtr's screen-space position is `rotate(mtr_viewBox, shapeCenter, angle)`. For a 45°-rotated square whose top-left quadrant is off-screen, mtr points "up-left" in screen space; opposite is NOT `mb`. The `<g>` wraps `transform="rotate(angle, cx, cy)"` (`SVGSelectionOverlay.jsx:65`), but mtr coords inside are expressed in the unrotated bbox frame. Mixing "screen-visible side" (viewport pixels) with "local handle ID" (pre-rotation viewBox coords) is a coordinate-space category error.
+
+**Correct approach:**
+- Compute mtr's screen-space position via `svgRef.current.getScreenCTM()` composed with the overlay group's `rotate(angle, cx, cy)`. `DOMPoint.matrixTransform` gives final screen coords.
+- Check which screen edge is clipped past.
+- Negate the unit vector from `(cx, cy)` through unrotated mtr; rotate by `angle` to get screen-space direction. "Opposite" direction vector, NOT a handle ID.
+
+**Warning signs:** `handle.id === 'mb'` switching in relocation code; relocation producing a handle that moves through the shape interior at some angles.
 
 ---
 
-## Recovery Strategies
+## Pitfall 5b — Gap 2 — Oscillation at the viewport edge
 
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| Zoom input snaps back to 50% after typing 10 (Pitfall 3) | LOW | Edit `src/App.jsx:21999` — change `50` to `10`. Single-line hotfix. |
-| `const newAngle` assignment error (Pitfall 1) | TRIVIAL | Promote to `let` on line 396 of `useSVGInteraction.js`. Caught at build time. |
-| FabricEditCanvas accidentally edited for snap (Pitfall 4) | LOW | Revert the FabricEditCanvas changes, rely on SVG-path snap only. `zoomGeneration` contract and Always Protected boundary are preserved. |
-| PAL legacy rotation path accidentally edited (Pitfall 5) | LOW | Revert. The user-facing rotation flow is unaffected (v2.0+ routes through `useSVGInteraction.js`, not PAL). |
-| Angle 360° persisted (Pitfall 7 — theoretical) | TRIVIAL | Add `% 360` to the snap expression. |
+**Wrong answer:** "If mtr is off-screen, move to opposite side. Done."
+
+**Why it fails:** Binary thresholds without hysteresis oscillate on the boundary. At rotation angles where the handle hovers right at the edge (359° → clipped; 360° → not; 1° → clipped again), the handle flips sides every frame.
+
+**Correct approach:**
+- **Hysteresis:** enter at ≥16px offscreen clip; exit at ≥32px back inside. 16px dead-band.
+- **Latched state per shape:** `relocatedByShapeId: Map<index, boolean>`.
+- **Freeze during active drag:** defer relocation decisions to `pointerup`.
+
+**Warning signs:** Pill flipping sides during a single drag; "flicker at 359°" in UAT.
+
+---
+
+## Pitfall 5c — Gap 2 — "It slots cleanly" scope creep
+
+**Wrong answer:** "Gap 2 is conditional per PROJECT.md. It's just coordinate math — slots cleanly."
+
+**Why it fails:** "Just coordinate math" is wrong. Gap 2 requires:
+- Viewport-clip detection with hysteresis (5b)
+- Rotated-shape side math (5a)
+- Pill follow logic — `computeInputPosition` radial anchor change
+- ResizeObserver + scroll listeners for Syncfusion page scroll/zoom
+- State machine integration with Gap 3's hover-intent fix
+
+**That's not a ~50-LOC drop-in.** Plan 12-02 was estimated at ~11 LOC and shipped at 1,195 LOC. Same failure mode waiting in Gap 2.
+
+**Note:** Architecture and Stack research assess Gap 2 as "architecturally clean" (pure utility + prop threading). Features and Pitfalls research assess it as "risky scope creep + UX convention mismatch." Synthesizer / roadmapper must resolve this tension.
+
+**Recommended approach:**
+- **DEFAULT to DEFERRING Gap 2.**
+- **Only include AFTER Gap 3 and Gap 4 are CODE-COMPLETE and VERIFIED**, with ≥2 days slack remaining.
+- **If included, scope as SEPARATE phase** (12.1 or 13.5), not folded into Gap 3/4's phase.
+
+---
+
+## Pitfall 6 — Cross-gap — Testing Gap 3 against `angle=0` only
+
+**Wrong answer:** "Gap 3 test: rotate shape, enter edit, click off, hover mtr, pill appears. Test with a rect at angle=0."
+
+**Why it fails:** The interaction with Gap 4 means the test must cover both pre-rotated and non-rotated shapes:
+- `angle === 0` rect: SVG overlay short-circuited during edit (`:1050`); overlay re-mounts on edit end → stale-ref path.
+- `angle !== 0` rect with Gap 4 Fix A: SVG overlay stays mounted during edit. No mount/unmount — Gap 3 may not manifest at all.
+- `angle !== 0` rect with Gap 4 Fix B: SVG overlay still short-circuits.
+
+**Correct approach:**
+- **UAT grid:** `{angle=0, angle=30} × {editType:text, editType:shape} × {exit via click-off / Escape / Enter-commit}`
+- **Race test:** hover mtr during the 50ms `setTimeout` in `text:editing:exited` (`FabricEditCanvas:1769`). Pill should NOT appear during commit, should appear after.
+
+---
+
+## Pitfall 7 — Cross-gap — Breaking the v2.1 optimistic-paint pattern
+
+**Wrong answer:** "Add a useEffect that watches `visualTransform` to trigger hover-intent re-evaluation."
+
+**Why it fails:** `visualTransform` is set on every pointermove during drag-rotate and cleared via `clearOptimisticRotation` after typed commits. Watching it as an effect dep means hover-intent re-runs at 60fps during drag AND once per typed commit.
+
+**Correct approach:**
+- Read `visualTransform.rotate` via a **ref** in any closure that needs live angle.
+- Never put `visualTransform` in a dep array outside `useSVGInteraction`'s own internals.
+- **Sanity test:** `console.count()` in hover-intent effect body. Drag-rotate 2s. Count should be ≤3. If ≥60, pattern is broken.
+
+---
+
+## Pitfall 8 — Cross-gap — Staging counter-session WIP files
+
+**Wrong answer:** "`git add -p` and cherry-pick my hunks from the modified files."
+
+**Why it fails:** Counter-session has uncommitted WIP in 7 files. `git add -p` is easy to mis-stage.
+
+**Counter-session files — NEVER stage from v2.2 unless authorized:**
+- `src/App.jsx` (always protected + counter WIP)
+- `src/components/PageAnnotationLayer.jsx` (always protected + counter WIP)
+- `src/components/FabricEditCanvas.jsx` (counter WIP; only if Fix B authorized)
+- `src/hooks/useDatabase.js` (counter WIP)
+- `src/utils/counterNumbering.js` (counter WIP)
+- `src/utils/svgAnnotationRenderers.jsx` (counter WIP)
+- `dist/index.html` (build artifact + counter WIP)
+
+**Per-gap lane safety:**
+- **Gap 3 touches ONLY** `SVGAnnotationLayer.jsx` — lane-safe.
+- **Gap 4 Fix A touches ONLY** `SVGAnnotationLayer.jsx` (+ possibly `SVGSelectionOverlay.jsx`) — lane-safe. **Preferred.**
+- **Gap 4 Fix B touches** `FabricEditCanvas.jsx` — **BLOCKED until counter-session coordinates.**
+- **Gap 2 (if included) touches** `SVGAnnotationLayer.jsx`, `RotationInputField.jsx`, `rotationInputHelpers.js`, new `handlePlacementMath.js`, possibly `SVGSelectionOverlay.jsx` — lane-safe.
+
+**Rules:**
+- Prefer Fix A for Gap 4.
+- Never `git add -A` or `git add .` for v2.2. Always explicit paths.
+- `git status` cross-check before every commit.
+
+---
+
+## Pitfall 9 — Cross-gap — `shapeCenterViewBox` useMemo invalidation
+
+**Wrong answer:** "Clean up `shapeCenterViewBox` — its useMemo re-computes on every annotation change."
+
+**Why it fails:** Block comment at `SVGAnnotationLayer.jsx:341-347` warns the memo is load-bearing: *"without it, this returns a fresh {x, y} object on every parent render, which invalidates RotationInputField's position useEffect dependency."* Shrinking deps to `[selectedAnnotationIndex, annotations?.objects?.[selectedAnnotationIndex]]` fails because `handleRotationInputCommit` deep-clones via `JSON.parse(JSON.stringify())` — selected object reference is always fresh.
+
+**Correct approach:** Don't touch it.
+
+**DO NOT CHANGE:** `:348-357` (and comment block at `:341-347`).
+
+---
+
+## Pitfall 10 — Cross-gap — `querySelector` in render body or useMemo
+
+**Wrong answer:** "Move the `querySelector('[data-rotation-handle="mtr"]')` into a `useMemo` so it's cached."
+
+**Why it fails:** `querySelector` inside `useMemo` or render body is an impure side-effect read. `useMemo` runs during render, BEFORE React commits the new DOM — you capture the previous commit's node.
+
+**Correct approach:** DOM queries go in `useEffect` (after commit) or event handlers (after user interaction).
 
 ---
 
 ## Pitfall-to-Phase Mapping
 
-Stage 0 is a single-phase milestone. Every pitfall is addressed in that one
-phase — there is no downstream phase to defer to.
-
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| P1: `const → let` | Stage 0 PLAN.md task wording | Vite HMR builds without error |
-| P2: Mid-drag Shift | Stage 0 CONTEXT.md acceptance criterion | Manual smoke step 8 |
-| P3: Companion zoom edit | Stage 0 PLAN.md single-task bundling | Manual smoke step 1 |
-| P4: FabricEditCanvas scope creep | Stage 0 CONTEXT.md DO NOT CHANGE | Phase-discipline hook flags boundary violation |
-| P5: PAL scope creep | Stage 0 CONTEXT.md DO NOT CHANGE | Phase-discipline hook flags boundary violation |
-| P6: Handles at 10% | Stage 0 CONTEXT.md acceptance criterion (accepted) | RECONCILIATION.md carry-forward note |
-| P7: 360° wrap (defensive) | Stage 0 PLAN.md or deferred | Optional — no active bug |
-| P8: Pre-clamp restructure | Stage 0 PLAN.md literal-swap wording | Diff inspection |
-
----
-
-## Relevance of Existing CLAUDE.md Gotchas
-
-Re-reading the three CLAUDE.md gotchas in the light of Stage 0:
-
-### Gotcha A — Canvas 2D vs SVG rasterizer differences at sub-pixel positions (2026-04-10)
-
-**Relevant?** No. This gotcha applies to shape visual comparison between
-FabricEditCanvas (Canvas 2D) and SVGAnnotationLayer during edit mode.
-Stage 0 touches neither renderer and does not modify shape geometry. The
-rotation snap produces clean `45°` values that are *less* likely to land
-at sub-pixel boundaries than free rotation angles, so if anything this
-feature marginally improves pixel alignment. Not a risk.
-
-### Gotcha B — Fabric.js Textbox single-font requirement (2026-04-08)
-
-**Relevant?** No. Stage 0 does not touch text rendering, font picking,
-or Fabric Textbox/IText. Zero overlap.
-
-### Gotcha C — Container-aware canvas sizing, not `pageSize * scale` (2026-03-22)
-
-**Relevant?** Partially — as a **constraint**, not a risk.
-
-- Stage 0 does not add any new canvas component, so the container-aware
-  contract is not newly exercised.
-- FabricEditCanvas already uses `parentEl.offsetWidth / pageWidth` at
-  lines 595, 722, 1069, 1094, 1136, 1470, 1596 (confirmed by grep). At
-  10% zoom this yields `effectiveScale ≈ 0.1`, which is a small-but-valid
-  scalar. `canvas.setZoom(0.1)` is supported by Fabric.js 5.5.2 without
-  special handling.
-- `Math.ceil` guards on dimensions (`:1114-1115`) prevent zero-size
-  canvases even for small shapes at small effective scales.
-- **Verdict:** the gotcha's invariant (never compute from `pageSize *
-  scale`) is already respected everywhere in the edit canvas, and
-  lowering the zoom floor to 10% does not introduce any new code that
-  could violate it.
-
-**No CLAUDE.md gotcha becomes newly relevant at 10% zoom.**
+| Pitfall | Prevention Phase/Plan | Verification |
+|---|---|---|
+| 1: Naive hover-intent deps | Gap 3 plan | `console.count` on effect body during drag-rotate ≤3 |
+| 2: MutationObserver | Gap 3 plan DO NOT | grep Gap 3 diff for "MutationObserver" = 0 |
+| 3: Missing `editingAnnotationIndex` gate | Gap 3 plan AC | Pill invisible during FabricEditCanvas active edit |
+| 4a: Non-existent `overflow:hidden` chase | Gap 4 plan context | Developer reads `FabricEditCanvas:882-1005` first |
+| 4b: Delete edit-mode short-circuit | Gap 4 plan DO NOT | `:1050` condition modified, never deleted |
+| 4c: Add `snapAngle`/rotation interaction | Gap 4 plan DO NOT | Fabric `lockRotation`, `snapAngle`, `angle=0` untouched |
+| 4d: Flip `buildBboxTransform` order | Gap 4 plan DO NOT | `:247-259` + call sites untouched |
+| 5a: Gap 2 rotated-shape side bug | Gap 2 plan (if included) | AC includes 45° and 135° rotated shapes |
+| 5b: Gap 2 oscillation | Gap 2 plan (if included) | 16px/32px hysteresis in AC |
+| 5c: Gap 2 scope creep | Roadmapper, v2.2 phase structure | Gap 2 is SEPARATE conditional phase |
+| 6: Gap 3 angle=0-only testing | Gap 3 plan AC | 2×2×3 UAT grid |
+| 7: Breaking optimistic-paint | All v2.2 plans DO NOT | `visualTransform` not in any dep array outside useSVGInteraction |
+| 8: Staging counter-session files | Every v2.2 phase DO NOT CHANGE | Explicit 7-file allowlist in plan frontmatter |
+| 9: `shapeCenterViewBox` memo invalidation | All v2.2 plans DO NOT | `SVGAnnotationLayer:348-357` untouched |
+| 10: `querySelector` in render/useMemo | Gap 3 plan | grep for `querySelector` outside useEffect = 0 |
 
 ---
 
-## User-Visible Weirdness Watch List
+## Counter-Session Lane Conflict Summary
 
-Questions asked by the research prompt and their answers:
+**Files held by counter-session WIP:** `src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricEditCanvas.jsx`, `src/hooks/useDatabase.js`, `src/utils/counterNumbering.js`, `src/utils/svgAnnotationRenderers.jsx`, `dist/index.html`.
 
-**Any existing UI element that assumes "zoom is at least 50%"?**
-Swept. Answer: **No.** The pre-clamp at `App.jsx:21999` is the only place
-that encoded 50 as a floor. There is no zoom slider (`<input type="range">`
-for zoom does not exist in `src/`), no preset dropdown array
-(`zoomStep|zoomPresets|zoomPercentages`), no hardcoded `50%` string in the
-zoom UI. The zoom indicator (`App.jsx:26449-26476`) is a freeform text
-input that displays `Math.round(scale * 100)` — at 0.1 it correctly
-displays `10`. The `%` label at `App.jsx:26489` is static text.
-
-**Any pending todos in STATE.md that would be masked or unmasked?**
-Swept. Answer: **No.** The only STATE.md pending todo is the unified
-selection-box-and-text-border styling concern (not rotation, not zoom).
-None of the fixed bugs reference zoom floor or rotation snap. Nothing in
-FEATURE-BACKLOG.md stages 1-9 has zoom-floor-dependent behavior.
-
-**Zoom indicator displays correctly at 10%?**
-Yes. `zoomInputValue = String(Math.round(normalized * 100))` at
-`App.jsx:22004`. At `normalized=0.1`, displays `"10"`. Visible output:
-`10%`. No truncation, no padding issue.
-
-**Does pinch-to-zoom or scroll-wheel zoom have its own clamping that
-ignores `MIN_SCALE`?**
-Swept. Answer: **No.** Wheel zoom at `App.jsx:21579` calls
-`clampScale(currentScale * deltaFactor)`. Pinch zoom routes through the
-same `controller.setScale` path. Keyboard Cmd+- / Cmd+= routes through
-`clampScale(basisScale / 1.2)` at `App.jsx:21544, 21552`. Fit-page routes
-through `computeScaleForMode → clampScale` at `zoomController.js:83-97`.
-Every zoom path is funneled through `clampScale`, so the single constant
-change propagates universally.
-
-**Does downstream code special-case the exact angle value (arrow
-direction, callout knee, text baseline, etc.)?**
-Swept. Answer: **No.**
-- Arrow/line rendering at `svgAnnotationRenderers.jsx:155, 224` computes
-  `atan2` from endpoint geometry (`x1,y1 → x2,y2`), NOT from `obj.angle`.
-  Arrowhead direction is independent of the rotation snap.
-- Text annotations rotate via `transform="rotate(angle, cx, cy)"`
-  (`svgAnnotationRenderers.jsx:291, 336`) — works on any float, no
-  baseline math.
-- Callout geometry uses its own bezier/knee math in
-  `src/components/Callout/` which operates on endpoint coordinates, not
-  on `obj.angle`. (Callouts in FabricEditCanvas DO commit live angle per
-  ARCHITECTURE.md Q1c, but callouts are not in Stage 0 scope — the
-  rotation snap only fires in `useSVGInteraction.js`, and a callout being
-  selected and rotated via the SVG mtr handle would use the same generic
-  rotate branch without callout-specific geometry.)
-- Undo/redo uses `JSON.parse(JSON.stringify(annotations))` deep-clone —
-  value-agnostic.
-- Supabase sync sends Fabric JSON verbatim — no angle normalization.
-- `getCursorForHandle` at `svgTransformMath.js:108` already wraps angles
-  via `(angleDegrees % 360 + 360) % 360` — tolerates any float, including
-  theoretical 360.
-
-**Fabric.js at very small canvas sizes:**
-Fabric.js 5.5.2 has no documented minimum canvas dimension. Canvases
-down to 1×1 are supported (setDimensions takes any positive integer).
-Hit-test precision degrades at sub-pixel positions, but strokes rendered
-with `vector-effect: non-scaling-stroke` (SVG display layer) keep their
-authored thickness, and Fabric's canvas hit-testing in edit mode operates
-in the canvas's internal scaled coordinate system, not in CSS pixels.
-No known failure mode at small sizes that's relevant to Stage 0.
+**Recommended ordering:** Gap 3 → Gap 4 Fix A → verify 113/113 + AC green → optional Gap 2 as separate phase. Gap 4 Fix B kept as deferred fallback.
 
 ---
 
-## Sources
+## "Looks Done But Isn't" Checklist
 
-All findings grounded in direct file reads during this research session:
-
-- `src/utils/zoomController.js` (full file, 237 lines) — `MIN_SCALE`
-  declaration and `clampScale` funnel
-- `src/hooks/useSVGInteraction.js:391-408, 559-568` — rotate branch +
-  commit path; existing `e.shiftKey` precedent at line 361 (resize
-  aspect-lock)
-- `src/utils/svgTransformMath.js:36-38, 72-76, 86-110` — `normalizeAngle`
-  `[0, 360)` contract, `getInverseScale`, `getCursorForHandle`
-- `src/utils/svgAnnotationRenderers.jsx:59-67, 116, 155, 224, 291, 336` —
-  angle consumption via `transform="rotate(angle, ...)"` plus independent
-  arrowhead `atan2` from endpoint geometry
-- `src/components/SVGSelectionOverlay.jsx:46-58, 93, 180-200` — handle
-  sizes multiplied by `inverseScale` keep constant screen size at any
-  zoom
-- `src/components/FabricEditCanvas.jsx:476-477, 595, 722, 752, 1036,
-  1069, 1094, 1114-1115` — commit-lossy `json.angle` override,
-  container-aware `effectiveScale`, `canvas.setZoom(effectiveScale)`,
-  `Math.ceil` dimension guards
-- `src/App.jsx:435` — existing `Math.max(0.1, ...)` floor on
-  `measureSyncfusionPageHostScale`, proves 0.1 is already a supported
-  low bound elsewhere in the codebase
-- `src/App.jsx:449-451` — `normalizeInteractionMeasuredScale` sanity band
-  `[0.55x, 1.8x]` is a ratio against `viewerScale`, not an absolute floor
-- `src/App.jsx:21987-22008` — `commitZoomInput` pre-clamp at line 21999
-- `src/App.jsx:21544, 21552, 21579, 22002` — every zoom-mutating path
-  funnels through `clampScale`
-- `src/App.jsx:26449-26489` — zoom input + `%` label (freeform text, no
-  preset floor)
-- `src/components/SyncfusionPDFContainer.jsx:29-33` — Syncfusion
-  `coerceZoom` already clamps `[10, 1000]`, so 10% is supported upstream
-- Grep for hardcoded `0.5` in `src/` — only `zoomController.js:15` is a
-  zoom floor; other hits are CSS opacities, `PagesPanel` thumbnail
-  scale, and `pdfAnnotationImporter` tolerance — all unrelated
-- Grep for `Math.max(*, 50)` / `Math.min(*, 50)` — only
-  `App.jsx:21999` and `App.jsx.backup:13232` (the backup file is not in
-  the active bundle)
-- Grep for `zoomStep|zoomPresets|zoomPercentages|50%` — zero preset
-  arrays or hardcoded `50%` floors in the active zoom UI
-- `CLAUDE.md` lines 41-55 — three existing gotchas, none become newly
-  relevant at 10% zoom
-- `.planning/STATE.md` pending todos — none relate to rotation or zoom
-  floor
-- `.planning/research/STACK.md`, `FEATURES.md`, `ARCHITECTURE.md` —
-  cross-referenced for integration points and UX conventions
+- [ ] **Gap 3** tests both `angle=0` AND `angle=30` shapes
+- [ ] **Gap 3** tests all three exit paths: click-off, Escape, Enter-commit
+- [ ] **Gap 3** tests both `editType=text` and `editType=shape`
+- [ ] **Gap 4** verified at `es=0.10`, `es=1.00`, `es=2.00`
+- [ ] **Gap 4** verified on rect + circle + ellipse + text
+- [ ] **Gap 4** Fix A visual-only mtr — confirm non-interactive is intentional
+- [ ] **Gap 2** (if included) tested at all 4 page corners + edges + inside corners
+- [ ] **Gap 2** (if included) tested with axis-aligned AND rotated shapes
+- [ ] All commits exclude counter-session files — `git status` cross-check
+- [ ] Plan 12-02 focus-loss scenarios still green
+- [ ] Optimistic-paint pattern preserved
+- [ ] Typed-value snap de-scope preserved (typing 44 with Shift → commits 44°)
+- [ ] 113/113 v2.1 test baseline still green
 
 ---
 
-*Pitfalls research for: v2.1 Stage 0 Shape Edit Polish*
-*Researched: 2026-04-12*
-*Downstream consumer: Stage 0 phase CONTEXT.md acceptance criteria,
-VALIDATION.md smoke coverage, PLAN.md watch-out section*
+## Key Findings Summary
+
+1. **FEATURE-BACKLOG's Gap 4 `overflow: hidden` suspicion is FALSE.** Real culprit is canvas pixel buffer clip (BBOX_PADDING=32 - rotatingPointOffset=40 = y=-8 outside drawable surface). Architecture research adds: possible Syncfusion ancestor (`e-pv-page-div`) clipper — needs live-DOM diagnostic.
+2. **Gap 4 has a clean structural fix that avoids the counter-session lane.** Fix A (Pitfalls) / Option C (Architecture): modify `SVGAnnotationLayer:1050` short-circuit to preserve SVG mtr handle visual-only when `angle !== 0`. Touches only `SVGAnnotationLayer.jsx` + possibly `SVGSelectionOverlay.jsx`. Does NOT touch `FabricEditCanvas.jsx`. **Preferred.**
+3. **Gap 3's fix must preserve the v2.1 Plan 12-02 hover-intent dep array.** The `eslint-disable` at line 312 is load-bearing. Use Strategy A (edit-commit generation counter) or Strategy B (event delegation) — prefer B.
+4. **Gap 2 is architecturally split** — Stack + Architecture assess it as clean (pure math, ~40-80 LOC). Features + Pitfalls assess it as risky (UX convention + scope creep precedent). Synthesizer decision. **Default to deferral.**
+5. **Counter-session lane discipline is explicit.** 7 files must NEVER be staged from v2.2 unless authorized. Gap 3 and Gap 4 Fix A have zero overlap.
+
+---
+
+*Research sources: direct source inspection of `SVGAnnotationLayer.jsx`, `SVGSelectionOverlay.jsx`, `RotationInputField.jsx`, `FabricEditCanvas.jsx`, `useSVGInteraction.js`, `svgBoundingBox.js`; `1.log` runtime evidence; cross-reference with `PROJECT.md`, `FEATURE-BACKLOG.md`, `milestones/v2.1-ROADMAP.md`, `CLAUDE.md`.*
