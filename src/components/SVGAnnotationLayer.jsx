@@ -228,6 +228,7 @@ const SVGAnnotationLayer = memo(({
     // edit entry (clears pending open timer and any visible pill). This is the
     // effect-top short-circuit that closes Gap 3 alongside the delegation fix.
     if (editingAnnotationIndex != null) {
+      console.log('[EDIT-13 probe] edit-mode gate BLOCKED hover effect — pill will NOT arm while editing');
       setRotInputVisibleDbg(false, 'in edit mode');
       if (rotInputHoverTimerRef.current) {
         clearTimeout(rotInputHoverTimerRef.current);
@@ -239,6 +240,7 @@ const SVGAnnotationLayer = memo(({
       }
       return;
     }
+    console.log('[EDIT-13 probe] hover effect ATTACHED — delegation listening on svgRef (editing:', editingAnnotationIndex, 'selected:', selectedIds?.size, ')');
 
     // UX: only show input when exactly one shape is selected. Multi-select and
     // empty selection clear timers and hide the pill (visibility gate).
@@ -263,6 +265,7 @@ const SVGAnnotationLayer = memo(({
       // just internal bubbling — ignore.
       if (e.relatedTarget && mtr.contains(e.relatedTarget)) return;
 
+      console.log('[EDIT-13 probe] pointer ENTERED rotation handle — starting 150ms timer');
       // Read visibility via ref (Issue 4 flicker fix) so this closure stays
       // current without forcing the effect to re-run on every visibility flip.
       rotInputHoveredRef.current = true;
@@ -275,6 +278,7 @@ const SVGAnnotationLayer = memo(({
       // prevents flicker when the cursor crosses the handle without intent.
       if (!rotInputVisibleRef.current && !rotInputHoverTimerRef.current) {
         rotInputHoverTimerRef.current = setTimeout(() => {
+          console.log('[EDIT-13 probe] 150ms timer FIRED — pill should now be VISIBLE');
           setRotInputVisibleDbg(true, '150ms hover-intent fired');
           rotInputHoverTimerRef.current = null;
         }, 150);
