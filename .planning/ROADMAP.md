@@ -174,7 +174,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 2/2 | Complete | 2026-03-27 |
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 2/2 | Complete | 2026-04-02 |
 | 12. Shape Edit Polish | v2.1 | 3/3 | Complete | 2026-04-14 |
-| 13. Rotation Handle Edit-Mode Polish | v2.2 | 1/2 | In progress | - |
+| 13. Rotation Handle Edit-Mode Polish | v2.2 | Complete    | 2026-04-14 | - |
 
 ---
 *Last updated: 2026-04-14 — v2.2 milestone roadmap created. Phase 13 (Rotation Handle Edit-Mode Polish) defined with 2 plans (13-01 EDIT-13 hover-intent fix + 13-02 EDIT-14 mtr visibility fix). Both lane-safe (SVG-side only). Coverage 2/2 v2.2 requirements mapped. Ready for `/gsd:plan-phase 13`.*

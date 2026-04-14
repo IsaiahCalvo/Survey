@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Rotation Handle Polish
-status: in_progress
-stopped_at: Phase 13 Plan 13-01 complete — advancing to 13-02
-last_updated: "2026-04-14T20:00:00.000Z"
-last_activity: 2026-04-14 — 13-01 (EDIT-13 hover pill delegation) complete and UAT verified
+status: completed
+stopped_at: v2.2 milestone CLOSED — Phase 13 DONE, RECONCILIATION filed
+last_updated: "2026-04-14T23:25:00.000Z"
+last_activity: 2026-04-14 — Phase 13 closed (13-01 + 13-02 both DONE, UAT verified, RECONCILIATION.md filed)
 progress:
   total_phases: 1
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-14)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox; shape editing feels precise and predictable at every zoom level down to 10%.
-**Current focus:** v2.2 Rotation Handle Polish — close out the rotation interaction story by fixing the two Phase 12 carry-forward gaps (EDIT-13 hover pill re-arm + EDIT-14 mtr visibility on pre-rotated edit entry). Both SVG-side, both lane-safe.
+**Current focus:** v2.2 CLOSED — rotation interaction story complete. EDIT-13 hover pill re-arm delegated via `svgRef.current`. EDIT-14 rescoped mid-plan to "no Fabric transform handles in edit mode" (Figma-style separation) under a one-time narrow lane waiver for FabricEditCanvas.jsx. Ready for next milestone scoping.
 
 ## Current Position
 
-Phase: 13 — Rotation Handle Edit-Mode Polish (in progress)
-Plan: 13-02 (EDIT-14 mtr handle visibility fix)
-Status: Plan 13-01 complete — ready for 13-02 execution
-Last activity: 2026-04-14 — 13-01 (EDIT-13 hover pill delegation) UAT verified and SUMMARY.md written
+Milestone: v2.2 — Rotation Handle Polish — **CLOSED**
+Phase: 13 — Rotation Handle Edit-Mode Polish — **DONE**
+Plans: 13-01 (EDIT-13) DONE, 13-02 (EDIT-14 rescoped) DONE
+Last activity: 2026-04-14 — Phase 13 SUMMARY + RECONCILIATION committed (`7136cefb`)
 
-Progress: [#####-----] 50% (1/2 plans complete)
+Progress: [##########] 100% (2/2 plans complete, phase DONE, milestone CLOSED)
 
 ## Performance Metrics
 
@@ -38,9 +38,10 @@ Progress: [#####-----] 50% (1/2 plans complete)
 - v1.0 (Phases 1-3): 3 plans — shipped 2026-03-19
 - v2.0 (Phases 8-11): 9 plans — shipped 2026-04-10
 - v2.1 (Phase 12): 3 plans — shipped 2026-04-14
-- **Total: 15 plans shipped across 3 milestones**
+- v2.2 (Phase 13): 2 plans — shipped 2026-04-14 (same day as v2.1)
+- **Total: 17 plans shipped across 4 milestones**
 
-**v2.2 plan budget:** 2 plans (13-01 + 13-02). Surgical milestone — no scope expansion expected.
+**v2.2 plan budget:** 2 plans (13-01 + 13-02) — met exactly. 13-02 rescoped mid-plan but no scope expansion; single 3-line Fabric-side change delivered the new AC.
 
 **Tests:** 113/113 green at v2.1 close (Phase 13 must preserve this baseline)
 
@@ -68,10 +69,10 @@ Progress: [#####-----] 50% (1/2 plans complete)
 
 - [v2.2]: EDIT-13 hover pill delegation verified via UAT on 2026-04-14 — 56 clean probe hits across rect/circle/text at angle=0 and angle=30, all three exit paths (click-off / Escape / Enter-commit), edit-mode gate blocked 3 times, zero errors
 
-### Carry-Forward (now in active scope)
+### Carry-Forward (now closed)
 
-- **EDIT-13** — Plan 13-01 — DONE (2026-04-14, commit 6cf9e8c9)
-- **EDIT-14** — Plan 13-02 — Rotation handle (mtr) fully visible on pre-rotated shape edit entry (Gap 4, was carry-forward)
+- **EDIT-13** — Plan 13-01 — DONE (2026-04-14, commit `6cf9e8c9`)
+- **EDIT-14** — Plan 13-02 — DONE with rescope (2026-04-14, commits `6d0b56b6` + `4fe9e210`). Original AC ("mtr handle visible on pre-rotated edit entry") was deferred; rescoped AC ("no Fabric transform handles in edit mode for any shape") fully satisfied. See `13-RECONCILIATION.md` for full AC matrix.
 
 ### Counter-Session Lane (do NOT stage from v2.2)
 
@@ -88,13 +89,13 @@ Phase 13's Fix A / Option C strategy was specifically chosen so neither plan nee
 
 ### Blockers/Concerns
 
-- None. v2.1 milestone closed cleanly. Tests 113/113 green. v2.2 scope is surgical (~25-50 LOC across 2 files for 13-01, ~80-120 LOC across 2 files for 13-02 after diagnostic).
+- None. v2.2 milestone closed cleanly. Phase 13 RECONCILIATION filed. One-time narrow lane waiver for `FabricEditCanvas.jsx` is documented — NOT a blanket unlock; future work on that file still requires counter-session coordination.
 
 ## Session Continuity
 
-Last session: 2026-04-14T20:00:00.000Z
-Stopped at: Phase 13 Plan 13-01 complete — EDIT-13 hover pill delegation UAT verified
-Resume file: .planning/phases/13-rotation-handle-edit-mode-polish/13-01-SUMMARY.md
-Next action: Execute Plan 13-02 (EDIT-14 mtr handle visibility fix). MANDATORY first step: run the live-DOM diagnostic in the running app before writing any code.
+Last session: 2026-04-14T23:25:00.000Z
+Stopped at: v2.2 milestone CLOSED — Phase 13 DONE with full reconciliation
+Resume file: `.planning/phases/13-rotation-handle-edit-mode-polish/13-RECONCILIATION.md` (reference only; no pending work)
+Next action: Scope the next milestone. Options include (a) closing any residual v2.2 carry-forward items from `.planning/FEATURE-BACKLOG.md`, (b) kicking off a new feature milestone, or (c) merging `post-v2.0/cleanup` back to main if not already.
 
-Note: the parallel counter-tool session's uncommitted WIP in `src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricEditCanvas.jsx`, `src/hooks/useDatabase.js`, `src/utils/counterNumbering.js`, `src/utils/svgAnnotationRenderers.jsx`, and `dist/index.html` remains out of v2.2's lane. Phase 13's Fix A strategy was chosen specifically to avoid all 7 files.
+Note: Counter-session WIP remains unstaged in 7 files (`App.jsx`, `PageAnnotationLayer.jsx`, `FabricEditCanvas.jsx`, `useDatabase.js`, `counterNumbering.js`, `svgAnnotationRenderers.jsx`, `dist/index.html`). Phase 13 touched only 1 of these (`FabricEditCanvas.jsx`) under explicit user waiver; other 6 are untouched by any v2.2 commit. Counter-session is free to test and commit their work.
