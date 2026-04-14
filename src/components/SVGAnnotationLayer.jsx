@@ -151,6 +151,18 @@ const SVGAnnotationLayer = memo(({
   // pointerenter listener) and the HTML input portal (React onPointerEnter).
   const rotInputHoveredRef = useRef(false);
 
+  // Issue 4 visibility-flicker fix (Commit H): mirror rotInputVisible into a
+  // ref so the DOM event handlers (onEnter/onLeave inside the visibility
+  // effect) can read the current value via the ref WITHOUT having
+  // rotInputVisible in their effect's dependency array. Reading rotInputVisible
+  // directly inside the closures forced the effect to re-run on every
+  // visibility change — which tore down and re-attached the pointerenter/
+  // pointerleave listeners on the mtr handle. That tear-down/re-attach
+  // ate pointer events and put the visibility into a flicker loop.
+  // The ref lets the closures stay current without re-running the effect.
+  const rotInputVisibleRef = useRef(false);
+  useEffect(() => { rotInputVisibleRef.current = rotInputVisible; }, [rotInputVisible]);
+
   // Diagnostic helper: wrap setRotInputVisible so we can log who's toggling
   // visibility and from where. The flicker investigation needs to know which
   // call site is firing in the loop.
@@ -193,7 +205,7 @@ const SVGAnnotationLayer = memo(({
   // SVG `<g>` and the parent doesn't directly own it — we query it after mount.
   useEffect(() => {
     // Diagnostic: log every time this effect re-runs, with the trigger.
-    console.log(`[SVGAnnotationLayer] hover-intent effect RUN selectedIds.size=${selectedIds?.size} rotInputVisible=${rotInputVisible}`);
+    console.log(`[SVGAnnotationLayer] hover-intent effect RUN selectedIds.size=${selectedIds?.size}`);
 
     // UX: only show input when exactly one shape is selected. Multi-select and
     // empty selection clear timers and hide the pill (visibility gate).
@@ -219,7 +231,9 @@ const SVGAnnotationLayer = memo(({
     console.log(`[SVGAnnotationLayer] hover-intent effect — attaching listeners to handleEl`);
 
     const onEnter = () => {
-      console.log(`[SVGAnnotationLayer] pointerenter on mtr — rotInputVisible=${rotInputVisible} hoveredRef=${rotInputHoveredRef.current}`);
+      // Read visibility via ref (Issue 4 flicker fix) so this closure stays
+      // current without forcing the effect to re-run on every visibility flip.
+      console.log(`[SVGAnnotationLayer] pointerenter on mtr — visibleRef=${rotInputVisibleRef.current} hoveredRef=${rotInputHoveredRef.current}`);
       rotInputHoveredRef.current = true;
       // Cancel any pending close timer — user came back to the handle
       if (rotInputCloseTimerRef.current) {
@@ -229,7 +243,7 @@ const SVGAnnotationLayer = memo(({
       }
       // UX: 150ms hover-intent open delay matches tooltip conventions —
       // prevents flicker when the cursor crosses the handle without intent.
-      if (!rotInputVisible && !rotInputHoverTimerRef.current) {
+      if (!rotInputVisibleRef.current && !rotInputHoverTimerRef.current) {
         console.log(`[SVGAnnotationLayer] pointerenter — scheduling 150ms open timer`);
         rotInputHoverTimerRef.current = setTimeout(() => {
           setRotInputVisibleDbg(true, '150ms hover-intent fired');
@@ -239,7 +253,7 @@ const SVGAnnotationLayer = memo(({
     };
 
     const onLeave = () => {
-      console.log(`[SVGAnnotationLayer] pointerleave from mtr — rotInputVisible=${rotInputVisible} graceTimer=${!!rotInputCloseTimerRef.current}`);
+      console.log(`[SVGAnnotationLayer] pointerleave from mtr — visibleRef=${rotInputVisibleRef.current} graceTimer=${!!rotInputCloseTimerRef.current}`);
       rotInputHoveredRef.current = false;
       // Cancel pending open timer if user left before 150ms elapsed
       if (rotInputHoverTimerRef.current) {
@@ -251,7 +265,7 @@ const SVGAnnotationLayer = memo(({
       // handle to the input pill and click into it. Only fires the actual
       // hide if the cursor still isn't over the input or handle when the
       // timer expires.
-      if (rotInputVisible && !rotInputCloseTimerRef.current) {
+      if (rotInputVisibleRef.current && !rotInputCloseTimerRef.current) {
         console.log(`[SVGAnnotationLayer] pointerleave — scheduling 500ms grace timer`);
         rotInputCloseTimerRef.current = setTimeout(() => {
           if (!rotInputHoveredRef.current) {
@@ -274,7 +288,14 @@ const SVGAnnotationLayer = memo(({
       if (rotInputHoverTimerRef.current) clearTimeout(rotInputHoverTimerRef.current);
       if (rotInputCloseTimerRef.current) clearTimeout(rotInputCloseTimerRef.current);
     };
-  }, [selectedIds, rotInputVisible, setRotInputVisibleDbg]);
+    // CRITICAL: rotInputVisible is INTENTIONALLY NOT in the deps. We read it
+    // via rotInputVisibleRef.current inside the closures so this effect only
+    // re-runs when selectedIds changes (a stable Set reference from
+    // useSVGInteraction). This prevents the visibility flicker loop where
+    // every setRotInputVisible(true/false) tore down and re-attached the
+    // pointerenter/pointerleave listeners, eating pointer events.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds, setRotInputVisibleDbg]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12: Derived state for RotationInputField props
@@ -338,8 +359,16 @@ const SVGAnnotationLayer = memo(({
     // snaps back to props.angle (the persisted value).
   }, []);
 
+  // Issue 4 flicker fix: handleRotationInputHoverChange is a child callback,
+  // so its identity matters — every reference change invalidates the child's
+  // useCallback chains that depend on onHoverChange. Read rotInputVisible
+  // and isRotating via refs so this callback is STABLE across visibility
+  // and rotation changes.
+  const isRotatingRef = useRef(false);
+  useEffect(() => { isRotatingRef.current = isRotating; }, [isRotating]);
+
   const handleRotationInputHoverChange = useCallback((hovered) => {
-    console.log(`[SVGAnnotationLayer] pill onHoverChange(${hovered}) rotInputVisible=${rotInputVisible} isRotating=${isRotating}`);
+    console.log(`[SVGAnnotationLayer] pill onHoverChange(${hovered}) visibleRef=${rotInputVisibleRef.current} rotatingRef=${isRotatingRef.current}`);
     rotInputHoveredRef.current = hovered;
     if (hovered) {
       // Cancel grace timer if cursor entered the input itself — keeps the
@@ -353,7 +382,7 @@ const SVGAnnotationLayer = memo(({
       // UX: cursor left the input — start the same 500ms grace timer so
       // the user can travel back to the handle without dismissing the pill.
       // Suppressed during active rotation drag (drag overrides visibility).
-      if (rotInputVisible && !rotInputCloseTimerRef.current && !isRotating) {
+      if (rotInputVisibleRef.current && !rotInputCloseTimerRef.current && !isRotatingRef.current) {
         console.log(`[SVGAnnotationLayer] pill onHoverChange(false) — scheduling 500ms grace`);
         rotInputCloseTimerRef.current = setTimeout(() => {
           if (!rotInputHoveredRef.current) {
@@ -365,7 +394,9 @@ const SVGAnnotationLayer = memo(({
         }, 500);
       }
     }
-  }, [rotInputVisible, isRotating, setRotInputVisibleDbg]);
+    // No reactive deps — all state read via refs. setRotInputVisibleDbg is
+    // already stable (useCallback with empty deps).
+  }, [setRotInputVisibleDbg]);
 
   // ---------------------------------------------------------------------------
   // Helper: derive spaceId from regionId by searching through spaces data
