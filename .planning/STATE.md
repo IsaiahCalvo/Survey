@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Rotation Handle Polish
-status: completed
-stopped_at: Phase 13 context gathered — Strategy B for 13-01, Fix A / Option C for 13-02, DevTools paste diagnostic, stop-and-escalate fallback, one-atomic-commit-per-plan, no new unit tests. All tactical decisions delegated by user and captured in 13-CONTEXT.md.
-last_updated: "2026-04-14T18:43:12.903Z"
-last_activity: 2026-04-14 — v2.2 roadmap created (Phase 13 defined, 2 plans, 2/2 requirements mapped)
+status: in_progress
+stopped_at: Phase 13 Plan 13-01 complete — advancing to 13-02
+last_updated: "2026-04-14T20:00:00.000Z"
+last_activity: 2026-04-14 — 13-01 (EDIT-13 hover pill delegation) complete and UAT verified
 progress:
   total_phases: 1
   completed_phases: 0
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 
 ## Current Position
 
-Phase: 13 — Rotation Handle Edit-Mode Polish (not started)
-Plan: —
-Status: Roadmap complete, ready for `/gsd:plan-phase 13`
-Last activity: 2026-04-14 — v2.2 roadmap created (Phase 13 defined, 2 plans, 2/2 requirements mapped)
+Phase: 13 — Rotation Handle Edit-Mode Polish (in progress)
+Plan: 13-02 (EDIT-14 mtr handle visibility fix)
+Status: Plan 13-01 complete — ready for 13-02 execution
+Last activity: 2026-04-14 — 13-01 (EDIT-13 hover pill delegation) UAT verified and SUMMARY.md written
 
-Progress: [----------] 0% (0/2 plans complete)
+Progress: [#####-----] 50% (1/2 plans complete)
 
 ## Performance Metrics
 
@@ -66,9 +66,11 @@ Progress: [----------] 0% (0/2 plans complete)
 - [v2.2]: Gap 4 plan 13-02 mandatory first step is a live-DOM diagnostic (`getBoundingClientRect` + `getComputedStyle` on the FabricEditCanvas container ancestor chain through `e-pv-page-div`) to confirm clipper identity before writing code — Architecture and Pitfalls research disagree on which clipper owns the symptom; diagnostic resolves it
 - [v2.2]: Gap 3 fix strategy — Strategy A (dep array + early-return gate) acceptable, Strategy B (event delegation via `e.target.closest('[data-rotation-handle="mtr"]')`) preferred. Both must preserve the load-bearing `eslint-disable react-hooks/exhaustive-deps` invariant by NOT adding tick-rate values (`annotations`, `visualTransform`) to the dep array
 
+- [v2.2]: EDIT-13 hover pill delegation verified via UAT on 2026-04-14 — 56 clean probe hits across rect/circle/text at angle=0 and angle=30, all three exit paths (click-off / Escape / Enter-commit), edit-mode gate blocked 3 times, zero errors
+
 ### Carry-Forward (now in active scope)
 
-- **EDIT-13** — Plan 13-01 — Rotation pill re-arms on hover after edit-mode click-off (Gap 3, was carry-forward)
+- **EDIT-13** — Plan 13-01 — DONE (2026-04-14, commit 6cf9e8c9)
 - **EDIT-14** — Plan 13-02 — Rotation handle (mtr) fully visible on pre-rotated shape edit entry (Gap 4, was carry-forward)
 
 ### Counter-Session Lane (do NOT stage from v2.2)
@@ -90,9 +92,9 @@ Phase 13's Fix A / Option C strategy was specifically chosen so neither plan nee
 
 ## Session Continuity
 
-Last session: 2026-04-14T18:43:12.896Z
-Stopped at: Phase 13 context gathered — Strategy B for 13-01, Fix A / Option C for 13-02, DevTools paste diagnostic, stop-and-escalate fallback, one-atomic-commit-per-plan, no new unit tests. All tactical decisions delegated by user and captured in 13-CONTEXT.md.
-Resume file: .planning/phases/13-rotation-handle-edit-mode-polish/13-CONTEXT.md
-Next action: Run `/gsd:plan-phase 13` to author the Phase 13 CONTEXT.md and the two plan files (13-01 EDIT-13 hover-intent fix, 13-02 EDIT-14 mtr visibility fix). Plan 13-02 must include the mandatory live-DOM diagnostic as its first wave step.
+Last session: 2026-04-14T20:00:00.000Z
+Stopped at: Phase 13 Plan 13-01 complete — EDIT-13 hover pill delegation UAT verified
+Resume file: .planning/phases/13-rotation-handle-edit-mode-polish/13-01-SUMMARY.md
+Next action: Execute Plan 13-02 (EDIT-14 mtr handle visibility fix). MANDATORY first step: run the live-DOM diagnostic in the running app before writing any code.
 
 Note: the parallel counter-tool session's uncommitted WIP in `src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricEditCanvas.jsx`, `src/hooks/useDatabase.js`, `src/utils/counterNumbering.js`, `src/utils/svgAnnotationRenderers.jsx`, and `dist/index.html` remains out of v2.2's lane. Phase 13's Fix A strategy was chosen specifically to avoid all 7 files.

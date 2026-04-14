@@ -9,7 +9,7 @@ Two carry-forward polish gaps from v2.1 Phase 12 that close out the rotation int
 
 ### Shape Edit Rotation Polish
 
-- [ ] **EDIT-13**: User can hover the rotation handle after returning from edit mode via click-off and see the typed-degree rotation pill re-arm within the hover-intent window, without needing to fully deselect and reselect the shape. Applies to all 7 annotation types that currently support shape editing (rect, circle, ellipse, line, arrow, path/callout wrappers). Carry-forward from v2.1 Gap 3.
+- [x] **EDIT-13**: User can hover the rotation handle after returning from edit mode via click-off and see the typed-degree rotation pill re-arm within the hover-intent window, without needing to fully deselect and reselect the shape. Applies to all 7 annotation types that currently support shape editing (rect, circle, ellipse, line, arrow, path/callout wrappers). Carry-forward from v2.1 Gap 3. — **DONE 2026-04-14** (Plan 13-01, commit 6cf9e8c9, UAT verified)
 
 - [ ] **EDIT-14**: User can double-click into edit mode on a pre-rotated shape (angle ≠ 0°) and see the rotation handle (mtr) fully visible and not clipped by any container boundary. Visual-only visibility is sufficient — the handle does not need to be draggable in edit mode since rotation interaction is already provided by select-mode drag and the typed-degree pill. Applies to rect, circle, ellipse, and text edit modes. Carry-forward from v2.1 Gap 4.
 
@@ -42,7 +42,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Plan | Status |
 |-------------|-------|------|--------|
-| EDIT-13 | Phase 13 | 13-01 | Pending |
+| EDIT-13 | Phase 13 | 13-01 | Complete (2026-04-14) |
 | EDIT-14 | Phase 13 | 13-02 | Pending |
 
 **Coverage:**
