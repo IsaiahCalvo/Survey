@@ -4956,7 +4956,7 @@ const PageAnnotationLayer = memo(({
 
     // Update cursors
     // Set cursor based on tool (Using 'none' for eraser to hide native cursor)
-    const shapeTools = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'highlight', 'squiggly'];
+    const shapeTools = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'highlight', 'squiggly', 'counter'];
     canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (shapeTools.includes(tool) ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
     canvas.hoverCursor = tool === 'eraser' ? 'none' : (tool === 'select' ? 'move' : (tool === 'pan' ? 'grab' : 'move'));
     canvas.moveCursor = tool === 'eraser' ? 'none' : 'move';
@@ -6364,6 +6364,9 @@ const PageAnnotationLayer = memo(({
       const isRightClick = nativeEvent.button === 2 || nativeEvent.which === 3 || (nativeEvent.ctrlKey && nativeEvent.button === 0) || (nativeEvent.metaKey && nativeEvent.button === 0);
       const { x, y } = canvas.getPointer(opt.e);
       const pointer = { x, y }; // Ensure pointer object exists
+      if (currentTool === 'counter') {
+        console.log(`[Counter p${pageNumber}] handleMouseDown ENTRY — currentTool=${currentTool}, x=${x}, y=${y}, isRightClick=${isRightClick}, target=${opt.target?.type || 'none'}`);
+      }
 
       if (!isRightClick && contextMenuVisibleRef.current) {
         closeContextMenu('canvas-tool-interaction', nativeEvent);
@@ -6551,6 +6554,9 @@ const PageAnnotationLayer = memo(({
       const ds = drawingStateRef.current;
       ds.isDrawingShape = false;
       let temp = null;
+      if (currentTool === 'counter') {
+        console.log(`[Counter p${pageNumber}] REACHED shape tools dispatch section — currentTool=${currentTool}`);
+      }
       if (currentTool === 'highlight') {
         // Highlight tool: create a clear selection rectangle (transparent fill, visible border)
         temp = new Rect({
@@ -6580,6 +6586,51 @@ const PageAnnotationLayer = memo(({
           temp.set({ regionId: activeRegionIdRef.current });
         }
         canvas.add(temp);
+        return;
+      } else if (currentTool === 'counter') {
+        console.log(`[Counter p${pageNumber}] mouse:down fired — currentTool=counter, x=${x}, y=${y}, strokeColor=${currentStrokeColor}, canvasObjs=${canvas.getObjects().length}`);
+        // Click-to-drop counter (Shottr-style): one click places one counter,
+        // tool stays active for rapid drops. Number is derived at render time
+        // from creation order via renumberCounters in App.jsx — never trust the
+        // local displayNumber (it gets overwritten on the next save).
+        const COUNTER_RADIUS = 14;
+        const counterColor = currentStrokeColor || '#ef4444';
+        const counter = new Circle({
+          left: x - COUNTER_RADIUS,
+          top: y - COUNTER_RADIUS,
+          radius: COUNTER_RADIUS,
+          fill: counterColor,
+          stroke: '#ffffff',
+          strokeWidth: 1.5,
+          strokeUniform: true,
+          originX: 'left',
+          originY: 'top',
+          hasControls: false,
+          hasBorders: true,
+          lockScalingX: true,
+          lockScalingY: true,
+          lockRotation: true,
+        });
+        counter.set({
+          data: {
+            type: 'counter',
+            createdAt: Date.now(),
+            pointerAngle: 225,
+            displayNumber: 1, // placeholder — renumberCounters fixes it
+          },
+        });
+        if (selectedModuleIdRef.current) {
+          counter.set({ moduleId: selectedModuleIdRef.current });
+        }
+        if (shouldAssignRegionId()) {
+          counter.set({ regionId: activeRegionIdRef.current });
+        }
+        canvas.add(counter);
+        canvas.requestRenderAll();
+        console.log(`[Counter p${pageNumber}] counter ADDED to canvas — totalObjs=${canvas.getObjects().length}, counter.left=${counter.left}, counter.top=${counter.top}, counter.radius=${counter.radius}, counter.fill=${counter.fill}, counter.data=${JSON.stringify(counter.data)}`);
+        // Don't activate it — keep tool active for rapid clicks (Shottr behavior).
+        saveCanvas('counter:create', { tool: 'counter' });
+        console.log(`[Counter p${pageNumber}] saveCanvas('counter:create') called — done`);
         return;
       } else if (currentTool === 'rect') {
         temp = new Rect({ left: x, top: y, width: 1, height: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
@@ -8244,7 +8295,7 @@ const PageAnnotationLayer = memo(({
     // Prevent Fabric.js from finding targets for eraser tool - we handle it ourselves with geometry checks
     canvas.skipTargetFind = tool === 'eraser';
     // Set cursor based on tool (Using 'none' for eraser to hide native cursor)
-    const shapeToolsForCursor = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'highlight', 'squiggly'];
+    const shapeToolsForCursor = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'highlight', 'squiggly', 'counter'];
     canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (shapeToolsForCursor.includes(tool) ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
     canvas.hoverCursor = tool === 'eraser' ? 'none' : (tool === 'select' ? 'move' : (tool === 'pan' ? 'grab' : 'move'));
     canvas.moveCursor = tool === 'eraser' ? 'none' : 'move';
@@ -9064,7 +9115,7 @@ const PageAnnotationLayer = memo(({
         height: '100%',
         marginTop: '0px',
         paddingTop: `${canvasTopPadding}px`,
-        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'pan' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'callout' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight') ? 'auto' : 'none',
+        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'pan' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'callout' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight' || tool === 'counter') ? 'auto' : 'none',
         zIndex: 10,
       }}
       data-pal-root={pageNumber}

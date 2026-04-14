@@ -276,10 +276,23 @@ const DEFAULT_FONT_FAMILY = 'Helvetica';
 // ---------------------------------------------------------------------------
 // MiniToolbar -- floating toolbar for shape editing (fill/stroke/width)
 // ---------------------------------------------------------------------------
-const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onPropertyChange }) => {
+const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onPropertyChange, onCounterResize, onGroupUpdate, counterGroupSize, annotationData }) => {
   const [fill, setFill] = useState('transparent');
   const [stroke, setStroke] = useState('#000000');
   const [strokeW, setStrokeW] = useState(3);
+  // Counter-specific state: badge radius (page-space px) takes the slot normally
+  // occupied by strokeWidth so the +/- buttons can resize the badge directly.
+  const [isCounter, setIsCounter] = useState(false);
+  const [counterRadius, setCounterRadius] = useState(14);
+  // Counter Step 7: font color (data.numberColor on the pin), group-wide.
+  // Defaults to white to match the legacy renderCounter hardcoded text fill.
+  const [numberColor, setNumberColor] = useState('#FFFFFF');
+  // Counter Step 7: digit-only input value for setting the displayed number on
+  // a SOLO-pin group. Editable only when the series has exactly one pin (the
+  // editing rule keeps multi-pin renumbering simple — change the value once at
+  // creation, never again). Local state so typing feels instant; commits to
+  // data.seriesStart on Enter or blur via onGroupUpdate.
+  const [numberInputValue, setNumberInputValue] = useState('');
   const [showFillPicker, setShowFillPicker] = useState(false);
   const [showStrokePicker, setShowStrokePicker] = useState(false);
   const [toolbarPos, setToolbarPos] = useState(null);
@@ -294,7 +307,22 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
     setFill(obj.fill || 'transparent');
     setStroke(obj.stroke || '#000000');
     setStrokeW(obj._realStrokeWidth ?? obj.strokeWidth ?? 3);
+    // Counter-specific: detect via data.type so the mini-bar swaps Stroke/Width
+    // controls for a single Color + Size pair (Shottr UX).
+    const counter = !!(obj.data && obj.data.type === 'counter');
+    setIsCounter(counter);
+    if (counter) setCounterRadius(obj.radius || 14);
   }, [fabricRef]);
+
+  // Counter Step 7: re-sync number input + font-color swatch from the latest
+  // annotationData snapshot. Runs whenever the editing target changes (e.g.
+  // user dismisses one pin and double-clicks another), since the existing
+  // [fabricRef]-only sync above only fires once per mount.
+  useEffect(() => {
+    if (annotationData?.data?.type !== 'counter') return;
+    setNumberColor(annotationData.data.numberColor || '#FFFFFF');
+    setNumberInputValue(String(annotationData.data.displayNumber ?? 1));
+  }, [annotationData]);
 
   // UX: mini-bar floats just above the shape in screen space and must follow
   // the shape's CURRENT visible edges in real time while the user scales,
@@ -365,7 +393,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
     return () => cancelAnimationFrame(rafId);
   }, [containerRef]);
 
-  const updateProperty = useCallback((prop, value) => {
+  const updateProperty = useCallback((prop, value, extras) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     const obj = canvas.getActiveObject();
@@ -376,14 +404,28 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
       obj.set(prop, value);
       canvas.renderAll();
     }
-    if (onPropertyChange) onPropertyChange(prop, value);
+    if (onPropertyChange) onPropertyChange(prop, value, extras);
   }, [fabricRef, onPropertyChange]);
 
   const handleStrokeWidthChange = useCallback((delta) => {
+    if (isCounter) {
+      // Counter: clamp radius to a reasonable visible range. Floor 4 keeps the
+      // badge clickable; ceiling 60 keeps it from swallowing the page. Routes
+      // through onCounterResize (defined in FabricEditCanvas parent) which owns
+      // the bboxOriginRef + container CSS + commit-path bookkeeping needed to
+      // keep the visual center fixed across edit/commit cycles. Doing the
+      // recenter inside MiniToolbar would only touch canvas-local coords
+      // (BBOX_PADDING) — that produced the snap-to-top-left bug because the
+      // commit path reads bboxOriginRef.left/top, NOT obj.left/top.
+      const newR = Math.max(4, Math.min(60, counterRadius + delta));
+      setCounterRadius(newR);
+      if (onCounterResize) onCounterResize(newR);
+      return;
+    }
     const newW = Math.max(1, Math.min(20, strokeW + delta));
     setStrokeW(newW);
     updateProperty('strokeWidth', newW);
-  }, [strokeW, updateProperty]);
+  }, [isCounter, counterRadius, strokeW, updateProperty, onCounterResize]);
 
   // Position: 8px above the edit Canvas container, using rAF-tracked screen coords.
   // Portaled to document.body to escape Syncfusion stacking contexts.
@@ -457,6 +499,239 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
     </div>
   );
 
+  // Counter Step 7 — early branch. When the editing target is a counter pin,
+  // render a counter-specific mini-toolbar variant. Layout matches the rect/
+  // circle bar visually (same chrome, same spacing) so muscle memory carries
+  // over, but the controls have different semantics:
+  //   - Fill   → bubble color, GROUP-WIDE (writes obj.fill on every pin in
+  //              the same seriesId across every page). Local Fabric obj is
+  //              also updated for instant in-edit visual feedback.
+  //   - Stroke → number text color (data.numberColor), GROUP-WIDE. There is
+  //              no actual outline on a counter pin; the swatch is labelled
+  //              "Stroke" only to stay consistent with the rect/circle bar.
+  //              renderCounter reads data.numberColor || '#ffffff' as the
+  //              SVG <text fill> so the change shows up on the next save.
+  //   - Size   → per-pin radius via existing +/- handler (unchanged from
+  //              the legacy counter handling — onCounterResize routes through
+  //              FabricEditCanvas's bbox/recenter machinery).
+  //   - #      → digit-only number input. Editable ONLY when the series has
+  //              exactly one pin (counterGroupSize === 1). Disabled +
+  //              greyed out when ≥ 2 pins, because group renumbering on a
+  //              non-first pin gets ambiguous fast (negative numbers, gaps,
+  //              etc) — the rule "set the start once at creation, never
+  //              again" sidesteps that entirely. Commits on Enter/blur via
+  //              onGroupUpdate(seriesId, { seriesStart }) which writes
+  //              data.seriesStart on the single pin; renumberCounters then
+  //              recomputes data.displayNumber on next save.
+  // The existing rect/circle/text return path below is BYTE-IDENTICAL — this
+  // branch returns BEFORE it, so non-counter shapes are unaffected.
+  if (isCounter) {
+    const seriesId = annotationData?.data?.seriesId;
+    const groupSize = counterGroupSize || 0;
+    // UX: number input is editable only on a 1-pin (solo) group. The "set the
+    // start once at creation" rule prevents the renumber math from getting
+    // weird when the user picks pin #15 of a 20-pin group. This keeps the
+    // input present (so the pin's current number is always visible) but
+    // visually communicates it's locked once the group has been extended.
+    const numberInputDisabled = groupSize !== 1;
+    return createPortal(
+      <div
+        ref={toolbarRef}
+        data-mini-toolbar
+        data-counter-mini-toolbar
+        style={{
+          ...positionStyle,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          background: '#2D2D2D',
+          border: '1px solid #3A3A3A',
+          borderRadius: 6,
+          padding: '8px 12px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          minWidth: 280,
+          maxWidth: 420,
+          height: 36,
+          boxSizing: 'border-box',
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+        }}
+      >
+        {/* Fill — group-wide */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>Fill:</span>
+          <div
+            onClick={() => { setShowFillPicker(!showFillPicker); setShowStrokePicker(false); }}
+            style={{
+              width: 16, height: 16,
+              backgroundColor: fill === 'transparent' ? 'transparent' : fill,
+              borderRadius: 2,
+              border: '1px solid #555',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+            }}
+          />
+          {showFillPicker && renderColorGrid(fill, (c) => {
+            setFill(c);
+            // Local Fabric mutation for instant in-edit feedback on the
+            // selected pin. The group propagation below also updates this
+            // pin via the JSON, so the writes converge on the same value.
+            updateProperty('fill', c);
+            // Group-wide propagation across all pages.
+            if (onGroupUpdate && seriesId) {
+              onGroupUpdate(seriesId, { fill: c });
+            }
+          }, () => setShowFillPicker(false))}
+        </div>
+
+        {/* Separator */}
+        <div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />
+
+        {/* Stroke = number text color — group-wide */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>Stroke:</span>
+          <div
+            onClick={() => { setShowStrokePicker(!showStrokePicker); setShowFillPicker(false); }}
+            style={{
+              width: 16, height: 16,
+              backgroundColor: numberColor,
+              borderRadius: 2,
+              border: '1px solid #555',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+            }}
+          />
+          {showStrokePicker && renderColorGrid(numberColor, (c) => {
+            setNumberColor(c);
+            // Route the change through the SAME path Fill uses — updateProperty
+            // calls obj.set('data', newData) on the active Fabric obj AND fires
+            // onPropertyChange → onLivePreview, which writes the new data to
+            // annotationsByPage via handleSaveAnnotations. This is why Fill
+            // worked and an earlier "just mutate obj.data" attempt didn't:
+            // mutating obj.data directly didn't sync the page JSON until
+            // onEditCommit fired, and onEditCommit's stale annotationsRef
+            // would then overwrite the cross-page propagation. Going through
+            // updateProperty('data', newData) makes the live-save path the
+            // single source of truth for the selected pin.
+            const canvas = fabricRef.current;
+            const obj = canvas?.getActiveObject?.();
+            if (obj && obj.data) {
+              const newData = { ...obj.data, numberColor: c };
+              updateProperty('data', newData);
+              console.log(`[CSeries mini stroke] write data.numberColor=${c} obj.data after=${JSON.stringify(obj.data)}`);
+            }
+            // Group-wide propagation to OTHER pins in the series across all pages.
+            if (onGroupUpdate && seriesId) {
+              onGroupUpdate(seriesId, { numberColor: c });
+            }
+          }, () => setShowStrokePicker(false))}
+        </div>
+
+        {/* Separator */}
+        <div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />
+
+        {/* Size +/- — per-pin (existing handler, untouched) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>Size:</span>
+          <button
+            onClick={() => { handleStrokeWidthChange(-1); }}
+            style={{
+              width: 20, height: 20,
+              background: '#444', border: '1px solid #555', borderRadius: 2,
+              color: '#FFF', fontSize: 14, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 0, lineHeight: 1,
+              pointerEvents: 'auto',
+            }}
+          >-</button>
+          <span style={{ fontSize: 12, fontWeight: 400, color: '#FFFFFF', minWidth: 24, textAlign: 'center' }}>
+            {counterRadius}px
+          </span>
+          <button
+            onClick={() => { handleStrokeWidthChange(1); }}
+            style={{
+              width: 20, height: 20,
+              background: '#444', border: '1px solid #555', borderRadius: 2,
+              color: '#FFF', fontSize: 14, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 0, lineHeight: 1,
+              pointerEvents: 'auto',
+            }}
+          >+</button>
+        </div>
+
+        {/* Separator */}
+        <div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />
+
+        {/* Number input — per-pin, single-pin-groups only */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>#:</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={numberInputValue}
+            disabled={numberInputDisabled}
+            onChange={(e) => {
+              // Strip non-digits so the input only ever holds a numeric string.
+              const v = e.target.value.replace(/[^0-9]/g, '');
+              setNumberInputValue(v);
+            }}
+            onKeyDown={(e) => {
+              // Enter commits and removes focus, which fires onBlur → propagate.
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.target.blur();
+              }
+            }}
+            onBlur={() => {
+              if (numberInputDisabled) return;
+              const parsed = parseInt(numberInputValue, 10);
+              // Guard: ignore empty / NaN / non-positive. Counters start at 1
+              // by default; allowing 0 or negatives makes the displayed text
+              // ambiguous and breaks user expectations.
+              if (Number.isFinite(parsed) && parsed >= 1 && onGroupUpdate && seriesId) {
+                // Route through updateProperty('data', newData) so the
+                // onPropertyChange → onLivePreview pipeline writes the new
+                // data.seriesStart into the page JSON. Same reasoning as the
+                // stroke handler — the live-save path is the single source
+                // of truth for the selected pin's data field.
+                const canvas = fabricRef.current;
+                const obj = canvas?.getActiveObject?.();
+                if (obj && obj.data) {
+                  const newData = { ...obj.data, seriesStart: parsed };
+                  updateProperty('data', newData);
+                  console.log(`[CSeries mini number] write data.seriesStart=${parsed} obj.data after=${JSON.stringify(obj.data)}`);
+                }
+                onGroupUpdate(seriesId, { seriesStart: parsed });
+              }
+            }}
+            style={{
+              width: 44,
+              height: 22,
+              background: numberInputDisabled ? '#222' : '#444',
+              border: '1px solid #555',
+              borderRadius: 3,
+              color: numberInputDisabled ? '#888' : '#FFFFFF',
+              fontSize: 12,
+              textAlign: 'center',
+              padding: '0 4px',
+              pointerEvents: 'auto',
+              cursor: numberInputDisabled ? 'not-allowed' : 'text',
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+            title={numberInputDisabled
+              ? 'The pin number can only be set when the count group has a single pin. Add more pins → number is locked.'
+              : 'Set this pin\'s starting number — the group will renumber from here.'}
+          />
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
   return createPortal(
     <div
       ref={toolbarRef}
@@ -506,32 +781,37 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
       {/* Separator */}
       <div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />
 
-      {/* Stroke */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
-        <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>Stroke:</span>
-        <div
-          onClick={() => { setShowStrokePicker(!showStrokePicker); setShowFillPicker(false); }}
-          style={{
-            width: 16, height: 16,
-            backgroundColor: stroke,
-            borderRadius: 2,
-            border: '1px solid #555',
-            cursor: 'pointer',
-            pointerEvents: 'auto',
-          }}
-        />
-        {showStrokePicker && renderColorGrid(stroke, (c) => {
-          setStroke(c);
-          updateProperty('stroke', c);
-        }, () => setShowStrokePicker(false))}
-      </div>
+      {/* Stroke — hidden for counter (Shottr counters have a fixed white outline) */}
+      {!isCounter && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+            <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>Stroke:</span>
+            <div
+              onClick={() => { setShowStrokePicker(!showStrokePicker); setShowFillPicker(false); }}
+              style={{
+                width: 16, height: 16,
+                backgroundColor: stroke,
+                borderRadius: 2,
+                border: '1px solid #555',
+                cursor: 'pointer',
+                pointerEvents: 'auto',
+              }}
+            />
+            {showStrokePicker && renderColorGrid(stroke, (c) => {
+              setStroke(c);
+              updateProperty('stroke', c);
+            }, () => setShowStrokePicker(false))}
+          </div>
 
-      {/* Separator */}
-      <div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />
+          {/* Separator */}
+          <div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />
+        </>
+      )}
 
-      {/* Stroke Width */}
+      {/* Width / Size — for counter this is the badge RADIUS, for everything else
+          it is the line stroke width. Both share +/- buttons and the same handler. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>Width:</span>
+        <span style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF' }}>{isCounter ? 'Size:' : 'Width:'}</span>
         <button
           onClick={() => { handleStrokeWidthChange(-1); }}
           style={{
@@ -544,7 +824,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
           }}
         >-</button>
         <span style={{ fontSize: 12, fontWeight: 400, color: '#FFFFFF', minWidth: 24, textAlign: 'center' }}>
-          {strokeW}px
+          {isCounter ? counterRadius : strokeW}px
         </span>
         <button
           onClick={() => { handleStrokeWidthChange(1); }}
@@ -585,6 +865,16 @@ const FabricEditCanvas = memo(({
   clickPosition,       // { x, y } in page coordinates for new text placement
   textBoxWidth,        // optional page-space width from drag-to-create
   onLivePreview,       // (updatedAnnotationsJSON) => void -- live SVG update during shape edit
+  // Counter Step 7 — group-wide propagation hook. Called from the counter
+  // mini-toolbar's Fill / Stroke / Number-input handlers. App.jsx walks
+  // annotationsByPageRef across all pages, finds every pin matching seriesId,
+  // applies the patch (fill / numberColor / seriesStart), and commits with
+  // a single undo checkpoint. Optional — non-counter shapes never call it.
+  onGroupUpdate,       // (seriesId, patch) => void
+  // Counter Step 7 — count of pins in the editing pin's series. Drives the
+  // number-input enabled/disabled state (only editable when groupSize === 1).
+  // 0 / undefined for non-counter shapes.
+  counterGroupSize,
 }) => {
   // -------------------------------------------------------------------------
   // State
@@ -1313,7 +1603,13 @@ const FabricEditCanvas = memo(({
       obj._svgIsPageSpaceMode = pageSpaceModeRef.current === true;
       // Counters (Shottr-style numbered badges) are fixed-size — no resize
       // handles, locked scale, locked rotation. Move + recolor + delete still
-      // work via the standard shape edit flow.
+      // work via the standard shape edit flow. Rotation in edit mode happens
+      // via a SINGLE Fabric custom control at the nub tip (installed below),
+      // mirroring the SVG selection-mode rotation handle.
+      // [COUNTER WIP — DO NOT TOUCH] Counter edit-mode logic is mid-debug as
+      // of 2026-04-14. Another session: leave the isCounter branch (including
+      // the counterRotate custom Fabric control and the Fabric empty-click
+      // useEffect above) alone. Coordinate via the user before touching.
       const isCounter = obj.data && obj.data.type === 'counter';
       const sizing = computeShapeHandleSizing(obj, effectiveScale, pageSpaceModeRef.current);
       obj.set({
@@ -1336,12 +1632,119 @@ const FabricEditCanvas = memo(({
         transparentCorners: false,
         lockScalingX: isCounter ? true : obj.lockScalingX,
         lockScalingY: isCounter ? true : obj.lockScalingY,
+        // lockRotation only blocks Fabric's built-in rotation action — our
+        // custom counterRotate control has its own actionHandler and is
+        // unaffected, so leaving lockRotation:true on counter is correct.
         lockRotation: isCounter ? true : obj.lockRotation,
         opacity: 0,
       });
 
+      if (isCounter) {
+        // UX (counter edit-mode rotate): install ONE custom Fabric control
+        // at the nub tip — nothing else. Matches the SVG selection-mode
+        // rotation handle (SVGAnnotationLayer.jsx ~654-748) so rect/circle
+        // edit-mode parity holds: "handles in edit mode match handles in
+        // select mode." The Fabric counter obj has opacity:0, so we dispatch
+        // the new angle to the SVG layer via onLivePreview on every drag
+        // tick to keep the visible rendering in sync.
+        //
+        // Positioning uses the same tipExtension formula as renderCounter
+        // (svgAnnotationRenderers.jsx:540) and the SVG select-mode handle
+        // (SVGAnnotationLayer.jsx:670) so the handle sits ON the visible
+        // nubbin tip at all angles and radii.
+        obj.controls = {
+          counterRotate: new fabric.Control({
+            cursorStyle: 'grab',
+            actionName: 'counterRotate',
+            positionHandler: (dim, finalMatrix, fabricObject) => {
+              const r = fabricObject.radius || 14;
+              const angleDeg = fabricObject.data?.pointerAngle ?? 225;
+              const angleRad = (angleDeg * Math.PI) / 180;
+              const tipExt = Math.max(5, r * 0.5);
+              // UX: handle sits ON the visible nub tip. We bypass Fabric's
+              // `finalMatrix` because it translates to the PADDED-bbox center
+              // (left + (width+strokeWidth)/2 + controlsPadding), not the
+              // geometric circle center. Diagnostic capture 2026-04-13 for a
+              // counter at left/top=(32,32), r=10 showed Fabric calling
+              // positionHandler twice per setCoords — first with translate
+              // (42.75, 42.75) (off by strokeWidth/2), then (50.085, 50.085)
+              // (off by strokeWidth/2 + padding≈7.335). Fabric uses the SECOND
+              // value in oCoords, which put the handle ~3.5 px inside the
+              // circle body. Computing from left+r directly sidesteps that
+              // entire class of internal offset drift — the result is the
+              // same regardless of which call path Fabric takes.
+              const cx = (fabricObject.left || 0) + r;
+              const cy = (fabricObject.top || 0) + r;
+              const tipCanvasX = cx + Math.cos(angleRad) * (r + tipExt);
+              const tipCanvasY = cy + Math.sin(angleRad) * (r + tipExt);
+              const vpt = fabricObject.canvas?.viewportTransform;
+              return fabric.util.transformPoint(
+                new fabric.Point(tipCanvasX, tipCanvasY),
+                vpt || [1, 0, 0, 1, 0, 0],
+              );
+            },
+            actionHandler: (eventData, transformData) => {
+              const target = transformData?.target;
+              const canvasEl = target?.canvas;
+              if (!target || !canvasEl) return false;
+              // getPointer returns canvas-internal coords matching target.left/top
+              const pointer = canvasEl.getPointer(eventData);
+              const r = target.radius || 14;
+              const cx = target.left + r;
+              const cy = target.top + r;
+              const newAngleDeg =
+                (Math.atan2(pointer.y - cy, pointer.x - cx) * 180) / Math.PI;
+              target.data = {
+                ...(target.data || {}),
+                pointerAngle: newAngleDeg,
+              };
+              target.setCoords();
+              canvasEl.requestRenderAll();
+              // Push the new angle to the SVG layer — the visible counter
+              // lives there (this Fabric obj has opacity:0).
+              if (onLivePreview && annotationIndex >= 0) {
+                const updated = JSON.parse(
+                  JSON.stringify(annotationsRef.current || { objects: [] }),
+                );
+                if (updated.objects[annotationIndex]) {
+                  updated.objects[annotationIndex].data = {
+                    ...(updated.objects[annotationIndex].data || {}),
+                    pointerAngle: newAngleDeg,
+                  };
+                  onLivePreview(updated);
+                }
+              }
+              return true;
+            },
+            render: (ctx, left, top) => {
+              // UX: white-fill / #4a90e2-outline dot, fixed 7px screen radius
+              // and a subtle drop-shadow. Matches the SVG selection-mode
+              // rotation handle exactly (SVGAnnotationLayer.jsx:678-694).
+              ctx.save();
+              ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+              ctx.shadowBlur = 3;
+              ctx.shadowOffsetY = 1;
+              ctx.beginPath();
+              ctx.arc(left, top, 7, 0, 2 * Math.PI);
+              ctx.fillStyle = '#ffffff';
+              ctx.fill();
+              ctx.shadowColor = 'transparent';
+              ctx.shadowBlur = 0;
+              ctx.shadowOffsetY = 0;
+              ctx.lineWidth = 1.5;
+              ctx.strokeStyle = '#4a90e2';
+              ctx.stroke();
+              ctx.restore();
+            },
+          }),
+        };
+        obj.setCoords();
+      }
+
       // Install damped corner circles + pill-shaped middle handles matching
       // SVGSelectionOverlay exactly. See installShapeHandleRenderers for details.
+      // No-op for counter: its controls map only contains `counterRotate`, and
+      // installShapeHandleRenderers iterates over tl/tr/bl/br/mt/mb/ml/mr only.
       installShapeHandleRenderers(obj);
 
       canvas.add(obj);
@@ -1706,6 +2109,46 @@ const FabricEditCanvas = memo(({
   }, [commitAndClose]);
 
   // -------------------------------------------------------------------------
+  // Fabric empty-area click → commit + close   [COUNTER WIP — DO NOT TOUCH]
+  //
+  // UX: the FabricEditCanvas container has BBOX_PADDING=32 px of empty space
+  // around the shape. A click that lands in that ring is INSIDE the container
+  // rect (so the document-level click-outside handler above ignores it), but
+  // Fabric's own default behavior discards the active object — so the user
+  // sees the handle vanish but the mini-toolbar stays, requiring a second
+  // click to fully dismiss. This matters most for tiny shapes like the
+  // counter (~20 px diameter inside an 84 px container) where the dead zone
+  // is proportionally huge.
+  //
+  // Fix: when Fabric reports `mouse:down` with no target (click on empty
+  // canvas area, i.e. the padding ring), treat it as a dismissal the same
+  // way a click outside the container would. One click, one dismissal.
+  //
+  // Text-edit is excluded because it has its own flow: `text:editing:exited`
+  // handles commit after a 50 ms debounce.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    if (editType === 'text') return;
+
+    const handleFabricEmptyClick = (opt) => {
+      if (committedRef.current) return;
+      if (opt?.target) return; // clicked on an object or a handle — let Fabric handle it
+      commitAndClose();
+    };
+
+    const timer = setTimeout(() => {
+      canvas.on('mouse:down', handleFabricEmptyClick);
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      canvas.off('mouse:down', handleFabricEmptyClick);
+    };
+  }, [commitAndClose, editType]);
+
+  // -------------------------------------------------------------------------
   // Escape key handler
   // -------------------------------------------------------------------------
   useEffect(() => {
@@ -2037,6 +2480,67 @@ const FabricEditCanvas = memo(({
   }, []);
 
   // -------------------------------------------------------------------------
+  // Counter resize — called from MiniToolbar when the user clicks +/- on a
+  // counter in edit mode. Must keep the visual center fixed in PAGE space and
+  // update bboxOriginRef so the eventual commit (which reads bboxOriginRef) writes
+  // the recentered position to the JSON. Doing the recenter inside MiniToolbar
+  // would only touch canvas-local coords (BBOX_PADDING) and break the commit path.
+  // -------------------------------------------------------------------------
+  const handleCounterResize = useCallback((newRadius) => {
+    const canvas = fabricRef.current;
+    const obj = canvas?.getActiveObject();
+    if (!canvas || !obj || !obj.data || obj.data.type !== 'counter') return;
+    if (!bboxOriginRef.current) return;
+    const oldRadius = obj.radius || 14;
+    const radiusDelta = newRadius - oldRadius;
+    if (radiusDelta === 0) return;
+
+    // Shift bboxOriginRef so the visual center stays put: top-left moves up-left
+    // by exactly the radius delta in page-space.
+    bboxOriginRef.current.left -= radiusDelta;
+    bboxOriginRef.current.top -= radiusDelta;
+
+    // Update Fabric obj radius — left/top stay at BBOX_PADDING in canvas-local
+    // coords; the commit path computes the page-space position from bboxOriginRef.
+    obj.set('radius', newRadius);
+    canvas.renderAll();
+
+    // Mirror new radius + position into annotationDataRef so any read path that
+    // sources from the original annotation (e.g. cancel-and-restore) sees fresh
+    // values.
+    if (annotationDataRef.current) {
+      annotationDataRef.current = {
+        ...annotationDataRef.current,
+        radius: newRadius,
+        left: bboxOriginRef.current.left,
+        top: bboxOriginRef.current.top,
+      };
+    }
+
+    // Move the edit container CSS so the (invisible) Fabric canvas tracks the new
+    // page-space top-left. Otherwise the next move/scale read would compute deltas
+    // from the OLD container position and the counter would jump.
+    const containerEl = containerRef.current;
+    const parentEl = containerEl?.parentElement;
+    if (containerEl && parentEl && pageWidth > 0) {
+      const effectiveScale = parentEl.offsetWidth / pageWidth;
+      containerEl.style.left = ((bboxOriginRef.current.left - BBOX_PADDING) * effectiveScale) + 'px';
+      containerEl.style.top = ((bboxOriginRef.current.top - BBOX_PADDING) * effectiveScale) + 'px';
+    }
+
+    // Push a live preview to the SVG layer with the recentered radius + position.
+    if (onLivePreview && annotationIndex >= 0) {
+      const updated = JSON.parse(JSON.stringify(annotationsRef.current || { objects: [] }));
+      if (updated.objects[annotationIndex]) {
+        updated.objects[annotationIndex].radius = newRadius;
+        updated.objects[annotationIndex].left = bboxOriginRef.current.left;
+        updated.objects[annotationIndex].top = bboxOriginRef.current.top;
+        onLivePreview(updated);
+      }
+    }
+  }, [onLivePreview, annotationIndex, pageWidth]);
+
+  // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
   return (
@@ -2047,12 +2551,22 @@ const FabricEditCanvas = memo(({
           fabricRef={fabricRef}
           containerRef={containerRef}
           editCanvasStyle={containerStyle}
-          onPropertyChange={(prop, value) => {
+          onCounterResize={handleCounterResize}
+          onGroupUpdate={onGroupUpdate}
+          counterGroupSize={counterGroupSize}
+          annotationData={annotationData}
+          onPropertyChange={(prop, value, extras) => {
             if (!onLivePreview || annotationIndex < 0) return;
             const current = annotationsRef.current;
             const updated = JSON.parse(JSON.stringify(current || { objects: [] }));
             if (updated.objects[annotationIndex]) {
               updated.objects[annotationIndex][prop] = value;
+              // `extras` lets MiniToolbar push multiple linked fields atomically
+              // (e.g. counter radius + recentred left/top) so the SVG live-preview
+              // sees one consistent write per click instead of three races.
+              if (extras && typeof extras === 'object') {
+                Object.assign(updated.objects[annotationIndex], extras);
+              }
               onLivePreview(updated);
             }
           }}

@@ -652,7 +652,7 @@ const SVGAnnotationLayer = memo(({
       let element = null;
 
       if (obj.data && obj.data.type === 'counter') {
-        console.log(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
+        console.log(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, numberColor=${obj.data.numberColor || 'unset'}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
         element = renderCounter(obj, i);
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
         element = renderPath(obj, i);
@@ -957,8 +957,11 @@ const SVGAnnotationLayer = memo(({
                     fill="none"
                     stroke="#4a90e2"
                     strokeOpacity={0.4}
+                    // UX: strokeWidth in viewBox units (no vectorEffect) so it
+                    // auto-scales via the SVG transform — matches generic rect
+                    // hover outline below (~line 997). Using non-scaling-stroke
+                    // + `2 * inverseScale` double-scaled the glow at low zoom.
                     strokeWidth={2 * inverseScale}
-                    vectorEffect="non-scaling-stroke"
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
@@ -1072,7 +1075,14 @@ const SVGAnnotationLayer = memo(({
         // counter hover branch alone. Coordinate via the user first.
         const editIsCounter = obj.data?.type === 'counter';
         const isBeingEditedNow = editingAnnotationIndex != null && selectedIndex === editingAnnotationIndex;
-        if (isBeingEditedNow && (editIsBorderFlush || editIsCounter)) return null;
+        // UX 2026-04-14: counters in edit mode show the floating mini-toolbar
+        // ONLY — no rotation handle, no bbox, no resize chrome. Any handle in
+        // edit mode is visual noise (the toolbar already provides every action).
+        // Guard is broader than `isBeingEditedNow` to catch state-desync edge
+        // cases where editingAnnotationIndex is set but selectedIndex briefly
+        // doesn't match (e.g. mid-double-click frame).
+        if (editIsCounter && editingAnnotationIndex != null) return null;
+        if (isBeingEditedNow && editIsBorderFlush) return null;
 
         // Counter selection (not in edit mode): render only the rotation handle at the
         // nubbin tip. No dashed bbox, no resize handles — Shottr-style minimal chrome.
@@ -1097,9 +1107,14 @@ const SVGAnnotationLayer = memo(({
           const tipExtension = Math.max(5, radius * 0.5);
           const tipX = cx + Math.cos(angleRad) * (radius + tipExtension);
           const tipY = cy + Math.sin(angleRad) * (radius + tipExtension);
-          // Screen-pixel-sized handle so it stays a constant ~7px regardless of zoom.
-          // Matches the line-endpoint handle sizing pattern at line ~680 below.
-          const handleR = 7 * inverseScale;
+          // UX: dampened handle sizing. Raw `7 * inverseScale` renders a
+          // constant 7 screen px, which is too big *relative to the pin* at
+          // low zoom (pin shrinks in page-space, handle stays constant, so
+          // the handle dwarfs the pin at 25%). sqrt curve softens the growth
+          // so the handle feels proportional across zoom levels — mirrors
+          // SVGSelectionOverlay.jsx:35 for rect/circle handle sizing.
+          const is = Math.sqrt(inverseScale);
+          const handleR = 7 * is;
           return (
             <g key={`counter-rotate-wrapper-${selectedIndex}`} transform={counterDragTransform}>
               <circle
@@ -1117,7 +1132,10 @@ const SVGAnnotationLayer = memo(({
                   // surrounding SVG layer flips to pointer-events:none in edit mode.
                   cursor: 'grab',
                   pointerEvents: 'auto',
-                  filter: `drop-shadow(0 ${1 * inverseScale}px ${3 * inverseScale}px rgba(0,0,0,0.25))`,
+                  // UX: same sqrt damping as handleR above — CSS filter px
+                  // work in screen space, so raw inverseScale produces 4× the
+                  // shadow at 25% zoom. Matches SVGSelectionOverlay.jsx:48.
+                  filter: `drop-shadow(0 ${1 * is}px ${3 * is}px rgba(0,0,0,0.25))`,
                 }}
                 onPointerDown={(e) => {
                   e.stopPropagation();

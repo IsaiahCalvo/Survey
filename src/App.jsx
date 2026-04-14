@@ -23,7 +23,11 @@ import PageAnnotationLayer, { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from '.
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
-import { renumberCounters } from './utils/counterNumbering';
+import {
+  renumberCounters,
+  getCounterSeriesList,
+  pickNextSeriesColor,
+} from './utils/counterNumbering';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
@@ -10960,6 +10964,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // }
   const counterDragRef = useRef(null);
 
+  // [COUNTER MULTI-LIST] Active series state — which series the next pin
+  // joins. Both null until the user drops the very first pin (or picks
+  // "New" from the caret popup). Drag-start auto-creates a new series if
+  // both are null. Refs (not state) so the drag-start handler can read
+  // and mutate them in the same pointerdown without waiting for a render.
+  // The color ref mirrors the active series's fill so we don't have to
+  // walk the doc on every drag-start.
+  const activeCounterSeriesIdRef = useRef(null);
+  const activeCounterSeriesColorRef = useRef(null);
+
+  // [COUNTER MULTI-LIST] Tracks which doc paths have already had their
+  // legacy (no-seriesId) counter pins wiped. Wipe runs once per doc per
+  // session — on second-load of the same doc, do nothing.
+  const legacyCountersWipedDocsRef = useRef(new Set());
+
+  // [COUNTER MULTI-LIST] Caret popup open state. Toggled by clicking
+  // the chevron next to the counter tool button. Closed via click-outside,
+  // ESC, or any "New" / "Continue Count" selection.
+  const [counterCaretPopupOpen, setCounterCaretPopupOpen] = useState(false);
+  // submenu state: null | 'continue' (the "Continue Count ▸" submenu)
+  const [counterCaretSubmenu, setCounterCaretSubmenu] = useState(null);
+  // bumpCounterUI is incremented whenever active series changes via popup.
+  // Refs alone don't trigger re-renders, but the caret button's "active
+  // series" indicator (color dot, future visual) needs to refresh. We use
+  // this counter as a cheap re-render trigger when the user picks a series.
+  const [counterUITick, setCounterUITick] = useState(0);
+
   // Disable ALL Syncfusion interactive layers during annotation edit mode via injected <style>.
   // Covers .e-pv-text-layer, .e-pv-annotation-canvas, and any other Syncfusion overlay.
   // Using a <style> tag instead of querySelectorAll ensures dynamically-added elements are caught.
@@ -11063,6 +11094,104 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [clipboardCallout, clipboardCalloutType]);
 
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
+
+  // [COUNTER MULTI-LIST] Reactive series list — recomputed whenever
+  // annotationsByPage changes. Used by the toolbar caret button (hide
+  // when empty) and the popup's "Continue Count" submenu. Cheap because
+  // getCounterSeriesList only walks counter pins, not all objects.
+  const counterSeriesList = useMemo(
+    () => getCounterSeriesList(annotationsByPage),
+    [annotationsByPage]
+  );
+
+  // [COUNTER STEP 7] Group size of the pin currently in the per-pin edit
+  // mini-toolbar. Drives whether the number input is editable (group of 1)
+  // or locked (group of 2+). Re-derives whenever editingAnnotation changes
+  // or counterSeriesList changes (e.g. another pin was added/removed).
+  const editingCounterGroupSize = useMemo(() => {
+    if (editingAnnotation?.data?.data?.type !== 'counter') return 0;
+    const seriesId = editingAnnotation.data.data.seriesId;
+    if (!seriesId) return 0;
+    const found = counterSeriesList.find((s) => s.seriesId === seriesId);
+    return found?.count || 0;
+  }, [editingAnnotation, counterSeriesList]);
+
+  // [COUNTER MULTI-LIST] Pick a fresh series via HSL ring-gap. Triggered
+  // by the popup's "New" button. Sets active refs so the next pin lands
+  // in the new series. Bumps counterUITick to force a caret re-render so
+  // the swatch reflects the new active color.
+  const handleNewCounterSeries = useCallback(() => {
+    const existingColors = (counterSeriesList || []).map((s) => s.color);
+    const nextColor = pickNextSeriesColor(existingColors);
+    const nextId = `series-${Date.now()}`;
+    activeCounterSeriesIdRef.current = nextId;
+    activeCounterSeriesColorRef.current = nextColor;
+    // [COUNTER STEP 7] Sync the bottom toolbar's color picker to the freshly
+    // picked HSL hue so the very next pin preview matches the new group's
+    // color. Without this, the user clicks "+ New Count" and the bottom
+    // toolbar still shows the previous active series's color.
+    setStrokeColor(nextColor);
+    setCounterCaretPopupOpen(false);
+    setCounterCaretSubmenu(null);
+    setCounterUITick((t) => t + 1);
+    console.log(`[CSeries new (popup)] handleNewCounterSeries — picked id=${nextId} color=${nextColor} existingColors=[${existingColors.join(', ')}] → setStrokeColor(${nextColor})`);
+  }, [counterSeriesList]);
+
+  // [COUNTER MULTI-LIST] Make an existing series active. Triggered by
+  // clicking a row in the "Continue Count ▸" submenu. Pulls the series's
+  // current color out of counterSeriesList so the next pin matches.
+  // [COUNTER MULTI-LIST] Click-outside + ESC closes the caret popup.
+  // Listener is attached only while the popup is open to keep things cheap.
+  // Click-outside uses a captured ref on the popup root. ESC closes both
+  // the popup and the submenu in one stroke.
+  const counterCaretPopupRef = useRef(null);
+  useEffect(() => {
+    if (!counterCaretPopupOpen) return undefined;
+    const onDocClick = (e) => {
+      const root = counterCaretPopupRef.current;
+      if (root && root.contains(e.target)) return; // click inside — keep open
+      // also keep open if the click is on the caret button itself (which
+      // toggles via its own handler — letting this fire would race-close)
+      const caret = document.querySelector('[data-counter-caret-button="true"]');
+      if (caret && caret.contains(e.target)) return;
+      console.log('[CSeries popup] click-outside → close');
+      setCounterCaretPopupOpen(false);
+      setCounterCaretSubmenu(null);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        console.log('[CSeries popup] ESC → close');
+        setCounterCaretPopupOpen(false);
+        setCounterCaretSubmenu(null);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [counterCaretPopupOpen]);
+
+  const handleSwitchCounterSeries = useCallback((seriesId) => {
+    const series = (counterSeriesList || []).find((s) => s.seriesId === seriesId);
+    if (!series) {
+      console.log(`[CSeries switch] handleSwitchCounterSeries — seriesId=${seriesId} NOT FOUND in counterSeriesList (count=${counterSeriesList?.length || 0})`);
+      return;
+    }
+    activeCounterSeriesIdRef.current = series.seriesId;
+    activeCounterSeriesColorRef.current = series.color;
+    // [COUNTER STEP 7] Sync the bottom toolbar's color picker to the picked
+    // series's fill so the "next pin" preview matches the group it'll join.
+    // Without this, the user picks "Continue Count → Count 2" and drops a
+    // pin, and the bottom toolbar still shows the previous group's color.
+    setStrokeColor(series.color);
+    setCounterCaretPopupOpen(false);
+    setCounterCaretSubmenu(null);
+    setCounterUITick((t) => t + 1);
+    console.log(`[CSeries switch] handleSwitchCounterSeries — id=${series.seriesId} color=${series.color} label="${series.label}" count=${series.count} → setStrokeColor(${series.color})`);
+  }, [counterSeriesList]);
+
   const [unsupportedAnnotationTypes, setUnsupportedAnnotationTypes] = useState([]); // PDF annotation types we can't edit
   const [showUnsupportedNotice, setShowUnsupportedNotice] = useState(false); // Show notification about unsupported annotations
   const [annotationLayerVisibility, setAnnotationLayerVisibility] = useState({
@@ -20335,8 +20464,63 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setHighlightAnnotations(loadedHighlights);
     // Load annotationsByPage from localStorage
     const loadedAnnotationsByPage = loadAnnotationsByPage(id);
-    setAnnotationsByPage(loadedAnnotationsByPage);
-    savedAnnotationsByPageRef.current = loadedAnnotationsByPage; // Track as saved
+
+    // [COUNTER MULTI-LIST] Wipe legacy (no-seriesId) counter pins on first
+    // load. The brainstorm decided (Q2 = B): when this feature ships, force
+    // a fresh start by removing pins created before the multi-list system
+    // existed. Track per-doc so re-loading the same doc later in the
+    // session doesn't keep wiping every save the user made post-feature.
+    let migratedAnnotationsByPage = loadedAnnotationsByPage;
+    const wipeAlreadyRunForDoc = legacyCountersWipedDocsRef.current.has(id);
+    if (!wipeAlreadyRunForDoc) {
+      let legacyCount = 0;
+      let totalCounters = 0;
+      const cleanedPages = {};
+      let didMutate = false;
+      for (const pageKey of Object.keys(loadedAnnotationsByPage || {})) {
+        const page = loadedAnnotationsByPage[pageKey];
+        if (!page || !Array.isArray(page.objects)) {
+          cleanedPages[pageKey] = page;
+          continue;
+        }
+        const filteredObjects = [];
+        for (const obj of page.objects) {
+          if (obj?.data?.type === 'counter') {
+            totalCounters += 1;
+            if (!obj.data.seriesId) {
+              legacyCount += 1;
+              didMutate = true;
+              continue; // skip — drop this pin
+            }
+          }
+          filteredObjects.push(obj);
+        }
+        cleanedPages[pageKey] = { ...page, objects: filteredObjects };
+      }
+      if (didMutate) {
+        migratedAnnotationsByPage = cleanedPages;
+        try {
+          saveAnnotationsByPage(id, migratedAnnotationsByPage);
+        } catch (err) {
+          console.error('[CSeries wipe] failed to persist legacy wipe', err);
+        }
+        console.log(`[CSeries wipe] doc=${id} totalCounters=${totalCounters} legacyRemoved=${legacyCount} (no seriesId) — fresh start. Persisted to localStorage.`);
+      } else {
+        console.log(`[CSeries wipe] doc=${id} totalCounters=${totalCounters} legacyRemoved=0 — nothing to wipe.`);
+      }
+      legacyCountersWipedDocsRef.current.add(id);
+    } else {
+      console.log(`[CSeries wipe] doc=${id} skip — wipe already ran this session.`);
+    }
+
+    // Reset active series refs on doc switch — each doc starts with a
+    // clean slate so the next pin auto-creates a new Count 1 (or joins
+    // an existing series via the caret popup once that's wired up).
+    activeCounterSeriesIdRef.current = null;
+    activeCounterSeriesColorRef.current = null;
+
+    setAnnotationsByPage(migratedAnnotationsByPage);
+    savedAnnotationsByPageRef.current = migratedAnnotationsByPage; // Track as saved
     // Load callouts from localStorage
     const loadedCallouts = loadCallouts(id);
     setCallouts(loadedCallouts);
@@ -22708,6 +22892,95 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     pushHistoryDebugEvent,
     summarizeAnnotationPageTransitionForDebug
   ]);
+
+  // [COUNTER STEP 7] Group propagation hook. Called from the counter mini-
+  // toolbar's Fill / Stroke / Number-input handlers. Walks every page in
+  // annotationsByPageRef.current, finds every pin matching seriesId, applies
+  // the patch immutably, then issues per-page handleSaveAnnotations calls.
+  // All but the LAST affected page use checkpointPolicy='skip' so the entire
+  // group update collapses into a single undo entry.
+  //
+  // Defined HERE (not earlier next to the other counter helpers) because it
+  // depends on handleSaveAnnotations, which is declared just above. Placing
+  // the useCallback before handleSaveAnnotations would hit a TDZ ReferenceError
+  // when React evaluates the dependency array on the first render.
+  //
+  // Patch keys honored:
+  //   - fill         → writes obj.fill (bubble color)
+  //   - numberColor  → writes obj.data.numberColor (text fill in renderCounter)
+  //   - seriesStart  → writes obj.data.seriesStart (number-input commit; the
+  //                    save reducer's renumberCounters call then recomputes
+  //                    obj.data.displayNumber on every pin in the series)
+  // Any other keys are ignored to avoid accidentally clobbering pin metadata.
+  const handleCounterGroupUpdate = useCallback((seriesId, patch) => {
+    if (!seriesId || !patch || typeof patch !== 'object') return;
+    const allPages = annotationsByPageRef.current || {};
+    const pageKeys = Object.keys(allPages);
+    // First pass: collect (pageKey, updatedJSON) pairs for pages that have at
+    // least one matching pin. Skipping unaffected pages avoids spurious saves
+    // and keeps the undo entry size minimal.
+    const updates = [];
+    for (const pageKey of pageKeys) {
+      const page = allPages[pageKey];
+      if (!page || !Array.isArray(page.objects)) continue;
+      let touched = false;
+      const newObjects = page.objects.map((obj) => {
+        if (obj?.data?.type !== 'counter') return obj;
+        if (obj.data.seriesId !== seriesId) return obj;
+        touched = true;
+        const next = { ...obj };
+        if (Object.prototype.hasOwnProperty.call(patch, 'fill')) {
+          next.fill = patch.fill;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(patch, 'numberColor')
+          || Object.prototype.hasOwnProperty.call(patch, 'seriesStart')
+        ) {
+          next.data = { ...obj.data };
+          if (Object.prototype.hasOwnProperty.call(patch, 'numberColor')) {
+            next.data.numberColor = patch.numberColor;
+          }
+          if (Object.prototype.hasOwnProperty.call(patch, 'seriesStart')) {
+            next.data.seriesStart = patch.seriesStart;
+          }
+        }
+        return next;
+      });
+      if (touched) {
+        updates.push({ pageKey, json: { ...page, objects: newObjects } });
+      }
+    }
+    if (updates.length === 0) {
+      console.log(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} → NO matching pins (no-op)`);
+      return;
+    }
+    // Save all but the last with 'skip' so the undo history stays compact;
+    // the last save uses 'normal' to commit a single undo entry that captures
+    // the full multi-page change.
+    updates.forEach(({ pageKey, json }, idx) => {
+      const isLast = idx === updates.length - 1;
+      const numericKey = Number(pageKey);
+      handleSaveAnnotations(Number.isFinite(numericKey) ? numericKey : pageKey, json, {
+        source: 'counter:group-update',
+        action: 'counter-group-update',
+        checkpointPolicy: isLast ? 'normal' : 'skip',
+      });
+    });
+    // [COUNTER STEP 7] When the group whose color was just changed is the
+    // ACTIVE series (i.e. the one new pins land in), sync the active-series
+    // color refs so the next pin matches and the bottom toolbar caret swatch
+    // re-renders to the new hue. Without this, the user changes a series's
+    // color via the mini toolbar, drops another pin, and the new pin uses
+    // the stale active color from when the series was first created.
+    if (
+      Object.prototype.hasOwnProperty.call(patch, 'fill')
+      && activeCounterSeriesIdRef.current === seriesId
+    ) {
+      activeCounterSeriesColorRef.current = patch.fill;
+      setCounterUITick((t) => t + 1);
+    }
+    console.log(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} → updated ${updates.length} page(s)`);
+  }, [handleSaveAnnotations]);
 
   // [COUNTER WIP — DO NOT TOUCH] Counter drag-to-place helpers.
   // Shared by the inline pointer handlers in the counter overlays and by the
@@ -25500,6 +25773,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   onPointerDown={(e) => {
                                     if (Date.now() - editModeCooldownRef.current < 300) return;
                                     if (counterDragRef.current?.active) return; // safety: ignore re-entrancy
+                                    // [COUNTER MULTI-LIST] If the click target is inside
+                                    // the counter caret popup (or its submenu), bail out
+                                    // — the popup floats over the page area in a
+                                    // separate stacking context, and without this guard
+                                    // the overlay's pointerdown intercepts popup clicks
+                                    // and drops a pin instead of letting "New Count" /
+                                    // "Continue Count" fire. Mirrors the same guard in
+                                    // overlay #2 (~line 26711) — keep them in sync.
+                                    if (e.target?.closest?.('[data-counter-caret-popup]')) {
+                                      console.log('[CSeries popup] counter overlay #1 pointerdown bailed — target inside caret popup');
+                                      return;
+                                    }
                                     e.stopPropagation();
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     const pageW = resolvedPageSize.width;
@@ -25523,7 +25808,57 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     // since only one drag can be active at a time.
                                     const dragCreatedAt = Date.now();
                                     const initialAngle = 225; // existing default — points southwest
-                                    const color = strokeColor || '#ef4444';
+
+                                    // [COUNTER MULTI-LIST] Resolve the active series. If neither
+                                    // ref is set, this is the very first pin of a fresh session
+                                    // (or after a doc switch) — auto-create a series using the
+                                    // CURRENT toolbar color (strokeColor). The HSL-spread picker
+                                    // (pickNextSeriesColor) is reserved for the explicit "New"
+                                    // button in the caret popup; for first-use, we want the pin
+                                    // to match whatever the bottom-toolbar color picker shows.
+                                    let seriesId = activeCounterSeriesIdRef.current;
+                                    let seriesColor = activeCounterSeriesColorRef.current;
+                                    let seriesAutoCreated = false;
+                                    if (!seriesId) {
+                                      seriesColor = strokeColor || '#ef4444';
+                                      seriesId = `series-${Date.now()}`;
+                                      activeCounterSeriesIdRef.current = seriesId;
+                                      activeCounterSeriesColorRef.current = seriesColor;
+                                      seriesAutoCreated = true;
+                                      console.log(`[CSeries new#1 p${pageNumber}] auto-created seriesId=${seriesId} color=${seriesColor} (from toolbar strokeColor=${strokeColor})`);
+                                    }
+                                    // seriesStart inherits from the earliest existing pin in
+                                    // this seriesId (so re-entry into a series preserves its
+                                    // start offset). Defaults to 1 for a fresh series.
+                                    // [COUNTER STEP 7] Also inherit numberColor from the same
+                                    // earliest pin so a new pin dropped into a series the user
+                                    // already recolored picks up that group's font color. Without
+                                    // this, the new pin's data.numberColor is undefined and
+                                    // renderCounter falls back to white — which looks like the
+                                    // stroke change "reverted" once you drop the next pin.
+                                    let seriesStart = 1;
+                                    let inheritedNumberColor;
+                                    if (!seriesAutoCreated) {
+                                      const allCounters = [];
+                                      for (const pageKey of Object.keys(annotationsByPageRef.current || {})) {
+                                        const page = annotationsByPageRef.current[pageKey];
+                                        if (!page || !Array.isArray(page.objects)) continue;
+                                        for (const obj of page.objects) {
+                                          if (obj?.data?.type === 'counter' && obj.data.seriesId === seriesId) {
+                                            allCounters.push(obj);
+                                          }
+                                        }
+                                      }
+                                      if (allCounters.length > 0) {
+                                        allCounters.sort((a, b) => (a.data.createdAt || 0) - (b.data.createdAt || 0));
+                                        seriesStart = Number(allCounters[0].data.seriesStart) || 1;
+                                        if (allCounters[0].data.numberColor) {
+                                          inheritedNumberColor = allCounters[0].data.numberColor;
+                                        }
+                                      }
+                                    }
+
+                                    const color = seriesColor || strokeColor || '#ef4444';
                                     const counter = {
                                       type: 'circle',
                                       left: x - COUNTER_RADIUS,
@@ -25542,6 +25877,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         createdAt: dragCreatedAt,
                                         pointerAngle: initialAngle,
                                         displayNumber: 1,
+                                        seriesId,
+                                        seriesStart,
+                                        ...(inheritedNumberColor ? { numberColor: inheritedNumberColor } : {}),
                                       },
                                     };
                                     const currentPage = annotationsByPageRef.current?.[pageNumber] || { version: '5.3.0', objects: [] };
@@ -25549,7 +25887,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       ...currentPage,
                                       objects: [...(currentPage.objects || []), counter],
                                     };
-                                    console.log(`[Counter p${pageNumber}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}`);
+                                    console.log(`[Counter p${pageNumber}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}, seriesId=${seriesId}, seriesStart=${seriesStart}, autoCreated=${seriesAutoCreated}`);
                                     counterDragRef.current = {
                                       active: true,
                                       pageKey: pageNumber,
@@ -25655,6 +25993,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   strokeColor={strokeColor}
                                   zoomGeneration={zoomGeneration}
                                   viewerScale={scale}
+                                  onGroupUpdate={handleCounterGroupUpdate}
+                                  counterGroupSize={editingCounterGroupSize}
                                 />
                               )}
 
@@ -26059,6 +26399,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         strokeColor={strokeColor}
                                         zoomGeneration={zoomGeneration}
                                         viewerScale={scale}
+                                        onGroupUpdate={handleCounterGroupUpdate}
+                                        counterGroupSize={editingCounterGroupSize}
                                       />
                                     )}
 
@@ -26507,6 +26849,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       onPointerDown={(e) => {
                                         if (Date.now() - editModeCooldownRef.current < 300) return;
                                         if (counterDragRef.current?.active) return; // safety: ignore re-entrancy
+                                        // [COUNTER MULTI-LIST] Mirror of overlay #1's
+                                        // popup-click bail-out (~line 25665). Keep these
+                                        // two blocks in sync. Without this, clicks on the
+                                        // caret popup (which overlaps the page area)
+                                        // drop a pin instead of selecting the option.
+                                        if (e.target?.closest?.('[data-counter-caret-popup]')) {
+                                          console.log('[CSeries popup] counter overlay #2 pointerdown bailed — target inside caret popup');
+                                          return;
+                                        }
                                         e.stopPropagation();
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         const pageW = pageSizes[pageNum]?.width;
@@ -26526,7 +26877,50 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         // key instead of a custom sentinel.
                                         const dragCreatedAt = Date.now();
                                         const initialAngle = 225; // existing default — points southwest
-                                        const color = strokeColor || '#ef4444';
+
+                                        // [COUNTER MULTI-LIST] Mirror of overlay #1's series
+                                        // resolution (~line 25525). Keep these two blocks in
+                                        // sync; deviating risks pins on different render paths
+                                        // landing in different series.
+                                        let seriesId = activeCounterSeriesIdRef.current;
+                                        let seriesColor = activeCounterSeriesColorRef.current;
+                                        let seriesAutoCreated = false;
+                                        if (!seriesId) {
+                                          seriesColor = strokeColor || '#ef4444';
+                                          seriesId = `series-${Date.now()}`;
+                                          activeCounterSeriesIdRef.current = seriesId;
+                                          activeCounterSeriesColorRef.current = seriesColor;
+                                          seriesAutoCreated = true;
+                                          console.log(`[CSeries new#2 p${pageNum}] auto-created seriesId=${seriesId} color=${seriesColor} (from toolbar strokeColor=${strokeColor})`);
+                                        }
+                                        // [COUNTER STEP 7] Mirror of overlay #1 — also inherit
+                                        // numberColor from the earliest existing pin so a new
+                                        // pin dropped into a recolored series picks up that
+                                        // group's font color. See overlay #1 (~25954) for the
+                                        // full rationale.
+                                        let seriesStart = 1;
+                                        let inheritedNumberColor;
+                                        if (!seriesAutoCreated) {
+                                          const allCounters = [];
+                                          for (const pageKey of Object.keys(annotationsByPageRef.current || {})) {
+                                            const page = annotationsByPageRef.current[pageKey];
+                                            if (!page || !Array.isArray(page.objects)) continue;
+                                            for (const obj of page.objects) {
+                                              if (obj?.data?.type === 'counter' && obj.data.seriesId === seriesId) {
+                                                allCounters.push(obj);
+                                              }
+                                            }
+                                          }
+                                          if (allCounters.length > 0) {
+                                            allCounters.sort((a, b) => (a.data.createdAt || 0) - (b.data.createdAt || 0));
+                                            seriesStart = Number(allCounters[0].data.seriesStart) || 1;
+                                            if (allCounters[0].data.numberColor) {
+                                              inheritedNumberColor = allCounters[0].data.numberColor;
+                                            }
+                                          }
+                                        }
+
+                                        const color = seriesColor || strokeColor || '#ef4444';
                                         const counter = {
                                           type: 'circle',
                                           left: x - COUNTER_RADIUS,
@@ -26545,6 +26939,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                             createdAt: dragCreatedAt,
                                             pointerAngle: initialAngle,
                                             displayNumber: 1,
+                                            seriesId,
+                                            seriesStart,
+                                            ...(inheritedNumberColor ? { numberColor: inheritedNumberColor } : {}),
                                           },
                                         };
                                         const currentPage = annotationsByPageRef.current?.[pageNum] || { version: '5.3.0', objects: [] };
@@ -26552,7 +26949,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           ...currentPage,
                                           objects: [...(currentPage.objects || []), counter],
                                         };
-                                        console.log(`[Counter p${pageNum}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}`);
+                                        console.log(`[Counter p${pageNum}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}, seriesId=${seriesId}, seriesStart=${seriesStart}, autoCreated=${seriesAutoCreated}`);
                                         counterDragRef.current = {
                                           active: true,
                                           pageKey: pageNum,
@@ -26648,6 +27045,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       strokeColor={strokeColor}
                                       zoomGeneration={zoomGeneration}
                                       viewerScale={scale}
+                                      onGroupUpdate={handleCounterGroupUpdate}
+                                      counterGroupSize={editingCounterGroupSize}
                                     />
                                   )}
 
@@ -26809,29 +27208,409 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                   { id: 'line', label: 'Line', iconName: 'line' },
                   { id: 'arrow', label: 'Arrow', iconName: 'arrow' },
                   { id: 'counter', label: 'Counter', iconName: 'counter' }
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => setActiveTool(t.id)}
-                    onMouseEnter={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
-                    }}
-                    onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                    className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: '6px',
-                      gap: '4px',
-                      minWidth: '40px'
-                    }}
-                    title={t.label}
-                  >
-                    <Icon name={t.iconName} size={20} />
-                  </button>
-                ))}
+                ].map(t => {
+                  // [COUNTER MULTI-LIST] Counter button has an embedded
+                  // chevron — visually one button, not split. The chevron
+                  // appears inside the button only when at least one series
+                  // exists (progressive disclosure). Clicking the unified
+                  // button always activates the counter tool; if the
+                  // chevron is showing, the same click also toggles the
+                  // popup. All other tools render unchanged.
+                  //
+                  // UI styled to match the eraser dropdown from
+                  // ~/Desktop/Survey-Experimental/src/App.jsx (the user's
+                  // reference). Visual parity: same chevron position
+                  // (right-of-center, vertical-center), same popup palette
+                  // (#1e1e1e/#333), same header divider treatment, and the
+                  // popup buttons reuse the project's `.btn`/`.btn-ghost`/
+                  // `.btn-active` styles instead of inline custom hovers.
+                  const isCounter = t.id === 'counter';
+                  const showCaret = isCounter && counterSeriesList.length > 0;
+                  const button = (
+                    <button
+                      key={t.id}
+                      data-counter-caret-button={isCounter ? 'true' : undefined}
+                      onClick={(e) => {
+                        setActiveTool(t.id);
+                        if (showCaret) {
+                          // Stop propagation so the click-outside listener
+                          // (which uses mousedown on document) doesn't see
+                          // this as an outside click and immediately close.
+                          e.stopPropagation();
+                          setCounterCaretPopupOpen((open) => {
+                            const nextOpen = !open;
+                            console.log(`[CSeries popup] counter click — open=${nextOpen} seriesCount=${counterSeriesList.length} activeSeriesId=${activeCounterSeriesIdRef.current} tick=${counterUITick}`);
+                            if (!nextOpen) setCounterCaretSubmenu(null);
+                            return nextOpen;
+                          });
+                        }
+                      }}
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+                      }}
+                      onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                      className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                      style={{
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '6px',
+                        gap: '4px',
+                        minWidth: '40px',
+                        // UX: explicit width matches the eraser button in
+                        // Survey-Experimental so the chevron's
+                        // `translate(12px, -50%)` lands in the same spot.
+                        width: '40px'
+                      }}
+                      title={t.label}
+                    >
+                      <Icon name={t.iconName} size={20} />
+                      {showCaret && (
+                        // UX: chevronUp icon positioned just to the right
+                        // of the icon center — `left:50% + translate(12px,
+                        // -50%)`. Matches the eraser tool's chevron from
+                        // Survey-Experimental exactly. The chevron extends
+                        // slightly past the button's right edge, so it
+                        // needs its OWN click handler (pointerEvents:auto)
+                        // to keep clicks on its outer portion from being
+                        // treated as outside-clicks. Carries the same
+                        // data-counter-caret-button attr so the
+                        // click-outside listener bypasses it.
+                        // Color is pinned (not currentColor) so the
+                        // chevron stays muted-gray even when the counter
+                        // button is .btn-active (which would otherwise
+                        // turn the chevron blue).
+                        <div
+                          data-counter-caret-button="true"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveTool('counter');
+                            setCounterCaretPopupOpen((open) => {
+                              const nextOpen = !open;
+                              console.log(`[CSeries popup] chevron click — open=${nextOpen} seriesCount=${counterSeriesList.length} activeSeriesId=${activeCounterSeriesIdRef.current}`);
+                              if (!nextOpen) setCounterCaretSubmenu(null);
+                              return nextOpen;
+                            });
+                          }}
+                          style={{
+                            position: 'absolute',
+                            left: '50%',
+                            top: '50%',
+                            transform: 'translate(12px, -50%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '2px',
+                            pointerEvents: 'auto',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Icon name="chevronUp" size={12} color="#888888" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                  if (!isCounter) return button;
+                  // Counter: render in a positioned wrapper so the popup
+                  // can overlay above the button without disturbing the
+                  // toolbar's flex layout.
+                  const activeSeriesId = activeCounterSeriesIdRef.current;
+                  // [COUNTER MULTI-LIST — STACKING CONTEXT FIX]
+                  // Compute the popup's screen position from the counter
+                  // button's bounding rect. The popup is rendered via
+                  // createPortal to document.body to ESCAPE the toolbar's
+                  // stacking context. Without the portal, the popup sits
+                  // inside a toolbar at z=5000 but the page area's overlay
+                  // wins hit-testing anyway because of how the PDF
+                  // viewer's stacking contexts compose. Diagnostic logs
+                  // (CSeries DEBUG popup MOUNT) confirmed:
+                  //   elementsFromPoint at popupCenter returned the
+                  //   counter overlay at index 0 even though the popup's
+                  //   z-index was higher. Portal + position:fixed makes
+                  //   the popup the topmost hit target unconditionally.
+                  let popupFixedTop = 0;
+                  let popupFixedLeft = 0;
+                  if (counterCaretPopupOpen && typeof document !== 'undefined') {
+                    const btnEl = document.querySelector('[data-counter-caret-button="true"]');
+                    if (btnEl) {
+                      const r = btnEl.getBoundingClientRect();
+                      // Place popup ABOVE the counter button with a 6px gap.
+                      // We don't know the popup height yet, so we use
+                      // bottom-anchor via CSS transform: translateY(-100%).
+                      popupFixedTop = r.top - 6;
+                      popupFixedLeft = r.left + r.width / 2;
+                    }
+                  }
+                  return (
+                    <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      {button}
+                      {showCaret && counterCaretPopupOpen && createPortal(
+                        <div
+                          ref={counterCaretPopupRef}
+                          // UX: data-counter-caret-popup lets the counter
+                          // overlay's onPointerDown bail out when the
+                          // click target is inside this popup. Required
+                          // because the popup floats over the page area
+                          // (where the counter overlay catches all
+                          // pointerdown events to drop a pin) — without
+                          // this attr + the matching guard in both
+                          // counter overlays (#1 ~25662, #2 ~26711),
+                          // clicks on "New Count" / "Continue Count"
+                          // drop a pin instead of selecting the option.
+                          data-counter-caret-popup="true"
+                          // UX: popup floats ABOVE the toolbar (toolbar is
+                          // at the bottom of the screen). Visual palette
+                          // matches the eraser popup in Survey-Experimental
+                          // exactly: rgb(30,30,30) bg (#1E1E1E), #333
+                          // border, 0 4px 16px shadow, zIndex 1000,
+                          // minWidth 140px.
+                          //
+                          // backgroundColor is set explicitly (not the
+                          // `background` shorthand) and backgroundImage is
+                          // forced to `none` so nothing in a parent
+                          // context can leak a gradient or tinted bg
+                          // through. The user reported a slight bluish
+                          // tint on the previous render — these belt-
+                          // and-suspenders properties guarantee a flat
+                          // #1E1E1E fill identical to the reference.
+                          //
+                          // pointerEvents: 'auto' + cursor: 'default' are
+                          // defensive: the popup floats over the counter
+                          // overlay (which has cursor:crosshair and
+                          // pointerEvents:auto). Without these, the
+                          // popup inherits whatever its toolbar ancestor
+                          // has, which can leak through to the underlying
+                          // overlay (cursor stays as crosshair, clicks
+                          // hit the overlay first). Setting both
+                          // explicitly here guarantees the popup is the
+                          // hit target and shows the regular cursor.
+                          style={{
+                            // STACKING CONTEXT FIX: position:fixed with
+                            // computed top/left from the counter button's
+                            // rect. translate(-50%, -100%) anchors the
+                            // popup so its bottom-center sits at
+                            // (popupFixedLeft, popupFixedTop), placing it
+                            // 6px above the counter button regardless of
+                            // popup height. zIndex 999999 wins against
+                            // anything else at body level.
+                            position: 'fixed',
+                            top: `${popupFixedTop}px`,
+                            left: `${popupFixedLeft}px`,
+                            transform: 'translate(-50%, -100%)',
+                            backgroundColor: 'rgb(30, 30, 30)',
+                            backgroundImage: 'none',
+                            border: '1px solid #333',
+                            borderRadius: '6px',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                            zIndex: 999999,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            padding: '4px',
+                            minWidth: '140px',
+                            color: '#DDD',
+                            pointerEvents: 'auto',
+                            cursor: 'default',
+                            // UX: portaled popup lives at body level.
+                            // Hardcode the same font stack as
+                            // --font-primary in src/App.css (~line 8)
+                            // — using `var(--font-primary)` here
+                            // didn't take (rendered as Times New
+                            // Roman per user report 2026-04-14),
+                            // possibly a portal/var resolution edge
+                            // case. Hardcoding sidesteps it.
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
+                            fontSize: '12px'
+                          }}
+                        >
+                          {/* UX: muted all-caps header label with bottom
+                              divider — matches the "ERASER TYPE" header
+                              in Survey-Experimental's eraser popup. */}
+                          <div style={{
+                            padding: '4px 8px',
+                            fontSize: '10px',
+                            color: '#888',
+                            textTransform: 'uppercase',
+                            fontWeight: 600,
+                            borderBottom: '1px solid #333',
+                            marginBottom: '4px'
+                          }}>
+                            Counter Series
+                          </div>
+                          {/* UX: popup rows are inline-styled, NOT using
+                              the project's `.btn` class. Reason: `.btn`
+                              has a translateY(-1px) hover lift and
+                              `.btn-active` paints text #4A90E2 (blue),
+                              which together created a "blue haze" that
+                              doesn't match the eraser reference. Inline
+                              styles give us full color control: muted
+                              gray text (#DDD), subtle white-tint hover
+                              (#2a2a2a), no transform, no blue. */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNewCounterSeries();
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'flex-start',
+                              gap: '8px',
+                              padding: '6px 10px',
+                              background: 'transparent',
+                              border: 'none',
+                              borderRadius: '4px',
+                              color: '#DDD',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              fontFamily: 'inherit',
+                              outline: 'none',
+                            }}
+                          >
+                            + New Count
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCounterCaretSubmenu((s) => (s === 'continue' ? null : 'continue'));
+                            }}
+                            onMouseEnter={(e) => {
+                              setCounterCaretSubmenu('continue');
+                              e.currentTarget.style.background = '#2a2a2a';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (counterCaretSubmenu !== 'continue') {
+                                e.currentTarget.style.background = 'transparent';
+                              }
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '8px',
+                              padding: '6px 10px',
+                              background: counterCaretSubmenu === 'continue' ? '#2a2a2a' : 'transparent',
+                              border: 'none',
+                              borderRadius: '4px',
+                              color: '#DDD',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              fontFamily: 'inherit',
+                              outline: 'none',
+                            }}
+                          >
+                            <span>Continue Count</span>
+                            <span style={{ fontSize: '10px', color: '#888' }}>{'\u25B6'}</span>
+                          </button>
+                          {counterCaretSubmenu === 'continue' && (
+                            <div
+                              // UX: same data-counter-caret-popup attr as
+                              // the parent popup so the counter overlay
+                              // bail-out guard also exempts submenu
+                              // clicks. The submenu opens to the right
+                              // of the popup and overlaps the page area,
+                              // so it needs the same protection.
+                              data-counter-caret-popup="true"
+                              // UX: submenu opens to the RIGHT of the
+                              // popup, styled identically to the parent
+                              // popup. Anchored at bottom: 0 so it
+                              // ALIGNS with the popup's bottom edge and
+                              // grows UPWARD as series accumulate. This
+                              // keeps all count groups visible even at
+                              // 5+ series — at top: 32px the submenu
+                              // grew downward and the bottom rows were
+                              // clipped by the window edge (popup is
+                              // anchored near the bottom of the
+                              // viewport above the toolbar). maxHeight
+                              // caps it at 60vh so it never escapes
+                              // upward off-screen on tiny windows.
+                              // overflowY: auto adds a scrollbar if
+                              // there are truly more series than fit.
+                              // App font inherited from parent popup.
+                              style={{
+                                position: 'absolute',
+                                left: '100%',
+                                bottom: 0,
+                                marginLeft: '4px',
+                                backgroundColor: 'rgb(30, 30, 30)',
+                                backgroundImage: 'none',
+                                border: '1px solid #333',
+                                borderRadius: '6px',
+                                boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                                padding: '4px',
+                                minWidth: '140px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                maxHeight: '60vh',
+                                overflowY: 'auto',
+                                color: '#DDD',
+                                pointerEvents: 'auto',
+                                cursor: 'default',
+                                fontFamily: 'inherit',
+                                fontSize: 'inherit',
+                              }}
+                            >
+                              {counterSeriesList.map((s) => {
+                                const isActive = s.seriesId === activeSeriesId;
+                                return (
+                                  <button
+                                    key={s.seriesId}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSwitchCounterSeries(s.seriesId);
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? '#2a2a2a' : 'transparent'; }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '6px 10px',
+                                      background: isActive ? '#2a2a2a' : 'transparent',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      color: '#DDD',
+                                      textAlign: 'left',
+                                      cursor: 'pointer',
+                                      fontSize: '12px',
+                                      fontFamily: 'inherit',
+                                      outline: 'none',
+                                    }}
+                                  >
+                                    <span
+                                      // UX: colored dot shows the series's
+                                      // fill color so user can match the
+                                      // pin color to the menu row at a
+                                      // glance. Counter-specific affordance
+                                      // (no eraser equivalent).
+                                      style={{
+                                        display: 'inline-block',
+                                        width: '10px',
+                                        height: '10px',
+                                        borderRadius: '50%',
+                                        background: s.color,
+                                        flexShrink: 0,
+                                        border: '1px solid rgba(255,255,255,0.15)',
+                                      }}
+                                    />
+                                    <span style={{ flex: 1 }}>{s.label}</span>
+                                    <span style={{ fontSize: '10px', color: '#888' }}>{s.count}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>,
+                        document.body
+                      )}
+                    </div>
+                  );
+                })}
               </>
             )}
 

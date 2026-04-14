@@ -801,6 +801,10 @@ export const DEFAULT_TOOL_PREFERENCES = {
   line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   callout: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100 },
+  // Counter (Shottr-style numbered badge) — strokeColor is the circle fill;
+  // strokeWidth is repurposed as the badge radius (px in page-space) so it shares
+  // the bottom toolbar Size input wiring with all other shape tools.
+  counter: { strokeColor: '#ef4444', strokeWidth: 14, strokeOpacity: 100 },
   text: { strokeColor: '#000000', strokeOpacity: 100 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
@@ -810,7 +814,9 @@ export const DEFAULT_TOOL_PREFERENCES = {
 };
 
 // Tools that support stroke width
-export const TOOLS_WITH_STROKE_WIDTH = ['pen', 'highlighter', 'eraser', 'rect', 'ellipse', 'line', 'arrow', 'callout'];
+// Counter included so the Size input slot is treated as a real width source for
+// per-tool persistence (counter repurposes the value as its radius).
+export const TOOLS_WITH_STROKE_WIDTH = ['pen', 'highlighter', 'eraser', 'rect', 'ellipse', 'line', 'arrow', 'callout', 'counter'];
 
 // Tools that support fill
 export const TOOLS_WITH_FILL = ['rect', 'ellipse', 'note', 'callout'];
