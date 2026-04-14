@@ -23,19 +23,14 @@ reusable optimistic-paint helper. Two polish gaps (Gaps 3 and 4) deferred
 to v2.2+ per user Option A. See MILESTONES.md and
 `.planning/milestones/v2.1-ROADMAP.md`.
 
-## Current Milestone: v2.2 (unscoped)
+## Current Milestone: v2.2 Rotation Handle Polish
 
-Awaiting scoping. Candidate starting points from `.planning/FEATURE-BACKLOG.md`:
+**Goal:** Close out the rotation interaction story — fix the two Phase 12 carry-forward gaps and, if it slots cleanly, the off-screen rotation handle relocation feature — so shape editing feels edge-to-edge complete before moving to Stage 1 prop-flip wins.
 
-1. **Stage 0 carry-forward** — Gaps 3 and 4 from Phase 12 (SVGAnnotationLayer
-   hover-intent stale ref + FabricEditCanvas clip/overflow cropping the mtr
-   handle). Directly continues Phase 12 momentum.
-2. **Stage 1 "Prop-flip" Wins** — minutes of effort each, dramatic
-   surface-area improvement.
-3. **Stage 2 QA Verifications** — low-risk validation of existing exports /
-   unsupported-notice path.
-
-Run `/gsd:new-milestone` or `/gsd:discuss-milestone` when ready to scope v2.2.
+**Target features:**
+- Rotation pill reappears on hover after returning from edit mode via click-off (Gap 3, carry-forward)
+- Rotation handle (mtr) not clipped when a pre-rotated shape enters edit mode (Gap 4, carry-forward)
+- Rotation handle relocates to opposite side of shape when off-screen (Gap 2, conditional — include only if it slots cleanly into the same phase)
 
 ## Requirements
 
@@ -60,11 +55,11 @@ Run `/gsd:new-milestone` or `/gsd:discuss-milestone` when ready to scope v2.2.
 - ✓ Zoom floor lowered to 10% so annotations remain inspectable at extreme zoom-out — v2.1 Phase 12 (ZOOM-09)
 - ✓ Dual-path SVG↔Fabric edit parity for rect/circle/ellipse (scale, flip, mini-bar tracking, fit-page math) — v2.1 Phase 12 (9 gap bugs)
 
-### Active (v2.2 — unscoped)
+### Active (v2.2 Rotation Handle Polish)
 
 - [ ] Rotation pill reappears on hover after returning from edit mode via click-off (Gap 3, carry-forward from v2.1)
 - [ ] Rotation handle (mtr) not clipped when pre-rotated shape enters edit mode (Gap 4, carry-forward from v2.1)
-- [ ] v2.2 scope TBD — see FEATURE-BACKLOG.md Stage 0/1/2
+- [ ] Rotation handle relocates to opposite side of shape when off-screen, pill follows (Gap 2, conditional — only if cheap)
 
 ### Out of Scope
 
@@ -117,4 +112,4 @@ Run `/gsd:new-milestone` or `/gsd:discuss-milestone` when ready to scope v2.2.
 | Canvas 2D vs SVG rasterizer delta is NOT fixable in JS (2026-04-10) | Mathematically confirmed in Phase 11; all geometry deltas sub-pixel, rasterizers are different engines | ✓ Good — no longer chasing pixel-snapping hacks |
 
 ---
-*Last updated: 2026-04-14 after v2.1 milestone close (DONE_WITH_CONCERNS)*
+*Last updated: 2026-04-14 after v2.2 milestone start (Rotation Handle Polish)*

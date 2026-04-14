@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-status: milestone_closed
-stopped_at: v2.1 archived to milestones/v2.1-ROADMAP.md + milestones/v2.1-REQUIREMENTS.md. MILESTONES.md updated, PROJECT.md evolved, ROADMAP.md collapsed, REQUIREMENTS.md deleted, git tag v2.1 created. Awaiting v2.2 scoping via /gsd:new-milestone.
-last_updated: "2026-04-14T17:30:00.000Z"
-last_activity: 2026-04-14 — v2.1 milestone archive complete (Option A close)
+milestone: v2.2
+milestone_name: Rotation Handle Polish
+status: defining_requirements
+stopped_at: v2.2 milestone started. Scope confirmed via /gsd:new-milestone — Gaps 3+4 plus conditional Gap 2 (only if cheap). Next step defining requirements.
+last_updated: "2026-04-14T18:00:00.000Z"
+last_activity: 2026-04-14 — v2.2 milestone started (Rotation Handle Polish)
 progress:
   total_phases: 0
   completed_phases: 0
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-14)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox; shape editing feels precise and predictable at every zoom level down to 10%.
-**Current focus:** v2.1 CLOSED. Awaiting v2.2 scoping. Candidate starting points: Gap 3 + Gap 4 carry-forward, Stage 1 prop-flip wins, or Stage 2 QA verifications (see `.planning/FEATURE-BACKLOG.md`).
+**Current focus:** v2.2 Rotation Handle Polish — close out the rotation interaction story. Scope: Gap 3 (hover pill stale ref), Gap 4 (mtr clip in edit mode), Gap 2 conditional (off-screen handle relocation).
 
 ## Current Position
 
-Phase: None active
-Plan: None active
-Status: Milestone v2.1 Shape Edit Polish & Foundation Wins CLOSED 2026-04-14 via Option A (DONE_WITH_CONCERNS). Archived to `.planning/milestones/v2.1-ROADMAP.md` + `.planning/milestones/v2.1-REQUIREMENTS.md`. All 3 v2.1 requirements shipped: EDIT-11 (soft Shift-snap 3° threshold), EDIT-12 (rotation degree input field, delivered with 2 polish gaps), ZOOM-09 (zoom floor 10%). Plan 12-01 expanded in-flight to include 9 dual-path shape edit gap bugs. Plan 12-03 was an unplanned gap-closure for 12-02 Enter-commit latency. Next session: run `/gsd:new-milestone` to scope v2.2.
-Last activity: 2026-04-14 — v2.1 milestone archive complete (Option A close)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-14 — Milestone v2.2 started
 
-Progress: [----------] 0% — v2.2 unscoped
+Progress: [----------] 0% — defining requirements
 
 ## Performance Metrics
 
