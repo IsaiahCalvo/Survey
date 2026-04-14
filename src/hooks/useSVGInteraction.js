@@ -345,39 +345,99 @@ export function useSVGInteraction({
       const affectsX = !['mt', 'mb'].includes(ds.handleId);
       const affectsY = !['ml', 'mr'].includes(ds.handleId);
 
+      // Bug #8: SIGNED scale, per-handle direction. The original code used
+      // `Math.abs(svgPoint.x - anchorX)` which collapsed the drag direction
+      // and prevented flipping — dragging a handle past its opposite would
+      // just bounce back instead of mirroring the shape as Fabric edit mode
+      // does. We now compute a signed delta from the handle's "growth"
+      // direction (left-handles grow when dragging LEFT, right-handles grow
+      // when dragging RIGHT) and allow scale to go negative, which represents
+      // the flipped state.
+      const isLeftHandle = ['tl', 'ml', 'bl'].includes(ds.handleId);
+      const isTopHandle = ['tl', 'mt', 'tr'].includes(ds.handleId);
+
       let newScaleX = ds.originalProps.scaleX;
       let newScaleY = ds.originalProps.scaleY;
 
       if (affectsX && ds.originalProps.width !== 0) {
-        const currentWidth = Math.abs(svgPoint.x - ds.anchorX);
-        newScaleX = currentWidth / ds.originalProps.width;
+        const signedDeltaX = isLeftHandle
+          ? (ds.anchorX - svgPoint.x)   // left handle: anchor = right edge, drag LEFT grows
+          : (svgPoint.x - ds.anchorX);  // right handle: anchor = left edge, drag RIGHT grows
+        newScaleX = signedDeltaX / ds.originalProps.width;
       }
       if (affectsY && ds.originalProps.height !== 0) {
-        const currentHeight = Math.abs(svgPoint.y - ds.anchorY);
-        newScaleY = currentHeight / ds.originalProps.height;
+        const signedDeltaY = isTopHandle
+          ? (ds.anchorY - svgPoint.y)   // top handle: anchor = bottom edge, drag UP grows
+          : (svgPoint.y - ds.anchorY);  // bottom handle: anchor = top edge, drag DOWN grows
+        newScaleY = signedDeltaY / ds.originalProps.height;
       }
 
-      // Shift-lock aspect ratio (per CONTEXT.md: free resize default, Shift locks)
+      // Shift-lock aspect ratio (per CONTEXT.md: free resize default, Shift
+      // locks). Preserve per-axis sign so diagonal drags through the anchor
+      // still flip on the axis that crossed — `sign * average magnitude`.
       if (e.shiftKey) {
-        const avgScale = (newScaleX + newScaleY) / 2;
-        newScaleX = avgScale;
-        newScaleY = avgScale;
+        const avgMag = (Math.abs(newScaleX) + Math.abs(newScaleY)) / 2;
+        newScaleX = (newScaleX < 0 ? -1 : 1) * avgMag;
+        newScaleY = (newScaleY < 0 ? -1 : 1) * avgMag;
       }
 
-      // Minimum scale to prevent zero-size
-      newScaleX = Math.max(0.1, newScaleX);
-      newScaleY = Math.max(0.1, newScaleY);
+      // Flip support is scoped to symmetric shapes (rect/circle/ellipse)
+      // where a mirror is visually identical to a non-flipped shape at a
+      // different position. For line/arrow (endpoint-driven), path (pen
+      // strokes), and text (orientation matters), we clamp to positive to
+      // preserve prior behavior until those shape types need real flip
+      // semantics. See FEATURE-BACKLOG.md if the user ever asks for it.
+      const objForFlip = annotations?.objects?.[ds.annotationIndex];
+      const typeForFlip = String(objForFlip?.type || '').toLowerCase();
+      const supportsFlip = typeForFlip === 'rect' || typeForFlip === 'circle' || typeForFlip === 'ellipse';
+      if (!supportsFlip) {
+        newScaleX = Math.max(0.1, newScaleX);
+        newScaleY = Math.max(0.1, newScaleY);
+      } else {
+        // Minimum MAGNITUDE (signed) to prevent zero-size while preserving
+        // flip direction. 0.01 mirrors the old 0.1 floor scaled down so a
+        // mid-flip zero-crossing doesn't snap-jump — visually the shape
+        // passes through a 1px sliver at the anchor.
+        if (Math.abs(newScaleX) < 0.01) newScaleX = (newScaleX < 0 ? -1 : 1) * 0.01;
+        if (Math.abs(newScaleY) < 0.01) newScaleY = (newScaleY < 0 ? -1 : 1) * 0.01;
+      }
 
-      // Compute new left/top based on anchor and new dimensions
+      // Compute new left/top. When scale is positive (normal), the formula
+      // below matches the original behavior. When scale is negative (flipped),
+      // the shape has mirrored across the anchor and its visible left/top
+      // edge snaps to the anchor side; the opposite edge extends PAST the
+      // anchor in the direction the user dragged.
+      //
+      // Renderers (renderRect/renderEllipse in svgAnnotationRenderers.jsx)
+      // and getAnnotationBBox already `Math.abs()` the scale, so a flipped
+      // rect/circle renders correctly using the normalized `newLeft`/`newTop`
+      // as its actual visible top-left corner.
       let newLeft = ds.originalProps.left;
       let newTop = ds.originalProps.top;
 
-      // For handles that resize from left/top side, adjust position
-      if (['tl', 'ml', 'bl'].includes(ds.handleId)) {
-        newLeft = ds.anchorX - (ds.originalProps.width * newScaleX);
+      if (isLeftHandle) {
+        // Left-side handle: anchor is RIGHT edge. Normal: shape extends LEFT
+        // from anchor. Flipped: shape extends RIGHT from anchor.
+        if (newScaleX >= 0) {
+          newLeft = ds.anchorX - (ds.originalProps.width * newScaleX);
+        } else {
+          newLeft = ds.anchorX;
+        }
+      } else if (['tr', 'mr', 'br'].includes(ds.handleId) && newScaleX < 0) {
+        // Right-side handle flipped: original-left was the anchor; new right
+        // edge is to the LEFT of it. Visible left edge = original left minus
+        // |scale| * original width.
+        newLeft = ds.originalProps.left + (ds.originalProps.width * newScaleX);
       }
-      if (['tl', 'mt', 'tr'].includes(ds.handleId)) {
-        newTop = ds.anchorY - (ds.originalProps.height * newScaleY);
+
+      if (isTopHandle) {
+        if (newScaleY >= 0) {
+          newTop = ds.anchorY - (ds.originalProps.height * newScaleY);
+        } else {
+          newTop = ds.anchorY;
+        }
+      } else if (['bl', 'mb', 'br'].includes(ds.handleId) && newScaleY < 0) {
+        newTop = ds.originalProps.top + (ds.originalProps.height * newScaleY);
       }
 
       // Store resize state for commit on pointerup
@@ -541,6 +601,8 @@ export function useSVGInteraction({
           // If the user resized the box oversized, that was deliberate. A future
           // per-annotation "auto-fit on commit" setting will reintroduce tightening
           // as an opt-in behavior (see FEATURE-BACKLOG.md).
+          // Note: text does not support flip (scale is clamped positive upstream)
+          // so the ratio below is always positive.
           obj.width = (obj.width || 100) * (newScaleX / (ds.originalProps.scaleX || 1));
           if (obj.height) {
             obj.height = obj.height * (newScaleY / (ds.originalProps.scaleY || 1));
@@ -550,8 +612,16 @@ export function useSVGInteraction({
           obj.left = newLeft;
           obj.top = newTop;
         } else {
-          obj.scaleX = newScaleX;
-          obj.scaleY = newScaleY;
+          // Bug #8: normalize flip to positive scale on commit. For rect/
+          // circle/ellipse a mirrored shape is visually identical to a non-
+          // flipped shape at a different (x, y), and `newLeft`/`newTop`
+          // already point to the visible top-left corner (the handler
+          // normalized them above). Storing |scale| keeps the JSON clean —
+          // renderers and bbox math all Math.abs anyway, so we just drop
+          // the sign at commit instead of letting negative scale leak into
+          // persisted annotations.
+          obj.scaleX = Math.abs(newScaleX);
+          obj.scaleY = Math.abs(newScaleY);
           obj.left = newLeft;
           obj.top = newTop;
         }
