@@ -179,6 +179,25 @@ function RotationInputField({
   }, []);
 
   const handleKeyDown = useCallback((e) => {
+    // UX: ALL keydowns inside the input are isolated from document/window-level
+    // shortcut handlers so Backspace/Delete don't delete the underlying shape
+    // and ArrowLeft/ArrowRight don't flip pages in single-scroll mode. The
+    // shape stays SELECTED — only the KEYBOARD events are stopped at the pill
+    // boundary. We stop propagation FIRST so even branches that early-return
+    // below still block the bubble.
+    //
+    // Belt-and-suspenders: stop both the React synthetic event and the native
+    // event. nativeEvent.stopImmediatePropagation() prevents any subsequent
+    // bubble-phase listener from receiving the event (capture-phase listeners
+    // that already ran before this React handler can't be undone — they rely
+    // on their own document.activeElement guards, which are present in all
+    // known cases at App.jsx, PageAnnotationLayer.jsx, SVGAnnotationLayer.jsx,
+    // and Callout/index.jsx).
+    e.stopPropagation();
+    if (e.nativeEvent && typeof e.nativeEvent.stopImmediatePropagation === 'function') {
+      e.nativeEvent.stopImmediatePropagation();
+    }
+
     if (e.key === 'Enter') {
       e.preventDefault();
       commitTyped();
@@ -222,7 +241,20 @@ function RotationInputField({
       }
       return;
     }
+    // All other keys (digits, Backspace, Delete, letters) flow through to the
+    // browser's native input handling — already stopPropagation'd above so
+    // they NEVER reach SVGAnnotationLayer's Delete/Backspace shortcut.
   }, [typedValue, angle, annotationIndex, onCommit, commitTyped]);
+
+  // UX: also stop keyup so any global shortcut listening on keyup (less common
+  // but possible) can't fire while the pill has focus. Symmetric with keydown,
+  // and uses the same React + native stop pattern.
+  const handleKeyUp = useCallback((e) => {
+    e.stopPropagation();
+    if (e.nativeEvent && typeof e.nativeEvent.stopImmediatePropagation === 'function') {
+      e.nativeEvent.stopImmediatePropagation();
+    }
+  }, []);
 
   const handleFocus = useCallback(() => {
     setIsFocused(true);
@@ -291,6 +323,12 @@ function RotationInputField({
         value={displayValue}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onKeyUp={handleKeyUp}
+        // UX: belt-and-suspenders click stop — focusing the input via click
+        // shouldn't propagate to the SVG layer below. The container's
+        // onMouseDown/onPointerDown already stop pointer events; this catches
+        // click events specifically (different React event channel).
+        onClick={(e) => e.stopPropagation()}
         onFocus={handleFocus}
         onBlur={handleBlur}
         style={{
