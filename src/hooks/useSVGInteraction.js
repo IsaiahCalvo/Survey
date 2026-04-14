@@ -791,6 +791,78 @@ export function useSVGInteraction({
   }, [selectedIds, annotations, onSaveAnnotations, deselectAll]);
 
   // ---------------------------------------------------------------------------
+  // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint
+  //
+  // The RotationInputField commit path (typed value on Enter, ±1° Arrow nudge,
+  // blur commit) calls onSaveAnnotations directly, which routes through
+  // App.jsx:handleSaveAnnotations — a heavy pipeline (history fingerprinting,
+  // deep compare, reducer, renumberCounters) that takes multiple frames
+  // before React re-renders the shape at the new angle. During that window
+  // the user sees the old angle and perceives a visible lag.
+  //
+  // Drag-rotate avoids this by painting the new angle via a cheap SVG
+  // <g transform="rotate(delta, cx, cy)"> wrapper driven by visualTransform.rotate
+  // (see handlePointerMove rotate branch at ~line 469) BEFORE onSaveAnnotations
+  // fires on pointerup. By the time the heavy pipeline runs, the user has
+  // already seen the final frame.
+  //
+  // This helper exposes the same optimistic-paint pattern to the typed-commit
+  // path. SVGAnnotationLayer.handleRotationInputCommit calls this FIRST (cheap,
+  // synchronous visualTransform set), then calls onSaveAnnotations (heavy,
+  // runs on subsequent frames). Cleanup happens in the consumer via a
+  // useEffect that clears visualTransform when the persisted annotation
+  // angle catches up to the optimistic angle — same pattern as the drag-end
+  // cleanup at line 654 (`setVisualTransform(null)`), just triggered by
+  // prop change instead of pointerup.
+  //
+  // The helper does NOT set interactionState to 'rotating' — that's
+  // reserved for active drag and would break cursor/grace-timer semantics
+  // in the parent. Optimistic paint is a one-shot visual override, not a
+  // drag session.
+  //
+  // SIDE EFFECT (drag-wins invariant — read before refactoring):
+  // Setting visualTransform.rotate causes SVGAnnotationLayer.jsx:319's
+  // derived `isRotating = !!(visualTransform?.rotate)` to become true, which
+  // makes RotationInputField.jsx:312-320's drag-wins sync useEffect overwrite
+  // `input.value = String(Math.round(angle))`. This is currently a no-op
+  // because `liveRotationAngle` (SVGAnnotationLayer.jsx:330) reads from
+  // `visualTransform.rotate.angle`, so the overwrite value equals the
+  // committed value. Do NOT decouple `liveRotationAngle` from
+  // `visualTransform.rotate` without revisiting RotationInputField's sync
+  // useEffect at lines 312-320 — the no-op becomes a destructive overwrite
+  // the moment those two values diverge.
+  // ---------------------------------------------------------------------------
+  const applyOptimisticRotation = useCallback((annotationIndex, newAngle) => {
+    if (annotationIndex === null || annotationIndex === undefined) return;
+    const obj = annotations?.objects?.[annotationIndex];
+    if (!obj) return;
+    const bbox = getAnnotationBBox(obj);
+    const cx = bbox.left + bbox.width / 2;
+    const cy = bbox.top + bbox.height / 2;
+    const originalAngle = obj.angle || 0;
+    const deltaAngle = newAngle - originalAngle;
+    // UX: same payload shape as the drag-rotate path at handlePointerMove
+    // line ~469. The renderer at SVGAnnotationLayer.jsx:755-760 reads
+    // `rotate.deltaAngle` for the wrapper <g> and the selection overlay
+    // at lines 1103-1105 reads `rotate.angle` for bbox.angle. Both must
+    // be present or the paint is inconsistent.
+    setVisualTransform({
+      id: annotationIndex,
+      dx: 0,
+      dy: 0,
+      rotate: { angle: newAngle, deltaAngle, cx, cy },
+    });
+  }, [annotations]);
+
+  // Clear the optimistic visualTransform that `applyOptimisticRotation` set
+  // (called by the consumer after the persisted annotation angle catches up
+  // to the optimistic angle, or on cancel). Exported because React state
+  // setters inside the hook are not otherwise reachable from the parent.
+  const clearOptimisticRotation = useCallback(() => {
+    setVisualTransform(null);
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Return API
   // ---------------------------------------------------------------------------
   return {
@@ -811,6 +883,9 @@ export function useSVGInteraction({
     handleHandlePointerDown,
     handlePointerMove,
     handlePointerUp,
+    // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint for typed commits
+    applyOptimisticRotation,
+    clearOptimisticRotation,
 
     // Selection manipulation
     selectAnnotation,
