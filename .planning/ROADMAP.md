@@ -2,9 +2,10 @@
 
 ## Milestones
 
-- Shipped **v1.0 Zoom Flicker Fix** - Phases 1-3 (shipped 2026-03-19), Phases 4-7 superseded/deferred
-- Shipped **v2.0 SVG Migration** - Phases 8-11 (shipped 2026-04-10)
-- Shipped **v2.1 Shape Edit Polish & Foundation Wins** - Phase 12 (shipped 2026-04-14, DONE_WITH_CONCERNS)
+- ✅ **v1.0 Zoom Flicker Fix** — Phases 1-3 (shipped 2026-03-19), Phases 4-7 superseded/deferred
+- ✅ **v2.0 SVG Migration** — Phases 8-11 (shipped 2026-04-10) — [archive](milestones/v2.0-ROADMAP.md)
+- ✅ **v2.1 Shape Edit Polish & Foundation Wins** — Phase 12 (shipped 2026-04-14, DONE_WITH_CONCERNS) — [archive](milestones/v2.1-ROADMAP.md)
+- 📋 **v2.2** — TBD (see FEATURE-BACKLOG.md)
 
 ## Phases
 
@@ -37,11 +38,22 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 </details>
 
-### v2.1 Shape Edit Polish & Foundation Wins (Phase 12)
+<details>
+<summary>✅ v2.1 Shape Edit Polish & Foundation Wins (Phase 12) — SHIPPED 2026-04-14 (DONE_WITH_CONCERNS)</summary>
 
-**Milestone Goal:** Finish the shape editing interaction model started in the post-v2.0 cleanup branch — add rotation precision (soft Shift-snap + exact degree input) and extend the usable zoom range to 10% so shape editing feels complete before moving on to future foundation wins.
+- [x] **Phase 12: Shape Edit Polish** — Soft Shift-snap at 45° with 3° threshold (EDIT-11), rotation degree input field for exact angles (EDIT-12, delivered with 2 polish gaps), zoom floor lowered to 10% (ZOOM-09) (completed 2026-04-14)
 
-- [x] **Phase 12: Shape Edit Polish** - Soft Shift-snap at 45° with 3° threshold, rotation degree input field for exact angles, zoom floor lowered to 10% (completed 2026-04-14, DONE_WITH_CONCERNS — 2 minor polish gaps deferred to v2.2+)
+See [`milestones/v2.1-ROADMAP.md`](milestones/v2.1-ROADMAP.md) for full phase details, 3-plan breakdown, decisions, issues resolved/deferred, and carry-forward lessons.
+
+</details>
+
+### v2.2 (unscoped)
+
+No phases defined yet. Candidate starting points from `FEATURE-BACKLOG.md`:
+
+- [ ] Gap 3 + Gap 4 carry-forward from v2.1 (pill hover re-appear + rotation handle clip)
+- [ ] Stage 1 "Prop-flip" foundation wins
+- [ ] Stage 2 QA verifications
 
 ## Phase Details
 
@@ -114,22 +126,11 @@ Plans:
 
 </details>
 
-### Phase 12: Shape Edit Polish
-**Goal**: Shape rotation feels precise and predictable (soft Shift-snap to 45° when the user is near an increment, exact-value input for typed angles) and the usable zoom range extends down to 10% for whole-page inspection of mechanical/electrical drawings
-**Depends on**: Phase 11 (SVG selection + `useSVGInteraction` rotation path, `FabricEditCanvas` edit infrastructure, zero-timer zoom system)
-**Requirements**: EDIT-11, EDIT-12, ZOOM-09
-**Success Criteria** (what must be TRUE):
-  1. User can drag the SVG rotation handle on a selected shape with Shift held and the live angle soft-snaps to the nearest 45° increment (0°/45°/90°/135°/180°/225°/270°/315°) only when within 3° of that increment — Shift-at-41° stays free at 41°, Shift-at-44° snaps to 45°, Shift-at-23° stays free at 23°, and releasing Shift always returns to free rotation
-  2. User sees an inline numeric degree input near the rotation handle while rotating a selected shape (and/or hovering the rotation handle), can type an exact angle, commits with Enter or blur to apply the rotation atomically, cancels with Escape, and typed values are normalized to [0, 360) before persisting
-  3. User can zoom the PDF all the way down to 10% via every zoom entry point (toolbar buttons, keyboard shortcuts, scroll wheel, typed value in the zoom input box, fit-to-page, fit-to-width, pinch) without the app silently re-clamping the floor to 50%
-  4. At zoom levels below 25% the selection/rotation handles remain visible but become hard to target — this is accepted table-stakes behavior (matches Illustrator/Photoshop); the user is expected to zoom back in to edit and no defect is recorded
-  5. No existing behavior regresses: free rotation (Shift not held) still produces float angles, Shift+resize aspect-lock still works, every zoom method still funnels through `clampScale`, and the `zoomGeneration` signal contract is preserved
-**Plans**: 3 plans (2 planned + 1 gap closure)
+### Phase 12 details archived
 
-Plans:
-- [x] 12-01-PLAN.md — EDIT-11 soft Shift-snap (3° threshold) via new `snapAngleToNearest45` helper wired into `useSVGInteraction.js:391-408` + ZOOM-09 zoom floor 10% atomic bundle (`zoomController.js:15` MIN_SCALE 0.5→0.1 AND `App.jsx:21999` pre-clamp 50→10 in the SAME commit) + Wave 0 unit tests (snapAngleToNearest45 + clampScale boundary). 4 tasks, Wave 1, autonomous=false (1 user verify checkpoint), low risk.
-- [x] 12-02-PLAN.md — EDIT-12 rotation degree input field via new `RotationInputField` HTML portal component (locked architecture from CONTEXT/UI-SPEC: createPortal into the existing SVGAnnotationLayer-hosting overlay div, hover-intent + drag-override visibility state machine, integer-only typed values, Enter/Escape/blur commit semantics, Arrow-key nudging) + Wave 0 `rotationInputHelpers` module + parent wiring in SVGAnnotationLayer.jsx. 5 tasks, Wave 2 (depends on 12-01 for wave ordering and to keep regression baseline clean), autonomous=false (1 user verify checkpoint), moderate risk. Delivered with 1 UAT gap (closed by 12-03) and 2 polish gaps still open (Gaps 3 and 4 in 12-02-UAT.md, discovered during 12-03 UAT re-run).
-- [x] 12-03-PLAN.md — Gap closure for 12-02-UAT Gap 1 (Enter-commit and Arrow-nudge lag in RotationInputField). Added `applyOptimisticRotation(idx, newAngle)` helper to `useSVGInteraction.js` and wired `handleRotationInputCommit` through it in `SVGAnnotationLayer.jsx`, mirroring drag-rotate's existing visual-first commit-second pattern. 3 tasks (2 code + 1 metadata), Wave 3, autonomous=false, low risk. User confirmed "100% approved" on UAT re-run Tests 6 and 9. Commits: ecd51419, 70189b0f.
+See [`milestones/v2.1-ROADMAP.md`](milestones/v2.1-ROADMAP.md) for Phase 12's
+full goal, dependencies, requirements, success criteria, 3-plan breakdown,
+key decisions, issues resolved/deferred, and technical debt.
 
 ## Progress
 
@@ -152,4 +153,4 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12
 | 12. Shape Edit Polish | v2.1 | 3/3 | Complete | 2026-04-14 |
 
 ---
-*Last updated: 2026-04-14 — Phase 12 CLOSED (DONE_WITH_CONCERNS). All 3 plans (12-01, 12-02, 12-03) delivered; EDIT-11, EDIT-12, and ZOOM-09 shipped; 12-VERIFICATION.md and 12-RECONCILIATION.md written. EDIT-12 delivered with 2 minor polish gaps (Gaps 3 and 4) backlogged to v2.2+ per user Option A. Milestone v2.1 ready to close.*
+*Last updated: 2026-04-14 — v2.1 milestone CLOSED (DONE_WITH_CONCERNS). Phase 12 archived to `milestones/v2.1-ROADMAP.md` + `milestones/v2.1-REQUIREMENTS.md`. Tagged `v2.1`. Next up: v2.2 scoping via `/gsd:new-milestone`.*

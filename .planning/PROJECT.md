@@ -13,19 +13,29 @@ Annotations must render correctly at all zoom levels with zero disappearance, ze
 Phases 8-11 shipped. SVG display + Fabric.js edit-only architecture fully
 landed with zero-timer zoom. All 39 v2.0 requirements met. See MILESTONES.md.
 
-## Current Milestone: v2.1 Shape Edit Polish & Foundation Wins
+## Previous Milestone: v2.1 Shape Edit Polish & Foundation Wins ✓ COMPLETE (2026-04-14, DONE_WITH_CONCERNS)
 
-**Goal:** Finish the shape editing interaction model started in the post-v2.0
-cleanup branch (circle edit fixes) — add rotation precision and extend the
-usable zoom range so shape editing feels complete before moving on to prop-flip
-foundation wins.
+Phase 12 shipped. Soft Shift-snap rotation (EDIT-11), rotation degree input
+field (EDIT-12), and zoom floor at 10% (ZOOM-09) all landed. Plan 12-01
+scope-expanded in-flight to include 9 dual-path shape edit gap bugs. Plan
+12-03 was an unplanned gap-closure for 12-02's Enter-commit latency via a
+reusable optimistic-paint helper. Two polish gaps (Gaps 3 and 4) deferred
+to v2.2+ per user Option A. See MILESTONES.md and
+`.planning/milestones/v2.1-ROADMAP.md`.
 
-**Target features (Stage 0 only):**
-- Shift+rotate snaps to 45° increments during shape rotation (both SVG and Fabric edit paths)
-- Zoom floor lowered from 50% to 10% so annotations remain inspectable at extreme zoom-out
+## Current Milestone: v2.2 (unscoped)
 
-Stage 1+ (prop-flip wins, QA, UX polish) remains queued in FEATURE-BACKLOG.md
-for v2.2+.
+Awaiting scoping. Candidate starting points from `.planning/FEATURE-BACKLOG.md`:
+
+1. **Stage 0 carry-forward** — Gaps 3 and 4 from Phase 12 (SVGAnnotationLayer
+   hover-intent stale ref + FabricEditCanvas clip/overflow cropping the mtr
+   handle). Directly continues Phase 12 momentum.
+2. **Stage 1 "Prop-flip" Wins** — minutes of effort each, dramatic
+   surface-area improvement.
+3. **Stage 2 QA Verifications** — low-risk validation of existing exports /
+   unsupported-notice path.
+
+Run `/gsd:new-milestone` or `/gsd:discuss-milestone` when ready to scope v2.2.
 
 ## Requirements
 
@@ -45,11 +55,16 @@ for v2.2+.
 - ✓ Fabric.js Canvas mount-on-demand for pen/eraser — v2.0 Phase 10
 - ✓ Targeted Canvas for text/shape/callout editing + zero-timer zoom — v2.0 Phase 11
 - ✓ Circle edit handle alignment, live scaling, clipping fixes — post-v2.0 cleanup (2026-04-12)
+- ✓ Shape rotation soft-snaps to 45° increments while Shift is held (3° threshold) — v2.1 Phase 12 (EDIT-11)
+- ✓ Rotation degree input field near the rotation handle for exact typed angles — v2.1 Phase 12 (EDIT-12, delivered with 2 polish gaps)
+- ✓ Zoom floor lowered to 10% so annotations remain inspectable at extreme zoom-out — v2.1 Phase 12 (ZOOM-09)
+- ✓ Dual-path SVG↔Fabric edit parity for rect/circle/ellipse (scale, flip, mini-bar tracking, fit-page math) — v2.1 Phase 12 (9 gap bugs)
 
-### Active (v2.1)
+### Active (v2.2 — unscoped)
 
-- [ ] Shape rotation snaps to 45° increments while Shift is held
-- [ ] Zoom floor lowered to 10% so annotations remain editable at extreme zoom-out
+- [ ] Rotation pill reappears on hover after returning from edit mode via click-off (Gap 3, carry-forward from v2.1)
+- [ ] Rotation handle (mtr) not clipped when pre-rotated shape enters edit mode (Gap 4, carry-forward from v2.1)
+- [ ] v2.2 scope TBD — see FEATURE-BACKLOG.md Stage 0/1/2
 
 ### Out of Scope
 
@@ -57,17 +72,22 @@ for v2.2+.
 - Changes to Syncfusion PDF viewer configuration — viewer layer unchanged
 - Real-time collaborative editing — future milestone
 - Mobile/touch gesture support beyond basic pinch zoom — future milestone
-- Phase 7 widen zoom range — deferred
+- Widen zoom range beyond 500% ceiling — deferred (PERF-02); 10% floor shipped in v2.1
+- Fabric edit canvas shape rotation snap (commit-lossy on force-zero/restore cycle) — SVG-path snap only for v2.1, Fabric-path rotation out of scope
+- Blur-commit and invalid-value revert for RotationInputField — user explicitly de-scoped during v2.1 12-02 UAT
+- SVG select-mode flip for line/arrow/path/text — only rect/circle/ellipse supported (v2.1); per-type flip semantics out of scope
 
 ## Context
 
 - Reference app at `/Users/isaiahcalvo/Desktop/Syncfusion-PDF-App` uses SVG overlays with viewBox, zero zoom timers
-- `LightweightAnnotationOverlay.jsx` (505 lines) already renders 5 annotation types as SVG — 80% of the display layer
 - Industry standard: Nutrient/PSPDFKit, PDF.js, pdf-annotate.js, Hypothesis all use SVG for annotations
-- Only Apryse/PDFTron uses Canvas like current approach (full-time team maintaining custom engine)
-- v1.0 Phases 1-3 established overlay div foundation (still valid, SVG layer will use these)
-- v1.0 Phase 4 failed 4 times — 5-timer coordination system proved intractable
-- Canvas memory: one Fabric canvas per visible page (~44MB each at retina 2x) → zero canvases during display mode
+- Only Apryse/PDFTron uses Canvas like the old approach (full-time team maintaining custom engine)
+- v1.0 Phases 1-3 established overlay div foundation (still valid, SVG layer uses these)
+- v2.0 shipped 2026-04-10: SVG display + Fabric.js edit-only fully landed; zero-timer zoom working
+- v2.1 shipped 2026-04-14: shape edit rotation precision (soft Shift-snap + typed degree input) + zoom floor 10%
+- Current tech surface: SVGAnnotationLayer + useSVGInteraction + RotationInputField (HTML portal) + FabricEditCanvas + zero-timer zoom; 113/113 tests green at v2.1 close
+- Parallel counter-tool session has uncommitted WIP in App.jsx, PAL, FabricEditCanvas, useDatabase, counterNumbering, svgAnnotationRenderers, dist/index.html — different lane from the main SVG annotation work; never touched by v2.1 commits
+- Reusable patterns graduated from v2.1: (a) drag-rotate optimistic-paint pattern for any commit-path latency in SVG annotation layer; (b) full-click-cycle stopPropagation on portaled UI inside an interactive SVG layer
 
 ## Constraints
 
@@ -80,11 +100,21 @@ for v2.2+.
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| SVG display + Fabric.js edit-only (v2.0) | 5-timer system intractable after 4 failed fixes; industry standard is SVG | — Pending |
-| Keep same Fabric.js JSON data model | Zero migration, SVG reads same format, undo/redo unchanged | — Pending |
-| Use `<foreignObject>` for text annotations | Fabric's toSVG has text positioning bugs | — Pending |
-| Mount/unmount Canvas per edit session | 5-15ms creation cost negligible, massive memory savings | — Pending |
+| SVG display + Fabric.js edit-only (v2.0) | 5-timer system intractable after 4 failed fixes; industry standard is SVG | ✓ Good — shipped 2026-04-10 with zero-timer zoom |
+| Keep same Fabric.js JSON data model | Zero migration, SVG reads same format, undo/redo unchanged | ✓ Good — zero data migration across v2.0 and v2.1 |
+| Use `<foreignObject>` for text annotations | Fabric's toSVG has text positioning bugs | ✓ Good — shipped in v2.0 Phase 8 |
+| Mount/unmount Canvas per edit session | 5-15ms creation cost negligible, massive memory savings | ✓ Good — shipped in v2.0 Phase 10/11 |
 | v1.0 overlay divs remain valid | SVG layer uses same direct-child-of-page-div pattern | ✓ Good |
+| EDIT-11 as pure helper + one-line wire (v2.1) | Matches Fabric `snapThreshold` convention; keeps interaction hook free of math; unit-testable at the boundary | ✓ Good — 10 unit tests green, shipped in 12-01 |
+| ZOOM-09 as atomic 2-file commit (v2.1) | `zoomController.js` MIN_SCALE and `App.jsx` commitZoomInput pre-clamp cannot be split without producing a broken intermediate state | ✓ Good — shipped atomically in commit `df43b0f8` |
+| EDIT-12 scope expansion (~11 LOC → ~1,342 LOC, v2.1) | User confirmed they wanted exact typed angles, not just Shift-snap; approved during `/gsd:discuss-phase` | ✓ Good — shipped with 2 open polish gaps (deferred to v2.2+) |
+| RotationInputField as HTML portal, not foreignObject (v2.1) | Avoids IME/focus quirks and counter-rotation math inside the SVG tree | ✓ Good — shipped after 7 rounds of focus-loss debugging |
+| RotationInputField uses uncontrolled input (v2.1) | Rounds 5/6 of 12-02 proved a controlled input racing live drag updates swallowed keystrokes | ✓ Good — typing works reliably after Round 7 fix |
+| Plan 12-01 scope expansion — fold 9 gap bugs (v2.1) | Dual-path SVG↔Fabric edit parity landing coherently in one plan > deferring to v2.2 | ✓ Good — kept the architectural lift unified |
+| Plan 12-03 unplanned gap closure (v2.1) | Without it EDIT-12 would have shipped broken on the Enter-commit path; authored, executed, closed inside Phase 12 rather than deferred | ✓ Good — user confirmed "100% approved" |
+| Phase 12 close via Option A (v2.1) | Ship the three core requirements now, backlog Gaps 3+4 to v2.2+; gsd-verifier marked phase `human_needed` rather than auto-marking `passed` | ✓ Good — audit trail preserved in 12-VERIFICATION.md `human_decision` field |
+| Typed-value commits NEVER apply Shift-snap (v2.1) | Snap is a drag-only gesture modifier; typing 44 with Shift held commits 44° | ✓ Good — documented in 12-CONTEXT.md acceptance criteria |
+| Canvas 2D vs SVG rasterizer delta is NOT fixable in JS (2026-04-10) | Mathematically confirmed in Phase 11; all geometry deltas sub-pixel, rasterizers are different engines | ✓ Good — no longer chasing pixel-snapping hacks |
 
 ---
-*Last updated: 2026-04-12 after milestone v2.1 initialization*
+*Last updated: 2026-04-14 after v2.1 milestone close (DONE_WITH_CONCERNS)*
