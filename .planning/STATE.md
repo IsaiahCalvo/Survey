@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Rotation Handle Polish
-status: defining_requirements
-stopped_at: v2.2 milestone started. Scope confirmed via /gsd:new-milestone — Gaps 3+4 plus conditional Gap 2 (only if cheap). Next step defining requirements.
-last_updated: "2026-04-14T18:00:00.000Z"
-last_activity: 2026-04-14 — v2.2 milestone started (Rotation Handle Polish)
+status: roadmap_complete
+stopped_at: v2.2 roadmap created. Phase 13 (Rotation Handle Edit-Mode Polish) defined with 2 plans (13-01 EDIT-13 hover-intent fix + 13-02 EDIT-14 mtr visibility fix). Both lane-safe SVG-side fixes. Next step plan-phase 13.
+last_updated: "2026-04-14T19:00:00.000Z"
+last_activity: 2026-04-14 — v2.2 roadmap created (Phase 13)
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
   percent: 0
 ---
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-14)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox; shape editing feels precise and predictable at every zoom level down to 10%.
-**Current focus:** v2.2 Rotation Handle Polish — close out the rotation interaction story. Scope: Gap 3 (hover pill stale ref), Gap 4 (mtr clip in edit mode), Gap 2 conditional (off-screen handle relocation).
+**Current focus:** v2.2 Rotation Handle Polish — close out the rotation interaction story by fixing the two Phase 12 carry-forward gaps (EDIT-13 hover pill re-arm + EDIT-14 mtr visibility on pre-rotated edit entry). Both SVG-side, both lane-safe.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 13 — Rotation Handle Edit-Mode Polish (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-14 — Milestone v2.2 started
+Status: Roadmap complete, ready for `/gsd:plan-phase 13`
+Last activity: 2026-04-14 — v2.2 roadmap created (Phase 13 defined, 2 plans, 2/2 requirements mapped)
 
-Progress: [----------] 0% — defining requirements
+Progress: [----------] 0% (0/2 plans complete)
 
 ## Performance Metrics
 
@@ -40,7 +40,9 @@ Progress: [----------] 0% — defining requirements
 - v2.1 (Phase 12): 3 plans — shipped 2026-04-14
 - **Total: 15 plans shipped across 3 milestones**
 
-**Tests:** 113/113 green at v2.1 close
+**v2.2 plan budget:** 2 plans (13-01 + 13-02). Surgical milestone — no scope expansion expected.
+
+**Tests:** 113/113 green at v2.1 close (Phase 13 must preserve this baseline)
 
 ## Accumulated Context
 
@@ -58,22 +60,39 @@ Progress: [----------] 0% — defining requirements
 - [v2.1]: Full-click-cycle stopPropagation (down + up + click + pointerdown + pointerup) at the wrapper boundary — not just the down events — is required for portaled UI inside an interactive SVG layer
 - [v2.1]: Phase 12 closed via Option A (backlog Gaps 3+4, ship core requirements) rather than Option B (hold phase open)
 - [v2.1]: Counter-session parallel WIP was kept strictly out of Phase 12's lane — never staged, never enumerated as commit candidates
+- [v2.2]: Gap 2 (off-screen handle relocation) closed `wontfix_superseded_by_typed_input` — 9-tool industry survey found zero tools relocate rotation handles (universal UX convention) and v2.1's typed-degree pill already addresses ~95% of the underlying pain
+- [v2.2]: Single Phase 13 with 2 plans (one per requirement) chosen over two separate phases — both gaps live in the same narrow interaction surface (rotation handle chrome during edit-mode transitions), share the same UAT grid, and have identical lane-safety profiles
+- [v2.2]: Gap 4 fix strategy locked to Fix A / Architecture Option C (SVG-side structural fix in `SVGAnnotationLayer.jsx:1050` short-circuit + `SVGSelectionOverlay.jsx` `isEditing` prop) — avoids `FabricEditCanvas.jsx` which is held by counter-session. Fix B (canvas pixel buffer growth via BBOX_PADDING) deferred fallback only
+- [v2.2]: Gap 4 plan 13-02 mandatory first step is a live-DOM diagnostic (`getBoundingClientRect` + `getComputedStyle` on the FabricEditCanvas container ancestor chain through `e-pv-page-div`) to confirm clipper identity before writing code — Architecture and Pitfalls research disagree on which clipper owns the symptom; diagnostic resolves it
+- [v2.2]: Gap 3 fix strategy — Strategy A (dep array + early-return gate) acceptable, Strategy B (event delegation via `e.target.closest('[data-rotation-handle="mtr"]')`) preferred. Both must preserve the load-bearing `eslint-disable react-hooks/exhaustive-deps` invariant by NOT adding tick-rate values (`annotations`, `visualTransform`) to the dep array
 
-### Carry-Forward (Gaps for v2.2+ triage)
+### Carry-Forward (now in active scope)
 
-- **Gap 3** — Rotation pill doesn't reappear on hover after returning from edit mode via click-off. Suspect: stale `handleEl` ref in `SVGAnnotationLayer.jsx` hover-intent effect dep array. Log evidence at `1.log`. Filed in `FEATURE-BACKLOG.md` Stage 0.
-- **Gap 4** — Rotation handle (mtr) clipped when a pre-rotated shape enters edit mode. Doesn't reproduce at 0°. Suspect: `FabricEditCanvas` container `overflow: hidden` / clip-path. Filed in `FEATURE-BACKLOG.md` Stage 0.
-- **Gap 2** — Rotation pill off-screen when handle is off-screen (feature request). Filed in `FEATURE-BACKLOG.md` Stage 0.
+- **EDIT-13** — Plan 13-01 — Rotation pill re-arms on hover after edit-mode click-off (Gap 3, was carry-forward)
+- **EDIT-14** — Plan 13-02 — Rotation handle (mtr) fully visible on pre-rotated shape edit entry (Gap 4, was carry-forward)
+
+### Counter-Session Lane (do NOT stage from v2.2)
+
+The 7-file counter-session WIP allowlist that must NEVER be touched by Phase 13 commits:
+- `src/App.jsx`
+- `src/components/PageAnnotationLayer.jsx`
+- `src/components/FabricEditCanvas.jsx`
+- `src/hooks/useDatabase.js`
+- `src/utils/counterNumbering.js`
+- `src/utils/svgAnnotationRenderers.jsx`
+- `dist/index.html`
+
+Phase 13's Fix A / Option C strategy was specifically chosen so neither plan needs to touch any of these. `git status` cross-check before every commit. Never `git add -A` or `git add .`.
 
 ### Blockers/Concerns
 
-- None. Milestone v2.1 closed cleanly. Tests 113/113 green.
+- None. v2.1 milestone closed cleanly. Tests 113/113 green. v2.2 scope is surgical (~25-50 LOC across 2 files for 13-01, ~80-120 LOC across 2 files for 13-02 after diagnostic).
 
 ## Session Continuity
 
-Last session: 2026-04-14T17:30:00.000Z
-Stopped at: v2.1 milestone archive complete. MILESTONES.md + PROJECT.md + ROADMAP.md + STATE.md updated, `.planning/milestones/v2.1-ROADMAP.md` + `.planning/milestones/v2.1-REQUIREMENTS.md` created, REQUIREMENTS.md deleted, git tag `v2.1` ready to create.
-Resume file: None — next action is a fresh `/gsd:new-milestone` invocation to scope v2.2.
-Next action: Run `/gsd:new-milestone` (questioning → research → requirements → roadmap) to define v2.2 scope. Clear context first for a clean slate.
+Last session: 2026-04-14T19:00:00.000Z
+Stopped at: v2.2 roadmap created. ROADMAP.md updated with Phase 13 (2 plans). REQUIREMENTS.md traceability updated (EDIT-13 → Phase 13, EDIT-14 → Phase 13). STATE.md current.
+Resume file: None — next action is `/gsd:plan-phase 13`.
+Next action: Run `/gsd:plan-phase 13` to author the Phase 13 CONTEXT.md and the two plan files (13-01 EDIT-13 hover-intent fix, 13-02 EDIT-14 mtr visibility fix). Plan 13-02 must include the mandatory live-DOM diagnostic as its first wave step.
 
-Note: the parallel counter-tool session's uncommitted WIP in `src/App.jsx`, `src/PageAnnotationLayer.jsx`, `src/components/FabricEditCanvas.jsx`, `src/hooks/useDatabase.js`, `src/utils/counterNumbering.js`, and `src/utils/svgAnnotationRenderers.jsx` remains out of any future milestone's lane until the counter-session closes out. v2.1's archive commit will NOT include these files.
+Note: the parallel counter-tool session's uncommitted WIP in `src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricEditCanvas.jsx`, `src/hooks/useDatabase.js`, `src/utils/counterNumbering.js`, `src/utils/svgAnnotationRenderers.jsx`, and `dist/index.html` remains out of v2.2's lane. Phase 13's Fix A strategy was chosen specifically to avoid all 7 files.

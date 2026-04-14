@@ -40,16 +40,16 @@ Explicitly excluded. Documented to prevent scope creep.
 
 Which phases cover which requirements. Updated during roadmap creation.
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| EDIT-13 | TBD | Pending |
-| EDIT-14 | TBD | Pending |
+| Requirement | Phase | Plan | Status |
+|-------------|-------|------|--------|
+| EDIT-13 | Phase 13 | 13-01 | Pending |
+| EDIT-14 | Phase 13 | 13-02 | Pending |
 
 **Coverage:**
 - v2.2 requirements: 2 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 2 ⚠️ (will resolve after roadmap)
+- Mapped to phases: 2 (100%)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-14*
-*Last updated: 2026-04-14 after initial definition*
+*Last updated: 2026-04-14 after v2.2 roadmap creation — both requirements mapped to Phase 13 (EDIT-13 → Plan 13-01, EDIT-14 → Plan 13-02). Coverage 100%.*

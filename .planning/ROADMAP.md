@@ -2,10 +2,10 @@
 
 ## Milestones
 
-- ✅ **v1.0 Zoom Flicker Fix** — Phases 1-3 (shipped 2026-03-19), Phases 4-7 superseded/deferred
-- ✅ **v2.0 SVG Migration** — Phases 8-11 (shipped 2026-04-10) — [archive](milestones/v2.0-ROADMAP.md)
-- ✅ **v2.1 Shape Edit Polish & Foundation Wins** — Phase 12 (shipped 2026-04-14, DONE_WITH_CONCERNS) — [archive](milestones/v2.1-ROADMAP.md)
-- 📋 **v2.2** — TBD (see FEATURE-BACKLOG.md)
+- [x] **v1.0 Zoom Flicker Fix** — Phases 1-3 (shipped 2026-03-19), Phases 4-7 superseded/deferred
+- [x] **v2.0 SVG Migration** — Phases 8-11 (shipped 2026-04-10) — [archive](milestones/v2.0-ROADMAP.md)
+- [x] **v2.1 Shape Edit Polish & Foundation Wins** — Phase 12 (shipped 2026-04-14, DONE_WITH_CONCERNS) — [archive](milestones/v2.1-ROADMAP.md)
+- [ ] **v2.2 Rotation Handle Polish** — Phase 13 (in progress, started 2026-04-14)
 
 ## Phases
 
@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 </details>
 
 <details>
-<summary>✅ v2.1 Shape Edit Polish & Foundation Wins (Phase 12) — SHIPPED 2026-04-14 (DONE_WITH_CONCERNS)</summary>
+<summary>v2.1 Shape Edit Polish & Foundation Wins (Phase 12) — SHIPPED 2026-04-14 (DONE_WITH_CONCERNS)</summary>
 
 - [x] **Phase 12: Shape Edit Polish** — Soft Shift-snap at 45° with 3° threshold (EDIT-11), rotation degree input field for exact angles (EDIT-12, delivered with 2 polish gaps), zoom floor lowered to 10% (ZOOM-09) (completed 2026-04-14)
 
@@ -47,13 +47,9 @@ See [`milestones/v2.1-ROADMAP.md`](milestones/v2.1-ROADMAP.md) for full phase de
 
 </details>
 
-### v2.2 (unscoped)
+### v2.2 Rotation Handle Polish
 
-No phases defined yet. Candidate starting points from `FEATURE-BACKLOG.md`:
-
-- [ ] Gap 3 + Gap 4 carry-forward from v2.1 (pill hover re-appear + rotation handle clip)
-- [ ] Stage 1 "Prop-flip" foundation wins
-- [ ] Stage 2 QA verifications
+- [ ] **Phase 13: Rotation Handle Edit-Mode Polish** — Close out the two carry-forward Phase 12 gaps: hover pill re-arms after edit-mode click-off (EDIT-13) + rotation handle (mtr) stays fully visible when a pre-rotated shape enters edit mode (EDIT-14). Both fixes are SVG-side and lane-safe (zero counter-session conflicts).
 
 ## Phase Details
 
@@ -132,10 +128,37 @@ See [`milestones/v2.1-ROADMAP.md`](milestones/v2.1-ROADMAP.md) for Phase 12's
 full goal, dependencies, requirements, success criteria, 3-plan breakdown,
 key decisions, issues resolved/deferred, and technical debt.
 
+### Phase 13: Rotation Handle Edit-Mode Polish
+
+**Goal**: Close out the rotation interaction story by fixing the two Phase 12 carry-forward gaps so the rotation handle and its hover pill behave correctly across every edit-mode entry/exit transition. Users should never need a deselect/reselect workaround to re-arm the pill, and a pre-rotated shape should never enter edit mode with a clipped rotation handle.
+
+**Depends on**: Phase 12 (v2.1 — RotationInputField + optimistic-paint pattern + 113/113 test baseline)
+
+**Requirements**: EDIT-13, EDIT-14
+
+**Why a single phase with two plans (not two phases):** Both gaps live in the same narrow interaction surface — rotation handle chrome during edit-mode transitions on shapes selected in `SVGAnnotationLayer.jsx`. They share the same UAT grid (`{angle=0, angle=30} × {edit exit via click-off / Escape / Enter-commit}`), the same lane-safety profile (SVG-side fixes only, zero counter-session WIP touched), and the same regression baseline (113/113 v2.1 tests + Plan 12-02's 7-round focus-loss scenarios). Splitting into two phases would duplicate verification overhead with no isolation benefit. A single Phase 13 with one plan per requirement keeps the milestone surgical and the reconciliation trivial.
+
+**Success Criteria** (what must be TRUE — all four verified by human UAT at both `angle=0` AND `angle=30` shapes):
+
+  1. **Pill re-arms after every edit-mode exit path** — User selects a shape, double-clicks into edit mode, exits edit mode via click-off / Escape / Enter-commit (all three exit paths), hovers the rotation handle, and sees the typed-degree pill appear within the existing 150ms hover-intent window — without needing to deselect and reselect first. Verified for `editType='shape'` (rect, circle, ellipse) AND `editType='text'`.
+
+  2. **Rotation handle visible on edit-mode entry for pre-rotated shapes** — User double-clicks a shape that already has a non-zero angle (verified at `angle=30`) and sees the full rotation handle (circle + connector + icon) rendered without clipping by any container or page-div ancestor. Visual-only visibility is sufficient; the handle does not need to be draggable in edit mode (rotation interaction is already provided by select-mode drag and the typed-degree pill). Verified for rect, circle, ellipse, and text edit modes.
+
+  3. **No regressions to v2.1 baseline** — All 113/113 v2.1 tests remain green. Plan 12-02's 7-round focus-loss scenarios (RotationInputField focus on Tab, click-out, Arrow nudge, Enter commit, hover during drag, Shift modifier, blur) all still pass. The optimistic-paint pattern is preserved: `console.count` on the hover-intent effect body during a 2-second drag-rotate fires ≤3 times (never at 60fps).
+
+  4. **Counter-session lane stays untouched** — Final commit set for Phase 13 includes ZERO files from the 7-file counter-session WIP allowlist. `git status` cross-check before every commit confirms `src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricEditCanvas.jsx`, `src/hooks/useDatabase.js`, `src/utils/counterNumbering.js`, `src/utils/svgAnnotationRenderers.jsx`, and `dist/index.html` are untouched by Phase 13's diffs.
+
+**Plans**: 2 plans
+
+Plans:
+- [ ] **13-01-PLAN.md — EDIT-13 hover pill stale-ref fix (Gap 3)** — Modify the hover-intent `useEffect` in `SVGAnnotationLayer.jsx:213-313` so the rotation pill re-arms after any edit-mode exit path. Strategy A acceptable (add `editingAnnotationIndex` to dep array + early-return gate at effect top); Strategy B preferred (event delegation on stable SVG ancestor via `e.target.closest('[data-rotation-handle="mtr"]')`). Both must gate on `editingAnnotationIndex == null`. Preserves the load-bearing `eslint-disable react-hooks/exhaustive-deps` invariant by NOT adding tick-rate values (`annotations`, `visualTransform`) to the dep array. Files in scope: `src/components/SVGAnnotationLayer.jsx` only.
+
+- [ ] **13-02-PLAN.md — EDIT-14 mtr handle visibility fix (Gap 4)** — Make pre-rotated shapes show a fully-visible rotation handle on edit-mode entry without touching `FabricEditCanvas.jsx` (counter-session lane). **MANDATORY FIRST STEP:** Run a live-DOM diagnostic in the running app — open a pre-rotated shape, walk the ancestor chain from the FabricEditCanvas container up through the Syncfusion `e-pv-page-div`, and read `getBoundingClientRect()` + `window.getComputedStyle(el).overflow` on every link to confirm WHICH clipper actually owns the symptom (Architecture research hypothesizes a Syncfusion `e-pv-page-div` ancestor; Pitfalls research confirms the canvas pixel buffer math; both may contribute). Diagnostic resolves which. Then implement Fix A / Architecture Option C: narrow the `SVGAnnotationLayer.jsx:1050` short-circuit so it returns null only when `editIsBorderFlush && angle === 0`, and render an mtr-only stripped overlay (no bbox, no resize pills) when `editIsBorderFlush && angle !== 0`. Add a new `isEditing` prop path through `SVGSelectionOverlay.jsx` for the mtr-only render branch. SVG handle is visual-only during edit mode (the SVG root has `pointerEvents: 'none'` while `isInteractive=false`); rotation in edit mode stays out of scope per PROJECT.md line 71. Files in scope: `src/components/SVGAnnotationLayer.jsx` (narrow `:1050` condition only — never delete) + `src/components/SVGSelectionOverlay.jsx` (new `isEditing` prop, mtr-only rendering path).
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 8 → 9 → 10 → 11 → 12
+Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -151,6 +174,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12
 | 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 2/2 | Complete | 2026-03-27 |
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 2/2 | Complete | 2026-04-02 |
 | 12. Shape Edit Polish | v2.1 | 3/3 | Complete | 2026-04-14 |
+| 13. Rotation Handle Edit-Mode Polish | v2.2 | 0/2 | Not started | - |
 
 ---
-*Last updated: 2026-04-14 — v2.1 milestone CLOSED (DONE_WITH_CONCERNS). Phase 12 archived to `milestones/v2.1-ROADMAP.md` + `milestones/v2.1-REQUIREMENTS.md`. Tagged `v2.1`. Next up: v2.2 scoping via `/gsd:new-milestone`.*
+*Last updated: 2026-04-14 — v2.2 milestone roadmap created. Phase 13 (Rotation Handle Edit-Mode Polish) defined with 2 plans (13-01 EDIT-13 hover-intent fix + 13-02 EDIT-14 mtr visibility fix). Both lane-safe (SVG-side only). Coverage 2/2 v2.2 requirements mapped. Ready for `/gsd:plan-phase 13`.*
