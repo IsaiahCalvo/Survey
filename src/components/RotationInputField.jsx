@@ -70,16 +70,17 @@ const GAP_ABOVE = 16;
 const EDGE_MARGIN = 4;
 
 function RotationInputField({
-  svgRef,           // React ref to the SVGAnnotationLayer's root <svg>
-  hostEl,           // The DOM <div> that hosts SVGAnnotationLayer (portal target)
-  angle,            // Current angle in degrees [0, 360). Live drag angle when
-                    // isRotating, otherwise the persisted obj.angle.
-  annotationIndex,  // Index of the selected annotation in annotations.objects[]
-  isRotating,       // True while a rotation drag is active (visualTransform.rotate set)
-  isVisible,        // True when input should render (parent-owned visibility gate)
-  onCommit,         // (annotationIndex, newAngle) => void — parent saves
-  onCancel,         // () => void — parent reverts/clears any pending state
-  onHoverChange,    // (hovered: boolean) => void — drives 500ms grace timer
+  svgRef,             // React ref to the SVGAnnotationLayer's root <svg>
+  hostEl,             // The DOM <div> that hosts SVGAnnotationLayer (portal target)
+  angle,              // Current angle in degrees [0, 360). Live drag angle when
+                      // isRotating, otherwise the persisted obj.angle.
+  annotationIndex,    // Index of the selected annotation in annotations.objects[]
+  isRotating,         // True while a rotation drag is active (visualTransform.rotate set)
+  isVisible,          // True when input should render (parent-owned visibility gate)
+  shapeCenterViewBox, // { x, y } in viewBox (page) coords — pill anchors radially OUTWARD from this point through the mtr handle. Converted to screen via svgRef.current.getScreenCTM().
+  onCommit,           // (annotationIndex, newAngle) => void — parent saves
+  onCancel,           // () => void — parent reverts/clears any pending state
+  onHoverChange,      // (hovered: boolean) => void — drives 500ms grace timer
 }) {
   // Internal state ONLY tracks the typed (uncommitted) value while focused.
   // Live drag angle is read from props — single source of truth (Pitfall 9).
@@ -107,16 +108,32 @@ function RotationInputField({
     }
 
     const handleRect = handleEl.getBoundingClientRect();
+
+    // Convert shape center from viewBox (page) coords → screen coords using
+    // the SVG's CTM. The handle's getBoundingClientRect() is already in
+    // screen coords, so both values land in the same frame for the radial
+    // vector math in computeInputPosition.
+    let shapeCenterScreen = null;
+    if (shapeCenterViewBox) {
+      const ctm = svgRef.current.getScreenCTM();
+      if (ctm) {
+        const point = new DOMPoint(shapeCenterViewBox.x, shapeCenterViewBox.y);
+        const screenPt = point.matrixTransform(ctm);
+        shapeCenterScreen = { x: screenPt.x, y: screenPt.y };
+      }
+    }
+
     const newPos = computeInputPosition(
       handleRect,
       cachedHostRectRef.current,
+      shapeCenterScreen,
       INPUT_WIDTH,
       INPUT_HEIGHT,
       GAP_ABOVE,
       EDGE_MARGIN
     );
     setPosition(newPos);
-  }, [angle, isVisible, isRotating, svgRef, hostEl]);
+  }, [angle, isVisible, isRotating, svgRef, hostEl, shapeCenterViewBox]);
 
   // Invalidate cached host rect when visibility goes hidden so the next show
   // recomputes against fresh layout (handles scroll/zoom between sessions).

@@ -262,6 +262,23 @@ const SVGAnnotationLayer = memo(({
     : 0;
   const liveRotationAngle = isRotating ? visualTransform.rotate.angle : persistedAngle;
 
+  // EDIT-12: shape center in viewBox (page) coordinates. RotationInputField
+  // converts this to screen coords via svgRef.current.getScreenCTM() and
+  // uses it as the "anchor" for the radial pill placement (pill sits along
+  // the ray from shapeCenter through the mtr handle, on the OUTSIDE).
+  // The center is the bbox center of the unrotated bbox — invariant under
+  // rotation since the SVGSelectionOverlay rotates around (cx, cy).
+  const shapeCenterViewBox = (() => {
+    if (selectedAnnotationIndex === null) return null;
+    const obj = annotations?.objects?.[selectedAnnotationIndex];
+    if (!obj) return null;
+    const bbox = getAnnotationBBox(obj);
+    return {
+      x: bbox.left + bbox.width / 2,
+      y: bbox.top + bbox.height / 2,
+    };
+  })();
+
   const handleRotationInputCommit = useCallback((annotationIndex, newAngle) => {
     if (annotationIndex === null || annotationIndex === undefined) return;
     const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
@@ -943,6 +960,7 @@ const SVGAnnotationLayer = memo(({
       annotationIndex={selectedAnnotationIndex}
       isRotating={isRotating}
       isVisible={showRotationInput && selectedAnnotationIndex !== null}
+      shapeCenterViewBox={shapeCenterViewBox}
       onCommit={handleRotationInputCommit}
       onCancel={handleRotationInputCancel}
       onHoverChange={handleRotationInputHoverChange}
