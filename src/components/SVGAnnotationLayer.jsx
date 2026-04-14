@@ -268,7 +268,15 @@ const SVGAnnotationLayer = memo(({
   // the ray from shapeCenter through the mtr handle, on the OUTSIDE).
   // The center is the bbox center of the unrotated bbox — invariant under
   // rotation since the SVGSelectionOverlay rotates around (cx, cy).
-  const shapeCenterViewBox = (() => {
+  //
+  // useMemo is critical (Issue 4 fix): without it, this returns a fresh
+  // {x, y} object on every parent render, which invalidates RotationInputField's
+  // position useEffect dependency array on every parent re-render. That triggers
+  // a high-frequency render loop on the child which interferes with the
+  // controlled-input onChange and silently drops typed characters. Memoizing
+  // on [selectedAnnotationIndex, annotations] gives a stable reference until
+  // the selected annotation actually changes.
+  const shapeCenterViewBox = useMemo(() => {
     if (selectedAnnotationIndex === null) return null;
     const obj = annotations?.objects?.[selectedAnnotationIndex];
     if (!obj) return null;
@@ -277,7 +285,7 @@ const SVGAnnotationLayer = memo(({
       x: bbox.left + bbox.width / 2,
       y: bbox.top + bbox.height / 2,
     };
-  })();
+  }, [selectedAnnotationIndex, annotations]);
 
   const handleRotationInputCommit = useCallback((annotationIndex, newAngle) => {
     if (annotationIndex === null || annotationIndex === undefined) return;

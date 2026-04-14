@@ -171,7 +171,15 @@ function RotationInputField({
       }
     }
 
-    setPosition(newPos);
+    // Issue 4 fix B: only call setPosition when the new value actually
+    // differs from the previous. This prevents object-reference jitter from
+    // upstream (e.g. parent re-render with a new newPos object that's
+    // numerically identical) from triggering a needless re-render that
+    // could interfere with controlled-input onChange.
+    setPosition(prev => {
+      if (prev.left === newPos.left && prev.top === newPos.top) return prev;
+      return newPos;
+    });
   }, [angle, isVisible, isRotating, svgRef, hostEl, shapeCenterViewBox]);
 
   // Invalidate cached host rect when visibility goes hidden so the next show
