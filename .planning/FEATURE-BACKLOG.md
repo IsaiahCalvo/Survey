@@ -62,6 +62,13 @@ items use the same code paths and finish the editing interaction model.
 - [ ] **Shift+rotate snaps to 45° increments** — hold Shift during rotation handle drag to snap to 0°/45°/90°/135°/etc. Needs both SVG rotation path (`useSVGInteraction.js` ~line 391, check `e.shiftKey` + `Math.round(angle/45)*45`) and Fabric edit path (toggle `obj.snapAngle=45` via keydown/keyup listeners in `FabricEditCanvas.jsx` shape loading). ~10 lines total.
 - [ ] **Zoom floor at 10%** — change `MIN_SCALE` from `0.5` to `0.1` in `src/utils/zoomController.js`. Every zoom path goes through `clampScale()` so this is a single constant change. Prevents unusably small annotations at extreme zoom-out.
 
+### Rotation handle relocates to opposite side when off-screen
+
+**Source:** 12-02-UAT Test 14 user feedback, captured as Gap 2 (status: feature_request)
+**Priority:** v2.2+
+**Context:** When user places a shape near the page edge and rotates it, the mtr rotation handle can go off-screen. Currently the user must move the shape away from the edge to re-grab the handle. Desired flow: place shape near edge → rotate → if handle would be off-screen, it relocates to the opposite side of the shape (or nearest visible side) so the user can re-grab it without moving the shape first. Pill follows the new handle position.
+**Scope:** SVGSelectionOverlay (handle placement logic), not RotationInputField (pill already clamps correctly).
+
 **Momentum:** Shape edit handles → rotation precision → zoom range. Each builds
 on the same interaction surface. After this, shape editing is feature-complete
 and we move to prop-flip wins.
@@ -223,3 +230,7 @@ When the user says "what's next to work on" or "what else do we have to add",
 read this file and present the next unchecked items, grouped by stage, with
 their codebase tags and the effort notes above. Update the status marks as items
 ship.
+
+
+---
+*Related (graphify):* [[CC-Architecture Overview]] · [[Competitive Intelligence]] · [[Missing Features]]

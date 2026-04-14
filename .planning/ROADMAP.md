@@ -124,11 +124,12 @@ Plans:
   3. User can zoom the PDF all the way down to 10% via every zoom entry point (toolbar buttons, keyboard shortcuts, scroll wheel, typed value in the zoom input box, fit-to-page, fit-to-width, pinch) without the app silently re-clamping the floor to 50%
   4. At zoom levels below 25% the selection/rotation handles remain visible but become hard to target — this is accepted table-stakes behavior (matches Illustrator/Photoshop); the user is expected to zoom back in to edit and no defect is recorded
   5. No existing behavior regresses: free rotation (Shift not held) still produces float angles, Shift+resize aspect-lock still works, every zoom method still funnels through `clampScale`, and the `zoomGeneration` signal contract is preserved
-**Plans**: 2 plans
+**Plans**: 3 plans (2 planned + 1 gap closure)
 
 Plans:
-- [ ] 12-01-PLAN.md — EDIT-11 soft Shift-snap (3° threshold) via new `snapAngleToNearest45` helper wired into `useSVGInteraction.js:391-408` + ZOOM-09 zoom floor 10% atomic bundle (`zoomController.js:15` MIN_SCALE 0.5→0.1 AND `App.jsx:21999` pre-clamp 50→10 in the SAME commit) + Wave 0 unit tests (snapAngleToNearest45 + clampScale boundary). 4 tasks, Wave 1, autonomous=false (1 user verify checkpoint), low risk.
-- [ ] 12-02-PLAN.md — EDIT-12 rotation degree input field via new `RotationInputField` HTML portal component (locked architecture from CONTEXT/UI-SPEC: createPortal into the existing SVGAnnotationLayer-hosting overlay div, hover-intent + drag-override visibility state machine, integer-only typed values, Enter/Escape/blur commit semantics, Arrow-key nudging) + Wave 0 `rotationInputHelpers` module + parent wiring in SVGAnnotationLayer.jsx. 5 tasks, Wave 2 (depends on 12-01 for wave ordering and to keep regression baseline clean), autonomous=false (1 user verify checkpoint), moderate risk.
+- [x] 12-01-PLAN.md — EDIT-11 soft Shift-snap (3° threshold) via new `snapAngleToNearest45` helper wired into `useSVGInteraction.js:391-408` + ZOOM-09 zoom floor 10% atomic bundle (`zoomController.js:15` MIN_SCALE 0.5→0.1 AND `App.jsx:21999` pre-clamp 50→10 in the SAME commit) + Wave 0 unit tests (snapAngleToNearest45 + clampScale boundary). 4 tasks, Wave 1, autonomous=false (1 user verify checkpoint), low risk.
+- [x] 12-02-PLAN.md — EDIT-12 rotation degree input field via new `RotationInputField` HTML portal component (locked architecture from CONTEXT/UI-SPEC: createPortal into the existing SVGAnnotationLayer-hosting overlay div, hover-intent + drag-override visibility state machine, integer-only typed values, Enter/Escape/blur commit semantics, Arrow-key nudging) + Wave 0 `rotationInputHelpers` module + parent wiring in SVGAnnotationLayer.jsx. 5 tasks, Wave 2 (depends on 12-01 for wave ordering and to keep regression baseline clean), autonomous=false (1 user verify checkpoint), moderate risk. Delivered with 1 UAT gap (closed by 12-03) and 2 polish gaps still open (Gaps 3 and 4 in 12-02-UAT.md, discovered during 12-03 UAT re-run).
+- [x] 12-03-PLAN.md — Gap closure for 12-02-UAT Gap 1 (Enter-commit and Arrow-nudge lag in RotationInputField). Added `applyOptimisticRotation(idx, newAngle)` helper to `useSVGInteraction.js` and wired `handleRotationInputCommit` through it in `SVGAnnotationLayer.jsx`, mirroring drag-rotate's existing visual-first commit-second pattern. 3 tasks (2 code + 1 metadata), Wave 3, autonomous=false, low risk. User confirmed "100% approved" on UAT re-run Tests 6 and 9. Commits: ecd51419, 70189b0f.
 
 ## Progress
 
@@ -148,7 +149,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12
 | 9. SVG Selection and Interaction | v2.0 | 3/3 | Complete | 2026-04-10 |
 | 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 2/2 | Complete | 2026-03-27 |
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 2/2 | Complete | 2026-04-02 |
-| 12. Shape Edit Polish | v2.1 | 0/2 | Not started | - |
+| 12. Shape Edit Polish | 3/3 | Complete   | 2026-04-14 | - |
 
 ---
-*Last updated: 2026-04-13 — Phase 12 plans 12-01 and 12-02 finalized via /gsd:plan-phase 12*
+*Last updated: 2026-04-14 — Plan 12-03 (EDIT-12 gap closure) complete; all 3 plans closed; Phase 12 awaits verify-work + 12-RECONCILIATION.md. Two new pre-existing 12-02 polish gaps surfaced during 12-03 UAT re-run — await triage.*
