@@ -95,7 +95,25 @@ export function computeInputPosition(
 
   if (shapeCenter && Number.isFinite(shapeCenter.x) && Number.isFinite(shapeCenter.y)) {
     // Radial placement: pill sits along the (shapeCenter → handleCenter) ray,
-    // offset OUTWARD from the handle by (halfDiag + gapAbove) pixels.
+    // offset OUTWARD from the handle so its NEAREST EDGE is exactly `gapAbove`
+    // pixels from the handle center, regardless of approach angle.
+    //
+    // Math: project the pill's half-extent onto the unit direction vector
+    // (this is the support function of an axis-aligned bounding box). The
+    // result is the distance from the pill center to the pill edge in the
+    // direction the pill is being placed:
+    //
+    //   projHalfExtent = |ux| * halfW + |uy| * halfH
+    //   d              = projHalfExtent + gapAbove
+    //   pillCenter     = handleCenter + unit * d
+    //
+    // At cardinals this gives the user's expected behavior:
+    //   0°   (unit (0,-1)):  proj = 14, d = 30, top edge sits 16px above handle
+    //   90°  (unit (1, 0)):  proj = 30, d = 46, left edge sits 16px right of handle
+    //   180° (unit (0, 1)):  proj = 14, d = 30, bottom edge sits 16px below handle
+    //   270° (unit (-1,0)):  proj = 30, d = 46, right edge sits 16px left of handle
+    // At off-axis angles (e.g. 45°) the corner of the pill is slightly farther
+    // (max ~20px at the diagonals) — that's the support function being correct.
     const vecX = handleCenterX - shapeCenter.x;
     const vecY = handleCenterY - shapeCenter.y;
     const len = Math.hypot(vecX, vecY);
@@ -106,10 +124,11 @@ export function computeInputPosition(
     if (len > 0.0001) {
       const unitX = vecX / len;
       const unitY = vecY / len;
-      // Half-diagonal so the pill's nearest edge sits ~gapAbove pixels from
-      // the handle regardless of approach angle (works at 0°, 45°, 90°...).
-      const halfDiag = Math.hypot(inputWidth / 2, inputHeight / 2);
-      const offset = halfDiag + gapAbove;
+      const halfW = inputWidth / 2;
+      const halfH = inputHeight / 2;
+      // Support function of an axis-aligned box in direction (|unitX|, |unitY|)
+      const projHalfExtent = Math.abs(unitX) * halfW + Math.abs(unitY) * halfH;
+      const offset = projHalfExtent + gapAbove;
       pillCenterScreenX = handleCenterX + unitX * offset;
       pillCenterScreenY = handleCenterY + unitY * offset;
     } else {

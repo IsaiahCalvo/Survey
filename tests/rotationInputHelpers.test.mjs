@@ -117,15 +117,31 @@ test('computeInputPosition handles non-zero hostRect origin (handle in screen sp
 // -- computeInputPosition radial placement (shapeCenter param) --
 
 // Shared host: (0,0) 800x600. Handle: 24x24. Shape center: (400,400).
-// Half-diagonal of a 60x28 pill = √(30² + 14²) = √(900+196) = √1096 ≈ 33.106
-// Offset = halfDiag + gapAbove(16) ≈ 49.106
+// Pill: 60x28, halfW=30, halfH=14, gapAbove=16
 //
-// At 0° (shape upright), handle is ABOVE shape center: handleCenter.y < shapeCenter.y
-// At 90°,                handle is to the RIGHT of shape center
-// At 180°,               handle is BELOW shape center
-// At 270°,               handle is to the LEFT of shape center
+// New formula (Issue 3 fix — support function of an AABB):
+//   projHalfExtent = |unitX| * halfW + |unitY| * halfH
+//   d              = projHalfExtent + gapAbove
+//   pillCenter     = handleCenter + unit * d
 //
-// We verify the pill sits OUTSIDE the handle along the (center → handle) ray.
+// Cardinal expected offsets (d = projHalfExtent + 16):
+//   0°    unit (0,-1):  proj=14  d=30
+//   90°   unit (1, 0):  proj=30  d=46
+//   180°  unit (0, 1):  proj=14  d=30
+//   270°  unit (-1,0):  proj=30  d=46
+//
+// The pill's NEAREST EDGE is exactly 16px from the handle center at every
+// cardinal — the user's expected behavior ("same distance anywhere around
+// the shape").
+
+// Helper: compute the actual minimum distance from a point to an axis-aligned
+// rectangle. Used by the edge-gap tests to verify the pill's nearest edge is
+// exactly `gapAbove` from the handle center.
+function minDistPointToRect(px, py, rectLeft, rectTop, rectWidth, rectHeight) {
+  const dx = Math.max(rectLeft - px, 0, px - (rectLeft + rectWidth));
+  const dy = Math.max(rectTop - py, 0, py - (rectTop + rectHeight));
+  return Math.hypot(dx, dy);
+}
 
 test('computeInputPosition radial: shape at 0° — pill ABOVE handle (handle above center)', () => {
   // Shape at (400, 400). At 0°, mtr handle is above the shape center.
@@ -133,11 +149,11 @@ test('computeInputPosition radial: shape at 0° — pill ABOVE handle (handle ab
   const hostRect = { left: 0, top: 0, width: 800, height: 600 };
   const shapeCenter = { x: 400, y: 400 };
   const result = computeInputPosition(handleRect, hostRect, shapeCenter);
-  // vec = (0, -88), unit = (0, -1), offset ≈ 49.106
-  // pillCenter = (400, 312 - 49.106) = (400, 262.894)
-  // pillTopLeft = (400 - 30, 262.894 - 14) = (370, 248.894)
+  // unit = (0, -1), proj = |0|*30 + |-1|*14 = 14, d = 30
+  // pillCenter = (400, 312 - 30) = (400, 282)
+  // pillTopLeft = (400 - 30, 282 - 14) = (370, 268)
   assert.ok(Math.abs(result.left - 370) < 0.01, `expected left ≈ 370, got ${result.left}`);
-  assert.ok(Math.abs(result.top - 248.894) < 0.01, `expected top ≈ 248.894, got ${result.top}`);
+  assert.ok(Math.abs(result.top - 268) < 0.01, `expected top ≈ 268, got ${result.top}`);
   // Sanity: pill is above the handle in screen coords
   assert.ok(result.top + 28 < handleRect.top, 'pill bottom must be above handle top');
 });
@@ -148,10 +164,10 @@ test('computeInputPosition radial: shape at 90° — pill RIGHT of handle (handl
   const hostRect = { left: 0, top: 0, width: 800, height: 600 };
   const shapeCenter = { x: 400, y: 400 };
   const result = computeInputPosition(handleRect, hostRect, shapeCenter);
-  // vec = (100, 0), unit = (1, 0), offset ≈ 49.106
-  // pillCenter = (500 + 49.106, 400) = (549.106, 400)
-  // pillTopLeft = (549.106 - 30, 400 - 14) = (519.106, 386)
-  assert.ok(Math.abs(result.left - 519.106) < 0.01, `expected left ≈ 519.106, got ${result.left}`);
+  // unit = (1, 0), proj = |1|*30 + |0|*14 = 30, d = 46
+  // pillCenter = (500 + 46, 400) = (546, 400)
+  // pillTopLeft = (546 - 30, 400 - 14) = (516, 386)
+  assert.ok(Math.abs(result.left - 516) < 0.01, `expected left ≈ 516, got ${result.left}`);
   assert.ok(Math.abs(result.top - 386) < 0.01, `expected top ≈ 386, got ${result.top}`);
   // Sanity: pill is to the right of the handle in screen coords
   assert.ok(result.left > handleRect.left + handleRect.width, 'pill left must be right of handle right');
@@ -163,11 +179,11 @@ test('computeInputPosition radial: shape at 180° — pill BELOW handle (handle 
   const hostRect = { left: 0, top: 0, width: 800, height: 600 };
   const shapeCenter = { x: 400, y: 400 };
   const result = computeInputPosition(handleRect, hostRect, shapeCenter);
-  // vec = (0, 100), unit = (0, 1), offset ≈ 49.106
-  // pillCenter = (400, 500 + 49.106) = (400, 549.106)
-  // pillTopLeft = (400 - 30, 549.106 - 14) = (370, 535.106)
+  // unit = (0, 1), proj = 14, d = 30
+  // pillCenter = (400, 500 + 30) = (400, 530)
+  // pillTopLeft = (400 - 30, 530 - 14) = (370, 516)
   assert.ok(Math.abs(result.left - 370) < 0.01, `expected left ≈ 370, got ${result.left}`);
-  assert.ok(Math.abs(result.top - 535.106) < 0.01, `expected top ≈ 535.106, got ${result.top}`);
+  assert.ok(Math.abs(result.top - 516) < 0.01, `expected top ≈ 516, got ${result.top}`);
   // Sanity: pill is below the handle in screen coords
   assert.ok(result.top > handleRect.top + handleRect.height, 'pill top must be below handle bottom');
 });
@@ -178,10 +194,10 @@ test('computeInputPosition radial: shape at 270° — pill LEFT of handle (handl
   const hostRect = { left: 0, top: 0, width: 800, height: 600 };
   const shapeCenter = { x: 400, y: 400 };
   const result = computeInputPosition(handleRect, hostRect, shapeCenter);
-  // vec = (-100, 0), unit = (-1, 0), offset ≈ 49.106
-  // pillCenter = (300 - 49.106, 400) = (250.894, 400)
-  // pillTopLeft = (250.894 - 30, 400 - 14) = (220.894, 386)
-  assert.ok(Math.abs(result.left - 220.894) < 0.01, `expected left ≈ 220.894, got ${result.left}`);
+  // unit = (-1, 0), proj = 30, d = 46
+  // pillCenter = (300 - 46, 400) = (254, 400)
+  // pillTopLeft = (254 - 30, 400 - 14) = (224, 386)
+  assert.ok(Math.abs(result.left - 224) < 0.01, `expected left ≈ 224, got ${result.left}`);
   assert.ok(Math.abs(result.top - 386) < 0.01, `expected top ≈ 386, got ${result.top}`);
   // Sanity: pill is to the left of the handle in screen coords
   assert.ok(result.left + 60 < handleRect.left, 'pill right must be left of handle left');
@@ -196,11 +212,75 @@ test('computeInputPosition radial: shape at 45° (off-axis) — pill on diagonal
   const hostRect = { left: 0, top: 0, width: 800, height: 600 };
   const shapeCenter = { x: 400, y: 400 };
   const result = computeInputPosition(handleRect, hostRect, shapeCenter);
-  // unit ≈ (0.7071, -0.7071), offset ≈ 49.106
-  // pillCenter ≈ (470.71 + 34.72, 329.29 - 34.72) ≈ (505.43, 294.57)
-  // pillTopLeft ≈ (475.43, 280.57)
-  assert.ok(Math.abs(result.left - 475.43) < 0.5, `expected left ≈ 475.43, got ${result.left}`);
-  assert.ok(Math.abs(result.top - 280.57) < 0.5, `expected top ≈ 280.57, got ${result.top}`);
+  // unit ≈ (0.7071, -0.7071)
+  // proj = 0.7071*30 + 0.7071*14 = 0.7071 * 44 ≈ 31.114
+  // d = 47.114
+  // pillCenter ≈ (470.71 + 0.7071*47.114, 329.29 - 0.7071*47.114)
+  //            ≈ (470.71 + 33.317, 329.29 - 33.317)
+  //            ≈ (504.027, 295.973)
+  // pillTopLeft ≈ (474.027, 281.973)
+  assert.ok(Math.abs(result.left - 474.027) < 0.5, `expected left ≈ 474.027, got ${result.left}`);
+  assert.ok(Math.abs(result.top - 281.973) < 0.5, `expected top ≈ 281.973, got ${result.top}`);
+});
+
+// -- computeInputPosition edge-gap invariant (support function correctness) --
+//
+// The user's contract: "Whatever distance we have when it's on top of the
+// shape, we want that same distance anywhere around the shape." The support
+// function gives an EXACT 16px gap at all 4 cardinals, and a slightly larger
+// gap at off-axis directions (max ~20px at the diagonals — accepted).
+
+test('computeInputPosition edge-gap: at 0° the pill TOP edge is exactly 16px from handle center', () => {
+  const handleRect = { left: 388, top: 300, width: 24, height: 24 };  // handleCenter = (400, 312)
+  const hostRect = { left: 0, top: 0, width: 800, height: 600 };
+  const shapeCenter = { x: 400, y: 400 };
+  const r = computeInputPosition(handleRect, hostRect, shapeCenter);
+  const gap = minDistPointToRect(400, 312, r.left, r.top, 60, 28);
+  assert.ok(Math.abs(gap - 16) < 0.01, `expected edge gap = 16, got ${gap}`);
+});
+
+test('computeInputPosition edge-gap: at 90° the pill LEFT edge is exactly 16px from handle center', () => {
+  const handleRect = { left: 488, top: 388, width: 24, height: 24 };  // handleCenter = (500, 400)
+  const hostRect = { left: 0, top: 0, width: 800, height: 600 };
+  const shapeCenter = { x: 400, y: 400 };
+  const r = computeInputPosition(handleRect, hostRect, shapeCenter);
+  const gap = minDistPointToRect(500, 400, r.left, r.top, 60, 28);
+  assert.ok(Math.abs(gap - 16) < 0.01, `expected edge gap = 16, got ${gap}`);
+});
+
+test('computeInputPosition edge-gap: at 180° the pill BOTTOM edge is exactly 16px from handle center', () => {
+  const handleRect = { left: 388, top: 488, width: 24, height: 24 };  // handleCenter = (400, 500)
+  const hostRect = { left: 0, top: 0, width: 800, height: 600 };
+  const shapeCenter = { x: 400, y: 400 };
+  const r = computeInputPosition(handleRect, hostRect, shapeCenter);
+  const gap = minDistPointToRect(400, 500, r.left, r.top, 60, 28);
+  assert.ok(Math.abs(gap - 16) < 0.01, `expected edge gap = 16, got ${gap}`);
+});
+
+test('computeInputPosition edge-gap: at 270° the pill RIGHT edge is exactly 16px from handle center', () => {
+  const handleRect = { left: 288, top: 388, width: 24, height: 24 };  // handleCenter = (300, 400)
+  const hostRect = { left: 0, top: 0, width: 800, height: 600 };
+  const shapeCenter = { x: 400, y: 400 };
+  const r = computeInputPosition(handleRect, hostRect, shapeCenter);
+  const gap = minDistPointToRect(300, 400, r.left, r.top, 60, 28);
+  assert.ok(Math.abs(gap - 16) < 0.01, `expected edge gap = 16, got ${gap}`);
+});
+
+test('computeInputPosition edge-gap: at 45° (diagonal) the pill nearest-edge gap is in [16, 22]', () => {
+  // The 45° corner case: support function gives proj ≈ 31.1, so pillCenter
+  // is ~47.1 from handle center along the unit vector. The actual minimum
+  // distance from handle center to the pill rectangle is slightly larger
+  // than 16 because the pill's CORNER is what's nearest to the handle
+  // (not its edge). This is the support function being correct.
+  const handleCenterX = 400 + 70.71;
+  const handleCenterY = 400 - 70.71;
+  const handleRect = { left: handleCenterX - 12, top: handleCenterY - 12, width: 24, height: 24 };
+  const hostRect = { left: 0, top: 0, width: 800, height: 600 };
+  const shapeCenter = { x: 400, y: 400 };
+  const r = computeInputPosition(handleRect, hostRect, shapeCenter);
+  const gap = minDistPointToRect(handleCenterX, handleCenterY, r.left, r.top, 60, 28);
+  assert.ok(gap >= 16, `expected edge gap >= 16, got ${gap}`);
+  assert.ok(gap <= 22, `expected edge gap <= 22, got ${gap}`);
 });
 
 test('computeInputPosition radial: degenerate case (handle exactly at shape center) falls back to above', () => {
