@@ -69,6 +69,23 @@ items use the same code paths and finish the editing interaction model.
 **Context:** When user places a shape near the page edge and rotates it, the mtr rotation handle can go off-screen. Currently the user must move the shape away from the edge to re-grab the handle. Desired flow: place shape near edge → rotate → if handle would be off-screen, it relocates to the opposite side of the shape (or nearest visible side) so the user can re-grab it without moving the shape first. Pill follows the new handle position.
 **Scope:** SVGSelectionOverlay (handle placement logic), not RotationInputField (pill already clamps correctly).
 
+### Rotation pill reappears on hover after returning from edit mode via click-off
+
+**Source:** 12-02-UAT Gap 3 (discovered during 12-03 UAT re-run, 2026-04-14)
+**Priority:** v2.2+ polish (minor severity — workaround exists)
+**Symptom:** Double-click shape → enter edit mode → click off shape → mini toolbar dismisses → user back in select mode → hover rotation handle → pill does NOT appear. Workaround: fully deselect + reselect shape.
+**Log evidence:** `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log` — hover-intent effect RUN selectedIds.size=1 → attaching listeners to handleEl, but NO subsequent pointerenter on mtr fires on hover until after the deselect/reselect cycle.
+**Suspected root cause:** mtr handle DOM element stale after React reconciles overlay post-edit-commit. Hover-intent effect in `SVGAnnotationLayer.jsx` attaches listeners on a handle ref that no longer corresponds to the visible element. Likely the dep array needs to re-run after edit-commit triggers an `annotations` identity change, or the ref resolution needs a tick delay.
+**Scope:** `src/components/SVGAnnotationLayer.jsx` hover-intent effect only. Out of scope for 12-03 (strictly commit-path fix). Filed from Phase 12 close as carry-forward.
+
+### Rotation handle fully visible when rotated shape enters edit mode
+
+**Source:** 12-02-UAT Gap 4 (discovered during 12-03 UAT re-run, 2026-04-14)
+**Priority:** v2.2+ polish (minor severity)
+**Symptom:** Rotate shape to non-zero angle → double-click to enter edit mode → mini toolbar renders correctly on top → BUT mtr rotation handle is partially clipped by an invisible boundary. Does NOT happen at 0° rotation — only when shape is pre-rotated.
+**Suspected root cause:** `FabricEditCanvas` or its wrapper container has `overflow: hidden` / tight clip-path boundary that crops content outside the shape's local bounding box. When shape is rotated, rotation handle geometry extends into the clipped region.
+**Scope:** `src/components/FabricEditCanvas.jsx` container CSS/overflow rules, and SVGSelectionOverlay render-order + z-index during edit mode. Out of scope for 12-03. Filed from Phase 12 close as carry-forward.
+
 **Momentum:** Shape edit handles → rotation precision → zoom range. Each builds
 on the same interaction surface. After this, shape editing is feature-complete
 and we move to prop-flip wins.

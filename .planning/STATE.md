@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Shape Edit Polish & Foundation Wins
-status: in_progress
-stopped_at: Plan 12-03 SUMMARY.md written; Gap 1 from 12-02-UAT resolved; 2 new pre-existing 12-02 gaps surfaced during 12-03 UAT re-run (Gaps 3 and 4 in 12-02-UAT.md) — need triage next session; awaiting /gsd:verify-work + 12-RECONCILIATION.md before phase/milestone close
-last_updated: "2026-04-14T16:06:49.000Z"
-last_activity: 2026-04-14 — Plan 12-03 closed with SUMMARY.md (EDIT-12 gap closure: applyOptimisticRotation helper makes typed-commit path visually indistinguishable from drag-rotate; user confirmed "100% approved" on Tests 6 and 9 during UAT re-run at commits ecd51419 and 70189b0f)
+status: complete
+stopped_at: Phase 12 CLOSED (DONE_WITH_CONCERNS). 12-VERIFICATION.md + 12-RECONCILIATION.md written. EDIT-11, EDIT-12, and ZOOM-09 all Complete in REQUIREMENTS.md. Gaps 3 and 4 backlogged to v2.2+ per user Option A. Milestone v2.1 complete — ready for next milestone.
+last_updated: "2026-04-14T17:00:00.000Z"
+last_activity: 2026-04-14 — Phase 12 closed via Option A; reconciliation written; stale EDIT-11/ZOOM-09 REQUIREMENTS.md checkboxes flipped; Gaps 3 and 4 filed to FEATURE-BACKLOG.md Stage 0
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
   completed_plans: 3
-  percent: 95
+  percent: 100
 ---
 
 # Project State
@@ -21,27 +21,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox
-**Current focus:** v2.1 Phase 12 — Shape Edit Polish (soft Shift-snap, rotation degree input, zoom floor 10%)
+**Current focus:** v2.1 CLOSED (2026-04-14). Awaiting v2.2 milestone scoping — see FEATURE-BACKLOG.md Stage 0 (Gaps 3/4 carry-forward) or Stage 1 (prop-flip wins).
 
 ## Current Position
 
-Phase: 12 of 12 (Shape Edit Polish) — v2.1 milestone
-Plan: 3 of 3 complete (12-01, 12-02, and 12-03 gap-closure closed; phase awaiting verify-work + reconciliation)
-Status: Plan 12-03 SUMMARY.md written at 2026-04-14T16:06:49Z; Gap 1 from 12-02-UAT resolved (Tests 6 and 9 flipped issue → pass, user confirmed "100% approved"); 2 new pre-existing 12-02 gaps surfaced during UAT re-run (Gaps 3 and 4 in 12-02-UAT.md) — need triage next session. Next steps are /gsd:verify-work → 12-RECONCILIATION.md (must note EDIT-12 delivered WITH open polish gaps) → mark Phase 12 complete → close milestone v2.1
-Last activity: 2026-04-14 — Plan 12-03 closed; tests 113/113 green at 70189b0f; user-confirmed UAT re-run pass on Tests 6 and 9
+Phase: 12 of 12 CLOSED (Shape Edit Polish) — v2.1 milestone COMPLETE
+Plan: 3 of 3 complete (12-01, 12-02, 12-03 all closed; verify-work + reconciliation written)
+Status: Phase 12 closed 2026-04-14 (DONE_WITH_CONCERNS). All 3 v2.1 requirements shipped. User chose Option A: close phase, backlog Gaps 3 and 4 to v2.2+. Milestone v2.1 ready to archive. Next session starts a new milestone (planning phase).
+Last activity: 2026-04-14 — Phase 12 closed; 12-RECONCILIATION.md written; REQUIREMENTS.md EDIT-11/ZOOM-09 traceability corrected; Gaps 3 and 4 filed to FEATURE-BACKLOG.md Stage 0
 
-Progress: [█████████▌] 95% of Phase 12 (all 3 plans done; verify-work + reconciliation remain; 2 new pre-existing 12-02 gaps await triage)
+Progress: [██████████] 100% of Phase 12 (all 3 plans done; verification + reconciliation shipped; milestone v2.1 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9 (v1.0 + v2.0)
-- Phase 8: 2 plans, Phase 9: 3 plans, Phase 10: 2 plans, Phase 11: 2 plans
+- Total plans completed: 12 (v1.0 + v2.0 + v2.1)
+- Phase 8: 2 plans, Phase 9: 3 plans, Phase 10: 2 plans, Phase 11: 2 plans, Phase 12: 3 plans
 
 **v2.1 Phase 12 (planned + gap-closure):**
 - Plan 12-01: EDIT-11 + ZOOM-09 atomic bundle (~8 LOC, 3 files, low risk) — COMPLETE
-- Plan 12-02: EDIT-12 rotation degree input field (~60-120 LOC, new UI, moderate risk) — COMPLETE with 1 UAT gap
-- Plan 12-03: Gap closure for 12-02 Gap 1 (optimistic rotation paint) — COMPLETE, ~147 LOC across 2 files, user-confirmed
+- Plan 12-02: EDIT-12 rotation degree input field (~830 LOC across new component + helpers + tests + wiring) — COMPLETE with 1 UAT gap
+- Plan 12-03: Gap closure for 12-02 Gap 1 (optimistic rotation paint) — COMPLETE, ~147 LOC across 2 files, user-confirmed "100% approved"
+
+**Tests:** 113/113 green at phase close.
 
 ## Accumulated Context
 
@@ -72,15 +74,21 @@ Progress: [█████████▌] 95% of Phase 12 (all 3 plans done; ve
 
 ### Blockers/Concerns
 
-- None. REQUIREMENTS.md committed, ROADMAP.md written, ready to proceed.
+- None. Milestone v2.1 closed. Two minor polish gaps (Gaps 3 and 4) are backlogged to v2.2+ via FEATURE-BACKLOG.md Stage 0 per user Option A.
 
 ## Session Continuity
 
-Last session: 2026-04-14T16:06:49.000Z
-Stopped at: Plan 12-03 SUMMARY.md written; all 3 plans (12-01, 12-02, 12-03) closed; Gap 1 from 12-02-UAT resolved by 12-03; 2 new pre-existing 12-02 gaps surfaced during UAT re-run (Gaps 3 and 4) — need triage next session. Phase 12 awaits verify-work + reconciliation.
-Resume file: .planning/phases/12-shape-edit-polish/12-03-SUMMARY.md + 12-02-UAT.md (updated with new gaps)
-Next action: Run /gsd:verify-work for Phase 12 (15 EDIT-12 Given/When/Then bullets from 12-CONTEXT.md lines 196-212) → triage Gaps 3 and 4 from 12-02-UAT.md (either spin a 12-04 gap-closure plan or defer to 13.x) → write 12-RECONCILIATION.md covering all 3 plans + carry-forward lessons (must note EDIT-12 delivered WITH open polish gaps) → mark Phase 12 complete → close milestone v2.1. Note: unrelated counter-tool WIP is sitting uncommitted in the working tree; do NOT touch — that's the parallel session's lane (feedback_no_rotation_input_field.md).
+Last session: 2026-04-14T17:00:00.000Z
+Stopped at: Phase 12 and milestone v2.1 closed. 12-RECONCILIATION.md written covering all 3 plans + boundary check + carry-forward lessons. REQUIREMENTS.md EDIT-11 and ZOOM-09 flipped Complete. FEATURE-BACKLOG.md Stage 0 extended with Gaps 3 and 4 as v2.2+ polish items. 12-VERIFICATION.md preserved with `human_decision` annotation for audit trail.
+Resume file: .planning/phases/12-shape-edit-polish/12-RECONCILIATION.md (companion: 12-VERIFICATION.md)
+Next action: Start the next milestone. Options from `.planning/FEATURE-BACKLOG.md`:
+  1. Stage 0 carry-forward: Gaps 3 and 4 (SVGAnnotationLayer hover-intent stale ref + FabricEditCanvas clip/overflow) — small, directly continues Phase 12 momentum
+  2. Stage 1 "Prop-flip" Wins — minutes of effort each, dramatic surface-area improvement
+  3. Stage 2 QA Verifications — low-risk validation of existing exports / unsupported-notice path
+  Run `/gsd:discuss-milestone` or `/gsd:plan-milestone` when ready to scope v2.2.
 
-New gaps surfaced 2026-04-14 during 12-03 UAT re-run (pre-existing 12-02 bugs, NOT 12-03 regressions):
+Note: the parallel counter-tool session's uncommitted WIP in src/App.jsx, src/components/FabricEditCanvas.jsx, src/utils/counterNumbering.js, src/hooks/useDatabase.js, and src/utils/svgAnnotationRenderers.jsx remains out of Phase 12's lane and should NOT be touched when planning v2.2 unless the counter-session has closed out first.
+
+Carry-forward from Phase 12 (for v2.2+ triage):
 - Gap 3 (minor): Rotation pill doesn't appear on hover after returning from edit mode via click-off. Suspected: hover-intent effect in SVGAnnotationLayer.jsx has stale handleEl ref after React reconciles overlay post-edit-commit. Log evidence at /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log.
 - Gap 4 (minor): Rotation handle (mtr) clipped when a rotated shape enters edit mode. Suspected: FabricEditCanvas container overflow: hidden / tight clip-path cuts off mtr handle geometry. Does NOT happen at 0° rotation.

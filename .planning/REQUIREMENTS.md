@@ -64,13 +64,13 @@ Requirements for Shape Edit Polish (Stage 0 of v2.1 "Shape Edit Polish & Foundat
 
 ### Canvas Editing
 
-- [ ] **EDIT-11**: User can hold Shift during SVG shape rotation to soft-snap the rotation angle to the nearest 45° increment (0°/45°/90°/135°/180°/225°/270°/315°) when the free angle is within 3° of the increment. Outside the 3° threshold, rotation remains free even while Shift is held (so Shift-at-23° stays at 23°, Shift-at-43° snaps to 45°, Shift-at-41° stays at 41°). Releasing Shift always returns to free rotation. Applies to the SVG interaction path only; Fabric edit canvas shape rotation is commit-lossy and out of scope.
+- [x] **EDIT-11**: User can hold Shift during SVG shape rotation to soft-snap the rotation angle to the nearest 45° increment (0°/45°/90°/135°/180°/225°/270°/315°) when the free angle is within 3° of the increment. Outside the 3° threshold, rotation remains free even while Shift is held (so Shift-at-23° stays at 23°, Shift-at-43° snaps to 45°, Shift-at-41° stays at 41°). Releasing Shift always returns to free rotation. Applies to the SVG interaction path only; Fabric edit canvas shape rotation is commit-lossy and out of scope.
 
 - [x] **EDIT-12**: When a shape is selected and a rotation drag is active (or when hovering the rotation handle), the user sees an inline numeric input field near the rotation handle displaying the current rotation angle in degrees. The user can type an exact value, commit with Enter or blur to apply the rotation, or cancel with Escape. Input values are normalized to `[0, 360)` and applied atomically to the annotation angle. Positioning tracks the handle during rotation and remains on-screen at zoom ≥ 25%. **Delivered with 2 open polish gaps** (Gaps 3 and 4 in `.planning/phases/12-shape-edit-polish/12-02-UAT.md`, discovered during 12-03 UAT re-run, both pre-existing 12-02 bugs): pill doesn't reappear on hover after returning from edit mode via click-off, and rotation handle is clipped when a rotated shape enters edit mode. Gap 1 (Enter/Arrow commit lag) was resolved by Plan 12-03 via `applyOptimisticRotation` helper.
 
 ### Zoom & Integration
 
-- [ ] **ZOOM-09**: User can zoom the PDF down to 10% via every zoom entry point (toolbar buttons, keyboard shortcuts, scroll wheel, zoom input box, fit-to-page/fit-to-width) without the app silently re-clamping the floor to a higher value.
+- [x] **ZOOM-09**: User can zoom the PDF down to 10% via every zoom entry point (toolbar buttons, keyboard shortcuts, scroll wheel, zoom input box, fit-to-page/fit-to-width) without the app silently re-clamping the floor to a higher value.
 
 ## Future Requirements
 
@@ -144,9 +144,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ZOOM-06 | Phase 11 | Complete |
 | ZOOM-07 | Phase 11 | Complete |
 | ZOOM-08 | Phase 11 | Complete |
-| EDIT-11 | Phase 12 | Pending |
+| EDIT-11 | Phase 12 | Complete |
 | EDIT-12 | Phase 12 | Complete |
-| ZOOM-09 | Phase 12 | Pending |
+| ZOOM-09 | Phase 12 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 39 total, 39 mapped, 0 unmapped
@@ -154,4 +154,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-23 (v2.0), 2026-04-12 (v2.1)*
-*Last updated: 2026-04-14 — EDIT-12 marked Complete after Plan 12-03 gap closure (delivered with 2 open polish gaps, see checkbox note)*
+*Last updated: 2026-04-14 — Phase 12 close: EDIT-11 and ZOOM-09 checkboxes + traceability flipped Complete (were stale Pending; implementation shipped in Plan 12-01 at commit df43b0f8). EDIT-12 remains Complete with delivered-with-gaps note from prior update. All v2.1 requirements now Complete.*

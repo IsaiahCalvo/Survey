@@ -4,7 +4,7 @@
 
 - Shipped **v1.0 Zoom Flicker Fix** - Phases 1-3 (shipped 2026-03-19), Phases 4-7 superseded/deferred
 - Shipped **v2.0 SVG Migration** - Phases 8-11 (shipped 2026-04-10)
-- Current **v2.1 Shape Edit Polish & Foundation Wins** - Phase 12 (planning)
+- Shipped **v2.1 Shape Edit Polish & Foundation Wins** - Phase 12 (shipped 2026-04-14, DONE_WITH_CONCERNS)
 
 ## Phases
 
@@ -41,7 +41,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Milestone Goal:** Finish the shape editing interaction model started in the post-v2.0 cleanup branch — add rotation precision (soft Shift-snap + exact degree input) and extend the usable zoom range to 10% so shape editing feels complete before moving on to future foundation wins.
 
-- [ ] **Phase 12: Shape Edit Polish** - Soft Shift-snap at 45° with 3° threshold, rotation degree input field for exact angles, zoom floor lowered to 10%
+- [x] **Phase 12: Shape Edit Polish** - Soft Shift-snap at 45° with 3° threshold, rotation degree input field for exact angles, zoom floor lowered to 10% (completed 2026-04-14, DONE_WITH_CONCERNS — 2 minor polish gaps deferred to v2.2+)
 
 ## Phase Details
 
@@ -149,7 +149,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12
 | 9. SVG Selection and Interaction | v2.0 | 3/3 | Complete | 2026-04-10 |
 | 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 2/2 | Complete | 2026-03-27 |
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 2/2 | Complete | 2026-04-02 |
-| 12. Shape Edit Polish | 3/3 | Complete   | 2026-04-14 | - |
+| 12. Shape Edit Polish | v2.1 | 3/3 | Complete | 2026-04-14 |
 
 ---
-*Last updated: 2026-04-14 — Plan 12-03 (EDIT-12 gap closure) complete; all 3 plans closed; Phase 12 awaits verify-work + 12-RECONCILIATION.md. Two new pre-existing 12-02 polish gaps surfaced during 12-03 UAT re-run — await triage.*
+*Last updated: 2026-04-14 — Phase 12 CLOSED (DONE_WITH_CONCERNS). All 3 plans (12-01, 12-02, 12-03) delivered; EDIT-11, EDIT-12, and ZOOM-09 shipped; 12-VERIFICATION.md and 12-RECONCILIATION.md written. EDIT-12 delivered with 2 minor polish gaps (Gaps 3 and 4) backlogged to v2.2+ per user Option A. Milestone v2.1 ready to close.*
