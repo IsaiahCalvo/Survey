@@ -86,6 +86,18 @@ const SVGSelectionOverlay = memo(({
   // SVG root has pointerEvents:none, but the contract attribute stays for
   // future consistency).
   if (isEditing) {
+    // TEMP UAT probe (revert after 13-02 approval) — logs when edit-mode
+    // mtr branch is rendering for a rotated shape.
+    // eslint-disable-next-line no-console
+    console.log('[EDIT-14 probe] SVGSelectionOverlay edit-mode mtr branch rendering', {
+      isEditing,
+      angle,
+      cx,
+      cy,
+      mtrX: handles.mtr.x,
+      mtrY: handles.mtr.y,
+      is,
+    });
     return (
       <g
         className="svg-selection-overlay svg-selection-overlay--edit-mtr"
