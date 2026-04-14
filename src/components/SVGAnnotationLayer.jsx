@@ -1085,20 +1085,6 @@ const SVGAnnotationLayer = memo(({
         // below at :~1179, not in scope yet. getAnnotationBBox propagates
         // obj.angle ?? 0 so these are equivalent for this check.
         const editAngle = obj.angle || 0;
-        // TEMP UAT probe (revert after 13-02 approval) — logs when the narrowed
-        // border-flush short-circuit is evaluated during edit mode. If editAngle !== 0,
-        // the short-circuit now passes through instead of returning null, and
-        // SVGSelectionOverlay will render in its isEditing=true branch.
-        if (isBeingEditedNow && editIsBorderFlush) {
-          // eslint-disable-next-line no-console
-          console.log('[EDIT-14 probe] short-circuit check', {
-            selectedIndex,
-            editObjType,
-            editAngle,
-            shortCircuits: editAngle === 0,
-            fallsThrough: editAngle !== 0,
-          });
-        }
         if (isBeingEditedNow && editIsBorderFlush && editAngle === 0) return null;
 
         // Counter selection (not in edit mode): render only the rotation handle at the
