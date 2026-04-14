@@ -69,6 +69,11 @@ const INPUT_HEIGHT = 28;
 const GAP_ABOVE = 16;
 const EDGE_MARGIN = 4;
 
+// Debug logging toggle. Set to false to silence all [RotationInputField] logs.
+// Live-angle log is throttled to ~100ms so it doesn't spam the console at 60fps.
+const LOG = true;
+const LIVE_LOG_THROTTLE_MS = 100;
+
 function RotationInputField({
   svgRef,             // React ref to the SVGAnnotationLayer's root <svg>
   hostEl,             // The DOM <div> that hosts SVGAnnotationLayer (portal target)
@@ -93,6 +98,10 @@ function RotationInputField({
   // jank during rotation drag (Pitfall 11). Only the handle rect needs to be
   // recomputed on each pointermove; the host div doesn't move during a drag.
   const cachedHostRectRef = useRef(null);
+  // Debug-only refs: throttle live-angle log + remember whether we already
+  // logged the "drag started" event for the current drag session.
+  const lastLiveLogTsRef = useRef(0);
+  const dragLoggedRef = useRef(false);
 
   // Recompute position when angle changes (drives "input follows handle during
   // drag") OR when visibility transitions hidden → visible (one-shot position).
@@ -132,6 +141,36 @@ function RotationInputField({
       GAP_ABOVE,
       EDGE_MARGIN
     );
+
+    // Debug log 2 — position computation. Throttled with the same gate as
+    // the live-angle log so a 60fps rotation drag doesn't spam the console.
+    if (LOG) {
+      const now = Date.now();
+      const handleCx = (handleRect.left + handleRect.width / 2).toFixed(1);
+      const handleCy = (handleRect.top + handleRect.height / 2).toFixed(1);
+      const sc = shapeCenterScreen
+        ? `(${shapeCenterScreen.x.toFixed(1)}, ${shapeCenterScreen.y.toFixed(1)})`
+        : 'null';
+      let vec = 'n/a';
+      let unit = 'n/a';
+      if (shapeCenterScreen) {
+        const vx = parseFloat(handleCx) - shapeCenterScreen.x;
+        const vy = parseFloat(handleCy) - shapeCenterScreen.y;
+        const len = Math.hypot(vx, vy);
+        vec = `(${vx.toFixed(1)}, ${vy.toFixed(1)})`;
+        if (len > 0.0001) {
+          unit = `(${(vx / len).toFixed(3)}, ${(vy / len).toFixed(3)})`;
+        }
+      }
+      // Always log on visibility transition (lastLiveLogTsRef==0), throttle otherwise.
+      const shouldLog = !isRotating || (now - lastLiveLogTsRef.current >= LIVE_LOG_THROTTLE_MS);
+      if (shouldLog) {
+        console.log(
+          `[RotationInputField] position handle=(${handleCx}, ${handleCy}) shapeCenter=${sc} vec=${vec} unit=${unit} pillTopLeft=(${newPos.left.toFixed(1)}, ${newPos.top.toFixed(1)})`
+        );
+      }
+    }
+
     setPosition(newPos);
   }, [angle, isVisible, isRotating, svgRef, hostEl, shapeCenterViewBox]);
 
@@ -142,6 +181,38 @@ function RotationInputField({
       cachedHostRectRef.current = null;
     }
   }, [isVisible]);
+
+  // Debug log 1 — mount / unmount transition tied to the visibility gate.
+  useEffect(() => {
+    if (!LOG) return;
+    if (isVisible) {
+      console.log(`[RotationInputField] mount angle=${Math.round(angle)} visible=true annotationIndex=${annotationIndex}`);
+    } else {
+      console.log(`[RotationInputField] unmount visible=false`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVisible]);
+
+  // Debug log 6 + 7 — track rotation drag start (one-shot per drag session)
+  // and live-angle updates (throttled to LIVE_LOG_THROTTLE_MS).
+  useEffect(() => {
+    if (!LOG) return;
+    if (isRotating) {
+      if (!dragLoggedRef.current) {
+        dragLoggedRef.current = true;
+        console.log(`[RotationInputField] drag started, live-tracking angle`);
+      }
+      const now = Date.now();
+      if (now - lastLiveLogTsRef.current >= LIVE_LOG_THROTTLE_MS) {
+        lastLiveLogTsRef.current = now;
+        console.log(`[RotationInputField] live angle=${Math.round(angle)} (integer rounded)`);
+      }
+    } else if (dragLoggedRef.current) {
+      // Drag just ended — reset the one-shot flag for next session.
+      dragLoggedRef.current = false;
+      console.log(`[RotationInputField] drag ended`);
+    }
+  }, [isRotating, angle]);
 
   // Drag-wins rule (Pitfall 9): when isRotating becomes true, clear any
   // pending typed value so the displayed value snaps back to the live drag
@@ -196,6 +267,12 @@ function RotationInputField({
     e.stopPropagation();
     if (e.nativeEvent && typeof e.nativeEvent.stopImmediatePropagation === 'function') {
       e.nativeEvent.stopImmediatePropagation();
+    }
+
+    // Debug log 4 — every keydown the input sees, with the stopPropagation
+    // confirmation so the user can verify the bubble-block is actually firing.
+    if (LOG) {
+      console.log(`[RotationInputField] keydown key=${e.key} stopPropagation=true`);
     }
 
     if (e.key === 'Enter') {
@@ -258,10 +335,19 @@ function RotationInputField({
 
   const handleFocus = useCallback(() => {
     setIsFocused(true);
+    // Debug log 3 — focus enter; user should see this once per click-into.
+    if (LOG) {
+      console.log(`[RotationInputField] focus — isolating keyboard`);
+    }
   }, []);
 
   const handleBlur = useCallback(() => {
     setIsFocused(false);
+    // Debug log 5 — focus leave; user should see this on Tab-out, click-away,
+    // Enter (which calls inputRef.current?.blur()), or Escape.
+    if (LOG) {
+      console.log(`[RotationInputField] blur — resuming global keys`);
+    }
     // Figma/Excalidraw convention: blur commits the typed value (not cancels).
     commitTyped();
   }, [commitTyped]);
