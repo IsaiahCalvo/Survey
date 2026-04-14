@@ -25,12 +25,13 @@ to v2.2+ per user Option A. See MILESTONES.md and
 
 ## Current Milestone: v2.2 Rotation Handle Polish
 
-**Goal:** Close out the rotation interaction story — fix the two Phase 12 carry-forward gaps and, if it slots cleanly, the off-screen rotation handle relocation feature — so shape editing feels edge-to-edge complete before moving to Stage 1 prop-flip wins.
+**Goal:** Close out the rotation interaction story by fixing the two Phase 12 carry-forward gaps so shape editing feels edge-to-edge complete before moving to Stage 1 prop-flip wins.
 
 **Target features:**
-- Rotation pill reappears on hover after returning from edit mode via click-off (Gap 3, carry-forward)
-- Rotation handle (mtr) not clipped when a pre-rotated shape enters edit mode (Gap 4, carry-forward)
-- Rotation handle relocates to opposite side of shape when off-screen (Gap 2, conditional — include only if it slots cleanly into the same phase)
+- Rotation pill re-arms on hover after returning from edit mode via click-off (Gap 3, carry-forward)
+- Rotation handle (mtr) fully visible when a pre-rotated shape enters edit mode (Gap 4, carry-forward)
+
+**Gap 2 (off-screen handle relocation) deferred** per 2026-04-14 research verdict: 9-tool industry survey found zero tools relocate rotation handles (universal UX convention), and v2.1's typed-degree pill already solves ~95% of the underlying pain. Closed as `wontfix_superseded_by_typed_input`.
 
 ## Requirements
 
@@ -57,9 +58,8 @@ to v2.2+ per user Option A. See MILESTONES.md and
 
 ### Active (v2.2 Rotation Handle Polish)
 
-- [ ] Rotation pill reappears on hover after returning from edit mode via click-off (Gap 3, carry-forward from v2.1)
-- [ ] Rotation handle (mtr) not clipped when pre-rotated shape enters edit mode (Gap 4, carry-forward from v2.1)
-- [ ] Rotation handle relocates to opposite side of shape when off-screen, pill follows (Gap 2, conditional — only if cheap)
+- [ ] **EDIT-13**: Rotation pill re-arms on hover after returning from edit mode via click-off (Gap 3, carry-forward from v2.1)
+- [ ] **EDIT-14**: Rotation handle (mtr) fully visible when pre-rotated shape enters edit mode (Gap 4, carry-forward from v2.1)
 
 ### Out of Scope
 
@@ -71,6 +71,7 @@ to v2.2+ per user Option A. See MILESTONES.md and
 - Fabric edit canvas shape rotation snap (commit-lossy on force-zero/restore cycle) — SVG-path snap only for v2.1, Fabric-path rotation out of scope
 - Blur-commit and invalid-value revert for RotationInputField — user explicitly de-scoped during v2.1 12-02 UAT
 - SVG select-mode flip for line/arrow/path/text — only rect/circle/ellipse supported (v2.1); per-type flip semantics out of scope
+- Rotation handle relocation when off-screen — closed `wontfix_superseded_by_typed_input` (v2.2): 9-tool industry survey found zero tools relocate rotation handles; v2.1 typed-degree pill already addresses ~95% of the underlying pain
 
 ## Context
 
