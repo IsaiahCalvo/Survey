@@ -204,15 +204,41 @@ const SVGAnnotationLayer = memo(({
   }, [selectedIds, deleteSelected]);
 
   // ---------------------------------------------------------------------------
-  // EDIT-12: Hover-intent listeners on the mtr handle (Phase 12 Plan 02)
+  // EDIT-13 (Phase 13 Plan 13-01): Delegated hover-intent listeners on svgRef
   // ---------------------------------------------------------------------------
-  // Attaches DOM-level pointerenter / pointerleave handlers to the SVG mtr
-  // group via the `data-rotation-handle="mtr"` attribute (added in Task 2).
-  // Uses DOM listeners (not React) because the handle is rendered inside an
-  // SVG `<g>` and the parent doesn't directly own it — we query it after mount.
+  // Event delegation pattern: ONE pair of listeners on the stable svgRef.current
+  // (SVG root ancestor, persists across all selection / edit-mode / annotation
+  // reconciliations). Fires onOver/onOut for the mtr handle via
+  // e.target.closest('[data-rotation-handle="mtr"]') so the mtr <g> can be
+  // unmounted/remounted by React reconciliation without re-attaching listeners.
+  //
+  // Uses pointerover/pointerout (which BUBBLE per DOM Level 3 Events) rather
+  // than pointerenter/pointerleave (which do NOT bubble and never reach svgRef
+  // from descendants). The `e.relatedTarget && mtr.contains(e.relatedTarget)`
+  // guard emulates enter/leave semantics (ignore internal-subtree traversals).
+  //
+  // Replaces the Phase 12 direct-attach pattern at :232-297 which had a
+  // stale-ref bug when the mtr <g> DOM node was replaced by React reconciliation
+  // (Gap 3 from v2.1 12-VERIFICATION.md).
   useEffect(() => {
-    // Diagnostic: log every time this effect re-runs, with the trigger.
-    console.log(`[SVGAnnotationLayer] hover-intent effect RUN selectedIds.size=${selectedIds?.size}`);
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+
+    // Edit-mode gate: pill NEVER arms while the user is mid-edit. Un-arms on
+    // edit entry (clears pending open timer and any visible pill). This is the
+    // effect-top short-circuit that closes Gap 3 alongside the delegation fix.
+    if (editingAnnotationIndex != null) {
+      setRotInputVisibleDbg(false, 'in edit mode');
+      if (rotInputHoverTimerRef.current) {
+        clearTimeout(rotInputHoverTimerRef.current);
+        rotInputHoverTimerRef.current = null;
+      }
+      if (rotInputCloseTimerRef.current) {
+        clearTimeout(rotInputCloseTimerRef.current);
+        rotInputCloseTimerRef.current = null;
+      }
+      return;
+    }
 
     // UX: only show input when exactly one shape is selected. Multi-select and
     // empty selection clear timers and hide the pill (visibility gate).
@@ -229,29 +255,25 @@ const SVGAnnotationLayer = memo(({
       return;
     }
 
-    const handleEl = svgRef.current?.querySelector('[data-rotation-handle="mtr"]');
-    if (!handleEl) {
-      console.log(`[SVGAnnotationLayer] hover-intent effect — handleEl NOT FOUND, bailing`);
-      return;
-    }
+    const onOver = (e) => {
+      const mtr = e.target?.closest?.('[data-rotation-handle="mtr"]');
+      if (!mtr) return;
+      // Emulate pointerenter: fire only when the pointer crosses INTO the mtr
+      // subtree from outside. If relatedTarget is already inside mtr, this is
+      // just internal bubbling — ignore.
+      if (e.relatedTarget && mtr.contains(e.relatedTarget)) return;
 
-    console.log(`[SVGAnnotationLayer] hover-intent effect — attaching listeners to handleEl`);
-
-    const onEnter = () => {
       // Read visibility via ref (Issue 4 flicker fix) so this closure stays
       // current without forcing the effect to re-run on every visibility flip.
-      console.log(`[SVGAnnotationLayer] pointerenter on mtr — visibleRef=${rotInputVisibleRef.current} hoveredRef=${rotInputHoveredRef.current}`);
       rotInputHoveredRef.current = true;
       // Cancel any pending close timer — user came back to the handle
       if (rotInputCloseTimerRef.current) {
-        console.log(`[SVGAnnotationLayer] pointerenter — cancelling close timer`);
         clearTimeout(rotInputCloseTimerRef.current);
         rotInputCloseTimerRef.current = null;
       }
       // UX: 150ms hover-intent open delay matches tooltip conventions —
       // prevents flicker when the cursor crosses the handle without intent.
       if (!rotInputVisibleRef.current && !rotInputHoverTimerRef.current) {
-        console.log(`[SVGAnnotationLayer] pointerenter — scheduling 150ms open timer`);
         rotInputHoverTimerRef.current = setTimeout(() => {
           setRotInputVisibleDbg(true, '150ms hover-intent fired');
           rotInputHoverTimerRef.current = null;
@@ -259,12 +281,17 @@ const SVGAnnotationLayer = memo(({
       }
     };
 
-    const onLeave = () => {
-      console.log(`[SVGAnnotationLayer] pointerleave from mtr — visibleRef=${rotInputVisibleRef.current} graceTimer=${!!rotInputCloseTimerRef.current}`);
+    const onOut = (e) => {
+      const mtr = e.target?.closest?.('[data-rotation-handle="mtr"]');
+      if (!mtr) return;
+      // Emulate pointerleave: fire only when the pointer crosses OUT of the mtr
+      // subtree to something outside. If relatedTarget is still inside mtr, this
+      // is internal bubbling — ignore.
+      if (e.relatedTarget && mtr.contains(e.relatedTarget)) return;
+
       rotInputHoveredRef.current = false;
       // Cancel pending open timer if user left before 150ms elapsed
       if (rotInputHoverTimerRef.current) {
-        console.log(`[SVGAnnotationLayer] pointerleave — cancelling open timer`);
         clearTimeout(rotInputHoverTimerRef.current);
         rotInputHoverTimerRef.current = null;
       }
@@ -272,45 +299,43 @@ const SVGAnnotationLayer = memo(({
       // handle to the input pill and click into it. Only fires the actual
       // hide if the cursor still isn't over the input or handle when the
       // timer expires AND the pill input doesn't currently hold focus.
-      // The activeElement guard is the load-bearing fix: pointerenter on the
-      // portaled pill div doesn't always fire (cursor can teleport over it
-      // during a click), so hover state alone is unreliable. If the user is
-      // typing in the input, we know they're engaged regardless of hover.
+      // The activeElement guard is the load-bearing fix from Plan 12-02 Round 7:
+      // pointerenter on the portaled pill div doesn't always fire (cursor can
+      // teleport over it during a click), so hover state alone is unreliable.
+      // If the user is typing in the input, we know they're engaged regardless
+      // of hover. DO NOT REMOVE the activeElement check.
       if (rotInputVisibleRef.current && !rotInputCloseTimerRef.current) {
-        console.log(`[SVGAnnotationLayer] pointerleave — scheduling 500ms grace timer`);
         rotInputCloseTimerRef.current = setTimeout(() => {
           const ae = document.activeElement;
           const focusedInPill = !!(ae && ae.closest && ae.closest('[data-rotation-input-field]'));
           if (focusedInPill) {
-            console.log(`[SVGAnnotationLayer] grace timer expired but pill input is focused, NOT hiding`);
+            // Plan 12-02 Round 7 fix — DO NOT remove
           } else if (!rotInputHoveredRef.current) {
             setRotInputVisibleDbg(false, '500ms grace expired (mtr leave path)');
-          } else {
-            console.log(`[SVGAnnotationLayer] grace timer expired but cursor over pill, NOT hiding`);
           }
           rotInputCloseTimerRef.current = null;
         }, 500);
       }
     };
 
-    handleEl.addEventListener('pointerenter', onEnter);
-    handleEl.addEventListener('pointerleave', onLeave);
+    svgEl.addEventListener('pointerover', onOver);
+    svgEl.addEventListener('pointerout', onOut);
 
     return () => {
-      console.log(`[SVGAnnotationLayer] hover-intent effect CLEANUP — removing listeners + clearing timers`);
-      handleEl.removeEventListener('pointerenter', onEnter);
-      handleEl.removeEventListener('pointerleave', onLeave);
+      svgEl.removeEventListener('pointerover', onOver);
+      svgEl.removeEventListener('pointerout', onOut);
       if (rotInputHoverTimerRef.current) clearTimeout(rotInputHoverTimerRef.current);
       if (rotInputCloseTimerRef.current) clearTimeout(rotInputCloseTimerRef.current);
     };
     // CRITICAL: rotInputVisible is INTENTIONALLY NOT in the deps. We read it
     // via rotInputVisibleRef.current inside the closures so this effect only
-    // re-runs when selectedIds changes (a stable Set reference from
-    // useSVGInteraction). This prevents the visibility flicker loop where
-    // every setRotInputVisible(true/false) tore down and re-attached the
-    // pointerenter/pointerleave listeners, eating pointer events.
+    // re-runs when selectedIds or editingAnnotationIndex changes. This prevents
+    // the visibility flicker loop where every setRotInputVisible(true/false)
+    // tore down and re-attached the pointerover/pointerout listeners, eating
+    // pointer events. The eslint-disable below is LOAD-BEARING. Do NOT add
+    // annotations, visualTransform, or rotInputVisible to the dep array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds, setRotInputVisibleDbg]);
+  }, [selectedIds, setRotInputVisibleDbg, editingAnnotationIndex]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12: Derived state for RotationInputField props
