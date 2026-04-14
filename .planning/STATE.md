@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Shape Edit Polish & Foundation Wins
-status: completed
-stopped_at: Phase 12 PLAN.md files written (12-01 + 12-02)
-last_updated: "2026-04-13T00:30:00.000Z"
-last_activity: 2026-04-13 — Phase 12 plan-phase complete: 12-01 (EDIT-11+ZOOM-09 atomic) and 12-02 (EDIT-12 RotationInputField) written, validated, and committed-ready
+status: in_progress
+stopped_at: Plan 12-01 SUMMARY.md written; awaiting Plan 12-02 execution
+last_updated: "2026-04-14T00:00:00.000Z"
+last_activity: 2026-04-14 — Plan 12-01 closed with SUMMARY.md (EDIT-11 + ZOOM-09 atomic bundle + 9 gap bugs shipped; tests 79/79 green at 2e24ab75)
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-12)
 ## Current Position
 
 Phase: 12 of 12 (Shape Edit Polish) — v2.1 milestone
-Plan: 0 of 2 (PLAN.md files written, awaiting /gsd:execute-phase 12)
-Status: Plans 12-01 and 12-02 written, validated (frontmatter + structure both green), ready to execute
-Last activity: 2026-04-13 — Phase 12 plan-phase complete
+Plan: 1 of 2 complete (Plan 12-01 closed, Plan 12-02 pending)
+Status: Plan 12-01 SUMMARY.md written at 2026-04-14; Plan 12-02 (EDIT-12 RotationInputField) awaiting execution
+Last activity: 2026-04-14 — Plan 12-01 closed; tests 79/79 green at 2e24ab75
 
-Progress: [░░░░░░░░░░] 0% (Phase 12 not yet started)
+Progress: [█████░░░░░] 50% of Phase 12 (Plan 12-01 done, Plan 12-02 next)
 
 ## Performance Metrics
 
@@ -73,7 +73,7 @@ Progress: [░░░░░░░░░░] 0% (Phase 12 not yet started)
 
 ## Session Continuity
 
-Last session: 2026-04-13T00:30:00.000Z
-Stopped at: Phase 12 PLAN.md files written and validated
-Resume file: .planning/phases/12-shape-edit-polish/12-01-PLAN.md and 12-02-PLAN.md
-Next action: /gsd:execute-phase 12 → run Plan 12-01 (EDIT-11 + ZOOM-09) Wave 1, then Plan 12-02 (EDIT-12 RotationInputField) Wave 2 → /gsd:verify-work → write 12-RECONCILIATION.md before closing the phase
+Last session: 2026-04-14T00:00:00.000Z
+Stopped at: Plan 12-01 SUMMARY.md written; punch list empty (EDIT-11 + ZOOM-09 + 9 gap bugs shipped)
+Resume file: .planning/phases/12-shape-edit-polish/12-01-SUMMARY.md and 12-02-PLAN.md
+Next action: Start Wave 2 → Plan 12-02 (EDIT-12 RotationInputField) via /gsd:execute-phase 12 → /gsd:verify-work → write 12-RECONCILIATION.md before closing Phase 12. Note: unrelated counter-tool WIP is sitting uncommitted in the working tree; do NOT touch while executing Plan 12-02.
