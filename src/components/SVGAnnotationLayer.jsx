@@ -20,7 +20,7 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation visual + pointer wiring
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
-import React, { memo, useMemo, useEffect, useRef } from 'react';
+import React, { memo, useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import {
   renderPath,
   renderRect,
@@ -33,6 +33,7 @@ import {
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
+import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints } from '../utils/svgBoundingBox';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
@@ -132,6 +133,25 @@ const SVGAnnotationLayer = memo(({
   const isInteractive = (activeTool === 'select' || activeTool === 'text-select') && editingAnnotationIndex == null;
 
   // ---------------------------------------------------------------------------
+  // EDIT-12: RotationInputField visibility state machine (Phase 12 Plan 02)
+  // ---------------------------------------------------------------------------
+  // 3-state machine: hidden / visible / closing(grace).
+  // - Visible after 150ms hover-intent on the mtr handle, OR immediately on
+  //   active rotation drag.
+  // - 500ms grace period after cursor leaves the handle so the user can
+  //   travel to the input pill and click into it.
+  // - Hidden when no shape is selected, or after grace expiry without re-entry.
+  // Drag overrides everything (computed below as `showRotationInput`).
+  const [rotInputVisible, setRotInputVisible] = useState(false);
+  const rotInputHoverTimerRef = useRef(null);
+  const rotInputCloseTimerRef = useRef(null);
+  // UX: rotInputHoveredRef tracks whether the cursor is currently over EITHER
+  // the mtr handle OR the input pill. The 500ms close timer only fires when
+  // both are false. This bridges the gap between the SVG handle (DOM-level
+  // pointerenter listener) and the HTML input portal (React onPointerEnter).
+  const rotInputHoveredRef = useRef(false);
+
+  // ---------------------------------------------------------------------------
   // Delete key handler — delete selected annotations on Delete/Backspace
   // ---------------------------------------------------------------------------
   useEffect(() => {
@@ -147,6 +167,142 @@ const SVGAnnotationLayer = memo(({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, deleteSelected]);
+
+  // ---------------------------------------------------------------------------
+  // EDIT-12: Hover-intent listeners on the mtr handle (Phase 12 Plan 02)
+  // ---------------------------------------------------------------------------
+  // Attaches DOM-level pointerenter / pointerleave handlers to the SVG mtr
+  // group via the `data-rotation-handle="mtr"` attribute (added in Task 2).
+  // Uses DOM listeners (not React) because the handle is rendered inside an
+  // SVG `<g>` and the parent doesn't directly own it — we query it after mount.
+  useEffect(() => {
+    // UX: only show input when exactly one shape is selected. Multi-select and
+    // empty selection clear timers and hide the pill (visibility gate).
+    if (!selectedIds || selectedIds.size !== 1) {
+      setRotInputVisible(false);
+      if (rotInputHoverTimerRef.current) {
+        clearTimeout(rotInputHoverTimerRef.current);
+        rotInputHoverTimerRef.current = null;
+      }
+      if (rotInputCloseTimerRef.current) {
+        clearTimeout(rotInputCloseTimerRef.current);
+        rotInputCloseTimerRef.current = null;
+      }
+      return;
+    }
+
+    const handleEl = svgRef.current?.querySelector('[data-rotation-handle="mtr"]');
+    if (!handleEl) return;
+
+    const onEnter = () => {
+      rotInputHoveredRef.current = true;
+      // Cancel any pending close timer — user came back to the handle
+      if (rotInputCloseTimerRef.current) {
+        clearTimeout(rotInputCloseTimerRef.current);
+        rotInputCloseTimerRef.current = null;
+      }
+      // UX: 150ms hover-intent open delay matches tooltip conventions —
+      // prevents flicker when the cursor crosses the handle without intent.
+      if (!rotInputVisible && !rotInputHoverTimerRef.current) {
+        rotInputHoverTimerRef.current = setTimeout(() => {
+          setRotInputVisible(true);
+          rotInputHoverTimerRef.current = null;
+        }, 150);
+      }
+    };
+
+    const onLeave = () => {
+      rotInputHoveredRef.current = false;
+      // Cancel pending open timer if user left before 150ms elapsed
+      if (rotInputHoverTimerRef.current) {
+        clearTimeout(rotInputHoverTimerRef.current);
+        rotInputHoverTimerRef.current = null;
+      }
+      // UX: 500ms grace close gives the user time to travel ~100px from the
+      // handle to the input pill and click into it. Only fires the actual
+      // hide if the cursor still isn't over the input or handle when the
+      // timer expires.
+      if (rotInputVisible && !rotInputCloseTimerRef.current) {
+        rotInputCloseTimerRef.current = setTimeout(() => {
+          if (!rotInputHoveredRef.current) {
+            setRotInputVisible(false);
+          }
+          rotInputCloseTimerRef.current = null;
+        }, 500);
+      }
+    };
+
+    handleEl.addEventListener('pointerenter', onEnter);
+    handleEl.addEventListener('pointerleave', onLeave);
+
+    return () => {
+      handleEl.removeEventListener('pointerenter', onEnter);
+      handleEl.removeEventListener('pointerleave', onLeave);
+      if (rotInputHoverTimerRef.current) clearTimeout(rotInputHoverTimerRef.current);
+      if (rotInputCloseTimerRef.current) clearTimeout(rotInputCloseTimerRef.current);
+    };
+  }, [selectedIds, rotInputVisible]);
+
+  // ---------------------------------------------------------------------------
+  // EDIT-12: Derived state for RotationInputField props
+  // ---------------------------------------------------------------------------
+  // UX: active rotation drag forces the input visible regardless of hover
+  // state — the input live-updates with the integer-rounded angle as the
+  // shape rotates. This is the "drag wins" rule from CONTEXT.md.
+  const isRotating = !!(visualTransform?.rotate);
+  const showRotationInput = isRotating || rotInputVisible;
+
+  const selectedAnnotationIndex = (selectedIds && selectedIds.size === 1)
+    ? Array.from(selectedIds)[0]
+    : null;
+  // Live angle source: read from visualTransform during drag (single source
+  // of truth — Pitfall 9), otherwise from the persisted obj.angle.
+  const persistedAngle = (selectedAnnotationIndex !== null)
+    ? (annotations?.objects?.[selectedAnnotationIndex]?.angle || 0)
+    : 0;
+  const liveRotationAngle = isRotating ? visualTransform.rotate.angle : persistedAngle;
+
+  const handleRotationInputCommit = useCallback((annotationIndex, newAngle) => {
+    if (annotationIndex === null || annotationIndex === undefined) return;
+    const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+    if (!updatedAnnotations.objects?.[annotationIndex]) return;
+    updatedAnnotations.objects[annotationIndex].angle = newAngle;
+    onSaveAnnotations(updatedAnnotations, {
+      source: 'rotation-input',
+      action: 'rotate',
+      checkpointPolicy: 'normal',
+    });
+  }, [annotations, onSaveAnnotations]);
+
+  const handleRotationInputCancel = useCallback(() => {
+    // No-op — input handles its own state revert. Parent doesn't track
+    // typed value. Escape simply blurs the input and the displayed angle
+    // snaps back to props.angle (the persisted value).
+  }, []);
+
+  const handleRotationInputHoverChange = useCallback((hovered) => {
+    rotInputHoveredRef.current = hovered;
+    if (hovered) {
+      // Cancel grace timer if cursor entered the input itself — keeps the
+      // pill open while the user is interacting with it.
+      if (rotInputCloseTimerRef.current) {
+        clearTimeout(rotInputCloseTimerRef.current);
+        rotInputCloseTimerRef.current = null;
+      }
+    } else {
+      // UX: cursor left the input — start the same 500ms grace timer so
+      // the user can travel back to the handle without dismissing the pill.
+      // Suppressed during active rotation drag (drag overrides visibility).
+      if (rotInputVisible && !rotInputCloseTimerRef.current && !isRotating) {
+        rotInputCloseTimerRef.current = setTimeout(() => {
+          if (!rotInputHoveredRef.current) {
+            setRotInputVisible(false);
+          }
+          rotInputCloseTimerRef.current = null;
+        }, 500);
+      }
+    }
+  }, [rotInputVisible, isRotating]);
 
   // ---------------------------------------------------------------------------
   // Helper: derive spaceId from regionId by searching through spaces data
@@ -590,6 +746,7 @@ const SVGAnnotationLayer = memo(({
   });
 
   return (
+    <>
     <svg
       ref={svgRef}
       data-svg-annotation-layer={pageNumber}
@@ -773,6 +930,24 @@ const SVGAnnotationLayer = memo(({
         </>
       )}
     </svg>
+    {/* EDIT-12 (Phase 12 Plan 02): RotationInputField portals into the
+        overlay div that hosts SVGAnnotationLayer. Sits as a sibling to the
+        <svg> in the React tree so it can co-receive parent state updates,
+        but renders into svgRef.current.parentElement (resolved at runtime
+        because the ref isn't attached on the very first render — the
+        component early-returns null when hostEl is null, so safe). */}
+    <RotationInputField
+      svgRef={svgRef}
+      hostEl={svgRef.current?.parentElement || null}
+      angle={liveRotationAngle}
+      annotationIndex={selectedAnnotationIndex}
+      isRotating={isRotating}
+      isVisible={showRotationInput && selectedAnnotationIndex !== null}
+      onCommit={handleRotationInputCommit}
+      onCancel={handleRotationInputCancel}
+      onHoverChange={handleRotationInputHoverChange}
+    />
+    </>
   );
 });
 
