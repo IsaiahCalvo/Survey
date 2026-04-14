@@ -235,6 +235,13 @@ const Icon = ({ name, size = 16, color = 'currentColor', style, className }) => 
       </svg>
     ),
 
+    counter: (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <circle cx="13" cy="11" r="8" stroke={color} strokeWidth="1.5" fill="none" />
+        <text x="13" y="11" fill={color} fontSize="10" fontWeight="700" fontFamily="-apple-system, system-ui, sans-serif" textAnchor="middle" dominantBaseline="central">1</text>
+      </svg>
+    ),
+
     underline: (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M6 3V12C6 14.1217 7.87827 16 10 16C12.1217 16 14 14.1217 14 12V3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
