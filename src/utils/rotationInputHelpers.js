@@ -51,16 +51,34 @@ export function normalizeTypedDegrees(rawValue) {
  * The pill itself is always axis-aligned to the screen (upright, never
  * rotated with the shape). Only the *anchor point* rotates.
  *
- * Math:
- *   vec        = handleCenter - shapeCenter
- *   unit       = vec / |vec|                           (radial direction)
- *   halfDiag   = √((W/2)² + (H/2)²)                    (pill half-diagonal)
- *   pillCenter = handleCenter + unit * (halfDiag + gap)
- *   pillTopLeft = pillCenter - (W/2, H/2)
+ * Issue 3 second pass — edge-to-edge constant gap:
  *
- * Using the half-diagonal for the offset (rather than half-width or
- * half-height) ensures the pill's nearest edge sits ~`gapAbove` pixels from
- * the handle regardless of approach angle.
+ * The user's exact spec: "the nearest border of the rotation handle needs
+ * to maintain the same distance to the nearest border of the pill, all the
+ * way around." The previous formula used only the pill's support function
+ * (and an even earlier one used halfDiag), measuring from the handle CENTER
+ * to the pill EDGE. That made the pill closer than expected at the cardinals
+ * because the handle has its own non-zero size that wasn't being subtracted.
+ *
+ * Correct formula uses BOTH the handle's support function AND the pill's
+ * support function along the same direction:
+ *
+ *   projHandle = |ux| * handleHalfW + |uy| * handleHalfH
+ *   projPill   = |ux| * pillHalfW   + |uy| * pillHalfH
+ *   d          = projHandle + GAP_EDGE_TO_EDGE + projPill
+ *   pillCenter = handleCenter + unit * d
+ *
+ * For a 16x16 handle and 60x28 pill with GAP=16:
+ *   0°    unit (0,-1):  projHandle=8  projPill=14  d=8+16+14=38
+ *   90°   unit (1, 0):  projHandle=8  projPill=30  d=8+16+30=54
+ *   180°  unit (0, 1):  projHandle=8  projPill=14  d=38
+ *   270°  unit (-1,0):  projHandle=8  projPill=30  d=54
+ *
+ * The actual edge-to-edge distance (verified by minAABBDistance in the
+ * unit tests) is exactly GAP_EDGE_TO_EDGE at every cardinal, regardless
+ * of handle or pill aspect ratio. At off-axis directions the rectangles'
+ * corners face each other so the perpendicular gap is slightly larger —
+ * accepted, the minimum is always >= GAP_EDGE_TO_EDGE.
  *
  * After radial placement, the pill is clamped to the host div with a 4px
  * edge margin so it never renders off-screen near page edges.
@@ -76,7 +94,7 @@ export function normalizeTypedDegrees(rawValue) {
  * @param {{ x: number, y: number } | null | undefined} shapeCenter - Shape center in SCREEN coords (same frame as handleRect). Pass null for legacy axial-above behavior.
  * @param {number} inputWidth - Default 60 (UI-SPEC width token)
  * @param {number} inputHeight - Default 28 (UI-SPEC height token)
- * @param {number} gapAbove - Default 16 (UI-SPEC `md` spacing token; used as radial gap when shapeCenter is provided)
+ * @param {number} gapAbove - Default 16 (UI-SPEC `md` spacing token; used as edge-to-edge gap when shapeCenter is provided)
  * @param {number} edgeMargin - Default 4 (UI-SPEC viewport edge clamp)
  * @returns {{ left: number, top: number }} CSS-ready coordinates relative to host
  */
@@ -94,26 +112,10 @@ export function computeInputPosition(
   const handleCenterY = handleRect.top + handleRect.height / 2;
 
   if (shapeCenter && Number.isFinite(shapeCenter.x) && Number.isFinite(shapeCenter.y)) {
-    // Radial placement: pill sits along the (shapeCenter → handleCenter) ray,
-    // offset OUTWARD from the handle so its NEAREST EDGE is exactly `gapAbove`
-    // pixels from the handle center, regardless of approach angle.
-    //
-    // Math: project the pill's half-extent onto the unit direction vector
-    // (this is the support function of an axis-aligned bounding box). The
-    // result is the distance from the pill center to the pill edge in the
-    // direction the pill is being placed:
-    //
-    //   projHalfExtent = |ux| * halfW + |uy| * halfH
-    //   d              = projHalfExtent + gapAbove
-    //   pillCenter     = handleCenter + unit * d
-    //
-    // At cardinals this gives the user's expected behavior:
-    //   0°   (unit (0,-1)):  proj = 14, d = 30, top edge sits 16px above handle
-    //   90°  (unit (1, 0)):  proj = 30, d = 46, left edge sits 16px right of handle
-    //   180° (unit (0, 1)):  proj = 14, d = 30, bottom edge sits 16px below handle
-    //   270° (unit (-1,0)):  proj = 30, d = 46, right edge sits 16px left of handle
-    // At off-axis angles (e.g. 45°) the corner of the pill is slightly farther
-    // (max ~20px at the diagonals) — that's the support function being correct.
+    // Radial placement with edge-to-edge constant gap. The pill sits along
+    // the (shapeCenter → handleCenter) ray, offset OUTWARD from the handle
+    // so the perpendicular distance between the handle's nearest edge and
+    // the pill's nearest edge is exactly `gapAbove` at every cardinal angle.
     const vecX = handleCenterX - shapeCenter.x;
     const vecY = handleCenterY - shapeCenter.y;
     const len = Math.hypot(vecX, vecY);
@@ -124,18 +126,26 @@ export function computeInputPosition(
     if (len > 0.0001) {
       const unitX = vecX / len;
       const unitY = vecY / len;
-      const halfW = inputWidth / 2;
-      const halfH = inputHeight / 2;
-      // Support function of an axis-aligned box in direction (|unitX|, |unitY|)
-      const projHalfExtent = Math.abs(unitX) * halfW + Math.abs(unitY) * halfH;
-      const offset = projHalfExtent + gapAbove;
-      pillCenterScreenX = handleCenterX + unitX * offset;
-      pillCenterScreenY = handleCenterY + unitY * offset;
+      const handleHalfW = handleRect.width / 2;
+      const handleHalfH = handleRect.height / 2;
+      const pillHalfW = inputWidth / 2;
+      const pillHalfH = inputHeight / 2;
+      // Support function for each AABB in direction (|unitX|, |unitY|).
+      // projHandle = distance from handleCenter to the handle's edge along the ray.
+      // projPill   = distance from pillCenter   to the pill's   edge along the ray.
+      const projHandle = Math.abs(unitX) * handleHalfW + Math.abs(unitY) * handleHalfH;
+      const projPill = Math.abs(unitX) * pillHalfW + Math.abs(unitY) * pillHalfH;
+      // Center-to-center distance: handle's outer edge + 16px gap + pill's outer edge.
+      const d = projHandle + gapAbove + projPill;
+      pillCenterScreenX = handleCenterX + unitX * d;
+      pillCenterScreenY = handleCenterY + unitY * d;
     } else {
       // Degenerate: handle exactly at shape center (zero-size shape).
       // Fall back to "above the handle" so we never divide by zero.
+      // Use the same edge-to-edge formula at unit = (0, -1):
+      //   d = handleHalfH + gapAbove + pillHalfH
       pillCenterScreenX = handleCenterX;
-      pillCenterScreenY = handleCenterY - (inputHeight / 2 + gapAbove);
+      pillCenterScreenY = handleCenterY - ((handleRect.height / 2) + gapAbove + (inputHeight / 2));
     }
 
     // Convert pill CENTER (screen) → pill TOP-LEFT (host-relative)
