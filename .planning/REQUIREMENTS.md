@@ -54,9 +54,9 @@ Audits of both codebases: `.planning/research/COMBINED-TOOLS-AUDIT.md` and `.pla
 
 ### Shared Interaction (3)
 
-- [ ] **UX-01**: While the line, arrow, or callout tool is active and no drag is in progress, the SVG interaction layer shows a `crosshair` cursor. Default/move cursor returns when the tool deactivates or a creation drag starts.
-- [ ] **KBD-01**: `Delete` or `Backspace` while a line, arrow, or callout is selected removes it from the annotation store (with undo support). Keyboard focus must not be in a text input / editing field. Same shortcut surface as combined-tools' delete handler.
-- [ ] **CREATE-01**: During the initial click-drag creation of a line, arrow, or callout, a dashed preview is shown at 0.6 opacity following the pointer in real time. Preview uses the same color / thickness settings as the committed annotation will. Preview is removed on mouse-up and replaced by the committed annotation.
+- [x] **UX-01**: While the line, arrow, or callout tool is active and no drag is in progress, the SVG interaction layer shows a `crosshair` cursor. Default/move cursor returns when the tool deactivates or a creation drag starts.
+- [x] **KBD-01**: `Delete` or `Backspace` while a line, arrow, or callout is selected removes it from the annotation store (with undo support). Keyboard focus must not be in a text input / editing field. Same shortcut surface as combined-tools' delete handler.
+- [x] **CREATE-01**: During the initial click-drag creation of a line, arrow, or callout, a dashed preview is shown at 0.6 opacity following the pointer in real time. Preview uses the same color / thickness settings as the committed annotation will. Preview is removed on mouse-up and replaced by the committed annotation.
 
 ## Out of Scope
 

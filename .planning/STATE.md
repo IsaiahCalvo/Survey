@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: Roadmap committed. 26/26 v2.3 requirements mapped across Phases 14-18. Ready for plan decomposition.
-stopped_at: Phase 14 context gathered — all 4 gray areas locked, 2 narrow-lane waivers flagged (App.jsx + FabricDrawingCanvas)
-last_updated: "2026-04-15T15:34:50.630Z"
+stopped_at: Completed 14-02-PLAN.md — UX-01/KBD-01/CREATE-01 foundation shipped
+last_updated: "2026-04-15T18:47:55.201Z"
 last_activity: 2026-04-15 — gsd-roadmapper produced the 5-phase v2.3 roadmap.
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 5
+  completed_plans: 4
   percent: 0
 ---
 
@@ -79,6 +79,9 @@ Progress: [..........] 0% (0/5 phases complete, 0/TBD plans complete)
 - [v2.3 roadmap]: **CALL-10 lands as Phase 14, not later.** Doing SVG unification first means downstream callout polish (Phases 17-18) builds against the final render path, not a soon-to-be-deleted codepath. Risk of building against the old HTML-overlay system and re-doing the work during unification outweighs any phase-ordering convenience.
 - [v2.3 roadmap]: **lineGeometry.js is a wiring job, not a rewrite.** The math (`getCurvedPath`, `getCurveEndAngle`, `shouldSnapToLinear`, `getControlPoint`) is already ported in `src/utils/lineGeometry.js` — Phase 15 consumes it from SVG renderers + `useSVGInteraction.js` without entangling the protected PAL codepath that's currently the only live consumer.
 - [v2.3 roadmap]: **Phase 16 curvature pill reuses v2.1 patterns literally.** `RotationInputField` architecture (HTML portal + uncontrolled input + full-click-cycle stopPropagation + constant orbit radius via worst-case AABB projection) and `applyOptimisticRotation` paint pattern carry over verbatim — shape for curvature, not rewrite.
+- [Phase 14]: Plan 14-02: split SVGAnnotationLayer isInteractive into isSelectTool+isCreationTool+isInteractive so creation tools get pointerEvents=auto without re-enabling annotation click-to-select on the 3 hit-area sites
+- [Phase 14]: Plan 14-02: reset strokeDashArray:null+opacity:1 BEFORE commitShape() in FabricDrawingCanvas, not after — commitShape serializes via toJSON(CUSTOM_PROPS) on its first line
+- [Phase 14]: Plan 14-02: Delete/Backspace focus guard extended to .fabric-hidden-textarea via el.closest — Fabric.js IText/Textbox edit mode's hidden textarea consumes Delete keys
 
 ### Roadmap Evolution
 
@@ -111,8 +114,8 @@ Progress: [..........] 0% (0/5 phases complete, 0/TBD plans complete)
 
 ## Session Continuity
 
-Last session: 2026-04-15T15:34:50.621Z
-Stopped at: Phase 14 context gathered — all 4 gray areas locked, 2 narrow-lane waivers flagged (App.jsx + FabricDrawingCanvas)
+Last session: 2026-04-15T18:47:44.085Z
+Stopped at: Completed 14-02-PLAN.md — UX-01/KBD-01/CREATE-01 foundation shipped
 
 ### Resume instructions for the next session (read carefully)
 

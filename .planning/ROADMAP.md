@@ -339,7 +339,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 2/2 | Complete | 2026-04-02 |
 | 12. Shape Edit Polish | v2.1 | 3/3 | Complete | 2026-04-14 |
 | 13. Rotation Handle Edit-Mode Polish | v2.2 | 2/2 | Complete | 2026-04-14 |
-| 14. Unified SVG Callout Render + Shared Tool Foundation | v2.3 | 0/TBD | Not started | - |
+| 14. Unified SVG Callout Render + Shared Tool Foundation | 2/3 | In Progress|  | - |
 | 15. Line/Arrow Curvature + Arrowhead Styles | v2.3 | 0/TBD | Not started | - |
 | 16. Line/Arrow Mini-Toolbar + Curvature Pill + Min-Drag | v2.3 | 0/TBD | Not started | - |
 | 17. Callout Handle Collisions + Rollback + Resize | v2.3 | 0/TBD | Not started | - |
