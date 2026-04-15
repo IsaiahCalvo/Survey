@@ -871,32 +871,40 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   // Filter and render callout annotations
   // ---------------------------------------------------------------------------
+  // UX: CALL-10 (Phase 14 Plan 14-03) — SVGAnnotationLayer now owns callout
+  // rendering. This useMemo dispatches through svgAnnotationRenderers.renderCallout
+  // with the Plan 14-01 signature `(callout, index, pageSize, calculateConnection)`
+  // and emits data-callout-id / data-callout-part attributes for event delegation
+  // (same pattern as v2.2 EDIT-13 rotation-handle delegation). Plan 14-01 revised
+  // the renderer; Plan 14-03 unwinds the `return [];` short-circuit that was
+  // gating it off. See 14-RESEARCH.md Example 2 + 14-CONTEXT.md Area 1 for the
+  // decision. The legacy CalloutOverlay system in src/components/Callout/* is
+  // replaced by null-render stubs in Plan 14-03 Task 1 — no doubled visuals
+  // because the old system renders nothing.
   const filteredCallouts = useMemo(() => {
     if (!Array.isArray(callouts) || callouts.length === 0) return [];
-    // CalloutOverlay (in PageAnnotationLayer) handles ALL callout rendering and interaction
-    // across all tool modes (callout, select, pan). SVG layer must never render callouts
-    // to avoid doubled visuals.
-    return [];
-
+    const pageSize = { width, height };
     const elements = [];
     let count = 0;
 
     for (let i = 0; i < callouts.length; i++) {
+      // MAX_PREVIEW_CALLOUTS guard — existing constant, do NOT change
       if (count >= MAX_PREVIEW_CALLOUTS) break;
 
       const callout = callouts[i];
       if (!callout) continue;
 
-      // Page filter
+      // UX: per-page filter — only show callouts for this page
       if (callout.pageNumber !== pageNumber) continue;
 
-      // Module filtering: when survey panel open with module selected,
-      // only show callouts matching that module
+      // UX: module filter — when survey panel is open with a selected module,
+      // only show callouts matching that module (existing rule, preserved)
       if (showSurveyPanel && selectedModuleId) {
         if (callout.moduleId !== selectedModuleId) continue;
       }
 
-      const element = renderCallout(callout, i, width, height, calculateCalloutConnection);
+      // UX: CALL-10 — new signature takes pageSize object, emits data attributes
+      const element = renderCallout(callout, i, pageSize, calculateCalloutConnection);
       if (element) {
         elements.push(element);
         count++;

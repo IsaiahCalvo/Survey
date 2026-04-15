@@ -11023,6 +11023,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Callout overlay state
   const [callouts, setCallouts] = useState([]);
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
+  // UX: Phase 14 CALL-10 — selectedCalloutIds is a Set<string> parallel to
+  // selectedIds Set<number> for annotations. Clicking a callout sets this Set
+  // to [calloutId] and clears selectedIds (mutual exclusivity). Multi-select
+  // across annotation-and-callout is OUT of scope for Phase 14. Wired from
+  // Plan 14-03 through SVGAnnotationLayer's useSVGInteraction callout-part
+  // drag mode + onSelectedCalloutIdsChange callback.
+  const [selectedCalloutIds, setSelectedCalloutIds] = useState(() => new Set());
   const [clipboardCallout, setClipboardCallout] = useState(null);
   const [clipboardCalloutType, setClipboardCalloutType] = useState(null); // 'cut' | 'copy'
   const lightweightCalloutCountByPage = useMemo(() => {
@@ -11092,6 +11099,63 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setClipboardCalloutType(null);
     }
   }, [clipboardCallout, clipboardCalloutType]);
+
+  // UX: Phase 14 KBD-01 — handler for Delete/Backspace on selected callouts.
+  // Called by SVGAnnotationLayer's extended keydown effect via
+  // onDeleteSelectedCallouts prop. Uses per-action undo via
+  // addHistoryCheckpoint (Phase 9 pattern).
+  const handleDeleteSelectedCallouts = useCallback((calloutIdsToDelete) => {
+    if (!Array.isArray(calloutIdsToDelete) || calloutIdsToDelete.length === 0) return;
+    const idsSet = new Set(calloutIdsToDelete);
+    // UX: undo checkpoint BEFORE the mutation, same pattern as
+    // annotations:save (App.jsx:23752) — so Cmd+Z restores the deleted callouts.
+    addHistoryCheckpoint('callouts:delete', {
+      calloutIds: calloutIdsToDelete,
+      count: calloutIdsToDelete.length,
+    });
+    setCallouts((prev) => prev.filter((c) => !idsSet.has(c.id)));
+    setSelectedCalloutIds(new Set());
+  }, [addHistoryCheckpoint]);
+
+  // UX: Phase 14 CREATE-01 (callout half) — handler for click-drag callout
+  // creation. Called from SVGAnnotationLayer's transient creation state
+  // machine on mouseup. The new callout is already fully constructed by the
+  // creation state machine; App.jsx just commits it to setCallouts and
+  // captures an undo checkpoint.
+  const handleCreateCallout = useCallback((newCallout) => {
+    if (!newCallout || !newCallout.id) return;
+    addHistoryCheckpoint('callouts:create', {
+      calloutId: newCallout.id,
+      pageNumber: newCallout.pageNumber,
+    });
+    setCallouts((prev) => [...prev, newCallout]);
+  }, [addHistoryCheckpoint]);
+
+  // UX: Phase 14 CALL-10 (drag MVP) — commit checkpoint for a callout drag.
+  // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
+  // AFTER the live-paint has already updated the store via
+  // handleUpdateCalloutLive. Calls addHistoryCheckpoint without mutating
+  // state — one undo entry per drag, matching the Phase 9 commit pattern.
+  // Accepts an optional updatedFields patch for compatibility but ignores it
+  // because live-paint already applied the changes. Empty-patch == commit-
+  // only signal from the hook.
+  const handleUpdateCallout = useCallback((calloutId, _updatedFields) => {
+    addHistoryCheckpoint('callouts:update', { calloutId });
+  }, [addHistoryCheckpoint]);
+
+  // UX: Phase 14 CALL-10 — live paint during callout drag. No undo
+  // checkpoint; the checkpoint is saved once at pointerup via
+  // handleUpdateCallout. Mirrors the Phase 12 optimistic rotation paint
+  // pattern (STATE.md decision: "Plan 12-03 optimistic rotation paint
+  // pattern — canonical fix for commit-path latency in SVG annotation
+  // layer"). `updatedFields` is a partial callout patch keyed by field
+  // name (e.g. { arrowTip, knee, textBoxPosition }).
+  const handleUpdateCalloutLive = useCallback((calloutId, updatedFields) => {
+    if (!calloutId || !updatedFields) return;
+    setCallouts((prev) => prev.map((c) =>
+      c.id === calloutId ? { ...c, ...updatedFields } : c
+    ));
+  }, []);
 
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
 
@@ -25608,6 +25672,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   }}
                                   activeTool={activeTool}
                                   editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
+                                  // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 — new props
+                                  // for the unified callout render + selection + delete +
+                                  // create pipeline. Wave 2 Plan 14-03 wires these so the
+                                  // Plan 14-02 extended Delete handler, Plan 14-03's
+                                  // callout-part drag mode, and the callout creation state
+                                  // machine all dispatch back to App.jsx.
+                                  selectedCalloutIds={selectedCalloutIds}
+                                  onSelectedCalloutIdsChange={setSelectedCalloutIds}
+                                  onDeleteSelectedCallouts={handleDeleteSelectedCallouts}
+                                  onCreateCallout={handleCreateCallout}
+                                  onUpdateCallout={handleUpdateCallout}
+                                  onUpdateCalloutLive={handleUpdateCalloutLive}
                                 />
                               </div>
 
@@ -26229,6 +26305,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       }}
                                       activeTool={activeTool}
                                       editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
+                                      // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 —
+                                      // unified callout render + selection + delete +
+                                      // create pipeline props. See the first
+                                      // SVGAnnotationLayer mount site for rationale.
+                                      selectedCalloutIds={selectedCalloutIds}
+                                      onSelectedCalloutIdsChange={setSelectedCalloutIds}
+                                      onDeleteSelectedCallouts={handleDeleteSelectedCallouts}
+                                      onCreateCallout={handleCreateCallout}
+                                      onUpdateCallout={handleUpdateCallout}
+                                      onUpdateCalloutLive={handleUpdateCalloutLive}
                                     />
                                     </div>
 
@@ -26695,6 +26781,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       }}
                                       activeTool={activeTool}
                                       editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
+                                      // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 —
+                                      // unified callout render + selection + delete +
+                                      // create pipeline props. See the first
+                                      // SVGAnnotationLayer mount site for rationale.
+                                      selectedCalloutIds={selectedCalloutIds}
+                                      onSelectedCalloutIdsChange={setSelectedCalloutIds}
+                                      onDeleteSelectedCallouts={handleDeleteSelectedCallouts}
+                                      onCreateCallout={handleCreateCallout}
+                                      onUpdateCallout={handleUpdateCallout}
+                                      onUpdateCalloutLive={handleUpdateCalloutLive}
                                     />
                                   </div>
 

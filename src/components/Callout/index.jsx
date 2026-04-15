@@ -1,126 +1,25 @@
-import React, { useCallback, useEffect } from 'react';
-import CalloutCanvas from './CalloutCanvas';
-
+// src/components/Callout/index.jsx
+// Phase 14 (CALL-10): This file was a 126-line CalloutOverlay shell that
+// hosted the legacy HTML-overlay callout subsystem. Phase 14 ports callout
+// rendering into the SVG pipeline (svgAnnotationRenderers.renderCallout,
+// via SVGAnnotationLayer) and retires this subsystem.
+//
+// The stub remains because src/PageAnnotationLayer.jsx:4 and src/App.jsx:77
+// still import CalloutOverlay from this path. PAL is an Always-Protected
+// file (CLAUDE.md); removing its import requires a waiver. The stub
+// preserves the import contract while rendering nothing — all callout
+// rendering and interaction now flows through SVGAnnotationLayer.
+//
+// types.js in this directory is PRESERVED as the enum/factory shim for
+// ARROWHEAD_STYLES, defaultCalloutStyle, createCallout, hexToRgba — those
+// are used by Plan 14-03 creation logic and by Phase 15 ARROW-04. Re-export
+// the same three symbols the legacy index.jsx did so existing
+// `import { defaultCalloutStyle } from '../components/Callout'` callsites
+// (if any) keep resolving.
 export { defaultCalloutStyle, createCallout, hexToRgba } from './types';
 
-/**
- * CalloutOverlay - Main orchestrator for the callout system
- * Renders the callout canvas overlay and properties panel
- *
- * @param {Object} props
- * @param {Array} props.callouts - Array of all callout objects
- * @param {Function} props.setCallouts - Update callouts
- * @param {string|null} props.selectedCalloutId - Currently selected callout ID
- * @param {Function} props.setSelectedCalloutId - Set selected callout
- * @param {boolean} props.isCalloutToolActive - Whether callout tool is selected
- * @param {number} props.pageNumber - Current page number (1-indexed)
- * @param {number} props.pageWidth - Page width in pixels at current scale
- * @param {number} props.pageHeight - Page height in pixels at current scale
- * @param {Object} props.defaultStyle - Default style for new callouts (optional)
- * @param {Object} props.middleAreaBounds - Bounds of the middle area ({top, height})
- * @param {number} props.surveyPanelWidth - Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
- */
-const CalloutOverlay = ({
-  callouts,
-  setCallouts,
-  selectedCalloutId,
-  setSelectedCalloutId,
-  isCalloutToolActive,
-  activeTool,
-  pageNumber,
-  pageWidth,
-  pageHeight,
-  defaultStyle,
-  selectionRect,
-  selectedSpaceId,
-  selectedModuleId,
-  showSurveyPanel,
-  clipboardCallout,
-  clipboardCalloutType,
-  onCutCallout,
-  onCopyCallout,
-  onPasteCallout,
-  middleAreaBounds,
-  surveyPanelWidth,
-}) => {
-  // Handle deleting selected callout
-  const handleDeleteSelected = useCallback(() => {
-    if (selectedCalloutId) {
-      setCallouts(prev => prev.filter(c => c.id !== selectedCalloutId));
-      setSelectedCalloutId(null);
-    }
-  }, [selectedCalloutId, setCallouts, setSelectedCalloutId]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Delete or Backspace - delete selected callout
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        // Only delete if not focused on textarea or other input
-        const tagName = document.activeElement?.tagName.toLowerCase();
-        if (tagName !== 'textarea' && tagName !== 'input') {
-          if (selectedCalloutId) {
-            e.preventDefault();
-            handleDeleteSelected();
-          }
-        }
-      }
-
-      // Escape - deselect callout
-      if (e.key === 'Escape') {
-        if (selectedCalloutId) {
-          setSelectedCalloutId(null);
-          setCallouts(prev => prev.map(c => ({ ...c, isSelected: false })));
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCalloutId, handleDeleteSelected, setSelectedCalloutId, setCallouts]);
-
-  // Note: Callout saves are handled by setCallouts in App.jsx
-  // The onSave prop here was incorrectly calling the annotation save function
-  // without proper arguments. Removed to prevent interference.
-
-  return (
-    <>
-      {/* Callout Canvas Overlay */}
-      <CalloutCanvas
-        callouts={callouts.filter(c => {
-          // Filter by survey mode: if survey mode is active, hide callouts that don't have matching moduleId
-          // Note: Callouts created via Fabric.js (old system) may have moduleId, but React callouts don't yet
-          // For React callouts, hide all when in survey mode (they'll need moduleId added in the future)
-          if (showSurveyPanel && selectedModuleId) {
-            // If callout has moduleId, only show if it matches selected module
-            // If callout doesn't have moduleId, hide it in survey mode (it was created outside survey mode)
-            return c.moduleId === selectedModuleId;
-          }
-          // When not in survey mode, show all callouts
-          return true;
-        })}
-        setCallouts={setCallouts}
-        selectedCalloutId={selectedCalloutId}
-        setSelectedCalloutId={setSelectedCalloutId}
-        isCalloutToolActive={isCalloutToolActive}
-
-        activeTool={activeTool}
-        pageNumber={pageNumber}
-        pageWidth={pageWidth}
-        pageHeight={pageHeight}
-        defaultStyle={defaultStyle}
-        selectionRect={selectionRect}
-        selectedSpaceId={selectedSpaceId}
-        selectedModuleId={selectedModuleId}
-        showSurveyPanel={showSurveyPanel}
-        clipboardCallout={clipboardCallout}
-        clipboardCalloutType={clipboardCalloutType}
-        onCutCallout={onCutCallout}
-        onCopyCallout={onCopyCallout}
-        onPasteCallout={onPasteCallout}
-      />
-    </>
-  );
-};
-
-export default CalloutOverlay;
+// UX: null-render stub — all callout UI is now in SVGAnnotationLayer.
+// eslint-disable-next-line no-unused-vars
+export default function CalloutOverlay(_props) {
+  return null;
+}
