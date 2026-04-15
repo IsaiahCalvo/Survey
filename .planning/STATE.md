@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.3
-milestone_name: Tools Polish (combined-tools port)
+milestone_name: Tools Polish (combined-tools rewrite + unified render)
 status: active
-stopped_at: Milestone v2.3 initialized — PROJECT.md/STATE.md updated, dual-codebase audits spawned, this session checkpointed before requirements + roadmap to protect context budget
-last_updated: "2026-04-14T23:45:00.000Z"
-last_activity: 2026-04-14 — Milestone v2.3 started (line/arrow/text-callout port from combined-tools); checkpoint handoff prepared for fresh session
+stopped_at: Milestone v2.3 REQUIREMENTS.md revised to 26 requirements after user scope expansion — rewrite permission granted, unified-render decision added (CALL-10). Session checkpointed before roadmapper spawn to protect context budget (hit 31%). Fresh session must run gsd-roadmapper starting at Phase 14.
+last_updated: "2026-04-14T24:45:00.000Z"
+last_activity: 2026-04-14 — v2.3 requirements revised from 14 → 26, rewrite permission granted, checkpoint for fresh session.
 progress:
   total_phases: 0
   completed_phases: 0
@@ -20,18 +20,18 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-14)
 
-**Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox; line/arrow/text-callout tools match the precision and feel of the `combined-tools` reference app.
-**Current focus:** Milestone v2.3 — defining requirements after dual-codebase port audit
+**Core value:** Line/arrow/text-callout tools match the precision and feel of the `combined-tools` reference app, AND all annotations render through the same SVG pipeline for a unified select / edit / erase / undo story.
+**Current focus:** Milestone v2.3 — REQUIREMENTS.md revised (26 items), awaiting roadmapper in a fresh session.
 
 ## Current Position
 
-Milestone: v2.3 — Tools Polish (combined-tools port) — **DEFINING REQUIREMENTS**
+Milestone: v2.3 — Tools Polish (combined-tools rewrite + unified render) — **REQUIREMENTS DEFINED, AWAITING ROADMAPPER**
 Phase: Not started (Phase 14 will be first once roadmap lands)
 Plan: —
-Status: Dual-codebase port audit spawned. Requirements + roadmap deferred to fresh session to protect context budget.
-Last activity: 2026-04-14 — Milestone v2.3 started; PROJECT.md/STATE.md written; combined-tools + current-repo audit agents spawned; session checkpointed.
+Status: REQUIREMENTS.md committed with 26 items. Roadmapper deferred to fresh session for context budget reasons.
+Last activity: 2026-04-14 — scope revised after user direction shift; rewrite permission granted; unified-render decision captured; checkpoint written.
 
-Progress: [..........] 0% (milestone just initialized)
+Progress: [..........] 0% (requirements defined, roadmap pending)
 
 ## Performance Metrics
 
@@ -67,6 +67,11 @@ Progress: [..........] 0% (milestone just initialized)
 - [v2.3]: Stay on Fabric.js 5.5.2; do NOT upgrade to 6.x despite combined-tools being on 6.x. Port behavior, not engine.
 - [v2.3]: Feature parity accepted over pixel parity — rendering engines differ (SVG display vs Canvas display)
 - [v2.3]: Checkpoint after audits rather than pushing through to roadmap in one session — context budget protection
+- [v2.3]: **Rewrite permission granted 2026-04-14.** User: "the current callout, line, and arrow tools suck...I don't care if you think we need to start over...don't worry about preserving anything." Current implementations may be replaced wholesale.
+- [v2.3]: **Scope expanded 14 → 26 requirements.** Added curvature indicator pill (LINE-04/ARROW-05), min drag length (LINE-05/ARROW-06), mini-toolbars (LINE-06/ARROW-07), Liang-Barsky auto-routing (CALL-07), empty-text self-destruct (CALL-08), hover glow (CALL-09), **SVG unification (CALL-10)**, Delete/Backspace (KBD-01), dashed creation preview (CREATE-01).
+- [v2.3]: **Unified render decision (CALL-10).** User: "I want all annotations to render the same — different rendering makes selection, editing, erasing complicated." Callout moves from its current separate HTML-overlay system (`src/components/Callout/*`) to the same SVG pipeline all 9 other annotation types use, with `<foreignObject>` for text content (same pattern as text annotations).
+- [v2.3]: **Curvature indicator mirrors RotationInputField UX.** Hover-reveal pill near midpoint handle, shows current curvature, typeable to commit a custom curve, optimistic-paint commit. Proven v2.1 pattern — reuse helpers directly.
+- [v2.3]: **Line/arrow "act like regular shapes"** — inherit the select lifecycle + mini-toolbar + hover pill pattern that rect/circle/ellipse already have. UX unification on top of render unification.
 
 ### Roadmap Evolution
 
@@ -75,48 +80,49 @@ Progress: [..........] 0% (milestone just initialized)
 - v2.0 Phases 8-11 shipped 39 requirements
 - v2.1 Phase 12 shipped 3 requirements + 9 scope-expansion gap fixes
 - v2.2 Phase 13 shipped 2 requirements (one rescoped mid-plan)
-- v2.3 phases TBD — will be derived from port gap analysis after audits complete
+- v2.3 phases TBD — roadmapper must decompose 26 requirements starting at Phase 14 in the fresh session
 
 ### Pending Todos
 
-None at milestone kickoff.
+None at milestone kickoff. Session-moment log for 2026-04-14 should be reviewed for any graduation candidates during the fresh session.
 
 ### Blockers/Concerns
 
-- v2.3 **CRITICAL SCOPE CORRECTION discovered by audit**: The user asked for "arrowhead style options" and "callout tail shape variants" assuming these exist in combined-tools. **They don't.** Combined-tools has exactly ONE arrowhead style (`fabric.Triangle`) and zero tail-shape variety. Meanwhile, THIS repo's callout already has 6 arrowhead styles defined in `src/components/Callout/`. Same for snap-to-angle — combined-tools has **no** angle snapping, no shift-modifier, no arrow-key nudging. The "port from combined-tools" framing needs to be split into (a) features combined-tools actually has that we lack (curvature via midpoint waypoint, collision prevention, lastSafeObjectPos rollback, 30-px MIN_HANDLE_DISTANCE) and (b) features the user wants that must be **invented** or **preserved** rather than ported. **Surface this to the user before writing REQUIREMENTS.md.**
+- v2.3 **Scope is now 26 requirements across 4 categories** — the biggest single milestone in the project to date (v2.0 shipped 39 requirements across 4 phases — similar scale). Roadmapper will need to decompose into ~4-6 phases: expect phase boundaries roughly along (1) SVG unification of callout + shared creation preview, (2) line/arrow curvature wiring + mini-toolbar lifecycle, (3) line/arrow curvature pill + keyboard, (4) callout collision + rollback + resize, (5) callout auto-routing + hover affordance. Let the roadmapper propose; don't pre-decompose.
 
-- v2.3 **HUGE LEVERAGE POINT** from the current-repo audit: `src/utils/lineGeometry.js` is already a complete port of combined-tools' bezier math (`getCurvedPath`, `getCurveEndAngle`, `shouldSnapToLinear`, `getControlPoint`) — but the SVG render path **never imports it**; it's only consumed by the protected legacy `PageAnnotationLayer.jsx`. "The math is one import away from enabling curved lines/arrows." A fresh session should treat this as the first-phase entry point, not write new math.
+- v2.3 **CALL-10 (SVG unification of callout) is architecturally load-bearing** and probably needs to be Phase 14 — it unblocks every other callout requirement because once the callout renders through `svgAnnotationRenderers.jsx` + `useSVGInteraction.js` like every other annotation, the collision / rollback / resize / hover requirements all fit into the existing SVG interaction pattern rather than inside the current separate React component. Flag this to the roadmapper.
 
-- v2.3 **COUNTER-WIP WARNING**: `SVGAnnotationLayer.jsx:1072-1194` has an active `[COUNTER WIP — DO NOT TOUCH]` block immediately adjacent to the line-type handle branch where the midpoint curvature handle would land. User reported "counter-tool session is done and fully committed" — but the marker is still in-tree. **Before touching that range, re-verify with the user** that the marker is stale and can be removed, or carve a lane that avoids those lines.
+- v2.3 **lineGeometry.js leverage point:** `src/utils/lineGeometry.js` is already a complete port of combined-tools' curvature math (`getCurvedPath`, `getCurveEndAngle`, `shouldSnapToLinear`, `getControlPoint`). Currently consumed only by the protected legacy `PageAnnotationLayer.jsx`. The line/arrow curvature requirements (LINE-01..03, ARROW-01..03) are a wiring job — import and consume, don't re-write.
 
-- v2.3 architectural mismatch confirmed: combined-tools uses 7 **ungrouped** Fabric objects tagged with `calloutId` + `partType`, routed by a ~500-line `calculateCalloutConnection` using Liang-Barsky clipping. This app's callout is an **entirely separate HTML+SVG React system** under `src/components/Callout/`. The two architectures share no code. Porting callout behavior from combined-tools means extracting the math (clipping, constraint, rollback) and re-wiring it into the React component, not copying the composite-object structure.
+- v2.3 **Counter WIP marker cleanup done:** the stale `[COUNTER WIP — DO NOT TOUCH]` comment at `SVGAnnotationLayer.jsx:1072-1075` was removed in this session (counter code stable in commit `8ac818bc`). No adjacent-code hazard for the line-type handle branch anymore.
 
-- v2.3: combined-tools uses Fabric.js 6.9.1 with always-mounted canvas; this app uses SVG display + mount/unmount Fabric edit canvas. Some combined-tools patterns may not map 1:1 — flagged in the audits.
+- v2.3 **Fabric 5.5.2 stays locked.** Do NOT upgrade to 6.x. Port behavior, not engine.
 
 ## Session Continuity
 
-Last session: 2026-04-14T23:45:00.000Z
-Stopped at: Milestone v2.3 initialized. PROJECT.md + STATE.md updated. Combined-tools and current-repo audits spawned (findings written to `.planning/research/COMBINED-TOOLS-AUDIT.md` and `.planning/research/CURRENT-REPO-AUDIT.md`). Session checkpointed to preserve context budget before writing REQUIREMENTS.md + running gsd-roadmapper.
+Last session: 2026-04-14T24:45:00.000Z
+Stopped at: v2.3 REQUIREMENTS.md revised to 26 items after scope expansion. Rewrite permission granted. Unified-render decision added. Counter WIP marker cleaned up (1 file). Three atomic commits made. Session checkpointed at 31% context before running `gsd-roadmapper`.
 
 ### Resume instructions for the fresh session (read carefully)
 
-**BEFORE writing requirements, the fresh session MUST surface the three findings in Blockers/Concerns above to the user and get decisions:**
-
-1. **Scope correction** — combined-tools does NOT have arrowhead style variety, callout tail variants, snap-to-angle, or shift-modifier. User's original ask assumed parity with combined-tools for those, but combined-tools is the thing LACKING those features. Fresh session must present the finding and ask the user: (a) drop those items since they're not in the reference, (b) keep them as "invented beyond the reference", or (c) preserve existing behavior (our callout already has 6 arrowhead styles and knee handles, so "don't break what we have" is a valid ask).
-2. **lineGeometry.js leverage point** — `src/utils/lineGeometry.js` already contains combined-tools' curvature math, fully ported, but the SVG render path never imports it. First-phase requirement should be "wire `lineGeometry.js` into the SVG render path for line/arrow" — not "write new curve math". Confirm this framing with the user.
-3. **Counter WIP marker in SVGAnnotationLayer.jsx:1072-1194** — user said counter-session is done, but an active `[COUNTER WIP — DO NOT TOUCH]` marker is still in-tree at exactly the line-type handle branch. Ask user to confirm the marker is stale before planning work that touches that range.
+**One-line wake-up:** "Resume v2.3. Requirements are locked at 26 items in REQUIREMENTS.md. Read both audit files in `.planning/research/`, then spawn gsd-roadmapper starting at Phase 14. Flag CALL-10 (SVG unification of callout) as the suggested Phase 14 since it unblocks every other callout requirement."
 
 **Workflow steps:**
 
-1. Read `.planning/PROJECT.md` — confirm v2.3 milestone scope
-2. Read `.planning/research/COMBINED-TOOLS-AUDIT.md` — combined-tools mechanics per tool (51 KB — skim the H2s first, deep-read Line and Callout sections)
-3. Read `.planning/research/CURRENT-REPO-AUDIT.md` — current state + integration points + gap map (28 KB)
-4. **Raise the three pre-requirements findings above with the user** and wait for decisions
-5. Write `.planning/REQUIREMENTS.md` with REQ-IDs. Suggested prefixes: `LINE-*`, `ARROW-*`, `CALL-*`. User-centric, testable, atomic.
-6. Commit: `node "/Users/isaiahcalvo/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: define milestone v2.3 requirements" --files .planning/REQUIREMENTS.md`
-7. Spawn `gsd-roadmapper` agent starting at **Phase 14**. Pass: `PROJECT.md`, `REQUIREMENTS.md`, both audit files, `MILESTONES.md`, `config.json`.
-8. Present roadmap for user approval. Commit.
-9. Update `MILESTONES.md` with v2.3 entry. Commit.
-10. Present "Next Up" block pointing to `/gsd:discuss-phase 14`.
+1. Read `.planning/PROJECT.md` — confirm v2.3 milestone scope (26 reqs, rewrite permission, unified render)
+2. Read `.planning/REQUIREMENTS.md` — the 26 requirements locked in this session
+3. Read `.planning/research/COMBINED-TOOLS-AUDIT.md` — combined-tools mechanics per tool (skim the H2s: Line Tool, Arrow Tool, Text Callout Tool, Shared State & Events, Surprising Mechanisms)
+4. Read `.planning/research/CURRENT-REPO-AUDIT.md` — current state + integration points + gap map + risk areas (section: "Risk Areas")
+5. Read this STATE.md for the scope context and the three architectural observations in Blockers/Concerns
+6. Spawn `gsd-roadmapper` agent starting at **Phase 14**. Pass: `PROJECT.md`, `REQUIREMENTS.md`, both audit files, `MILESTONES.md`, `config.json`. Ask roadmapper to consider CALL-10 as a possible Phase 14 unblocker.
+7. Present roadmap for user approval. Commit.
+8. Update `MILESTONES.md` — it's currently missing the v2.2 entry (shipped 2026-04-14 but not logged). Add both v2.2 and v2.3 entries. Commit.
+9. Present "Next Up" block pointing to `/gsd:discuss-phase 14`.
 
-**One-line wake-up for the fresh session:** "Resume v2.3. Read both audit files in `.planning/research/`, surface the 3 scope-correction findings from STATE.md Blockers, then write REQUIREMENTS.md with LINE-/ARROW-/CALL- IDs, then spawn gsd-roadmapper starting at Phase 14."
+**Watch-outs for the fresh session:**
+
+- Do NOT re-ask the scope questions already decided this session (listed in Decisions above)
+- Do NOT restore the stale `[COUNTER WIP — DO NOT TOUCH]` comment at SVGAnnotationLayer.jsx:1072 — it was removed on purpose in commit TBD (counter session is done)
+- Do NOT touch `src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricEditCanvas.jsx`, `package.json`, `vite.config.js` without explicit per-phase waiver (Always-Protected per CLAUDE.md)
+- Do NOT entangle PAL's curved-line code path with the new SVG-side wiring — leave PAL alone, it's the ONLY current consumer of `lineGeometry.js`
+- If the roadmapper produces more than 6 phases for 26 requirements, ask the user before accepting — that might mean the scope needs re-splitting into v2.3 + v2.4

@@ -27,19 +27,19 @@ Phase 13 shipped. EDIT-13 hover pill re-arm via event delegation, EDIT-14
 rescoped mid-plan to "no Fabric transform handles in edit mode" (Figma-style
 separation). v2.1 carry-forward gaps closed. See MILESTONES.md.
 
-## Current Milestone: v2.3 Tools Polish (combined-tools port)
+## Current Milestone: v2.3 Tools Polish (combined-tools rewrite + unified render)
 
-**Goal:** Port the line, arrow, and text callout tool UX from the reference `combined-tools` codebase into this app. Feature parity accepted over pixel parity — rendering engines differ (SVG display here, Canvas display there).
+**Goal:** Rewrite the line, arrow, and text callout tools using `combined-tools` as the behavioral baseline, and unify callout rendering onto the same SVG pipeline the other 7 annotation types already use. User-granted rewrite permission 2026-04-14 — don't preserve the current implementations.
 
-**Target features:**
-- Line tool: middle bezier curvature handle, snap-to-angle, snap-curve-to-straight reset
-- Arrow tool: same as line + arrowhead style options
-- Text callout: handle distance / collision constraints, correct resize, tail shape variants, knee handles
-- Shared UX: hover states, cursor treatments, keyboard shortcuts match combined-tools
+**Target features (26 requirements — see REQUIREMENTS.md):**
+- Line (6): middle bezier curvature handle, snap-curve-to-straight reset, curve-preserving endpoint drag, typeable curvature pill, minimum-drag creation, mini-toolbar lifecycle
+- Arrow (7): same as line + curved-tangent arrowhead + 6-style arrowhead picker (lifted from callout) + mini-toolbar
+- Callout (10): 30-px handle collision (arrowTip↔knee, knee↔box, box↔knee), on-drop rollback, resize correctness, hover-reveal handles, Liang-Barsky auto-routing, empty-text self-destruct, hover glow, **SVG unification (CALL-10)**
+- Shared (3): crosshair cursor, Delete/Backspace, dashed creation preview at 0.6 opacity
 
 **Starting phase:** 14 (v2.2 ended at Phase 13)
 **Reference codebase:** `/Users/isaiahcalvo/Desktop/combined-tools` (Fabric.js 6.9.1, same author)
-**Research approach:** Dual-codebase port audit in `.planning/research/` (replaces standard GSD domain research — this is a port milestone, not a new-domain milestone)
+**Research approach:** Dual-codebase audits in `.planning/research/COMBINED-TOOLS-AUDIT.md` + `.planning/research/CURRENT-REPO-AUDIT.md` (port milestone, not new-domain).
 
 ## Requirements
 
@@ -66,24 +66,14 @@ separation). v2.1 carry-forward gaps closed. See MILESTONES.md.
 - ✓ Rotation pill re-arms on hover after returning from edit mode via click-off — v2.2 Phase 13 (EDIT-13)
 - ✓ No Fabric transform handles in edit mode for any shape (Figma-style separation) — v2.2 Phase 13 (EDIT-14 rescoped)
 
-### Active (v2.3 Tools Polish — combined-tools port)
+### Active (v2.3 Tools Polish — 26 requirements in REQUIREMENTS.md)
 
-<!-- Will be REQ-IDed (LINE-/ARROW-/CALL-) after audit findings land. -->
+See `.planning/REQUIREMENTS.md` for the full REQ-IDed list. Summary:
 
-- [ ] Line tool: middle bezier curvature handle (port from combined-tools)
-- [ ] Line tool: snap-to-angle during create and edit
-- [ ] Line tool: snap-curve-to-straight reset
-- [ ] Arrow tool: middle bezier curvature handle
-- [ ] Arrow tool: snap-to-angle during create and edit
-- [ ] Arrow tool: snap-curve-to-straight reset
-- [ ] Arrow tool: arrowhead style options (exact set TBD from audit)
-- [ ] Text callout: handle distance / collision constraints
-- [ ] Text callout: resize math matches combined-tools
-- [ ] Text callout: tail shape variants (exact set TBD from audit)
-- [ ] Text callout: knee handles (if combined-tools uses them)
-- [ ] Hover states match combined-tools per tool
-- [ ] Cursor treatments match combined-tools per tool
-- [ ] Keyboard shortcuts match combined-tools per tool
+- LINE-01..06 (6): curvature handle + reset + endpoint reshape + typeable curvature pill + min drag + mini-toolbar
+- ARROW-01..07 (7): same as line + curved-tangent arrowhead + 6-style arrowhead picker
+- CALL-01..10 (10): 30-px collisions + rollback + resize fix + hover handles + Liang-Barsky auto-route + empty-text self-destruct + hover glow + **SVG unification (render via foreignObject like text annotations, replace `src/components/Callout/` directory)**
+- UX-01, KBD-01, CREATE-01 (3): crosshair cursor + Delete/Backspace + dashed creation preview
 
 ### Out of Scope
 
@@ -137,6 +127,10 @@ separation). v2.1 carry-forward gaps closed. See MILESTONES.md.
 | v2.3 port combined-tools UX over upgrading to Fabric 6.x | Upgrade risk > port risk; Fabric 5.5.2 is load-bearing | — Pending |
 | v2.3 feature parity accepted over pixel parity | Rendering engines differ (SVG vs Canvas); user approved feel-match | — Pending |
 | v2.3 replace GSD domain research with dual-codebase port audit | Port milestone, not new-domain milestone | — Pending |
+| v2.3 scope expansion: rewrite permission + 26 reqs (was 14) | User: "the current tools suck...don't worry about preserving anything". Copy combined-tools as behavioral baseline, then add on. | — Pending |
+| v2.3 **unified render**: callout onto SVG pipeline (CALL-10) | User: "I want all annotations to render the same — different rendering makes selection, editing, erasing, undo difficult". Replaces `src/components/Callout/` HTML-overlay system with foreignObject pattern (like text annotations). | — Pending |
+| v2.3 curvature indicator = hover-reveal pill mirroring RotationInputField UX | User explicitly asked for the rotation-pill pattern on the midpoint handle: hover-reveal + typeable input + optimistic commit. Proven v2.1 pattern. | — Pending |
+| v2.3 line/arrow "act like regular shapes" = mini-toolbar + standard select lifecycle | User: line/arrow should inherit the same select/edit/mini-toolbar pattern as rect/circle/ellipse. Unification of interaction UX, not just rendering. | — Pending |
 
 ---
-*Last updated: 2026-04-14 after milestone v2.3 initialization*
+*Last updated: 2026-04-14 after v2.3 scope revision (14 → 26 reqs, rewrite permission, unified render decision)*
