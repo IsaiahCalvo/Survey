@@ -556,16 +556,37 @@ const SVGAnnotationLayer = memo(({
 
     const results = [];
     let count = 0;
+    // Diagnostics: count each drop reason so the tool-switch probe can report
+    // why the SVG layer dropped certain annotations (vs the eraser path).
+    const dropReasons = {
+      nullOrHiddenFlag: [],
+      layerHidden: [],
+      spaceMismatch: [],
+      surveyHidden: [],
+      scopedRegionHidden: [],
+      pageScopedHidden: [],
+      noElementDispatched: [],
+      maxPreviewCap: [],
+    };
 
     for (let i = 0; i < objects.length; i++) {
-      if (count >= MAX_PREVIEW_OBJECTS) break;
+      if (count >= MAX_PREVIEW_OBJECTS) {
+        dropReasons.maxPreviewCap.push(i);
+        continue;
+      }
 
       const obj = objects[i];
-      if (!obj || obj.visible === false) continue;
+      if (!obj || obj.visible === false) {
+        dropReasons.nullOrHiddenFlag.push(i);
+        continue;
+      }
 
       // --- Layer visibility check ---
       const layer = obj.layer || 'native';
-      if (layerVisibility && layerVisibility[layer] === false) continue;
+      if (layerVisibility && layerVisibility[layer] === false) {
+        dropReasons.layerHidden.push({ i, layer });
+        continue;
+      }
 
       // --- Three-layer filtering (ported from PAL lines 8625-8840) ---
       const visibilityScope = getAnnotationVisibilityScope({
@@ -634,7 +655,13 @@ const SVGAnnotationLayer = memo(({
         scopedRegionAnnotationVisible &&
         pageScopedAnnotationVisible;
 
-      if (!isVisible) continue;
+      if (!isVisible) {
+        if (!matchesSpace) dropReasons.spaceMismatch.push({ i, derivedSpaceId, activeSpaceId });
+        else if (!surveyAnnotationVisible) dropReasons.surveyHidden.push({ i, moduleId: obj.moduleId, selectedModuleId, showSurveyPanel });
+        else if (!scopedRegionAnnotationVisible) dropReasons.scopedRegionHidden.push({ i, regionId: obj.regionId, activeSpaceId, activeRegionId });
+        else if (!pageScopedAnnotationVisible) dropReasons.pageScopedHidden.push({ i, scope: visibilityScope });
+        continue;
+      }
 
       // Match PAL interaction rules:
       // - Background annotations stay visible in a space when the lightbulb is on,
@@ -684,7 +711,30 @@ const SVGAnnotationLayer = memo(({
       if (element) {
         results.push({ obj, index: i, element, isObjectInteractive });
         count++;
+      } else {
+        dropReasons.noElementDispatched.push({ i, type: objectType, hasPath: Array.isArray(obj?.path), hasObjects: Array.isArray(obj?.objects) });
       }
+    }
+
+    // Diagnostics sink: stash the drop reasons on window for the tool-switch
+    // capture to pick up. Only stored — not logged per-object — to avoid spam.
+    if (typeof window !== 'undefined') {
+      if (!window.__diagSVGFilterStats) window.__diagSVGFilterStats = {};
+      window.__diagSVGFilterStats[pageNumber] = {
+        inputCount: objects.length,
+        renderedCount: results.length,
+        dropReasons: {
+          nullOrHiddenFlag: dropReasons.nullOrHiddenFlag.length,
+          layerHidden: dropReasons.layerHidden.length,
+          spaceMismatch: dropReasons.spaceMismatch.length,
+          surveyHidden: dropReasons.surveyHidden.length,
+          scopedRegionHidden: dropReasons.scopedRegionHidden.length,
+          pageScopedHidden: dropReasons.pageScopedHidden.length,
+          noElementDispatched: dropReasons.noElementDispatched.length,
+          maxPreviewCap: dropReasons.maxPreviewCap.length,
+        },
+        dropDetails: dropReasons,
+      };
     }
 
     return results;
@@ -1069,10 +1119,6 @@ const SVGAnnotationLayer = memo(({
         // chrome and let FabricEditCanvas + MiniToolbar own the surface.
         const editObjType = String(obj.type || '').toLowerCase();
         const editIsBorderFlush = editObjType === 'text' || editObjType === 'textbox' || editObjType === 'i-text' || editObjType === 'rect';
-        // [COUNTER WIP — DO NOT TOUCH] Counter select-mode rotation handle
-        // and counter hover-outline path are mid-debug as of 2026-04-14.
-        // Another session: leave editIsCounter / counterRotateDragRef /
-        // counter hover branch alone. Coordinate via the user first.
         const editIsCounter = obj.data?.type === 'counter';
         const isBeingEditedNow = editingAnnotationIndex != null && selectedIndex === editingAnnotationIndex;
         // UX 2026-04-14: counters in edit mode show the floating mini-toolbar
