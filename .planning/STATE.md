@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: Roadmap committed. 26/26 v2.3 requirements mapped across Phases 14-18. Ready for plan decomposition.
-stopped_at: Completed 14-02-PLAN.md — UX-01/KBD-01/CREATE-01 foundation shipped
+stopped_at: Completed 14-01-PLAN.md — CALL-10 Wave 0 testable surface shipped (parallel with 14-02)
 last_updated: "2026-04-15T18:47:55.201Z"
-last_activity: 2026-04-15 — gsd-roadmapper produced the 5-phase v2.3 roadmap.
+last_activity: 2026-04-15 — Plans 14-01 and 14-02 executed in parallel under wave=1 — both complete
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -82,6 +82,10 @@ Progress: [..........] 0% (0/5 phases complete, 0/TBD plans complete)
 - [Phase 14]: Plan 14-02: split SVGAnnotationLayer isInteractive into isSelectTool+isCreationTool+isInteractive so creation tools get pointerEvents=auto without re-enabling annotation click-to-select on the 3 hit-area sites
 - [Phase 14]: Plan 14-02: reset strokeDashArray:null+opacity:1 BEFORE commitShape() in FabricDrawingCanvas, not after — commitShape serializes via toJSON(CUSTOM_PROPS) on its first line
 - [Phase 14]: Plan 14-02: Delete/Backspace focus guard extended to .fabric-hidden-textarea via el.closest — Fabric.js IText/Textbox edit mode's hidden textarea consumes Delete keys
+- [Phase 14]: Plan 14-01: buildCalloutRenderSpec pure data-spec helper bridges Node --test + .jsx incompatibility — tests import a .js helper that returns a plain spec tree, JSX renderer wraps 1:1 with React.createElement. Avoids adding any loader dep.
+- [Phase 14]: Plan 14-01: toFabricGroup returns plain JSON shape (not live fabric.Group) — keeps round-trip math integer-clean at 1e-6 over 10 cycles and dodges Fabric.js Group positioning side effects. loadCalloutAnnotation consumes the shape via fabric.util.enlivenObjects so the adapter drops in.
+- [Phase 14]: Plan 14-01: sanitizeFontFamily applied at 3 surfaces (renderer foreignObject, adapter Textbox, defaultCalloutStyle) — CSS fallback stacks cause Fabric.js cursor drift (CLAUDE.md 2026-04-08 gotcha). defaultCalloutStyle.fontFamily changed 'Inter, Arial, sans-serif' → 'Arial'.
+- [Phase 14]: Plan 14-01: renderCallout always emits the text foreignObject (even when text is empty) so the data-callout-part='text' hit-test surface exists for freshly-created empty callouts — Plan 14-03 relies on this for double-click edit-mode entry.
 
 ### Roadmap Evolution
 
@@ -114,8 +118,8 @@ Progress: [..........] 0% (0/5 phases complete, 0/TBD plans complete)
 
 ## Session Continuity
 
-Last session: 2026-04-15T18:47:44.085Z
-Stopped at: Completed 14-02-PLAN.md — UX-01/KBD-01/CREATE-01 foundation shipped
+Last session: 2026-04-15T18:45:11Z
+Stopped at: Completed 14-01-PLAN.md — CALL-10 Wave 0 testable surface shipped (parallel with 14-02)
 
 ### Resume instructions for the next session (read carefully)
 

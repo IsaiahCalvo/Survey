@@ -103,7 +103,7 @@ Which phases cover which requirements. Populated by `gsd-roadmapper` on 2026-04-
 | CALL-07 | Phase 18 | TBD | Pending |
 | CALL-08 | Phase 18 | TBD | Pending |
 | CALL-09 | Phase 18 | TBD | Pending |
-| CALL-10 | Phase 14 | TBD | Pending |
+| CALL-10 | Phase 14 | 14-01 (Wave 0) | In Progress — Wave 0 pure-utility + tests shipped (14-01-SUMMARY.md); full wiring deferred to 14-03 |
 | UX-01 | Phase 14 | TBD | Pending |
 | KBD-01 | Phase 14 | TBD | Pending |
 | CREATE-01 | Phase 14 | TBD | Pending |
