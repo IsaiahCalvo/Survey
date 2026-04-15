@@ -61,3 +61,23 @@ code {
 .callout-properties-panel {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
+
+/* ============================================================
+   Phase 14 — tool crosshair (UX-01)
+   Applied conditionally by SVGAnnotationLayer.jsx when
+   activeTool is 'line' | 'arrow' | 'callout' and no drag is
+   in progress. FabricDrawingCanvas already hardcodes
+   cursor: crosshair at :510 so line/arrow is covered there;
+   this class covers the SVG layer for callout tool and for
+   line/arrow when the SVG layer sits above the drawing canvas.
+
+   Dragging state takes precedence over crosshair — existing
+   SVGAnnotationLayer inline style rules set cursor='grabbing'
+   when interactionState === 'dragging'. Inline style wins over
+   class because of specificity + inline-priority.
+   ============================================================ */
+.tool-crosshair {
+  /* UX: crosshair while line/arrow/callout tool is active — signals
+     "click-drag to create" matching combined-tools baseline (UX-01) */
+  cursor: crosshair;
+}

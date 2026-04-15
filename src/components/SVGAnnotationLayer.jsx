@@ -137,7 +137,36 @@ const SVGAnnotationLayer = memo(({
 
   // Determine pointer events mode: interactive when select tool active AND not in edit mode
   // When editingAnnotationIndex is set, FabricEditCanvas + MiniToolbar need to receive clicks
-  const isInteractive = (activeTool === 'select' || activeTool === 'text-select') && editingAnnotationIndex == null;
+  //
+  // UX: Plan 14-02 UX-01 — split the single `isInteractive` derivation into three
+  // related booleans so the line/arrow/callout creation tools can get
+  // pointerEvents=auto (so the crosshair cursor and creation drag register on
+  // the SVG surface) WITHOUT re-enabling annotation click-to-select on those
+  // tools. The three booleans have distinct jobs:
+  //
+  //   isSelectTool   — click-to-select / hover / double-click edit gate. Only
+  //                    the Select/Text-Select tools drive annotation selection
+  //                    behavior. Use this for any guard that protects
+  //                    select-mode-specific handlers (existing call sites at
+  //                    988/1050/1084 KEEP isInteractive because they also
+  //                    need creation-tool pointer routing — see Step 3 audit).
+  //   isCreationTool — line/arrow/callout tool active. Drives the crosshair
+  //                    class (Step 4 below) so downstream Phase 15/16
+  //                    line/arrow work inherits it for free.
+  //   isInteractive  — the OR of both. Drives SVG root pointerEvents and
+  //                    handleSvgPointerDown routing. All creation tools need
+  //                    pointerEvents=auto so the class shows through; all
+  //                    select tools need it for click-to-select.
+  //
+  // See 14-UI-SPEC.md Interaction Contract 1 and 14-RESEARCH.md Pitfall 3
+  // (pointerEvents:none blocks crosshair cursor).
+  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select') && editingAnnotationIndex == null;
+  // UX: line/arrow/callout tools also get pointerEvents=auto so the crosshair
+  // class shows through and callout creation drag can start on the SVG
+  // surface. Gated on editingAnnotationIndex == null so the creation surface
+  // disables during edit mode (mirrors isSelectTool's edit-mode guard).
+  const isCreationTool = (activeTool === 'line' || activeTool === 'arrow' || activeTool === 'callout') && editingAnnotationIndex == null;
+  const isInteractive = isSelectTool || isCreationTool;
 
   // ---------------------------------------------------------------------------
   // EDIT-12: RotationInputField visibility state machine (Phase 12 Plan 02)
@@ -963,7 +992,13 @@ const SVGAnnotationLayer = memo(({
                   strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
                   strokeLinecap="round"
                   vectorEffect="non-scaling-stroke"
-                  pointerEvents={isInteractive && isObjectInteractive ? 'stroke' : 'none'}
+                  // UX: Plan 14-02 UX-01 — gate on isSelectTool (not
+                  // isInteractive) so click-to-select / hover / double-click
+                  // only fire in Select mode. Line/arrow/callout creation
+                  // tools flow their pointer events to handleSvgPointerDown
+                  // on the SVG root instead of re-selecting this existing
+                  // annotation mid-drag.
+                  pointerEvents={isSelectTool && isObjectInteractive ? 'stroke' : 'none'}
                   onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                   onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                   onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -1025,7 +1060,12 @@ const SVGAnnotationLayer = memo(({
                   height={Math.max(bbox.height, 10)}
                   fill="transparent"
                   stroke="none"
-                  pointerEvents={isInteractive && isObjectInteractive ? 'all' : 'none'}
+                  // UX: Plan 14-02 UX-01 — counter hit-area click-to-select
+                  // is gated on isSelectTool so line/arrow/callout creation
+                  // tools do NOT re-enter this counter's selection state
+                  // mid-drag. Creation-tool clicks pass through to
+                  // handleSvgPointerDown on the SVG root.
+                  pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
                   onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                   onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                   onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -1059,7 +1099,11 @@ const SVGAnnotationLayer = memo(({
                 height={Math.max(bbox.height, 10)}
                 fill="transparent"
                 stroke="none"
-                pointerEvents={isInteractive && isObjectInteractive ? 'all' : 'none'}
+                // UX: Plan 14-02 UX-01 — generic annotation hit-area gated on
+                // isSelectTool so creation tools (line/arrow/callout) don't
+                // re-select existing annotations mid-drag. See the isSelectTool
+                // vs isInteractive comment at the derivation site (~line 142).
+                pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
                 onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                 onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                 onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -1080,6 +1124,13 @@ const SVGAnnotationLayer = memo(({
       viewBox={`0 0 ${width} ${height}`}
       width="100%"
       height="100%"
+      // UX: Plan 14-02 UX-01 — apply `tool-crosshair` class when the user is
+      // in a creation tool (line / arrow / callout) AND no drag is in
+      // progress. The class is defined in src/index.css and sets
+      // `cursor: crosshair`. Dragging state wins via the inline
+      // `cursor: 'grabbing'` rule below because inline style beats class
+      // specificity. See 14-UI-SPEC.md Interaction Contract 1.
+      className={(isCreationTool && interactionState !== 'dragging') ? 'tool-crosshair' : undefined}
       style={{
         position: 'absolute',
         top: 0,
