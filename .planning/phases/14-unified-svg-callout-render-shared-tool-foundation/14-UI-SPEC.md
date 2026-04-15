@@ -36,17 +36,18 @@ created: 2026-04-15
 
 ## Spacing Scale
 
-Declared values (multiples of 4, applied to SVG render primitives in page coordinates):
+Declared values (all from the standard 8-point set {4, 8, 16, 24, 32, 48, 64}, applied to SVG render primitives in page coordinates):
 
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Text box inner padding (`renderCallout` foreignObject div padding); textbox corner radius `rx/ry` |
 | sm | 8px | Reserved for future callout handle gap (Phase 17/18) |
-| md | 12px | Callout handle hit-target size (arrowTip, knee — matches existing `.callout-handle` 12×12 in `src/index.css:28` that the deleted HTML overlay used; preserved here as the hit-circle radius baseline for Phase 17/18 to inherit) |
 | lg | 16px | Reserved for future mini-toolbar padding (Phase 16) |
 | xl | 32px | Minimum drag threshold for callout creation (x/y delta below which a mousedown-drag-mouseup cycle does NOT commit a new callout — matches combined-tools creation behavior) |
 
 Exceptions: none.
+
+**Note on the 12px hit-target radius:** The invisible drag-handle hit-circle radius (`r={12}`) documented in Interaction Contract 4 below is NOT a layout spacing token — it is a pointer-interaction affordance value. It is specified once, in context, in the "Callout part drag handles" interaction contract where the muscle-memory-continuity rationale against the deleted `.callout-handle` in `src/index.css:28-34` lives. It intentionally does not appear in this table.
 
 **Dashed preview stroke pattern:** `strokeDasharray="5,5"` (5px on, 5px off). This is NOT a spacing token — it's an SVG stroke attribute value ported verbatim from combined-tools and locked by CREATE-01. Do not parameterize.
 
@@ -218,6 +219,8 @@ Phase 14 does NOT render visible circle/square handles on selected callouts. Sel
 
 **Rationale for invisible hit-targets:** Phase 14 needs the drag behavior to work without building visible selection chrome (chrome is Phase 17/18). The pattern of "visible `<element>` + transparent hit overlay at 12px radius" mirrors how the existing rotation handle `data-rotation-handle="mtr"` delegation works in `SVGAnnotationLayer.jsx:213-313` (Phase 13 EDIT-13). Data attributes enable event delegation — Phase 17/18 will replace the invisible overlays with visible chrome that reuses the same `data-callout-part` hit-test pathway.
 
+**Why 12px (hit-target radius, not layout spacing):** The 12px radius is a pointer-interaction affordance value, not a spacing token. It is the hit-target radius of the invisible `<circle>` drag overlay on the knee handle (and the enlarged `<circle>` overlay on the arrowTip, and the `stroke-width="12"` transparent line overlay on line1/line2). Its sole source of truth is the deleted HTML overlay's `.callout-handle` size in `src/index.css:28-34` (`width: 12px; height: 12px; border-radius: 3px`). Preserving the exact 12px value is deliberate muscle-memory continuity for users who interacted with the legacy callout before Phase 14 — they will find hit targets in the same physical size they have learned. Phase 17/18 may revisit the value when visible chrome lands.
+
 **No selection highlight in Phase 14:** Clicking a callout sets `selectedCalloutIds = [id]` in React state but there is NO visible selection indicator (no glow, no border color change, no handles drawn). Verification of "is this callout selected?" in Phase 14 happens via React DevTools or a console log. The visual selection chrome is Phase 17/18's job. This is acceptable because Phase 14's target audience for intermediate state is Claude building Phases 15-18, not end users, per CONTEXT.md "Specific Ideas" item 3.
 
 ---
@@ -295,7 +298,7 @@ The executor consumes this checklist alongside PLAN.md:
 - [ ] Dimension 2 Visuals: PASS — SVG render primitives specified with exact hex/stroke/dash values. Data attributes contract locked. No new chrome.
 - [ ] Dimension 3 Color: PASS — 4-color palette (60/30/10 + destructive-reserved). Accent `#4a90e2` restricted to selection chrome only. Zero new hexes beyond what already exists in the codebase.
 - [ ] Dimension 4 Typography: PASS — Single font family `Arial` (single-name per Fabric.js gotcha). Default 14px/400/1.2. User override range 10-32px via existing style shim.
-- [ ] Dimension 5 Spacing: PASS — 8-point scale (4, 12, 16, 32) with 12px handle hit-target exception documented and justified against the deleted overlay's `.callout-handle` size.
+- [ ] Dimension 5 Spacing: PASS — Spacing Scale tokens (4, 8, 16, 32) all drawn from the standard 8-point set. Exceptions: none. The 12px hit-target radius is documented separately in Interaction Contract 4 as a pointer-interaction affordance, not a layout spacing token, so it is not a Spacing Scale exception.
 - [ ] Dimension 6 Registry Safety: PASS — Not a shadcn project, zero third-party UI, zero `npm install`.
 
 **Approval:** pending (awaiting gsd-ui-checker)
@@ -314,7 +317,7 @@ The executor consumes this checklist alongside PLAN.md:
 | Stroke width 2px, `max(1, t*0.7)` | `src/utils/svgAnnotationRenderers.jsx:521, 577` existing `renderCallout` rules |
 | ArrowTip radius `max(2, t+0.4)` | `src/utils/svgAnnotationRenderers.jsx:565` existing `renderCallout` rule |
 | Dashed `[5,5]` / opacity `0.6` | `14-CONTEXT.md` Area 4 CREATE-01 lock + `REQUIREMENTS.md` CREATE-01 acceptance |
-| 12px handle hit-target | `src/index.css:28-34` deleted `.callout-handle` size, preserved for muscle-memory |
+| 12px hit-target radius (Interaction Contract 4 only — not a spacing token) | `src/index.css:28-34` deleted `.callout-handle` size, preserved for muscle-memory |
 | `data-callout-*` attribute contract | `14-CONTEXT.md` Area 1 "data attributes" lock + `14-RESEARCH.md` Phase 13 delegation pattern reference |
 | Crosshair cursor rule | `14-CONTEXT.md` Area 4 UX-01 + `14-RESEARCH.md` pointerEvents gotcha |
 | Delete/Backspace focus guard | `14-CONTEXT.md` Area 4 KBD-01 + combined-tools `Index.tsx:31-49` `isUserTyping()` pattern |
