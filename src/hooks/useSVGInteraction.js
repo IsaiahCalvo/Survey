@@ -20,6 +20,19 @@ import { getAnnotationBBox, getLineEndpoints, isImportedPath, translatePathData,
  * @param {number} options.pageHeight - Unscaled page height (viewBox height)
  * @param {Function} options.onSaveAnnotations - (updatedJSON, saveContext) => void
  * @param {Function} options.onRequestEditMode - (annotationIndex, annotationType) => void
+ * @param {Array} [options.callouts] - Phase 14 CALL-10 — array of React callouts
+ *   (normalized 0-1 coords) from App.jsx. Used to look up the original callout
+ *   by id for drag-start snapshots and whole-move delta math.
+ * @param {Function} [options.onSelectedCalloutIdsChange] - Phase 14 CALL-10 —
+ *   callback (ids: Set<string>) => void fired when a callout is clicked to
+ *   select. Plan 14-03 Task 1 wires this to App.jsx setSelectedCalloutIds.
+ * @param {Function} [options.onUpdateCalloutLive] - Phase 14 CALL-10 — live
+ *   paint callback (calloutId, patch) => void fired on every pointermove
+ *   during callout-part drag. NO undo checkpoint — matches Phase 12 optimistic
+ *   rotation paint pattern.
+ * @param {Function} [options.onUpdateCallout] - Phase 14 CALL-10 — commit
+ *   callback (calloutId, patch) => void fired once on pointerup to capture
+ *   the undo checkpoint (live paint already updated the store).
  */
 export function useSVGInteraction({
   svgRef,
@@ -28,6 +41,10 @@ export function useSVGInteraction({
   pageHeight,
   onSaveAnnotations,
   onRequestEditMode,
+  callouts,
+  onSelectedCalloutIdsChange,
+  onUpdateCalloutLive,
+  onUpdateCallout,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -43,7 +60,7 @@ export function useSVGInteraction({
   // Mutable refs for drag state
   const dragStateRef = useRef({
     active: false,
-    mode: null,      // 'move' | 'resize' | 'rotate' | 'group-move'
+    mode: null,      // 'move' | 'resize' | 'rotate' | 'group-move' | 'callout-part'
     handleId: null,
     startSVGPoint: null,  // { x, y } in viewBox coords at drag start
     originalProps: null,  // { left, top, scaleX, scaleY, angle, width, height } snapshot
@@ -56,6 +73,13 @@ export function useSVGInteraction({
     currentResize: null,  // resize: { newScaleX, newScaleY, newLeft, newTop } during drag
     currentAngle: undefined, // rotate: current angle during drag
     groupOriginals: null, // group-move: { [idx]: { left, top } } for all selected annotations
+    // UX: Phase 14 CALL-10 — callout-part drag state. Populated only when
+    // mode === 'callout-part'. See 14-CONTEXT.md Area 3 (Phase 14 drag MVP).
+    // Four-place invariant: these fields are initialized here, SET at
+    // pointerdown, READ at pointermove, and RESET at pointerup.
+    partType: null,                 // 'arrowTip' | 'knee' | 'textBox' | 'whole'
+    calloutId: null,
+    originalCalloutPositions: null, // snapshot of arrowTip/knee/textBoxPosition at drag-start
   });
   const interactionStateRef = useRef('idle');
 
@@ -251,8 +275,31 @@ export function useSVGInteraction({
 
   /**
    * Double-click: request edit mode (Phase 10/11 mounts Canvas for editing).
+   *
+   * Phase 14 CALL-10: extended to hit-test data-callout-id on the event target
+   * chain and fire onRequestEditMode(calloutId, 'callout') BEFORE the
+   * annotation double-click logic. Callers disambiguate by checking the
+   * second arg === 'callout' and route to the FabricEditCanvas callout
+   * adapter path (Plan 14-03 Task 3 in App.jsx).
    */
   const handleAnnotationDoubleClick = useCallback((e, index) => {
+    // UX: Phase 14 CALL-10 — callout double-click enters edit mode via
+    // FabricEditCanvas + calloutEditAdapter (see Plan 14-03 Task 3 in App.jsx).
+    // Uses event-delegation via data-callout-id (same pattern as v2.2 EDIT-13
+    // rotation-handle delegation) so the hit-test works even when the
+    // event target is a descendant of the callout <g>.
+    const calloutEl = e.target?.closest?.('[data-callout-id]');
+    if (calloutEl) {
+      const calloutId = calloutEl.getAttribute('data-callout-id');
+      if (calloutId && onRequestEditMode) {
+        e.stopPropagation();
+        // UX: fire the dispatch with 'callout' type — App.jsx disambiguates
+        // by checking type === 'callout' and routes to the calloutEditAdapter
+        // pipeline via handleRequestCalloutEditMode.
+        onRequestEditMode(calloutId, 'callout');
+        return;
+      }
+    }
     e.stopPropagation();
     if (onRequestEditMode && annotations?.objects?.[index]) {
       onRequestEditMode(index, annotations.objects[index].type);
@@ -262,12 +309,90 @@ export function useSVGInteraction({
   /**
    * Click on empty SVG background: deselect all.
    * Only fires when clicking the SVG element itself, not a child annotation.
+   *
+   * Phase 14 CALL-10: extended to hit-test data-callout-id and enter the
+   * new 'callout-part' drag mode. Callout clicks take precedence over empty-
+   * space deselection because callouts may render across the full SVG area
+   * and the SVG root catches clicks anywhere inside them.
    */
   const handleSvgPointerDown = useCallback((e) => {
+    // UX: Phase 14 CALL-10 — callout hit-test via data-attribute delegation.
+    // Same pattern as v2.2 Phase 13 rotation-handle delegation
+    // (SVGAnnotationLayer.jsx:225-340). The data-callout-* namespace is
+    // distinct from data-rotation-handle so they don't collide.
+    const calloutEl = e.target?.closest?.('[data-callout-id]');
+    if (calloutEl) {
+      const calloutId = calloutEl.getAttribute('data-callout-id');
+      const partEl = e.target?.closest?.('[data-callout-part]');
+      // UX: default to 'whole' if the click lands on the outer <g> without
+      // an explicit part marker. Defensive — every visible callout child
+      // emits data-callout-part per Plan 14-01's renderCallout contract.
+      let partType = partEl ? partEl.getAttribute('data-callout-part') : 'whole';
+
+      // UX: Phase 14 whole-move triggers — (1) connector-line drag = whole,
+      // (2) Cmd/Ctrl + any part = whole. Matches combined-tools
+      // FabricPDFCanvas.tsx:2569-2603 dispatch-on-partType pattern and the
+      // 14-CONTEXT.md Area 3 drag MVP decision.
+      if (partType === 'line1' || partType === 'line2') partType = 'whole';
+      if (e.metaKey || e.ctrlKey) partType = 'whole';
+      // UX: clicking the inline text foreignObject is a select action, not a
+      // drag — route it to 'textBox' so drag grabs the box frame but a bare
+      // click still selects the callout. (Double-click edit entry runs via
+      // handleAnnotationDoubleClick, not this handler.)
+      if (partType === 'text') partType = 'textBox';
+
+      // Look up the original callout by id for the drag-start snapshot
+      const calloutArr = Array.isArray(callouts) ? callouts : [];
+      const callout = calloutArr.find((c) => c && c.id === calloutId);
+      if (!callout) {
+        // Callout id not in the prop array — defensive bail-out. Don't
+        // deselect — the click still belongs to the callout even if the
+        // data hasn't propagated yet.
+        return;
+      }
+
+      // UX: mutual exclusivity — selecting a callout clears annotation
+      // selection so the existing selection machinery (delete, edit pill,
+      // etc.) doesn't fire on a stale annotation id.
+      if (onSelectedCalloutIdsChange) {
+        onSelectedCalloutIdsChange(new Set([calloutId]));
+      }
+      deselectAll();
+
+      // UX: cache ctm inverse + start pointer for the pointermove branch.
+      // Mirrors handleAnnotationPointerDown's pattern.
+      const ctm = svgRef.current?.getScreenCTM();
+      const ctmInverse = ctm ? ctm.inverse() : null;
+      const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+
+      // Snapshot the callout's normalized coords for whole-move delta math.
+      // Integer-clean copy (spread) so downstream pointermove math reads
+      // the original positions, not a mutable reference into React state.
+      dragStateRef.current = {
+        ...dragStateRef.current,
+        active: true,
+        mode: 'callout-part',
+        partType,
+        calloutId,
+        startSVGPoint: svgPoint,
+        ctmInverse,
+        originalCalloutPositions: {
+          arrowTip: { ...callout.arrowTip },
+          knee: { ...callout.knee },
+          textBoxPosition: { ...callout.textBoxPosition },
+        },
+      };
+      try { e.target.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
+      e.stopPropagation();
+      setInteractionState('dragging');
+      return;
+    }
+
+    // Not a callout — existing empty-space deselect behavior.
     if (e.target === svgRef.current) {
       deselectAll();
     }
-  }, [svgRef, deselectAll]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -471,8 +596,81 @@ export function useSVGInteraction({
         dx: 0, dy: 0,
         rotate: { angle: newAngle, deltaAngle, cx: ds.centerX, cy: ds.centerY },
       });
+    } else if (ds.mode === 'callout-part') {
+      // UX: Phase 14 CALL-10 — per-drag update of one or more callout
+      // positions. Uses cached ctmInverse for consistent screen→page
+      // conversion. Delta math is integer-clean: capture the original
+      // normalized coords at pointerdown, apply delta-in-page-coords /
+      // pageSize each frame. See 14-CONTEXT.md Area 3 drag MVP.
+      const dxPage = svgPoint.x - ds.startSVGPoint.x;
+      const dyPage = svgPoint.y - ds.startSVGPoint.y;
+      // UX: normalize delta by page dimensions so the callout's stored
+      // 0-1 coords stay in page-relative space regardless of zoom level.
+      const W = pageWidth || 1;
+      const H = pageHeight || 1;
+      const dxNorm = dxPage / W;
+      const dyNorm = dyPage / H;
+
+      const original = ds.originalCalloutPositions;
+      if (!original) return;
+
+      let patch = null;
+      switch (ds.partType) {
+        case 'arrowTip':
+          patch = {
+            arrowTip: {
+              x: original.arrowTip.x + dxNorm,
+              y: original.arrowTip.y + dyNorm,
+            },
+          };
+          break;
+        case 'knee':
+          patch = {
+            knee: {
+              x: original.knee.x + dxNorm,
+              y: original.knee.y + dyNorm,
+            },
+          };
+          break;
+        case 'textBox':
+          patch = {
+            textBoxPosition: {
+              x: original.textBoxPosition.x + dxNorm,
+              y: original.textBoxPosition.y + dyNorm,
+            },
+          };
+          break;
+        case 'whole':
+          patch = {
+            arrowTip: {
+              x: original.arrowTip.x + dxNorm,
+              y: original.arrowTip.y + dyNorm,
+            },
+            knee: {
+              x: original.knee.x + dxNorm,
+              y: original.knee.y + dyNorm,
+            },
+            textBoxPosition: {
+              x: original.textBoxPosition.x + dxNorm,
+              y: original.textBoxPosition.y + dyNorm,
+            },
+          };
+          break;
+        default:
+          // Unknown partType — bail defensively.
+          return;
+      }
+
+      // UX: live paint during drag — onUpdateCalloutLive updates React
+      // state without a checkpoint (checkpoint fires once on pointerup
+      // via onUpdateCallout). Mirrors the Phase 12 optimistic rotation
+      // paint pattern for smooth drag without bloating the undo stack.
+      if (patch && onUpdateCalloutLive && ds.calloutId) {
+        onUpdateCalloutLive(ds.calloutId, patch);
+      }
+      setInteractionState('dragging');
     }
-  }, [svgRef, annotations, onSaveAnnotations]);
+  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
@@ -641,6 +839,17 @@ export function useSVGInteraction({
         action: 'rotate',
         checkpointPolicy: 'normal',
       });
+    } else if (ds.mode === 'callout-part' && ds.calloutId) {
+      // UX: Phase 14 CALL-10 — commit the callout drag. The live-paint
+      // branch in handlePointerMove already wrote the final state to the
+      // React store via onUpdateCalloutLive; pointerup just captures the
+      // undo checkpoint via onUpdateCallout (which calls addHistoryCheckpoint
+      // and does NOT mutate state). One undo entry per drag, matching the
+      // Phase 9 per-action undo convention.
+      if (onUpdateCallout) {
+        onUpdateCallout(ds.calloutId, {});
+      }
+      try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
     }
 
     // Reset drag state
@@ -650,10 +859,14 @@ export function useSVGInteraction({
       anchorX: null, anchorY: null, centerX: null, centerY: null,
       currentResize: null, currentAngle: undefined, groupOriginals: null,
       originalEndpoints: null, currentEndpoint: null,
+      // UX: Phase 14 CALL-10 — four-place invariant: reset callout-part
+      // fields alongside the rest of the drag state so the next drag
+      // starts with a clean slate. Miss one and the drag gets stuck.
+      partType: null, calloutId: null, originalCalloutPositions: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout]);
 
   /**
    * Handle pointer down on a selection handle (resize/rotate).

@@ -122,6 +122,20 @@ const SVGAnnotationLayer = memo(({
   //                             pattern (Phase 9 decision).
   selectedCalloutIds,
   onDeleteSelectedCallouts,
+  // Plan 14-03 Task 1: App.jsx state setter for callout selection. Called
+  // by useSVGInteraction's 'callout-part' drag mode to update the selection
+  // on pointerdown. Defensively defaulted to a no-op so the component stays
+  // forward-compatible if any mount site hasn't wired it yet.
+  onSelectedCalloutIdsChange,
+  // Plan 14-03 Task 1: creation + drag-commit callbacks wired from App.jsx.
+  // onCreateCallout fires from the CREATE-01 callout creation state machine
+  // (Task 3); onUpdateCallout fires once at drag pointerup to capture the
+  // undo checkpoint; onUpdateCalloutLive fires on every pointermove during
+  // drag to repaint state without bloating the undo stack (Phase 12
+  // optimistic-paint pattern).
+  onCreateCallout,
+  onUpdateCallout,
+  onUpdateCalloutLive,
 }) => {
   // ---------------------------------------------------------------------------
   // Refs
@@ -148,6 +162,16 @@ const SVGAnnotationLayer = memo(({
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
+    // UX: Phase 14 CALL-10 — wire the callout drag machinery. The hook
+    // reads `callouts` to look up the original React callout by id at
+    // drag-start (for whole-move delta math), dispatches selection changes
+    // via onSelectedCalloutIdsChange, and repaints + commits drags via
+    // onUpdateCalloutLive + onUpdateCallout (live + commit split to match
+    // the Phase 12 optimistic-paint pattern).
+    callouts,
+    onSelectedCalloutIdsChange,
+    onUpdateCalloutLive,
+    onUpdateCallout,
   });
 
   // Determine pointer events mode: interactive when select tool active AND not in edit mode
@@ -869,6 +893,98 @@ const SVGAnnotationLayer = memo(({
   ]);
 
   // ---------------------------------------------------------------------------
+  // Phase 14 CALL-10 — invisible hit-target overlays for callout parts
+  // ---------------------------------------------------------------------------
+  // UX: The visible chrome from renderCallout (Plan 14-01) has 2-3px lines
+  // and a 2-3px arrowTip circle — too thin for reliable touch/drag. Plan
+  // 14-03 Task 2 adds a sibling <g> with transparent 12px-radius circles
+  // at knee + arrowTip, and transparent 12px-stroke lines overlaying
+  // line1/line2, so useSVGInteraction's pointerdown hit-test sees a
+  // generous drag target. The 12px size matches the deleted HTML overlay's
+  // .callout-handle size in src/index.css (muscle-memory continuity per
+  // 14-UI-SPEC.md Interaction Contract 4). The transparent stroke keeps
+  // the overlay invisible but `pointer-events: all/stroke` makes it
+  // clickable. Rendered AFTER the visible chrome (via the wrap <g> in
+  // filteredCallouts) so hit targets sit on top.
+  const renderCalloutHitTargets = useCallback((callout, pageSize) => {
+    if (!callout || !callout.arrowTip || !callout.knee) return null;
+    const { width: W, height: H } = pageSize;
+    const atX = callout.arrowTip.x * W;
+    const atY = callout.arrowTip.y * H;
+    const kX = callout.knee.x * W;
+    const kY = callout.knee.y * H;
+    const tbX = (callout.textBoxPosition?.x ?? 0) * W;
+    const tbY = (callout.textBoxPosition?.y ?? 0) * H;
+    const tbW = Math.max(18, (callout.textBoxWidth ?? 0.1) * W);
+    const tbH = Math.max(18, (callout.textBoxHeight ?? 0.05) * H);
+    // UX: reuse the same connection calculation renderCallout uses so
+    // line1/line2 hit overlays line up with the visible segments.
+    const conn = calculateCalloutConnection(
+      tbX, tbY, tbW, tbH,
+      { x: kX, y: kY },
+      { x: atX, y: atY },
+      callout.style?.lineThickness || 2
+    );
+    return (
+      <g
+        key={`callout-hit-${callout.id}`}
+        data-callout-id={callout.id}
+      >
+        {/* UX: widened line1 hit target (textbox→knee). pointerEvents: stroke
+            so transparent fill doesn't catch events away from the visible
+            line; only the 12px stroke zone captures. */}
+        {!conn.shouldHideLine1 && (
+          <line
+            data-callout-part="line1"
+            x1={conn.line1Start.x}
+            y1={conn.line1Start.y}
+            x2={conn.effectiveKnee.x}
+            y2={conn.effectiveKnee.y}
+            stroke="transparent"
+            strokeWidth={12}
+            strokeLinecap="round"
+            style={{ cursor: 'move', pointerEvents: 'stroke' }}
+          />
+        )}
+        {/* UX: widened line2 hit target (knee→arrowTip) */}
+        <line
+          data-callout-part="line2"
+          x1={conn.line2Start.x}
+          y1={conn.line2Start.y}
+          x2={atX}
+          y2={atY}
+          stroke="transparent"
+          strokeWidth={12}
+          strokeLinecap="round"
+          style={{ cursor: 'move', pointerEvents: 'stroke' }}
+        />
+        {/* UX: enlarged arrowTip hit target — 12px radius > visible 2-3px
+            circle so touches land reliably. fill=transparent +
+            pointerEvents=all keeps the entire disc clickable. */}
+        <circle
+          data-callout-part="arrowTip"
+          cx={atX}
+          cy={atY}
+          r={12}
+          fill="transparent"
+          style={{ cursor: 'grab', pointerEvents: 'all' }}
+        />
+        {/* UX: invisible knee hit target — no visible chrome in Phase 14;
+            Phase 17/18 will add visible selection handles that reuse the
+            same data-callout-part='knee' delegation. */}
+        <circle
+          data-callout-part="knee"
+          cx={kX}
+          cy={kY}
+          r={12}
+          fill="transparent"
+          style={{ cursor: 'grab', pointerEvents: 'all' }}
+        />
+      </g>
+    );
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Filter and render callout annotations
   // ---------------------------------------------------------------------------
   // UX: CALL-10 (Phase 14 Plan 14-03) — SVGAnnotationLayer now owns callout
@@ -881,6 +997,12 @@ const SVGAnnotationLayer = memo(({
   // decision. The legacy CalloutOverlay system in src/components/Callout/* is
   // replaced by null-render stubs in Plan 14-03 Task 1 — no doubled visuals
   // because the old system renders nothing.
+  //
+  // Plan 14-03 Task 2: we also wrap each rendered callout with an invisible
+  // hit-target overlay group (transparent circles at arrowTip/knee, widened
+  // line1/line2 strokes) sized to 12px for touch targets. The existing
+  // visible renderCallout chrome stays exactly as Plan 14-01 shipped it; the
+  // hit overlays sit on top for pointer capture.
   const filteredCallouts = useMemo(() => {
     if (!Array.isArray(callouts) || callouts.length === 0) return [];
     const pageSize = { width, height };
@@ -905,14 +1027,37 @@ const SVGAnnotationLayer = memo(({
 
       // UX: CALL-10 — new signature takes pageSize object, emits data attributes
       const element = renderCallout(callout, i, pageSize, calculateCalloutConnection);
-      if (element) {
-        elements.push(element);
-        count++;
-      }
+      if (!element) continue;
+
+      // UX: Phase 14 Task 2 — invisible hit-target overlays for callout
+      // parts. The 12px radius / 12px line strokeWidth matches the deleted
+      // HTML overlay's .callout-handle size (muscle-memory continuity per
+      // 14-UI-SPEC.md Interaction Contract 4). The group carries
+      // data-callout-id so useSVGInteraction's pointerdown hit-test can
+      // identify which callout was clicked even when the visible chrome
+      // is too thin for touch.
+      const hitTargets = renderCalloutHitTargets(callout, pageSize);
+
+      elements.push(
+        // UX: wrap visible element + invisible hit targets in a shared
+        // fragment via an outer <g> so the hit targets render AFTER the
+        // visible chrome (on top of it, catching pointer events).
+        // eslint-disable-next-line react/jsx-key
+        <g key={`callout-wrap-${callout.id || i}`}>
+          {element}
+          {hitTargets}
+        </g>
+      );
+      count++;
     }
 
     return elements;
-  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, activeTool]);
+    // NOTE: activeTool removed from deps (it doesn't affect rendering, only
+    // interaction). renderCallout and calculateCalloutConnection are
+    // module-scope imports — stable. renderCalloutHitTargets is a stable
+    // useCallback derived from calculateCalloutConnection (module import).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height]);
 
   const objectCount = filteredAnnotations.length;
   const calloutCount = filteredCallouts.length;
