@@ -287,6 +287,17 @@ const FabricDrawingCanvas = memo(({
       } else if (tool === 'line' || tool === 'arrow') {
         state.shape = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
           stroke: color, strokeWidth: sw, strokeUniform: true,
+          // UX: CREATE-01 — dashed preview during click-drag signals "click-drag
+          // to create" and visually distinguishes the in-progress stroke from
+          // committed annotations. Matches combined-tools creation feedback.
+          // See CREATE-01 in REQUIREMENTS.md and 14-UI-SPEC.md Interaction
+          // Contract 3. Reset to strokeDashArray:null + opacity:1 BEFORE
+          // commitShape() so the preview styling never persists into saved JSON.
+          strokeDashArray: [5, 5],
+          // UX: 0.6 opacity matches CREATE-01 acceptance bullet — preview is
+          // deliberately translucent so the underlying page context stays
+          // readable while the user decides where the line ends.
+          opacity: 0.6,
         });
         console.log(`[DrawCanvas p${pageNumber}] ${tool} created — start=(${pointer.x.toFixed(1)}, ${pointer.y.toFixed(1)}), color=${color}, sw=${sw}`);
       }
@@ -350,6 +361,16 @@ const FabricDrawingCanvas = memo(({
         console.log(`[DrawCanvas p${pageNumber}] shape mouseup — tool=${tool}, hasSize=${hasSize}`, s ? { left: s.left, top: s.top, w: s.width, h: s.height } : null);
       }
       if (hasSize) {
+        // UX: CREATE-01 — reset dashed preview style BEFORE commitShape() so
+        // the preview dashing does NOT persist into saved JSON. commitShape()
+        // calls shape.toJSON(CUSTOM_PROPS) which serializes whatever is
+        // currently on the object. Line/arrow only — rect/ellipse never
+        // applied the preview style in the first place. See 14-RESEARCH.md
+        // Pitfall 1 (commitShape serialization timing) and 14-UI-SPEC.md
+        // Interaction Contract 3.
+        if (tool === 'line' || tool === 'arrow') {
+          s.set({ strokeDashArray: null, opacity: 1 });
+        }
         commitShape(s);
       } else {
         canvas.remove(s);
