@@ -9,6 +9,12 @@
  */
 import React from 'react';
 import { measureTextBounds } from './svgBoundingBox';
+// Phase 14 CALL-10: renderCallout delegates to a pure data-spec builder in
+// calloutEditAdapter.js so the contract can be unit-tested without loading
+// .jsx from Node --test. sanitizeFontFamily strips CSS fallback stacks at
+// the render surface (CLAUDE.md 2026-04-08 gotcha) — kept imported here for
+// any future direct use at this layer.
+import { buildCalloutRenderSpec, sanitizeFontFamily } from './calloutEditAdapter';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -252,6 +258,111 @@ export const renderArrow = (obj, index) => {
 };
 
 /**
+ * Render a Fabric.js polygon object as an SVG <polygon> element.
+ *
+ * Fabric.js Polygon stores `points[]` in local unscaled space and uses the
+ * same transform chain as Path: translate(left, top) → rotate → scale →
+ * translate(-pathOffset). PDF-imported polygons arrive here with a populated
+ * `points` array but no `path`/`objects`, which is why the main dispatch
+ * previously couldn't draw them (causing the eraser↔selector mismatch).
+ *
+ * @param {object} obj - Fabric.js polygon JSON object
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement|null}
+ */
+export const renderPolygon = (obj, index) => {
+  if (!Array.isArray(obj.points) || obj.points.length === 0) return null;
+
+  const pointsStr = obj.points
+    .map((p) => `${toNumber(p?.x)},${toNumber(p?.y)}`)
+    .join(' ');
+
+  const left = obj.left ?? 0;
+  const top = obj.top ?? 0;
+  const angle = obj.angle ?? 0;
+  const scaleX = obj.scaleX ?? 1;
+  const scaleY = obj.scaleY ?? 1;
+  const pathOffsetX = obj.pathOffset?.x || 0;
+  const pathOffsetY = obj.pathOffset?.y || 0;
+
+  let transform = `translate(${left}, ${top})`;
+  if (angle !== 0) transform += ` rotate(${angle})`;
+  if (scaleX !== 1 || scaleY !== 1) transform += ` scale(${scaleX}, ${scaleY})`;
+  transform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
+
+  const isHighlight = obj.globalCompositeOperation === 'multiply';
+  const key = `polygon-${obj.id || obj.pdfAnnotationId || index}`;
+
+  return (
+    <polygon
+      key={key}
+      points={pointsStr}
+      transform={transform}
+      fill={obj.fill || 'transparent'}
+      stroke={obj.stroke || 'transparent'}
+      strokeWidth={obj.strokeWidth || 1}
+      opacity={obj.opacity ?? 1}
+      strokeLinejoin="round"
+      vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
+      style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+    />
+  );
+};
+
+/**
+ * Render a Fabric.js polyline object as an SVG <polyline> element.
+ *
+ * Same transform chain as renderPolygon; fill defaults to "none" for polylines
+ * since they represent open paths (e.g. PDF PolyLine annotations).
+ *
+ * @param {object} obj - Fabric.js polyline JSON object
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement|null}
+ */
+export const renderPolyline = (obj, index) => {
+  if (!Array.isArray(obj.points) || obj.points.length === 0) return null;
+
+  const pointsStr = obj.points
+    .map((p) => `${toNumber(p?.x)},${toNumber(p?.y)}`)
+    .join(' ');
+
+  const left = obj.left ?? 0;
+  const top = obj.top ?? 0;
+  const angle = obj.angle ?? 0;
+  const scaleX = obj.scaleX ?? 1;
+  const scaleY = obj.scaleY ?? 1;
+  const pathOffsetX = obj.pathOffset?.x || 0;
+  const pathOffsetY = obj.pathOffset?.y || 0;
+
+  let transform = `translate(${left}, ${top})`;
+  if (angle !== 0) transform += ` rotate(${angle})`;
+  if (scaleX !== 1 || scaleY !== 1) transform += ` scale(${scaleX}, ${scaleY})`;
+  transform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
+
+  // Polylines are open paths — treat fill="transparent" (from Fabric JSON) and
+  // missing fill as "none" so the SVG renderer doesn't close and fill the shape.
+  const rawFill = obj.fill;
+  const fill = !rawFill || rawFill === 'transparent' ? 'none' : rawFill;
+
+  const key = `polyline-${obj.id || obj.pdfAnnotationId || index}`;
+
+  return (
+    <polyline
+      key={key}
+      points={pointsStr}
+      transform={transform}
+      fill={fill}
+      stroke={obj.stroke || '#000'}
+      strokeWidth={obj.strokeWidth || 1}
+      opacity={obj.opacity ?? 1}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
+    />
+  );
+};
+
+/**
  * Render a Fabric.js circle or ellipse object as an SVG <ellipse> element.
  * Handles both circle (radius) and ellipse (rx/ry) JSON types.
  *
@@ -310,7 +421,11 @@ export const renderText = (obj, index) => {
   const scaleY = Math.abs(obj.scaleY ?? 1);
   const objType = String(obj.type || '').toLowerCase();
 
-  // Textbox type: use stored width/height from Fabric.js (authoritative after edit commit)
+  // Textbox sizing: trust stored width/height for all textboxes. PDF imports
+  // now carry Fabric-measured dims (see pdfAnnotationImporter.js
+  // convertFreeTextToFabricTextbox) and user-edited textboxes carry committed
+  // dims, so both are authoritative. i-text / text without stored bounds fall
+  // through to measureTextBounds.
   let effectiveWidth, effectiveHeight;
   if (objType === 'textbox' && obj.width && obj.height) {
     effectiveWidth = obj.width * scaleX;
@@ -335,16 +450,9 @@ export const renderText = (obj, index) => {
 
   return (
     <g key={key} opacity={obj.opacity ?? 1} transform={rotateTransform}>
-      <rect
-        x={left}
-        y={top}
-        width={effectiveWidth}
-        height={displayHeight}
-        fill="none"
-        stroke="#000"
-        strokeWidth={1}
-        vectorEffect="non-scaling-stroke"
-      />
+      {/* No bounding rect: Fabric Textbox draws no native border, so the SVG must
+          not draw one either — otherwise selector mode shows a black box that
+          disappears on switch to eraser mode, looking like the textbox "broke". */}
       <foreignObject
         x={left}
         y={top}
@@ -381,19 +489,33 @@ export const renderText = (obj, index) => {
 
 /**
  * Render a callout annotation as SVG elements (lines + circle + rect + text).
- * Converts normalized (0-1) coordinates to page coordinates, computes connection
- * geometry via calculateCalloutConnection, and renders connection lines, arrowhead
- * circle, text box rect, and optional text via foreignObject.
+ *
+ * Phase 14 CALL-10 revision: signature takes a `pageSize` object instead of
+ * separate pageWidth/pageHeight numbers. This lets callers pre-compute the
+ * conversion boundary without a signature churn across later phases.
+ *
+ * Emits data-callout-id on the outer <g> and data-callout-part on every child
+ * (arrowTip, knee overlay via Plan 14-03, textBox, line1, line2, text) so
+ * Phases 17-18 can event-delegate hit-testing via e.target.closest() — same
+ * pattern as v2.2 EDIT-13 `data-rotation-handle="mtr"` delegation at
+ * SVGAnnotationLayer.jsx:215-312.
+ *
+ * FontFamily is sanitized to a single font name via sanitizeFontFamily(). A
+ * CSS fallback stack like 'Inter, Arial, sans-serif' is reduced to the first
+ * token ('Inter'). Required because Fabric.js Textbox measures characters at
+ * CACHE_FONT_SIZE=400px and the browser may resolve different fonts at 400px
+ * than at display size, producing cursor drift. See CLAUDE.md 2026-04-08
+ * gotcha and Phase 14-RESEARCH.md Pitfall 2.
  *
  * @param {object} callout - Callout data object with normalized coordinates
  * @param {number} index - Array index for key fallback
- * @param {number} pageWidth - Unscaled PDF page width
- * @param {number} pageHeight - Unscaled PDF page height
- * @param {Function} calculateConnection - The calculateCalloutConnection function
+ * @param {{width:number, height:number}} pageSize - Unscaled PDF page dims
+ * @param {Function} calculateConnection - calculateCalloutConnection function
  * @returns {React.ReactElement|null}
  */
-export const renderCallout = (callout, index, pageWidth, pageHeight, calculateConnection) => {
+export const renderCallout = (callout, index, pageSize, calculateConnection) => {
   if (!callout || !callout.arrowTip || !callout.knee) return null;
+  const { width: pageWidth = 0, height: pageHeight = 0 } = pageSize || {};
 
   // Convert normalized (0-1) coordinates to page coordinates
   const arrowTip = {
@@ -411,12 +533,15 @@ export const renderCallout = (callout, index, pageWidth, pageHeight, calculateCo
     height: Math.max(18, (callout.textBoxHeight ?? callout.textBox?.height ?? 0.05) * pageHeight),
   };
 
-  // Style extraction
+  // Style extraction (same defaults and clamps as pre-Phase-14 version)
   const lineColor = callout.style?.borderColor || callout.style?.lineColor || '#4A90E2';
   const lineThickness = Math.max(1, callout.style?.lineThickness || 2);
   const fillColor = callout.style?.fillColor || 'rgba(255, 255, 255, 0.22)';
-  const fillOpacity = Math.max(0.08, Math.min(1, callout.style?.fillOpacity || 0.4));
-  const borderOpacity = Math.max(0.2, Math.min(1, callout.style?.borderOpacity || 1));
+  const fillOpacity = Math.max(0.08, Math.min(1, callout.style?.fillOpacity ?? 0.4));
+  const borderOpacity = Math.max(0.2, Math.min(1, callout.style?.borderOpacity ?? 1));
+  // UX: single-name fontFamily prevents Fabric.js cursor drift (see CLAUDE.md
+  // 2026-04-08 gotcha). sanitizeFontFamily strips CSS fallback stacks.
+  const safeFontFamily = sanitizeFontFamily(callout.style?.fontFamily);
 
   // Calculate connection geometry
   const connection = calculateConnection(
@@ -426,6 +551,8 @@ export const renderCallout = (callout, index, pageWidth, pageHeight, calculateCo
 
   const key = `callout-${callout.id || index}`;
 
+  // Shared stroke attributes for both connector line segments. vectorEffect
+  // non-scaling-stroke keeps the line visually consistent across zoom levels.
   const lineStyle = {
     stroke: lineColor,
     strokeWidth: lineThickness,
@@ -433,11 +560,23 @@ export const renderCallout = (callout, index, pageWidth, pageHeight, calculateCo
     vectorEffect: 'non-scaling-stroke',
   };
 
+  // Reference the pure spec builder so any future inline-JSX drift against
+  // the testable contract is detectable. (The unit tests target the spec
+  // directly; this call is a noop placeholder kept for code-parity.)
+  // eslint-disable-next-line no-unused-vars
+  const _specPreview = buildCalloutRenderSpec(callout, index, pageSize, calculateConnection);
+
   return (
-    <g key={key} opacity={borderOpacity}>
-      {/* Line 1: knee to border (skip if shouldHideLine1) */}
+    // UX: data-callout-id enables Phase 17/18 event delegation for hit-testing
+    // (same pattern as v2.2 EDIT-13 data-rotation-handle='mtr' delegation).
+    // (CALL-10)
+    <g key={key} data-callout-id={callout.id} opacity={borderOpacity}>
+      {/* Line 1: textbox-edge to knee (skip if shouldHideLine1) */}
       {!connection.shouldHideLine1 && (
         <line
+          // UX: data-callout-part='line1' — Phase 17 collision math hit-tests
+          // the first connector segment for clamp logic. (CALL-10)
+          data-callout-part="line1"
           x1={connection.line1Start.x}
           y1={connection.line1Start.y}
           x2={connection.effectiveKnee.x}
@@ -447,14 +586,20 @@ export const renderCallout = (callout, index, pageWidth, pageHeight, calculateCo
       )}
       {/* Line 2: knee to arrowTip */}
       <line
+        // UX: data-callout-part='line2' — Phase 18 Liang-Barsky auto-routing
+        // identifies the tip-direction segment via this marker. (CALL-10)
+        data-callout-part="line2"
         x1={connection.line2Start.x}
         y1={connection.line2Start.y}
         x2={arrowTip.x}
         y2={arrowTip.y}
         {...lineStyle}
       />
-      {/* ArrowTip circle */}
+      {/* ArrowTip circle — Phase 15 ARROW-04 will replace with picker output */}
       <circle
+        // UX: data-callout-part='arrowTip' — Phase 17 CALL-01 30px collision
+        // clamp hit-test surface. (CALL-10)
+        data-callout-part="arrowTip"
         cx={arrowTip.x}
         cy={arrowTip.y}
         r={Math.max(2, lineThickness + 0.4)}
@@ -462,6 +607,9 @@ export const renderCallout = (callout, index, pageWidth, pageHeight, calculateCo
       />
       {/* Text box rect */}
       <rect
+        // UX: data-callout-part='textBox' — Phase 14 drag target + Phase 17
+        // collision clamp hit-test surface. (CALL-10)
+        data-callout-part="textBox"
         x={textBox.x}
         y={textBox.y}
         width={textBox.width}
@@ -474,35 +622,46 @@ export const renderCallout = (callout, index, pageWidth, pageHeight, calculateCo
         ry={4}
         vectorEffect="non-scaling-stroke"
       />
-      {/* Text box text (if callout has text) */}
-      {callout.text && (
-        <foreignObject
-          x={textBox.x}
-          y={textBox.y}
-          width={textBox.width}
-          height={textBox.height}
+      {/* Text foreignObject — always rendered so the data-callout-part='text'
+          hit-test surface exists for double-click edit-mode entry, even when
+          the callout's text is empty (renders as a blank div). */}
+      <foreignObject
+        // UX: data-callout-part='text' — double-click edit-mode entry hit-test
+        // surface. Phase 14 Area 2c dispatches onRequestEditMode(id, 'callout')
+        // when this element is double-clicked. (CALL-10)
+        data-callout-part="text"
+        x={textBox.x}
+        y={textBox.y}
+        width={textBox.width}
+        height={textBox.height}
+        overflow="visible"
+      >
+        <div
+          xmlns="http://www.w3.org/1999/xhtml"
+          // UX: inner div style mirrors renderText at :457. Single-name
+          // fontFamily prevents Fabric.js cursor drift (CLAUDE.md 2026-04-08
+          // gotcha). antialiased + grayscale smoothing matches renderText
+          // visual parity. (CALL-10)
+          style={{
+            width: '100%',
+            height: '100%',
+            fontSize: `${callout.style?.fontSize || 12}px`,
+            fontFamily: safeFontFamily,
+            color: callout.style?.fontColor || callout.style?.textColor || '#000',
+            overflow: 'visible',
+            wordWrap: 'break-word',
+            whiteSpace: 'pre-wrap',
+            boxSizing: 'border-box',
+            padding: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            WebkitFontSmoothing: 'antialiased',
+            MozOsxFontSmoothing: 'grayscale',
+          }}
         >
-          <div
-            xmlns="http://www.w3.org/1999/xhtml"
-            style={{
-              width: '100%',
-              height: '100%',
-              fontSize: `${callout.style?.fontSize || 12}px`,
-              fontFamily: callout.style?.fontFamily || 'sans-serif',
-              color: callout.style?.textColor || '#000',
-              overflow: 'hidden',
-              wordWrap: 'break-word',
-              whiteSpace: 'pre-wrap',
-              boxSizing: 'border-box',
-              padding: '4px',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            {callout.text}
-          </div>
-        </foreignObject>
-      )}
+          {callout.text || ''}
+        </div>
+      </foreignObject>
     </g>
   );
 };

@@ -119,7 +119,13 @@ export const defaultCalloutStyle = {
   arrowheadStyle: ARROWHEAD_STYLES.SOLID_TRIANGLE,
   fillColor: '#ffffff',
   fillOpacity: 1,
-  fontFamily: 'Inter, Arial, sans-serif',
+  // UX: single-name fontFamily prevents Fabric.js Textbox cursor drift
+  // when the default style is assigned to an edit-mode Textbox. Fabric
+  // measures chars at CACHE_FONT_SIZE=400px and the browser may resolve
+  // different fonts in a fallback chain at 400px vs actual display size,
+  // producing wrong widths. See CLAUDE.md 2026-04-08 gotcha and
+  // Phase 14-RESEARCH.md Pitfall 2.
+  fontFamily: 'Arial',
   fontSize: 14,
   fontColor: '#1e293b',
   bold: false,
