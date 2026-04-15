@@ -1,10 +1,11 @@
 ---
 phase: 14
 slug: unified-svg-callout-render-shared-tool-foundation
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-04-15
+reviewed_at: 2026-04-15
 ---
 
 # Phase 14 — UI Design Contract
