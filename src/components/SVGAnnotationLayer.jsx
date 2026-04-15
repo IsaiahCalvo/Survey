@@ -107,6 +107,21 @@ const SVGAnnotationLayer = memo(({
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
   editingAnnotationIndex, // number | null — index of annotation currently being edited in FabricEditCanvas (hidden in SVG)
+  // Plan 14-02 Task 3 (KBD-01) — callout selection + delete wiring. Plan
+  // 14-03 wires these two props at the mount sites in App.jsx; Task 3 only
+  // READS them and defensively defaults both so the component stays
+  // forward-compatible during the parallel wave-1 execution window. Shape:
+  //   selectedCalloutIds:       Set<string> | string[] — empty iterable is
+  //                             the safe default when Plan 14-03 has not
+  //                             wired the state yet.
+  //   onDeleteSelectedCallouts: (ids: string[]) => void — callback invoked
+  //                             by the extended Delete handler when the
+  //                             callout branch fires. App.jsx (Plan 14-03)
+  //                             will call setCallouts + saveAnnotation-
+  //                             Checkpoint to satisfy the per-action undo
+  //                             pattern (Phase 9 decision).
+  selectedCalloutIds,
+  onDeleteSelectedCallouts,
 }) => {
   // ---------------------------------------------------------------------------
   // Refs
@@ -218,19 +233,88 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   // Delete key handler — delete selected annotations on Delete/Backspace
   // ---------------------------------------------------------------------------
+  // Plan 14-02 Task 3 (KBD-01) — extended the existing Phase 9 handler to
+  // cover the new selectedCalloutIds branch. The existing annotation branch
+  // (selectedIds + deleteSelected) is unchanged; the new callout branch
+  // fires onDeleteSelectedCallouts when Plan 14-03 wires the state.
+  //
+  // Defensive defaults: selectedCalloutIds / onDeleteSelectedCallouts are
+  // optional during the parallel wave-1 execution window. Supports both
+  // Set<string> and string[] for the callout ids (Plan 14-03 will pick one
+  // shape; this effect accepts either).
+  const effectiveSelectedCalloutIds = selectedCalloutIds || new Set();
+  const effectiveDeleteCalloutsCallback = onDeleteSelectedCallouts || (() => {});
+  const calloutSelectionSize =
+    effectiveSelectedCalloutIds instanceof Set
+      ? effectiveSelectedCalloutIds.size
+      : Array.isArray(effectiveSelectedCalloutIds)
+        ? effectiveSelectedCalloutIds.length
+        : 0;
+
   useEffect(() => {
-    if (selectedIds.size === 0) return;
+    // UX: KBD-01 — Delete/Backspace removes selected annotation OR callout.
+    // Early-return when neither selection has entries. Matches combined-tools
+    // focus-guard pattern (Index.tsx:31-49) and Phase 9 per-action undo via
+    // existing deleteSelected() / Plan 14-03 setCallouts pipeline.
+    // See 14-UI-SPEC.md Interaction Contract 2.
+    if (selectedIds.size === 0 && calloutSelectionSize === 0) return;
+
     const handleKeyDown = (e) => {
+      // UX: only Delete/Backspace — anything else is a no-op so other
+      // shortcuts (copy/paste/cmd+z) flow through normally.
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      // Don't delete if user is typing in a form field
+
+      // UX: focus guard — if the user is typing in a text input, textarea,
+      // contentEditable element, or a Fabric.js hidden textarea (edit
+      // mode), the Delete/Backspace belongs to that input, not to
+      // annotation delete. Mirrors the existing pattern here and
+      // combined-tools Index.tsx.
       const el = document.activeElement;
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable || el.contentEditable === 'true')) return;
+      if (el) {
+        if (el.tagName === 'INPUT') return;
+        if (el.tagName === 'TEXTAREA') return;
+        if (el.isContentEditable === true) return;
+        if (el.contentEditable === 'true') return;
+        // UX: Fabric.js IText/Textbox edit mode wires a hidden textarea
+        // into the document for IME compatibility. It's outside the
+        // usual INPUT/TEXTAREA chain but still consumes Delete/Backspace
+        // for text edits — skip annotation delete while it's focused.
+        if (typeof el.closest === 'function' && el.closest('.fabric-hidden-textarea')) return;
+      }
+
       e.preventDefault();
-      deleteSelected();
+
+      // UX: annotations take precedence — if both are somehow selected,
+      // delete the annotation first. Plan 14-03's selection state
+      // management guarantees mutual exclusivity, but this ordering is
+      // defensive in case a race leaves both populated.
+      if (selectedIds.size > 0) {
+        deleteSelected();
+        return;
+      }
+
+      // UX: callout branch — convert Set or Array to a plain Array for
+      // the callback. App.jsx's wrapper (Plan 14-03) calls setCallouts
+      // and saveAnnotationCheckpoint for per-action undo (Phase 9
+      // pattern).
+      if (calloutSelectionSize > 0) {
+        const idsArray = effectiveSelectedCalloutIds instanceof Set
+          ? Array.from(effectiveSelectedCalloutIds)
+          : Array.isArray(effectiveSelectedCalloutIds)
+            ? effectiveSelectedCalloutIds.slice()
+            : [];
+        effectiveDeleteCalloutsCallback(idsArray);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, deleteSelected]);
+  }, [
+    selectedIds,
+    effectiveSelectedCalloutIds,
+    calloutSelectionSize,
+    deleteSelected,
+    effectiveDeleteCalloutsCallback,
+  ]);
 
   // ---------------------------------------------------------------------------
   // EDIT-13 (Phase 13 Plan 13-01): Delegated hover-intent listeners on svgRef

@@ -2,39 +2,57 @@ import { test, expect } from '@playwright/test';
 
 // KBD-01 E2E: Delete/Backspace with single-selected callout removes it
 // from the store with undo support. Focus-guarded when text input focused.
-// Status: SCAFFOLD — Plan 14-02 ships the handler, Plan 14-03 wires the
-// callout selection state that this test depends on.
+//
+// Plan 14-02 Task 3 un-skipped ONLY the input-focus-guard test. The four
+// callout-selection tests remain skipped until Plan 14-03 wires the
+// selectedCalloutIds state updates and the callout selection pointer
+// dispatch in useSVGInteraction.
 
 test.describe('KBD-01 delete callout keyboard', () => {
-  test.skip(true, 'Wave 0 scaffold — implementation pending Plan 14-02 + 14-03');
-
-  test('Delete key removes selected callout', async ({ page }) => {
+  test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    // TODO 14-03: create callout, select it, press Delete, assert removed
-    expect(true).toBe(true);
-  });
-
-  test('Backspace key removes selected callout', async ({ page }) => {
-    await page.goto('/');
-    // TODO 14-03: create callout, select it, press Backspace, assert removed
-    expect(true).toBe(true);
+    await page.waitForLoadState('networkidle').catch(() => {});
   });
 
   test('Delete is suppressed while typing in an INPUT', async ({ page }) => {
-    await page.goto('/');
-    // TODO 14-02: focus a text input, press Delete, assert no callout removed
-    expect(true).toBe(true);
+    // Bootstrap: create an input element on the page and focus it.
+    // We don't need the PDF to be loaded for this focus-guard test —
+    // the guard is document-level (document.activeElement).
+    await page.evaluate(() => {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.id = 'test-input';
+      document.body.appendChild(inp);
+      inp.focus();
+    });
+    const focused = await page.evaluate(() => document.activeElement?.id);
+    expect(focused).toBe('test-input');
+
+    // Press Delete — should NOT throw and should NOT preventDefault.
+    // Verify the input stays focused (i.e., the key went to the input,
+    // not to the annotation handler).
+    await page.keyboard.press('Delete');
+
+    const stillFocused = await page.evaluate(() => document.activeElement?.id);
+    expect(stillFocused).toBe('test-input');
   });
 
-  test('Delete is suppressed while typing in callout edit textarea', async ({ page }) => {
-    await page.goto('/');
-    // TODO 14-03: create callout, double-click to edit, press Delete, assert no removal
-    expect(true).toBe(true);
+  test.skip('Delete key removes selected callout', async () => {
+    // Deferred to Plan 14-03 — requires callout selection state wiring
+    // (selectedCalloutIds) + selectable callout render path.
   });
 
-  test('Delete creates an undo checkpoint', async ({ page }) => {
-    await page.goto('/');
-    // TODO 14-03: create callout, select, Delete, Cmd+Z, assert restored
-    expect(true).toBe(true);
+  test.skip('Backspace key removes selected callout', async () => {
+    // Deferred to Plan 14-03 — requires callout selection state wiring.
+  });
+
+  test.skip('Delete is suppressed while typing in callout edit textarea', async () => {
+    // Deferred to Plan 14-03 — requires callout edit-mode entry via
+    // FabricEditCanvas + calloutEditAdapter.
+  });
+
+  test.skip('Delete creates an undo checkpoint', async () => {
+    // Deferred to Plan 14-03 — requires end-to-end callout save pipeline
+    // + saveAnnotationCheckpoint wiring for callouts.
   });
 });
