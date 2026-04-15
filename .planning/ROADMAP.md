@@ -196,7 +196,11 @@ Plans:
 
   5. **Data-model continuity** — Existing callouts saved under the old HTML-overlay system continue to load, render, and select correctly through the new unified SVG path. No Supabase schema change. A callout round-tripped through save + reload + save is byte-identical in its Fabric.js JSON fields.
 
-**Plans**: TBD (populated by `/gsd:plan-phase 14`)
+**Plans**: 3 plans
+
+- [ ] `14-01-PLAN.md` — Wave 0 test scaffolds (3 unit + 5 Playwright) + revise `renderCallout` with page-coord signature + data attributes + new `calloutEditAdapter.js` utility + sanitize `defaultCalloutStyle.fontFamily` to single-name (wave 1, parallel)
+- [ ] `14-02-PLAN.md` — Shared foundation: UX-01 crosshair class + pointerEvents split derivation + KBD-01 extended Delete/Backspace handler + CREATE-01 line/arrow dashed preview with pre-commit reset (narrow-lane FabricDrawingCanvas waiver ~10-15 LOC) (wave 1, parallel)
+- [ ] `14-03-PLAN.md` — Integration: unwind `filteredCallouts` gate + replace 5 Callout HTML-overlay files with null-render stubs + `callout-part` drag mode (4-place invariant) + edit-mode entry via `calloutEditAdapter` + FabricEditCanvas save-callback wrapper + callout creation state machine + un-skip 3 Playwright scenarios (narrow-lane App.jsx waiver) (wave 2)
 
 ### Phase 15: Line/Arrow Curvature + Arrowhead Styles
 
