@@ -2,16 +2,17 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Roadmap committed. 26/26 v2.3 requirements mapped across Phases 14-18. Ready for plan decomposition.
-stopped_at: Completed 14-01-PLAN.md — CALL-10 Wave 0 testable surface shipped (parallel with 14-02)
-last_updated: "2026-04-15T18:47:55.201Z"
-last_activity: 2026-04-15 — Plans 14-01 and 14-02 executed in parallel under wave=1 — both complete
+status: Phase 14 complete — all 4 v2.3 Phase 14 requirements (CALL-10, UX-01, KBD-01, CREATE-01) functionally complete end-to-end. Ready for /gsd:verify-work + phase RECONCILIATION.md.
+stopped_at: Completed 14-03-PLAN.md — Wave 2 integration shipped. Next step:- /gsd:verify-work 14 to run the full Playwright baseline, then phase 14 RECONCILIATION.md.
+last_updated: "2026-04-15T19:20:25.110Z"
+last_activity: "2026-04-15 — Plan 14-03 executed (3 tasks, 3 commits: c2c05b7a / dce2b756 / 71fcdff9)"
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
-  percent: 0
+  total_plans_in_phase: 3
+  completed_plans_in_phase: 3
+  percent: 100
+  note: "Phase 14 complete (3/3 plans). completed_phases counts only fully-reconciled phases; Phase 14 advances to completed after /gsd:verify-work + RECONCILIATION.md."
 ---
 
 # Project State
@@ -26,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.3 — Tools Polish (combined-tools rewrite + unified render)
-Phase: **Phase 14 — Unified SVG Callout Render + Shared Tool Foundation** (next, not started)
-Plan: — (populated by `/gsd:plan-phase 14`)
-Status: Roadmap committed. 26/26 v2.3 requirements mapped across Phases 14-18. Ready for plan decomposition.
-Last activity: 2026-04-15 — gsd-roadmapper produced the 5-phase v2.3 roadmap.
+Phase: **Phase 14 — Unified SVG Callout Render + Shared Tool Foundation** (COMPLETE — 3/3 plans shipped)
+Plan: 14-03 — complete (next: `/gsd:verify-work 14` + phase RECONCILIATION.md)
+Status: Phase 14 complete. All 4 requirements (CALL-10, UX-01, KBD-01, CREATE-01) functionally complete end-to-end.
+Last activity: 2026-04-15 — Plan 14-03 executed (3 tasks, 3 commits: c2c05b7a / dce2b756 / 71fcdff9)
 
-Progress: [..........] 0% (0/5 phases complete, 0/TBD plans complete)
+Progress: [██████████] 100% (Phase 14: 3/3 plans complete, advances to Phase 15 on next plan)
 
 ## Performance Metrics
 
@@ -44,8 +45,17 @@ Progress: [..........] 0% (0/5 phases complete, 0/TBD plans complete)
 
 **v2.3 plan:**
 - 5 phases for 26 requirements (14 → 18). CALL-10 as Phase 14 unblocker; lineGeometry wiring as Phase 15; mini-toolbar + curvature pill as Phase 16; callout collision/rollback/resize as Phase 17; callout auto-routing + hover + self-destruct as Phase 18.
+- **Phase 14 shipped 2026-04-15** — 3 plans: 14-01 (Wave 0 renderCallout + adapter + tests), 14-02 (Wave 1 crosshair + delete + dashed preview), 14-03 (Wave 2 integration: filteredCallouts unwind + callout-part drag + edit-mode adapter + creation preview). 4 requirements closed.
 
-**Tests:** 113/113 green at v2.2 close (v2.3 must preserve this baseline)
+**Plan metrics (Phase 14):**
+
+| Plan  | Duration | Tasks | Commits | Files  | Notes                                                                   |
+| ----- | -------- | ----- | ------- | ------ | ----------------------------------------------------------------------- |
+| 14-01 | 12 min   | 3     | 4       | 12     | Wave 0 — renderCallout signature + calloutEditAdapter + 8 test scaffolds |
+| 14-02 | ~15 min  | 3     | 3       | 6      | Wave 1 — crosshair + Delete handler + dashed line/arrow preview        |
+| 14-03 | ~20 min  | 3     | 3       | 11     | Wave 2 — filteredCallouts unwound + callout-part drag + edit-mode adapter + creation preview + 5 Callout stubs (−3,412 LOC) |
+
+**Tests:** 113/113 green at v2.2 close (v2.3 must preserve this baseline). Plan 14-03 preserves 143/144 unit-test baseline (1 pre-existing pdfAnnotationImporter failure, out of scope per 14-01/14-02 deferred-items.md).
 
 ## Accumulated Context
 
@@ -86,6 +96,11 @@ Progress: [..........] 0% (0/5 phases complete, 0/TBD plans complete)
 - [Phase 14]: Plan 14-01: toFabricGroup returns plain JSON shape (not live fabric.Group) — keeps round-trip math integer-clean at 1e-6 over 10 cycles and dodges Fabric.js Group positioning side effects. loadCalloutAnnotation consumes the shape via fabric.util.enlivenObjects so the adapter drops in.
 - [Phase 14]: Plan 14-01: sanitizeFontFamily applied at 3 surfaces (renderer foreignObject, adapter Textbox, defaultCalloutStyle) — CSS fallback stacks cause Fabric.js cursor drift (CLAUDE.md 2026-04-08 gotcha). defaultCalloutStyle.fontFamily changed 'Inter, Arial, sans-serif' → 'Arial'.
 - [Phase 14]: Plan 14-01: renderCallout always emits the text foreignObject (even when text is empty) so the data-callout-part='text' hit-test surface exists for freshly-created empty callouts — Plan 14-03 relies on this for double-click edit-mode entry.
+- [Phase 14]: Plan 14-03: FabricEditCanvas adapter via transient annotations shape — zero edits to FabricEditCanvas.jsx. toFabricGroup stashes reactCalloutId on editingAnnotation; onEditCommit wrapper detects editType==='callout' and routes through fromFabricGroup→setCallouts.
+- [Phase 14]: Plan 14-03: callout drag uses live-paint vs commit-checkpoint split (handleUpdateCalloutLive repaints every pointermove without undo entry; handleUpdateCallout fires once at pointerup as checkpoint-only signal). Mirrors Phase 12 optimistic rotation paint pattern.
+- [Phase 14]: Plan 14-03: 4-place invariant enforced for 'callout-part' drag mode — dragStateRef init + handleSvgPointerDown set + handlePointerMove case + handlePointerUp commit + reset. Whole-move triggers: connector-line drag OR Cmd/Ctrl modifier.
+- [Phase 14]: Plan 14-03: 5 HTML-overlay Callout/*.jsx files retired to null-render stubs (~3,412 LOC deleted). types.js preserved as enum/factory shim. PAL import contract preserved without a PAL waiver — existing <CalloutOverlay> mount sites render nothing.
+- [Phase 14]: Plan 14-03: pre-existing working-tree WIP in App.jsx (tool-switch diagnostics) and SVGAnnotationLayer.jsx (polygon/polyline PDF import) was deliberately NOT staged via git add -p split — belongs to separate lanes.
 
 ### Roadmap Evolution
 
@@ -118,26 +133,30 @@ Progress: [..........] 0% (0/5 phases complete, 0/TBD plans complete)
 
 ## Session Continuity
 
-Last session: 2026-04-15T18:45:11Z
-Stopped at: Completed 14-01-PLAN.md — CALL-10 Wave 0 testable surface shipped (parallel with 14-02)
+Last session: 2026-04-15T19:20:00Z
+Stopped at: Completed 14-03-PLAN.md — Wave 2 integration shipped. Phase 14 functionally complete (all 4 requirements). Next: `/gsd:verify-work 14` to run Playwright baseline + phase RECONCILIATION.md.
 
 ### Resume instructions for the next session (read carefully)
 
-**One-line wake-up:** "Resume v2.3. Roadmap Phases 14-18 are committed. Next step: `/gsd:discuss-phase 14` to decompose the Unified SVG Callout Render + Shared Tool Foundation phase (CALL-10 + UX-01 + KBD-01 + CREATE-01) into plans. Flag up front whether `src/App.jsx` needs a narrow-lane waiver for the Delete/Backspace keyboard handler and `activeTool` crosshair coordination."
+**One-line wake-up:** "Resume v2.3. Phase 14 functionally complete (3/3 plans). Next step: `/gsd:verify-work 14` to run the full Playwright baseline against the unified callout render pipeline, then write `.planning/phases/14-.../14-RECONCILIATION.md` per the GSD phase discipline rules, then `/gsd:discuss-phase 15` to kick off line/arrow curvature wiring."
 
 **Workflow steps:**
 
-1. Read `.planning/ROADMAP.md` v2.3 section — confirm Phase 14 goal, requirements, boundaries, success criteria
-2. Read `.planning/REQUIREMENTS.md` — verify Traceability shows CALL-10 / UX-01 / KBD-01 / CREATE-01 → Phase 14
-3. Read `.planning/research/CURRENT-REPO-AUDIT.md` "Callout" section + "Risk Areas" — integration points for the unified render
-4. Read `.planning/research/COMBINED-TOOLS-AUDIT.md` "Text Callout Tool" + "Shared State & Events" — baseline behavior to match
-5. Spawn `/gsd:discuss-phase 14` to produce the plan list (expect 2-3 plans: unified render + render-path callout selection/edit + shared foundation wiring)
-6. Commit. Present next step: `/gsd:plan-phase 14`.
+1. Run `/gsd:verify-work 14` — executes the Phase 14 Playwright subset (callout-render-roundtrip, create-preview-callout, delete-callout-keyboard, tool-cursor-crosshair, create-preview-line) + full 113-test baseline regression check
+2. Manually UAT: open `Package 2 - Rev 4 -- IC.pdf` at Page 6, create + drag + edit + delete a callout, verify all behaviors
+3. Write `.planning/phases/14-unified-svg-callout-render-shared-tool-foundation/14-RECONCILIATION.md` per `~/.claude/CLAUDE.md` phase discipline rules:
+   - Plan vs Actual deltas
+   - Acceptance Criteria results (all 4: CALL-10, UX-01, KBD-01, CREATE-01)
+   - Boundaries Honored (DO NOT CHANGE list verification)
+   - Lessons / Carry-forward
+   - Status: DONE | DONE_WITH_CONCERNS
+4. Commit the phase closure
+5. `/gsd:discuss-phase 15` → Phase 15 (LINE-01..03, ARROW-01..03, ARROW-04) — line/arrow curvature wiring from `src/utils/lineGeometry.js`
 
 **Watch-outs for the next session:**
 
-- Do NOT re-open the 5-phase decomposition. It's locked with 26/26 coverage. If a later phase surfaces a scope gap, insert a decimal phase (14.1, 15.1) via `/gsd:insert-phase` — do not renumber.
-- Do NOT touch `src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricDrawingCanvas.jsx`, `src/components/FabricEraserCanvas.jsx`, `src/components/FabricEditCanvas.jsx`, `package.json`, `vite.config.js` without an explicit per-phase waiver (Always-Protected per CLAUDE.md).
+- Do NOT re-open the 5-phase decomposition. It's locked with 26/26 coverage.
+- Do NOT touch `src/PageAnnotationLayer.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricDrawingCanvas.jsx`, `src/components/FabricEraserCanvas.jsx`, `src/components/FabricEditCanvas.jsx`, `package.json`, `vite.config.js` without an explicit per-phase waiver.
 - Do NOT entangle PAL's curved-line code path with the new SVG-side wiring — leave PAL alone. PAL is the only current consumer of `lineGeometry.js`; Phase 15 imports directly without touching PAL.
-- Do NOT restore the stale `[COUNTER WIP — DO NOT TOUCH]` comment at SVGAnnotationLayer.jsx:1072 — it was removed on purpose.
-- Do NOT attempt to ship the callout render unification AND the line/arrow mini-toolbar polish in the same phase. Phase 14 is render unification + shared foundation only; line/arrow polish is Phases 15-16.
+- **Phase 14 working tree hygiene:** pre-existing uncommitted WIP in App.jsx (tool-switch diagnostics) and SVGAnnotationLayer.jsx (polygon/polyline PDF import) is STILL uncommitted. Plan 14-03 deliberately did not touch this — it belongs to separate lanes. The next session should decide whether to commit or revert these to a separate branch.
+- Delete the 5 null-stub Callout files in a cleanup phase (Phase 15 or later) — they only exist because PAL + App.jsx import paths require them. When PAL and App.jsx no longer import from `./components/Callout`, the stubs can be deleted.

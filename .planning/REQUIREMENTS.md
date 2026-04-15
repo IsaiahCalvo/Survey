@@ -50,7 +50,7 @@ Audits of both codebases: `.planning/research/COMBINED-TOOLS-AUDIT.md` and `.pla
 - [ ] **CALL-07**: When the user drags a callout's textbox across the arrow's path, the knee auto-routes around the box using Liang-Barsky segment clipping so line1 and line2 never cross the textbox interior (port of combined-tools' `calculateCalloutConnection`, ~500 lines of case analysis + fallback `shouldHideLine1` when no valid route exists).
 - [ ] **CALL-08**: A newly created callout that exits edit mode with empty text is automatically deleted. Prevents orphaned empty callouts from click-drag-release without typing.
 - [ ] **CALL-09**: Hovering an unselected callout shows a selection-preview glow on the textbox border and connector lines — same visual style as the line tool's selection-hover glow, so all three tools have a consistent hover affordance.
-- [ ] **CALL-10**: Callout renders via SVG (using the same `<foreignObject>`+HTML-text pattern that `text` annotations use today) instead of the current separate HTML-overlay `src/components/Callout/` React system. "Similar to a text box" architecture. The entire current Callout directory may be replaced or removed.
+- [x] **CALL-10**: Callout renders via SVG (using the same `<foreignObject>`+HTML-text pattern that `text` annotations use today) instead of the current separate HTML-overlay `src/components/Callout/` React system. "Similar to a text box" architecture. The entire current Callout directory may be replaced or removed.
 
 ### Shared Interaction (3)
 
@@ -103,10 +103,10 @@ Which phases cover which requirements. Populated by `gsd-roadmapper` on 2026-04-
 | CALL-07 | Phase 18 | TBD | Pending |
 | CALL-08 | Phase 18 | TBD | Pending |
 | CALL-09 | Phase 18 | TBD | Pending |
-| CALL-10 | Phase 14 | 14-01 (Wave 0) | In Progress — Wave 0 pure-utility + tests shipped (14-01-SUMMARY.md); full wiring deferred to 14-03 |
-| UX-01 | Phase 14 | TBD | Pending |
-| KBD-01 | Phase 14 | TBD | Pending |
-| CREATE-01 | Phase 14 | TBD | Pending |
+| CALL-10 | Phase 14 | 14-01, 14-03 | **Complete** — Wave 0 pure-utility (14-01) + Wave 2 end-to-end integration (14-03: filteredCallouts unwound, callout-part drag, edit-mode adapter, creation preview) |
+| UX-01 | Phase 14 | 14-02 | **Complete** — tool-crosshair CSS class + isSelectTool/isCreationTool split derivation in SVGAnnotationLayer (Plan 14-02); consumed by Plan 14-03 callout creation path |
+| KBD-01 | Phase 14 | 14-02, 14-03 | **Complete** — extended Delete/Backspace handler with callout branch + focus guard (14-02); selectedCalloutIds state + handleDeleteSelectedCallouts wired in App.jsx (14-03) |
+| CREATE-01 | Phase 14 | 14-02, 14-03 | **Complete** — line/arrow dashed preview in FabricDrawingCanvas (14-02); callout creation state machine + dashed SVG preview + tool-switch cancellation in SVGAnnotationLayer (14-03) |
 
 **Coverage:**
 - v2.3 requirements: 26 total (6 line, 7 arrow, 10 callout, 3 shared)
