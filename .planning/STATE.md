@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.2
-milestone_name: Rotation Handle Polish
-status: completed
-stopped_at: v2.2 milestone CLOSED — Phase 13 DONE, RECONCILIATION filed
-last_updated: "2026-04-14T23:25:00.000Z"
-last_activity: 2026-04-14 — Phase 13 closed (13-01 + 13-02 both DONE, UAT verified, RECONCILIATION.md filed)
+milestone: v2.3
+milestone_name: Tools Polish (combined-tools port)
+status: active
+stopped_at: Milestone v2.3 initialized — PROJECT.md/STATE.md updated, dual-codebase audits spawned, this session checkpointed before requirements + roadmap to protect context budget
+last_updated: "2026-04-14T23:45:00.000Z"
+last_activity: 2026-04-14 — Milestone v2.3 started (line/arrow/text-callout port from combined-tools); checkpoint handoff prepared for fresh session
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 50
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -20,17 +20,18 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-14)
 
-**Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox; shape editing feels precise and predictable at every zoom level down to 10%.
-**Current focus:** v2.2 CLOSED — rotation interaction story complete. EDIT-13 hover pill re-arm delegated via `svgRef.current`. EDIT-14 rescoped mid-plan to "no Fabric transform handles in edit mode" (Figma-style separation) under a one-time narrow lane waiver for FabricEditCanvas.jsx. Ready for next milestone scoping.
+**Core value:** Annotations render correctly at all zoom levels with zero disappearance via SVG viewBox; line/arrow/text-callout tools match the precision and feel of the `combined-tools` reference app.
+**Current focus:** Milestone v2.3 — defining requirements after dual-codebase port audit
 
 ## Current Position
 
-Milestone: v2.2 — Rotation Handle Polish — **CLOSED**
-Phase: 13 — Rotation Handle Edit-Mode Polish — **DONE**
-Plans: 13-01 (EDIT-13) DONE, 13-02 (EDIT-14 rescoped) DONE
-Last activity: 2026-04-14 — Phase 13 SUMMARY + RECONCILIATION committed (`7136cefb`)
+Milestone: v2.3 — Tools Polish (combined-tools port) — **DEFINING REQUIREMENTS**
+Phase: Not started (Phase 14 will be first once roadmap lands)
+Plan: —
+Status: Dual-codebase port audit spawned. Requirements + roadmap deferred to fresh session to protect context budget.
+Last activity: 2026-04-14 — Milestone v2.3 started; PROJECT.md/STATE.md written; combined-tools + current-repo audit agents spawned; session checkpointed.
 
-Progress: [##########] 100% (2/2 plans complete, phase DONE, milestone CLOSED)
+Progress: [..........] 0% (milestone just initialized)
 
 ## Performance Metrics
 
@@ -41,9 +42,7 @@ Progress: [##########] 100% (2/2 plans complete, phase DONE, milestone CLOSED)
 - v2.2 (Phase 13): 2 plans — shipped 2026-04-14 (same day as v2.1)
 - **Total: 17 plans shipped across 4 milestones**
 
-**v2.2 plan budget:** 2 plans (13-01 + 13-02) — met exactly. 13-02 rescoped mid-plan but no scope expansion; single 3-line Fabric-side change delivered the new AC.
-
-**Tests:** 113/113 green at v2.1 close (Phase 13 must preserve this baseline)
+**Tests:** 113/113 green at v2.2 close (v2.3 must preserve this baseline)
 
 ## Accumulated Context
 
@@ -54,48 +53,70 @@ Progress: [##########] 100% (2/2 plans complete, phase DONE, milestone CLOSED)
 - [v2.0]: `<foreignObject>` for text; mount/unmount Canvas per edit session
 - [v2.1]: EDIT-11 as pure `snapAngleToNearest45` helper + one-line wire (matches Fabric `snapThreshold` convention)
 - [v2.1]: ZOOM-09 as atomic 2-file commit (`zoomController.js` + `App.jsx` commitZoomInput) — cannot be split
-- [v2.1]: EDIT-12 architecture locked to HTML portal (not foreignObject) to avoid IME/focus quirks and counter-rotation math
-- [v2.1]: RotationInputField is uncontrolled input (defaultValue + ref) — controlled racing live drag updates swallowed keystrokes
+- [v2.1]: EDIT-12 architecture locked to HTML portal (not foreignObject) to avoid IME/focus quirks
+- [v2.1]: RotationInputField is uncontrolled input — controlled racing live drag updates swallowed keystrokes
 - [v2.1]: Pill orbit radius constant across all rotations via worst-case AABB projection from shape center
-- [v2.1]: Plan 12-03 optimistic rotation paint pattern is now the canonical fix for any commit-path latency in the SVG annotation layer (documented inline with `SIDE EFFECT` + `drag-wins invariant` JSDoc grep markers)
-- [v2.1]: Full-click-cycle stopPropagation (down + up + click + pointerdown + pointerup) at the wrapper boundary — not just the down events — is required for portaled UI inside an interactive SVG layer
-- [v2.1]: Phase 12 closed via Option A (backlog Gaps 3+4, ship core requirements) rather than Option B (hold phase open)
-- [v2.1]: Counter-session parallel WIP was kept strictly out of Phase 12's lane — never staged, never enumerated as commit candidates
-- [v2.2]: Gap 2 (off-screen handle relocation) closed `wontfix_superseded_by_typed_input` — 9-tool industry survey found zero tools relocate rotation handles (universal UX convention) and v2.1's typed-degree pill already addresses ~95% of the underlying pain
-- [v2.2]: Single Phase 13 with 2 plans (one per requirement) chosen over two separate phases — both gaps live in the same narrow interaction surface (rotation handle chrome during edit-mode transitions), share the same UAT grid, and have identical lane-safety profiles
-- [v2.2]: Gap 4 fix strategy locked to Fix A / Architecture Option C (SVG-side structural fix in `SVGAnnotationLayer.jsx:1050` short-circuit + `SVGSelectionOverlay.jsx` `isEditing` prop) — avoids `FabricEditCanvas.jsx` which is held by counter-session. Fix B (canvas pixel buffer growth via BBOX_PADDING) deferred fallback only
-- [v2.2]: Gap 4 plan 13-02 mandatory first step is a live-DOM diagnostic (`getBoundingClientRect` + `getComputedStyle` on the FabricEditCanvas container ancestor chain through `e-pv-page-div`) to confirm clipper identity before writing code — Architecture and Pitfalls research disagree on which clipper owns the symptom; diagnostic resolves it
-- [v2.2]: Gap 3 fix strategy — Strategy A (dep array + early-return gate) acceptable, Strategy B (event delegation via `e.target.closest('[data-rotation-handle="mtr"]')`) preferred. Both must preserve the load-bearing `eslint-disable react-hooks/exhaustive-deps` invariant by NOT adding tick-rate values (`annotations`, `visualTransform`) to the dep array
+- [v2.1]: Plan 12-03 optimistic rotation paint pattern — canonical fix for commit-path latency in SVG annotation layer
+- [v2.1]: Full-click-cycle stopPropagation (down + up + click + pointerdown + pointerup) at wrapper boundary required for portaled UI inside interactive SVG layer
+- [v2.1]: Phase 12 closed via Option A (backlog Gaps 3+4) rather than holding phase open
+- [v2.2]: Gap 2 (off-screen handle relocation) closed `wontfix_superseded_by_typed_input` — 9-tool industry survey
+- [v2.2]: Single Phase 13 with 2 plans (one per requirement) — both gaps in same narrow interaction surface
+- [v2.2]: EDIT-13 hover pill re-arm via event delegation (`e.target.closest('[data-rotation-handle="mtr"]')`)
+- [v2.2]: EDIT-14 rescoped mid-plan — "no Fabric transform handles in edit mode" delivered Figma-style separation under one-time narrow lane waiver for FabricEditCanvas.jsx
+- [v2.3]: Replaced standard new-milestone research step with combined-tools + current-repo port audit — port milestone, not domain milestone
+- [v2.3]: Stay on Fabric.js 5.5.2; do NOT upgrade to 6.x despite combined-tools being on 6.x. Port behavior, not engine.
+- [v2.3]: Feature parity accepted over pixel parity — rendering engines differ (SVG display vs Canvas display)
+- [v2.3]: Checkpoint after audits rather than pushing through to roadmap in one session — context budget protection
 
-- [v2.2]: EDIT-13 hover pill delegation verified via UAT on 2026-04-14 — 56 clean probe hits across rect/circle/text at angle=0 and angle=30, all three exit paths (click-off / Escape / Enter-commit), edit-mode gate blocked 3 times, zero errors
+### Roadmap Evolution
 
-### Carry-Forward (now closed)
+- v1.0 Phases 4-6 superseded by SVG migration
+- v1.0 Phase 7 (widen zoom range) deferred
+- v2.0 Phases 8-11 shipped 39 requirements
+- v2.1 Phase 12 shipped 3 requirements + 9 scope-expansion gap fixes
+- v2.2 Phase 13 shipped 2 requirements (one rescoped mid-plan)
+- v2.3 phases TBD — will be derived from port gap analysis after audits complete
 
-- **EDIT-13** — Plan 13-01 — DONE (2026-04-14, commit `6cf9e8c9`)
-- **EDIT-14** — Plan 13-02 — DONE with rescope (2026-04-14, commits `6d0b56b6` + `4fe9e210`). Original AC ("mtr handle visible on pre-rotated edit entry") was deferred; rescoped AC ("no Fabric transform handles in edit mode for any shape") fully satisfied. See `13-RECONCILIATION.md` for full AC matrix.
+### Pending Todos
 
-### Counter-Session Lane (do NOT stage from v2.2)
-
-The 7-file counter-session WIP allowlist that must NEVER be touched by Phase 13 commits:
-- `src/App.jsx`
-- `src/components/PageAnnotationLayer.jsx`
-- `src/components/FabricEditCanvas.jsx`
-- `src/hooks/useDatabase.js`
-- `src/utils/counterNumbering.js`
-- `src/utils/svgAnnotationRenderers.jsx`
-- `dist/index.html`
-
-Phase 13's Fix A / Option C strategy was specifically chosen so neither plan needs to touch any of these. `git status` cross-check before every commit. Never `git add -A` or `git add .`.
+None at milestone kickoff.
 
 ### Blockers/Concerns
 
-- None. v2.2 milestone closed cleanly. Phase 13 RECONCILIATION filed. One-time narrow lane waiver for `FabricEditCanvas.jsx` is documented — NOT a blanket unlock; future work on that file still requires counter-session coordination.
+- v2.3 **CRITICAL SCOPE CORRECTION discovered by audit**: The user asked for "arrowhead style options" and "callout tail shape variants" assuming these exist in combined-tools. **They don't.** Combined-tools has exactly ONE arrowhead style (`fabric.Triangle`) and zero tail-shape variety. Meanwhile, THIS repo's callout already has 6 arrowhead styles defined in `src/components/Callout/`. Same for snap-to-angle — combined-tools has **no** angle snapping, no shift-modifier, no arrow-key nudging. The "port from combined-tools" framing needs to be split into (a) features combined-tools actually has that we lack (curvature via midpoint waypoint, collision prevention, lastSafeObjectPos rollback, 30-px MIN_HANDLE_DISTANCE) and (b) features the user wants that must be **invented** or **preserved** rather than ported. **Surface this to the user before writing REQUIREMENTS.md.**
+
+- v2.3 **HUGE LEVERAGE POINT** from the current-repo audit: `src/utils/lineGeometry.js` is already a complete port of combined-tools' bezier math (`getCurvedPath`, `getCurveEndAngle`, `shouldSnapToLinear`, `getControlPoint`) — but the SVG render path **never imports it**; it's only consumed by the protected legacy `PageAnnotationLayer.jsx`. "The math is one import away from enabling curved lines/arrows." A fresh session should treat this as the first-phase entry point, not write new math.
+
+- v2.3 **COUNTER-WIP WARNING**: `SVGAnnotationLayer.jsx:1072-1194` has an active `[COUNTER WIP — DO NOT TOUCH]` block immediately adjacent to the line-type handle branch where the midpoint curvature handle would land. User reported "counter-tool session is done and fully committed" — but the marker is still in-tree. **Before touching that range, re-verify with the user** that the marker is stale and can be removed, or carve a lane that avoids those lines.
+
+- v2.3 architectural mismatch confirmed: combined-tools uses 7 **ungrouped** Fabric objects tagged with `calloutId` + `partType`, routed by a ~500-line `calculateCalloutConnection` using Liang-Barsky clipping. This app's callout is an **entirely separate HTML+SVG React system** under `src/components/Callout/`. The two architectures share no code. Porting callout behavior from combined-tools means extracting the math (clipping, constraint, rollback) and re-wiring it into the React component, not copying the composite-object structure.
+
+- v2.3: combined-tools uses Fabric.js 6.9.1 with always-mounted canvas; this app uses SVG display + mount/unmount Fabric edit canvas. Some combined-tools patterns may not map 1:1 — flagged in the audits.
 
 ## Session Continuity
 
-Last session: 2026-04-14T23:25:00.000Z
-Stopped at: v2.2 milestone CLOSED — Phase 13 DONE with full reconciliation
-Resume file: `.planning/phases/13-rotation-handle-edit-mode-polish/13-RECONCILIATION.md` (reference only; no pending work)
-Next action: Scope the next milestone. Options include (a) closing any residual v2.2 carry-forward items from `.planning/FEATURE-BACKLOG.md`, (b) kicking off a new feature milestone, or (c) merging `post-v2.0/cleanup` back to main if not already.
+Last session: 2026-04-14T23:45:00.000Z
+Stopped at: Milestone v2.3 initialized. PROJECT.md + STATE.md updated. Combined-tools and current-repo audits spawned (findings written to `.planning/research/COMBINED-TOOLS-AUDIT.md` and `.planning/research/CURRENT-REPO-AUDIT.md`). Session checkpointed to preserve context budget before writing REQUIREMENTS.md + running gsd-roadmapper.
 
-Note: Counter-session WIP remains unstaged in 7 files (`App.jsx`, `PageAnnotationLayer.jsx`, `FabricEditCanvas.jsx`, `useDatabase.js`, `counterNumbering.js`, `svgAnnotationRenderers.jsx`, `dist/index.html`). Phase 13 touched only 1 of these (`FabricEditCanvas.jsx`) under explicit user waiver; other 6 are untouched by any v2.2 commit. Counter-session is free to test and commit their work.
+### Resume instructions for the fresh session (read carefully)
+
+**BEFORE writing requirements, the fresh session MUST surface the three findings in Blockers/Concerns above to the user and get decisions:**
+
+1. **Scope correction** — combined-tools does NOT have arrowhead style variety, callout tail variants, snap-to-angle, or shift-modifier. User's original ask assumed parity with combined-tools for those, but combined-tools is the thing LACKING those features. Fresh session must present the finding and ask the user: (a) drop those items since they're not in the reference, (b) keep them as "invented beyond the reference", or (c) preserve existing behavior (our callout already has 6 arrowhead styles and knee handles, so "don't break what we have" is a valid ask).
+2. **lineGeometry.js leverage point** — `src/utils/lineGeometry.js` already contains combined-tools' curvature math, fully ported, but the SVG render path never imports it. First-phase requirement should be "wire `lineGeometry.js` into the SVG render path for line/arrow" — not "write new curve math". Confirm this framing with the user.
+3. **Counter WIP marker in SVGAnnotationLayer.jsx:1072-1194** — user said counter-session is done, but an active `[COUNTER WIP — DO NOT TOUCH]` marker is still in-tree at exactly the line-type handle branch. Ask user to confirm the marker is stale before planning work that touches that range.
+
+**Workflow steps:**
+
+1. Read `.planning/PROJECT.md` — confirm v2.3 milestone scope
+2. Read `.planning/research/COMBINED-TOOLS-AUDIT.md` — combined-tools mechanics per tool (51 KB — skim the H2s first, deep-read Line and Callout sections)
+3. Read `.planning/research/CURRENT-REPO-AUDIT.md` — current state + integration points + gap map (28 KB)
+4. **Raise the three pre-requirements findings above with the user** and wait for decisions
+5. Write `.planning/REQUIREMENTS.md` with REQ-IDs. Suggested prefixes: `LINE-*`, `ARROW-*`, `CALL-*`. User-centric, testable, atomic.
+6. Commit: `node "/Users/isaiahcalvo/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: define milestone v2.3 requirements" --files .planning/REQUIREMENTS.md`
+7. Spawn `gsd-roadmapper` agent starting at **Phase 14**. Pass: `PROJECT.md`, `REQUIREMENTS.md`, both audit files, `MILESTONES.md`, `config.json`.
+8. Present roadmap for user approval. Commit.
+9. Update `MILESTONES.md` with v2.3 entry. Commit.
+10. Present "Next Up" block pointing to `/gsd:discuss-phase 14`.
+
+**One-line wake-up for the fresh session:** "Resume v2.3. Read both audit files in `.planning/research/`, surface the 3 scope-correction findings from STATE.md Blockers, then write REQUIREMENTS.md with LINE-/ARROW-/CALL- IDs, then spawn gsd-roadmapper starting at Phase 14."
