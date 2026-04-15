@@ -75,6 +75,13 @@ import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FabricEditCanvas from './components/FabricEditCanvas';
 // FabricTextCanvas removed — text tool now creates text-only callouts via CalloutCanvas
 import CalloutOverlay from './components/Callout';
+// Plan 14-03 Task 3 (CALL-10): callout edit-mode adapter. Converts React
+// callouts <-> plain Fabric JSON so FabricEditCanvas's existing
+// loadCalloutAnnotation at :1937 can enliven them without any edits to
+// FabricEditCanvas.jsx (protected file). toFabricGroup is used when
+// entering edit mode; fromFabricGroup is used in the save-callback
+// wrapper on edit-mode exit.
+import { toFabricGroup, fromFabricGroup } from './utils/calloutEditAdapter';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
@@ -11156,6 +11163,49 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       c.id === calloutId ? { ...c, ...updatedFields } : c
     ));
   }, []);
+
+  // UX: Phase 14 CALL-10 — edit-mode entry for a React callout. Called
+  // from SVGAnnotationLayer's double-click dispatch (useSVGInteraction
+  // handleAnnotationDoubleClick callout branch). Builds a transient
+  // annotations shape { objects: [adapterJSON] } that FabricEditCanvas's
+  // existing loadCalloutAnnotation at :1937 can enliven via
+  // fabric.util.enlivenObjects — NO edits to FabricEditCanvas.jsx.
+  //
+  // The transient annotations object is NOT persisted back to
+  // annotationsByPage; instead the save-callback wrapper at the
+  // FabricEditCanvas mount site detects editType === 'callout' and
+  // routes the commit to setCallouts via fromFabricGroup.
+  const handleRequestCalloutEditMode = useCallback((calloutId, targetPageNumber) => {
+    const reactCallout = callouts.find((c) => c && c.id === calloutId);
+    if (!reactCallout) return;
+    // UX: resolve page size per the editing page. Fall back to the
+    // callout's recorded pageNumber if the caller didn't pass one, and
+    // to a 612x792 default if the pageSizes map hasn't been populated
+    // yet (edit mode mounts after the first layout pass, so this is
+    // defensive rather than expected).
+    const pageNum = targetPageNumber || reactCallout.pageNumber || 1;
+    const pageSizeObj = (pageSizes && pageSizes[pageNum]) || { width: 612, height: 792 };
+
+    const fabricGroup = toFabricGroup(reactCallout, pageSizeObj);
+    // UX: transient annotations array with a single group at index 0 —
+    // loadCalloutAnnotation reads from annotationsRef.current.objects
+    // and selects the object at annotationIndex. We pass index 0 so the
+    // single adapter output is the selection target.
+    const transientAnnotations = { objects: fabricGroup.objects };
+    setEditingAnnotation({
+      pageNumber: pageNum,
+      index: 0,
+      type: 'callout',
+      editType: 'callout',
+      data: fabricGroup.objects[0],
+      annotations: transientAnnotations,
+      // UX: stash identifiers the save-callback wrapper needs to route
+      // the commit back to setCallouts via fromFabricGroup.
+      reactCalloutId: calloutId,
+      originalReactCallout: reactCallout,
+      pageSize: pageSizeObj,
+    });
+  }, [callouts, pageSizes]);
 
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
 
@@ -25635,6 +25685,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   layerVisibility={annotationLayerVisibility}
                                   onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
                                   onRequestEditMode={(annotationIndex, annotationType) => {
+                                    // UX: Phase 14 CALL-10 — callout double-click routes
+                                    // through the adapter-backed edit path. useSVGInteraction
+                                    // fires this with (calloutId, 'callout') when the user
+                                    // double-clicks a data-callout-id subtree. Cooldown
+                                    // still applies to prevent re-entry races.
+                                    if (annotationType === 'callout') {
+                                      if (Date.now() - editModeCooldownRef.current < 300) return;
+                                      handleRequestCalloutEditMode(annotationIndex, pageNumber);
+                                      return;
+                                    }
                                     // Cooldown: prevent re-entering edit mode within 300ms of dismissal
                                     if (Date.now() - editModeCooldownRef.current < 300) {
                                       console.log(`[App p${pageNumber}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
@@ -26041,18 +26101,49 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
                               {isEditMode && (
                                 <FabricEditCanvas
-                                  key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}`}
+                                  key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}-${editingAnnotation?.editType || ''}`}
                                   pageNumber={pageNumber}
                                   pageWidth={resolvedPageSize.width}
                                   pageHeight={resolvedPageSize.height}
                                   editType={editingAnnotation.editType}
                                   annotationData={editingAnnotation.data}
                                   annotationIndex={editingAnnotation.index}
-                                  annotations={pageAnnotations}
+                                  // UX: Phase 14 CALL-10 — when editing a callout, pass
+                                  // the transient annotations shape built by
+                                  // handleRequestCalloutEditMode (via toFabricGroup)
+                                  // instead of pageAnnotations. FabricEditCanvas's
+                                  // loadCalloutAnnotation at :1937 reads from
+                                  // annotationsRef.current.objects and enlivens via
+                                  // fabric.util.enlivenObjects — no FabricEditCanvas
+                                  // edits needed.
+                                  annotations={editingAnnotation.editType === 'callout'
+                                    ? editingAnnotation.annotations
+                                    : pageAnnotations}
                                   isNewText={editingAnnotation.isNewText || false}
                                   clickPosition={editingAnnotation.clickPosition || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
                                   onEditCommit={(updatedJSON) => {
+                                    // UX: Phase 14 CALL-10 — detect callout edit session
+                                    // and route the commit to setCallouts via
+                                    // fromFabricGroup (reverse adapter). Non-callout
+                                    // edits still flow through handleSaveAnnotations.
+                                    if (editingAnnotation.editType === 'callout' && editingAnnotation.reactCalloutId) {
+                                      const editedGroup = { objects: updatedJSON?.objects || [] };
+                                      const updatedReactCallout = fromFabricGroup(
+                                        editedGroup,
+                                        editingAnnotation.pageSize || resolvedPageSize,
+                                        editingAnnotation.originalReactCallout
+                                      );
+                                      addHistoryCheckpoint('callouts:edit-commit', {
+                                        calloutId: editingAnnotation.reactCalloutId,
+                                      });
+                                      setCallouts((prev) => prev.map((c) =>
+                                        c.id === editingAnnotation.reactCalloutId ? updatedReactCallout : c
+                                      ));
+                                      editModeCooldownRef.current = Date.now();
+                                      setEditingAnnotation(null);
+                                      return;
+                                    }
                                     handleSaveAnnotations(pageNumber, updatedJSON, {
                                       source: 'edit:commit',
                                       action: editingAnnotation.editType,
@@ -26065,7 +26156,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
                                   }}
-                                  onLivePreview={(json) => handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' })}
+                                  onLivePreview={(json) => {
+                                    // UX: Phase 14 CALL-10 — live previews during callout
+                                    // edit are swallowed (no live save to setCallouts);
+                                    // the commit flows only on onEditCommit.
+                                    if (editingAnnotation.editType === 'callout') return;
+                                    handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
+                                  }}
                                   strokeColor={strokeColor}
                                   zoomGeneration={zoomGeneration}
                                   viewerScale={scale}
@@ -26269,6 +26366,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       layerVisibility={annotationLayerVisibility}
                                       onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
                                       onRequestEditMode={(annotationIndex, annotationType) => {
+                                        // UX: Phase 14 CALL-10 — callout double-click
+                                        // routes through the adapter-backed edit path.
+                                        if (annotationType === 'callout') {
+                                          if (Date.now() - editModeCooldownRef.current < 300) return;
+                                          handleRequestCalloutEditMode(annotationIndex, pageNumber);
+                                          return;
+                                        }
                                         if (Date.now() - editModeCooldownRef.current < 300) {
                                           console.log(`[App p${pageNumber}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
                                           return;
@@ -26457,18 +26561,42 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
                                     {isEditMode && (
                                       <FabricEditCanvas
-                                        key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}`}
+                                        key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}-${editingAnnotation?.editType || ''}`}
                                         pageNumber={pageNumber}
                                         pageWidth={pageSizes[pageNumber].width}
                                         pageHeight={pageSizes[pageNumber].height}
                                         editType={editingAnnotation.editType}
                                         annotationData={editingAnnotation.data}
                                         annotationIndex={editingAnnotation.index}
-                                        annotations={pageAnnotationsCS}
+                                        // UX: Phase 14 CALL-10 — callout edit uses the
+                                        // transient annotations shape from
+                                        // handleRequestCalloutEditMode, not pageAnnotationsCS.
+                                        annotations={editingAnnotation.editType === 'callout'
+                                          ? editingAnnotation.annotations
+                                          : pageAnnotationsCS}
                                         isNewText={editingAnnotation.isNewText || false}
                                         clickPosition={editingAnnotation.clickPosition || null}
                                         textBoxWidth={editingAnnotation.textBoxWidth}
                                         onEditCommit={(updatedJSON) => {
+                                          // UX: Phase 14 CALL-10 — callout commit routes to
+                                          // setCallouts via fromFabricGroup.
+                                          if (editingAnnotation.editType === 'callout' && editingAnnotation.reactCalloutId) {
+                                            const editedGroup = { objects: updatedJSON?.objects || [] };
+                                            const updatedReactCallout = fromFabricGroup(
+                                              editedGroup,
+                                              editingAnnotation.pageSize || { width: pageSizes[pageNumber].width, height: pageSizes[pageNumber].height },
+                                              editingAnnotation.originalReactCallout
+                                            );
+                                            addHistoryCheckpoint('callouts:edit-commit', {
+                                              calloutId: editingAnnotation.reactCalloutId,
+                                            });
+                                            setCallouts((prev) => prev.map((c) =>
+                                              c.id === editingAnnotation.reactCalloutId ? updatedReactCallout : c
+                                            ));
+                                            editModeCooldownRef.current = Date.now();
+                                            setEditingAnnotation(null);
+                                            return;
+                                          }
                                           handleSaveAnnotations(pageNumber, updatedJSON, {
                                             source: 'edit:commit',
                                             action: editingAnnotation.editType,
@@ -26481,7 +26609,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           editModeCooldownRef.current = Date.now();
                                           setEditingAnnotation(null);
                                         }}
-                                        onLivePreview={(json) => handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' })}
+                                        onLivePreview={(json) => {
+                                          if (editingAnnotation.editType === 'callout') return;
+                                          handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
+                                        }}
                                         strokeColor={strokeColor}
                                         zoomGeneration={zoomGeneration}
                                         viewerScale={scale}
@@ -26746,6 +26877,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       layerVisibility={annotationLayerVisibility}
                                       onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNum, updatedJSON, saveContext)}
                                       onRequestEditMode={(annotationIndex, annotationType) => {
+                                        // UX: Phase 14 CALL-10 — callout double-click
+                                        // routes through the adapter-backed edit path.
+                                        if (annotationType === 'callout') {
+                                          if (Date.now() - editModeCooldownRef.current < 300) return;
+                                          handleRequestCalloutEditMode(annotationIndex, pageNum);
+                                          return;
+                                        }
                                         if (Date.now() - editModeCooldownRef.current < 300) {
                                           console.log(`[App p${pageNum}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
                                           return;
@@ -27113,18 +27251,42 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                                   {isEditMode && (
                                     <FabricEditCanvas
-                                      key={`edit-${pageNum}-${editingAnnotation?.index ?? 'new'}`}
+                                      key={`edit-${pageNum}-${editingAnnotation?.index ?? 'new'}-${editingAnnotation?.editType || ''}`}
                                       pageNumber={pageNum}
                                       pageWidth={pageSizes[pageNum].width}
                                       pageHeight={pageSizes[pageNum].height}
                                       editType={editingAnnotation.editType}
                                       annotationData={editingAnnotation.data}
                                       annotationIndex={editingAnnotation.index}
-                                      annotations={pageAnnotations}
+                                      // UX: Phase 14 CALL-10 — callout edit uses the
+                                      // transient annotations shape from
+                                      // handleRequestCalloutEditMode, not pageAnnotations.
+                                      annotations={editingAnnotation.editType === 'callout'
+                                        ? editingAnnotation.annotations
+                                        : pageAnnotations}
                                       isNewText={editingAnnotation.isNewText || false}
                                       clickPosition={editingAnnotation.clickPosition || null}
                                       textBoxWidth={editingAnnotation.textBoxWidth}
                                       onEditCommit={(updatedJSON) => {
+                                        // UX: Phase 14 CALL-10 — callout commit routes to
+                                        // setCallouts via fromFabricGroup.
+                                        if (editingAnnotation.editType === 'callout' && editingAnnotation.reactCalloutId) {
+                                          const editedGroup = { objects: updatedJSON?.objects || [] };
+                                          const updatedReactCallout = fromFabricGroup(
+                                            editedGroup,
+                                            editingAnnotation.pageSize || { width: pageSizes[pageNum].width, height: pageSizes[pageNum].height },
+                                            editingAnnotation.originalReactCallout
+                                          );
+                                          addHistoryCheckpoint('callouts:edit-commit', {
+                                            calloutId: editingAnnotation.reactCalloutId,
+                                          });
+                                          setCallouts((prev) => prev.map((c) =>
+                                            c.id === editingAnnotation.reactCalloutId ? updatedReactCallout : c
+                                          ));
+                                          editModeCooldownRef.current = Date.now();
+                                          setEditingAnnotation(null);
+                                          return;
+                                        }
                                         handleSaveAnnotations(pageNum, updatedJSON, {
                                           source: 'edit:commit',
                                           action: editingAnnotation.editType,
@@ -27137,7 +27299,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         editModeCooldownRef.current = Date.now();
                                         setEditingAnnotation(null);
                                       }}
-                                      onLivePreview={(json) => handleSaveAnnotations(pageNum, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' })}
+                                      onLivePreview={(json) => {
+                                        if (editingAnnotation.editType === 'callout') return;
+                                        handleSaveAnnotations(pageNum, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
+                                      }}
                                       strokeColor={strokeColor}
                                       zoomGeneration={zoomGeneration}
                                       viewerScale={scale}

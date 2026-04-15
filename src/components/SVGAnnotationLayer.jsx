@@ -33,6 +33,12 @@ import {
 } from '../utils/svgAnnotationRenderers';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
+// Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
+// new callout from the click-drag creation gesture. types.js is the
+// PRESERVED Plan 14-01 shim (ARROWHEAD_STYLES + defaultCalloutStyle +
+// createCallout) — do NOT replace with the null stub.
+import { createCallout } from './Callout/types';
+import { screenToSVG } from '../utils/svgTransformMath';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints } from '../utils/svgBoundingBox';
@@ -217,6 +223,20 @@ const SVGAnnotationLayer = memo(({
   //   travel to the input pill and click into it.
   // - Hidden when no shape is selected, or after grace expiry without re-entry.
   // Drag overrides everything (computed below as `showRotationInput`).
+  // ---------------------------------------------------------------------------
+  // Phase 14 CREATE-01 (callout half) — transient state for click-drag
+  // callout creation
+  // ---------------------------------------------------------------------------
+  // UX: calloutCreation is null when not creating, otherwise holds
+  // { arrowTip: {x, y}, currentPointer: {x, y} } in PAGE coordinates
+  // (pre-normalization). Cleared on tool switch via the activeTool
+  // useEffect below so a mid-drag V keystroke doesn't leave a stray
+  // preview mounted. The preview JSX is rendered inside the SVG root
+  // conditionally on this state.
+  const [calloutCreation, setCalloutCreation] = useState(null);
+  const calloutCreationRef = useRef(null);
+  useEffect(() => { calloutCreationRef.current = calloutCreation; }, [calloutCreation]);
+
   const [rotInputVisible, setRotInputVisible] = useState(false);
   const rotInputHoverTimerRef = useRef(null);
   const rotInputCloseTimerRef = useRef(null);
@@ -339,6 +359,71 @@ const SVGAnnotationLayer = memo(({
     deleteSelected,
     effectiveDeleteCalloutsCallback,
   ]);
+
+  // ---------------------------------------------------------------------------
+  // Phase 14 CREATE-01 (callout half) — window-level pointermove/up while
+  // in-flight
+  // ---------------------------------------------------------------------------
+  // UX: Once a creation drag has started (pointerdown on empty SVG space
+  // with activeTool === 'callout'), track the pointer via window-level
+  // listeners so the drag survives leaving the SVG bounds. On pointerup,
+  // either commit via onCreateCallout (if the drag has enough distance) or
+  // cancel silently (short click). Listeners are attached only while
+  // calloutCreation is non-null to avoid noise when the user isn't creating.
+  useEffect(() => {
+    if (!calloutCreation) return;
+    const onMove = (e) => {
+      if (!svgRef.current) return;
+      const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      setCalloutCreation((prev) => prev ? { ...prev, currentPointer: pt } : null);
+    };
+    const onUp = () => {
+      const state = calloutCreationRef.current;
+      setCalloutCreation(null);
+      if (!state) return;
+      const W = width || 1;
+      const H = height || 1;
+      // UX: min-drag threshold — 4px in page space. Short clicks are
+      // treated as cancels (no stray 0x0 callout committed).
+      const dx = state.currentPointer.x - state.arrowTip.x;
+      const dy = state.currentPointer.y - state.arrowTip.y;
+      if (dx * dx + dy * dy < 16) return;
+
+      const arrowTipNorm = { x: state.arrowTip.x / W, y: state.arrowTip.y / H };
+      const textBoxNorm = { x: state.currentPointer.x / W, y: state.currentPointer.y / H };
+      // UX: combined-tools creation formula — knee midway between textbox
+      // and arrowTip, offset upward by 40 page px.
+      // See COMBINED-TOOLS-AUDIT.md "Text Callout Tool → Creation flow".
+      const kneeNorm = {
+        x: (arrowTipNorm.x + textBoxNorm.x) / 2,
+        y: arrowTipNorm.y - 40 / H,
+      };
+      const newCallout = createCallout(
+        pageNumber,
+        arrowTipNorm,
+        kneeNorm,
+        textBoxNorm,
+        120 / W, // default textbox width ~120px normalized
+        32 / H   // default textbox height ~32px normalized
+      );
+      if (onCreateCallout) onCreateCallout(newCallout);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [calloutCreation, width, height, pageNumber, onCreateCallout, svgRef]);
+
+  // UX: Phase 14 CREATE-01 — clear preview state on tool switch mid-drag.
+  // Without this, switching from callout tool to select mid-drag would
+  // leave a stray dashed preview mounted until the next pointerup.
+  useEffect(() => {
+    if (activeTool !== 'callout') {
+      setCalloutCreation(null);
+    }
+  }, [activeTool]);
 
   // ---------------------------------------------------------------------------
   // EDIT-13 (Phase 13 Plan 13-01): Delegated hover-intent listeners on svgRef
@@ -1382,6 +1467,18 @@ const SVGAnnotationLayer = memo(({
       onPointerDown={(e) => {
         if (isInteractive) {
           e.stopPropagation(); // Prevent Syncfusion from seeing SVG events (SVGAnimatedString crash)
+          // UX: Phase 14 CREATE-01 (callout half) — when the callout tool
+          // is active and the click lands on empty SVG space (NOT inside
+          // an existing callout), start a transient creation drag. If the
+          // click is inside an existing callout, fall through to
+          // handleSvgPointerDown which dispatches the callout-part drag
+          // via useSVGInteraction (Plan 14-03 Task 2).
+          if (activeTool === 'callout' && !e.target?.closest?.('[data-callout-id]')) {
+            const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
+            setCalloutCreation({ arrowTip: pt, currentPointer: pt });
+            e.preventDefault();
+            return;
+          }
           handleSvgPointerDown(e);
         }
       }}
@@ -1390,6 +1487,56 @@ const SVGAnnotationLayer = memo(({
     >
       {wrappedAnnotations}
       {filteredCallouts}
+      {/* UX: Phase 14 CREATE-01 (callout half) — transient click-drag
+          preview. Dashed at 0.6 opacity so the committed callout is
+          visually distinct (solid, full opacity). Cleared on pointerup
+          (via the window listener), tool switch, or empty drag. See
+          14-UI-SPEC.md Interaction Contract 3 callout preview composition
+          and 14-CONTEXT.md Area 4 CREATE-01 callout preview. */}
+      {calloutCreation && (
+        <g className="callout-preview" opacity={0.6} style={{ pointerEvents: 'none' }}>
+          {/* Dashed textbox at currentPointer (120x32 default) */}
+          <rect
+            x={calloutCreation.currentPointer.x}
+            y={calloutCreation.currentPointer.y}
+            width={120}
+            height={32}
+            fill="#ffffff"
+            stroke="#1e293b"
+            strokeWidth={2}
+            strokeDasharray="5,5"
+            rx={4}
+            ry={4}
+          />
+          {/* Dashed connector line 1: textbox-center → knee */}
+          <line
+            x1={calloutCreation.currentPointer.x + 60}
+            y1={calloutCreation.currentPointer.y + 16}
+            x2={(calloutCreation.arrowTip.x + calloutCreation.currentPointer.x) / 2}
+            y2={calloutCreation.arrowTip.y - 40}
+            stroke="#1e293b"
+            strokeWidth={2}
+            strokeDasharray="5,5"
+            strokeLinecap="round"
+          />
+          {/* Dashed connector line 2: knee → arrowTip */}
+          <line
+            x1={(calloutCreation.arrowTip.x + calloutCreation.currentPointer.x) / 2}
+            y1={calloutCreation.arrowTip.y - 40}
+            x2={calloutCreation.arrowTip.x}
+            y2={calloutCreation.arrowTip.y}
+            stroke="#1e293b"
+            strokeWidth={2}
+            strokeDasharray="5,5"
+            strokeLinecap="round"
+          />
+          {/* Dashed arrowhead triangle at arrowTip */}
+          <polygon
+            points={`${calloutCreation.arrowTip.x},${calloutCreation.arrowTip.y} ${calloutCreation.arrowTip.x - 8},${calloutCreation.arrowTip.y - 4} ${calloutCreation.arrowTip.x - 8},${calloutCreation.arrowTip.y + 4}`}
+            fill="#1e293b"
+          />
+        </g>
+      )}
       {/* Selection overlays — rendered on top of all annotations */}
       {/* Single selection: individual bounding box with handles */}
       {selectedIds.size === 1 && Array.from(selectedIds).map((selectedIndex) => {
