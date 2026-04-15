@@ -77,42 +77,42 @@ Audits of both codebases: `.planning/research/COMBINED-TOOLS-AUDIT.md` and `.pla
 
 ## Traceability
 
-Which phases cover which requirements. Populated by `gsd-roadmapper`.
+Which phases cover which requirements. Populated by `gsd-roadmapper` on 2026-04-15.
 
 | Requirement | Phase | Plan | Status |
 |-------------|-------|------|--------|
-| LINE-01 | TBD | TBD | Pending |
-| LINE-02 | TBD | TBD | Pending |
-| LINE-03 | TBD | TBD | Pending |
-| LINE-04 | TBD | TBD | Pending |
-| LINE-05 | TBD | TBD | Pending |
-| LINE-06 | TBD | TBD | Pending |
-| ARROW-01 | TBD | TBD | Pending |
-| ARROW-02 | TBD | TBD | Pending |
-| ARROW-03 | TBD | TBD | Pending |
-| ARROW-04 | TBD | TBD | Pending |
-| ARROW-05 | TBD | TBD | Pending |
-| ARROW-06 | TBD | TBD | Pending |
-| ARROW-07 | TBD | TBD | Pending |
-| CALL-01 | TBD | TBD | Pending |
-| CALL-02 | TBD | TBD | Pending |
-| CALL-03 | TBD | TBD | Pending |
-| CALL-04 | TBD | TBD | Pending |
-| CALL-05 | TBD | TBD | Pending |
-| CALL-06 | TBD | TBD | Pending |
-| CALL-07 | TBD | TBD | Pending |
-| CALL-08 | TBD | TBD | Pending |
-| CALL-09 | TBD | TBD | Pending |
-| CALL-10 | TBD | TBD | Pending |
-| UX-01 | TBD | TBD | Pending |
-| KBD-01 | TBD | TBD | Pending |
-| CREATE-01 | TBD | TBD | Pending |
+| LINE-01 | Phase 15 | TBD | Pending |
+| LINE-02 | Phase 15 | TBD | Pending |
+| LINE-03 | Phase 15 | TBD | Pending |
+| LINE-04 | Phase 16 | TBD | Pending |
+| LINE-05 | Phase 16 | TBD | Pending |
+| LINE-06 | Phase 16 | TBD | Pending |
+| ARROW-01 | Phase 15 | TBD | Pending |
+| ARROW-02 | Phase 15 | TBD | Pending |
+| ARROW-03 | Phase 15 | TBD | Pending |
+| ARROW-04 | Phase 15 | TBD | Pending |
+| ARROW-05 | Phase 16 | TBD | Pending |
+| ARROW-06 | Phase 16 | TBD | Pending |
+| ARROW-07 | Phase 16 | TBD | Pending |
+| CALL-01 | Phase 17 | TBD | Pending |
+| CALL-02 | Phase 17 | TBD | Pending |
+| CALL-03 | Phase 17 | TBD | Pending |
+| CALL-04 | Phase 17 | TBD | Pending |
+| CALL-05 | Phase 17 | TBD | Pending |
+| CALL-06 | Phase 18 | TBD | Pending |
+| CALL-07 | Phase 18 | TBD | Pending |
+| CALL-08 | Phase 18 | TBD | Pending |
+| CALL-09 | Phase 18 | TBD | Pending |
+| CALL-10 | Phase 14 | TBD | Pending |
+| UX-01 | Phase 14 | TBD | Pending |
+| KBD-01 | Phase 14 | TBD | Pending |
+| CREATE-01 | Phase 14 | TBD | Pending |
 
 **Coverage:**
 - v2.3 requirements: 26 total (6 line, 7 arrow, 10 callout, 3 shared)
-- Mapped to phases: 0 (awaiting roadmapper)
-- Unmapped: 26
+- Mapped to phases: 26 (Phase 14: 4, Phase 15: 7, Phase 16: 6, Phase 17: 5, Phase 18: 4)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-14*
-*Last updated: 2026-04-14 after scope revision — user granted rewrite permission, added 12 items on top of the original 14. Total 26 requirements. Traceability filled by `gsd-roadmapper` starting at Phase 14.*
+*Traceability populated: 2026-04-15 by `gsd-roadmapper` — 26/26 requirements mapped across Phases 14-18.*

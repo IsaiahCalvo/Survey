@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish (combined-tools rewrite + unified render)
 status: active
-stopped_at: Milestone v2.3 REQUIREMENTS.md revised to 26 requirements after user scope expansion — rewrite permission granted, unified-render decision added (CALL-10). Session checkpointed before roadmapper spawn to protect context budget (hit 31%). Fresh session must run gsd-roadmapper starting at Phase 14.
-last_updated: "2026-04-14T24:45:00.000Z"
-last_activity: 2026-04-14 — v2.3 requirements revised from 14 → 26, rewrite permission granted, checkpoint for fresh session.
+stopped_at: Roadmap landed — Phases 14-18 defined, 26/26 requirements mapped. Ready for `/gsd:discuss-phase 14`. CALL-10 is Phase 14 as the SVG-unification unblocker; lineGeometry.js wiring sits in Phase 15 as a pure port.
+last_updated: "2026-04-15T00:00:00.000Z"
+last_activity: 2026-04-15 — gsd-roadmapper decomposed 26 requirements into 5 phases (14-18), wrote ROADMAP.md v2.3 section, filled REQUIREMENTS.md traceability.
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-14)
 
 **Core value:** Line/arrow/text-callout tools match the precision and feel of the `combined-tools` reference app, AND all annotations render through the same SVG pipeline for a unified select / edit / erase / undo story.
-**Current focus:** Milestone v2.3 — REQUIREMENTS.md revised (26 items), awaiting roadmapper in a fresh session.
+**Current focus:** Milestone v2.3 — Phases 14-18 defined, awaiting `/gsd:discuss-phase 14` to kick off plan decomposition for the SVG unification of callouts + shared tool foundation.
 
 ## Current Position
 
-Milestone: v2.3 — Tools Polish (combined-tools rewrite + unified render) — **REQUIREMENTS DEFINED, AWAITING ROADMAPPER**
-Phase: Not started (Phase 14 will be first once roadmap lands)
-Plan: —
-Status: REQUIREMENTS.md committed with 26 items. Roadmapper deferred to fresh session for context budget reasons.
-Last activity: 2026-04-14 — scope revised after user direction shift; rewrite permission granted; unified-render decision captured; checkpoint written.
+Milestone: v2.3 — Tools Polish (combined-tools rewrite + unified render)
+Phase: **Phase 14 — Unified SVG Callout Render + Shared Tool Foundation** (next, not started)
+Plan: — (populated by `/gsd:plan-phase 14`)
+Status: Roadmap committed. 26/26 v2.3 requirements mapped across Phases 14-18. Ready for plan decomposition.
+Last activity: 2026-04-15 — gsd-roadmapper produced the 5-phase v2.3 roadmap.
 
-Progress: [..........] 0% (requirements defined, roadmap pending)
+Progress: [..........] 0% (0/5 phases complete, 0/TBD plans complete)
 
 ## Performance Metrics
 
@@ -41,6 +41,9 @@ Progress: [..........] 0% (requirements defined, roadmap pending)
 - v2.1 (Phase 12): 3 plans — shipped 2026-04-14
 - v2.2 (Phase 13): 2 plans — shipped 2026-04-14 (same day as v2.1)
 - **Total: 17 plans shipped across 4 milestones**
+
+**v2.3 plan:**
+- 5 phases for 26 requirements (14 → 18). CALL-10 as Phase 14 unblocker; lineGeometry wiring as Phase 15; mini-toolbar + curvature pill as Phase 16; callout collision/rollback/resize as Phase 17; callout auto-routing + hover + self-destruct as Phase 18.
 
 **Tests:** 113/113 green at v2.2 close (v2.3 must preserve this baseline)
 
@@ -72,6 +75,10 @@ Progress: [..........] 0% (requirements defined, roadmap pending)
 - [v2.3]: **Unified render decision (CALL-10).** User: "I want all annotations to render the same — different rendering makes selection, editing, erasing complicated." Callout moves from its current separate HTML-overlay system (`src/components/Callout/*`) to the same SVG pipeline all 9 other annotation types use, with `<foreignObject>` for text content (same pattern as text annotations).
 - [v2.3]: **Curvature indicator mirrors RotationInputField UX.** Hover-reveal pill near midpoint handle, shows current curvature, typeable to commit a custom curve, optimistic-paint commit. Proven v2.1 pattern — reuse helpers directly.
 - [v2.3]: **Line/arrow "act like regular shapes"** — inherit the select lifecycle + mini-toolbar + hover pill pattern that rect/circle/ellipse already have. UX unification on top of render unification.
+- [v2.3 roadmap]: **5 phases for 26 requirements (14 → 18).** Phase 14 = CALL-10 + shared foundation (UX-01/KBD-01/CREATE-01). Phase 15 = line/arrow curvature wiring (LINE-01..03, ARROW-01..03) + 6-style arrowhead enum (ARROW-04). Phase 16 = mini-toolbar + typeable curvature pill + min-drag (LINE-04..06, ARROW-05..07). Phase 17 = callout collisions + rollback + resize (CALL-01..05). Phase 18 = callout auto-routing + hover affordances + self-destruct (CALL-06..09).
+- [v2.3 roadmap]: **CALL-10 lands as Phase 14, not later.** Doing SVG unification first means downstream callout polish (Phases 17-18) builds against the final render path, not a soon-to-be-deleted codepath. Risk of building against the old HTML-overlay system and re-doing the work during unification outweighs any phase-ordering convenience.
+- [v2.3 roadmap]: **lineGeometry.js is a wiring job, not a rewrite.** The math (`getCurvedPath`, `getCurveEndAngle`, `shouldSnapToLinear`, `getControlPoint`) is already ported in `src/utils/lineGeometry.js` — Phase 15 consumes it from SVG renderers + `useSVGInteraction.js` without entangling the protected PAL codepath that's currently the only live consumer.
+- [v2.3 roadmap]: **Phase 16 curvature pill reuses v2.1 patterns literally.** `RotationInputField` architecture (HTML portal + uncontrolled input + full-click-cycle stopPropagation + constant orbit radius via worst-case AABB projection) and `applyOptimisticRotation` paint pattern carry over verbatim — shape for curvature, not rewrite.
 
 ### Roadmap Evolution
 
@@ -80,49 +87,50 @@ Progress: [..........] 0% (requirements defined, roadmap pending)
 - v2.0 Phases 8-11 shipped 39 requirements
 - v2.1 Phase 12 shipped 3 requirements + 9 scope-expansion gap fixes
 - v2.2 Phase 13 shipped 2 requirements (one rescoped mid-plan)
-- v2.3 phases TBD — roadmapper must decompose 26 requirements starting at Phase 14 in the fresh session
+- v2.3 Phases 14-18 defined 2026-04-15 for 26 requirements (100% coverage)
 
 ### Pending Todos
 
-None at milestone kickoff. Session-moment log for 2026-04-14 should be reviewed for any graduation candidates during the fresh session.
+- Kick off `/gsd:discuss-phase 14` to spawn plan decomposition for the Unified SVG Callout Render + Shared Tool Foundation phase.
+- Consider whether `MILESTONES.md` should be updated to log v2.2 (shipped 2026-04-14 but not yet logged) and v2.3 (planning). Not in gsd-roadmapper's scope per this run's instructions, but flagged for the user's next discussion session.
+- Session-moment log for 2026-04-14 should be reviewed for any graduation candidates before Phase 14 plan work starts.
 
 ### Blockers/Concerns
 
-- v2.3 **Scope is now 26 requirements across 4 categories** — the biggest single milestone in the project to date (v2.0 shipped 39 requirements across 4 phases — similar scale). Roadmapper will need to decompose into ~4-6 phases: expect phase boundaries roughly along (1) SVG unification of callout + shared creation preview, (2) line/arrow curvature wiring + mini-toolbar lifecycle, (3) line/arrow curvature pill + keyboard, (4) callout collision + rollback + resize, (5) callout auto-routing + hover affordance. Let the roadmapper propose; don't pre-decompose.
+- v2.3 **CALL-10 ordering risk flagged and resolved**: CALL-10 is Phase 14 (not Phase 18). Downstream phases (17-18) will build against the unified SVG render path, not the old `src/components/Callout/` HTML-overlay React system. If Phase 14 slips or the unified render proves harder than estimated, Phases 15-16 can still proceed in parallel since they target line/arrow (independent of callout render path) — CALL-10 blocks Phases 17-18 only.
 
-- v2.3 **CALL-10 (SVG unification of callout) is architecturally load-bearing** and probably needs to be Phase 14 — it unblocks every other callout requirement because once the callout renders through `svgAnnotationRenderers.jsx` + `useSVGInteraction.js` like every other annotation, the collision / rollback / resize / hover requirements all fit into the existing SVG interaction pattern rather than inside the current separate React component. Flag this to the roadmapper.
+- v2.3 **`src/App.jsx` waiver likely needed in Phase 14**: Delete/Backspace keyboard handler lives at App.jsx:~22480 and `activeTool` state is App-level. Phase 14 plan CONTEXT must explicitly call out whether App.jsx touches are required and request the narrow-lane waiver before planning.
 
-- v2.3 **lineGeometry.js leverage point:** `src/utils/lineGeometry.js` is already a complete port of combined-tools' curvature math (`getCurvedPath`, `getCurveEndAngle`, `shouldSnapToLinear`, `getControlPoint`). Currently consumed only by the protected legacy `PageAnnotationLayer.jsx`. The line/arrow curvature requirements (LINE-01..03, ARROW-01..03) are a wiring job — import and consume, don't re-write.
+- v2.3 **`src/components/FabricEditCanvas.jsx` waiver likely needed in Phase 18**: CALL-08 empty-text self-destruct fires when a newly created callout exits edit mode — the `editType: 'callout'` branch at `FabricEditCanvas.jsx:~1335` may need a small commit-hook. Keep the scope surgical.
 
-- v2.3 **Counter WIP marker cleanup done:** the stale `[COUNTER WIP — DO NOT TOUCH]` comment at `SVGAnnotationLayer.jsx:1072-1075` was removed in this session (counter code stable in commit `8ac818bc`). No adjacent-code hazard for the line-type handle branch anymore.
+- v2.3 **lineGeometry.js leverage point** (unchanged): `src/utils/lineGeometry.js` is already a complete port — Phase 15 imports and consumes, does not rewrite. `PageAnnotationLayer.jsx` remains the only other live consumer and stays untouched.
+
+- v2.3 **Counter WIP marker cleanup done:** the stale `[COUNTER WIP — DO NOT TOUCH]` comment at `SVGAnnotationLayer.jsx:1072-1075` was removed in the previous session (counter code stable in commit `8ac818bc`). No adjacent-code hazard for the line-type handle branch anymore.
 
 - v2.3 **Fabric 5.5.2 stays locked.** Do NOT upgrade to 6.x. Port behavior, not engine.
 
 ## Session Continuity
 
-Last session: 2026-04-14T24:45:00.000Z
-Stopped at: v2.3 REQUIREMENTS.md revised to 26 items after scope expansion. Rewrite permission granted. Unified-render decision added. Counter WIP marker cleaned up (1 file). Three atomic commits made. Session checkpointed at 31% context before running `gsd-roadmapper`.
+Last session: 2026-04-15T00:00:00.000Z
+Stopped at: gsd-roadmapper produced the 5-phase v2.3 roadmap (Phases 14-18), wrote `.planning/ROADMAP.md` v2.3 section, filled the `.planning/REQUIREMENTS.md` Traceability table with 26/26 mappings. Ready for `/gsd:discuss-phase 14`.
 
-### Resume instructions for the fresh session (read carefully)
+### Resume instructions for the next session (read carefully)
 
-**One-line wake-up:** "Resume v2.3. Requirements are locked at 26 items in REQUIREMENTS.md. Read both audit files in `.planning/research/`, then spawn gsd-roadmapper starting at Phase 14. Flag CALL-10 (SVG unification of callout) as the suggested Phase 14 since it unblocks every other callout requirement."
+**One-line wake-up:** "Resume v2.3. Roadmap Phases 14-18 are committed. Next step: `/gsd:discuss-phase 14` to decompose the Unified SVG Callout Render + Shared Tool Foundation phase (CALL-10 + UX-01 + KBD-01 + CREATE-01) into plans. Flag up front whether `src/App.jsx` needs a narrow-lane waiver for the Delete/Backspace keyboard handler and `activeTool` crosshair coordination."
 
 **Workflow steps:**
 
-1. Read `.planning/PROJECT.md` — confirm v2.3 milestone scope (26 reqs, rewrite permission, unified render)
-2. Read `.planning/REQUIREMENTS.md` — the 26 requirements locked in this session
-3. Read `.planning/research/COMBINED-TOOLS-AUDIT.md` — combined-tools mechanics per tool (skim the H2s: Line Tool, Arrow Tool, Text Callout Tool, Shared State & Events, Surprising Mechanisms)
-4. Read `.planning/research/CURRENT-REPO-AUDIT.md` — current state + integration points + gap map + risk areas (section: "Risk Areas")
-5. Read this STATE.md for the scope context and the three architectural observations in Blockers/Concerns
-6. Spawn `gsd-roadmapper` agent starting at **Phase 14**. Pass: `PROJECT.md`, `REQUIREMENTS.md`, both audit files, `MILESTONES.md`, `config.json`. Ask roadmapper to consider CALL-10 as a possible Phase 14 unblocker.
-7. Present roadmap for user approval. Commit.
-8. Update `MILESTONES.md` — it's currently missing the v2.2 entry (shipped 2026-04-14 but not logged). Add both v2.2 and v2.3 entries. Commit.
-9. Present "Next Up" block pointing to `/gsd:discuss-phase 14`.
+1. Read `.planning/ROADMAP.md` v2.3 section — confirm Phase 14 goal, requirements, boundaries, success criteria
+2. Read `.planning/REQUIREMENTS.md` — verify Traceability shows CALL-10 / UX-01 / KBD-01 / CREATE-01 → Phase 14
+3. Read `.planning/research/CURRENT-REPO-AUDIT.md` "Callout" section + "Risk Areas" — integration points for the unified render
+4. Read `.planning/research/COMBINED-TOOLS-AUDIT.md` "Text Callout Tool" + "Shared State & Events" — baseline behavior to match
+5. Spawn `/gsd:discuss-phase 14` to produce the plan list (expect 2-3 plans: unified render + render-path callout selection/edit + shared foundation wiring)
+6. Commit. Present next step: `/gsd:plan-phase 14`.
 
-**Watch-outs for the fresh session:**
+**Watch-outs for the next session:**
 
-- Do NOT re-ask the scope questions already decided this session (listed in Decisions above)
-- Do NOT restore the stale `[COUNTER WIP — DO NOT TOUCH]` comment at SVGAnnotationLayer.jsx:1072 — it was removed on purpose in commit TBD (counter session is done)
-- Do NOT touch `src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricEditCanvas.jsx`, `package.json`, `vite.config.js` without explicit per-phase waiver (Always-Protected per CLAUDE.md)
-- Do NOT entangle PAL's curved-line code path with the new SVG-side wiring — leave PAL alone, it's the ONLY current consumer of `lineGeometry.js`
-- If the roadmapper produces more than 6 phases for 26 requirements, ask the user before accepting — that might mean the scope needs re-splitting into v2.3 + v2.4
+- Do NOT re-open the 5-phase decomposition. It's locked with 26/26 coverage. If a later phase surfaces a scope gap, insert a decimal phase (14.1, 15.1) via `/gsd:insert-phase` — do not renumber.
+- Do NOT touch `src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricDrawingCanvas.jsx`, `src/components/FabricEraserCanvas.jsx`, `src/components/FabricEditCanvas.jsx`, `package.json`, `vite.config.js` without an explicit per-phase waiver (Always-Protected per CLAUDE.md).
+- Do NOT entangle PAL's curved-line code path with the new SVG-side wiring — leave PAL alone. PAL is the only current consumer of `lineGeometry.js`; Phase 15 imports directly without touching PAL.
+- Do NOT restore the stale `[COUNTER WIP — DO NOT TOUCH]` comment at SVGAnnotationLayer.jsx:1072 — it was removed on purpose.
+- Do NOT attempt to ship the callout render unification AND the line/arrow mini-toolbar polish in the same phase. Phase 14 is render unification + shared foundation only; line/arrow polish is Phases 15-16.

@@ -85,3 +85,57 @@ Phase 12 closed via user Option A --- ship the core requirements now, backlog th
 - **Blur-commit and invalid-value revert (EDIT-12 AC #7 + #8)** --- de-scoped during 12-02 UAT per explicit user decision ("no but thats fine, i dont want that"). Not a gap; documented as intentional de-scope.
 
 **Status:** Shipped 2026-04-14 (DONE_WITH_CONCERNS)
+
+## v2.2 --- Rotation Handle Polish
+
+**Goal:** Close the two Phase 12 carry-forward rotation-handle gaps so the hover pill and the mtr handle behave correctly across every edit-mode entry/exit transition on shapes.
+
+**Shipped:** 2026-04-14
+
+**Phases:**
+- Phase 13: Rotation Handle Edit-Mode Polish --- EDIT-13 hover pill re-arm via event delegation, EDIT-14 rescoped mid-plan to "no Fabric transform handles in edit mode" (Figma-style separation) (2 requirements, 2 plans)
+
+**First phase number:** 13
+**Last phase number:** 13
+
+**Plans:**
+- Plan 13-01 --- EDIT-13 hover pill stale-ref fix via event delegation on stable SVG ancestor (`e.target.closest('[data-rotation-handle="mtr"]')`), gated on `editingAnnotationIndex == null`. Load-bearing `react-hooks/exhaustive-deps` invariant preserved (commit `6cf9e8c9`).
+- Plan 13-02 --- EDIT-14 rescoped mid-plan under one-time narrow-lane waiver for `FabricEditCanvas.jsx`. Original AC (mtr visible on pre-rotated edit entry) was unsolvable in the narrow lane; "no Fabric transform handles in edit mode" delivered the underlying Figma-style separation intent. RECONCILIATION.md documents the rescope.
+
+**Key Accomplishments:**
+
+1. **EDIT-13 event-delegation pattern** --- Hover-intent re-arms on every edit-mode exit path (click-off / Escape / Enter-commit) for rect, circle, ellipse, AND text edit modes at both `angle=0` and `angle=30`. No deselect/reselect workaround needed.
+
+2. **EDIT-14 Figma-style edit-mode separation** --- Fabric transform handles (corners, mtr) hidden on all shapes in edit mode. Shape editing is now purely property-level (color, stroke, size); rotation stays in the select-mode drag + typed-degree pill. The rescope delivered cleaner separation than the original visibility patch would have.
+
+3. **v2.1 carry-forward gaps closed** --- Both deferred Phase 12 gaps shipped in the same narrow interaction surface with no counter-session file conflicts.
+
+**Status:** Shipped 2026-04-14
+
+## v2.3 --- Tools Polish (combined-tools rewrite + unified render)
+
+**Goal:** Rewrite the line, arrow, and text callout tools using `/Users/isaiahcalvo/Desktop/combined-tools` as the behavioral baseline, and unify callout rendering onto the same SVG pipeline the other 9 annotation types already use. User granted explicit rewrite permission 2026-04-14 --- don't preserve the current implementations.
+
+**Status:** In progress --- roadmap defined 2026-04-15
+
+**Phases:**
+- Phase 14: Unified SVG Callout Render + Shared Tool Foundation --- CALL-10 SVG unification unblocker + UX-01 crosshair + KBD-01 Delete/Backspace + CREATE-01 dashed creation preview (4 reqs)
+- Phase 15: Line/Arrow Curvature + Arrowhead Styles --- wiring job against already-ported `src/utils/lineGeometry.js` + 6-style arrowhead picker with curved-tangent rotation (7 reqs)
+- Phase 16: Line/Arrow Mini-Toolbar + Curvature Pill + Min-Drag --- mini-toolbar + hover-reveal typeable curvature pill mirroring v2.1 `RotationInputField` + min-drag-length threshold (6 reqs)
+- Phase 17: Callout Handle Collisions + Rollback + Resize --- 30 px live collision clamps + on-drop rollback + corrected corner-resize geometry at all zoom levels (5 reqs)
+- Phase 18: Callout Auto-Routing + Hover Affordances + Self-Destruct --- Liang-Barsky auto-route + hover-reveal handles + selection-preview glow + empty-text self-destruct (4 reqs)
+
+**First phase number:** 14
+**Last phase number:** 18
+
+**Total requirements:** 26 (6 line, 7 arrow, 10 callout, 3 shared interaction)
+
+**Architectural anchors:**
+
+- **Phase 14 = CALL-10 unblocker** --- SVG-unifies the callout FIRST so Phases 17-18 build against the final render path, not the soon-to-be-deleted `src/components/Callout/` HTML overlay.
+- **Phase 15 = wiring, not rewriting** --- `src/utils/lineGeometry.js` is already a complete port of combined-tools curvature math; consume from SVG renderers + `useSVGInteraction.js`, don't re-derive.
+- **Phase 16 reuses v2.1 patterns literally** --- curvature pill = `RotationInputField` architecture (HTML portal, uncontrolled input, full-click-cycle stopPropagation, constant orbit radius) + `applyOptimisticRotation` commit-path pattern.
+- **Always-Protected waivers flagged upfront:** `src/App.jsx` likely in Phase 14 (Delete/Backspace + crosshair + activeTool); `src/components/FabricEditCanvas.jsx` likely in Phase 18 (CALL-08 empty-text self-destruct on edit-mode exit). Both require per-phase narrow-lane waivers.
+- **PAL stays untouched throughout.** PAL is the ONLY live consumer of `lineGeometry.js`; do not entangle it with the new SVG-side wiring.
+
+**Reference:** `/Users/isaiahcalvo/Desktop/combined-tools` (Fabric.js 6.9.1, React 18 + TS, same author). This app stays on Fabric 5.5.2 --- port behavior, not engine. Feature parity accepted over pixel parity.

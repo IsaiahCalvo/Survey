@@ -5,7 +5,8 @@
 - [x] **v1.0 Zoom Flicker Fix** — Phases 1-3 (shipped 2026-03-19), Phases 4-7 superseded/deferred
 - [x] **v2.0 SVG Migration** — Phases 8-11 (shipped 2026-04-10) — [archive](milestones/v2.0-ROADMAP.md)
 - [x] **v2.1 Shape Edit Polish & Foundation Wins** — Phase 12 (shipped 2026-04-14, DONE_WITH_CONCERNS) — [archive](milestones/v2.1-ROADMAP.md)
-- [ ] **v2.2 Rotation Handle Polish** — Phase 13 (in progress, started 2026-04-14)
+- [x] **v2.2 Rotation Handle Polish** — Phase 13 (shipped 2026-04-14)
+- [ ] **v2.3 Tools Polish (combined-tools rewrite)** — Phases 14-18 (planning, 26 requirements)
 
 ## Phases
 
@@ -47,9 +48,20 @@ See [`milestones/v2.1-ROADMAP.md`](milestones/v2.1-ROADMAP.md) for full phase de
 
 </details>
 
-### v2.2 Rotation Handle Polish
+<details>
+<summary>v2.2 Rotation Handle Polish (Phase 13) — SHIPPED 2026-04-14</summary>
 
-- [ ] **Phase 13: Rotation Handle Edit-Mode Polish** — Close out the two carry-forward Phase 12 gaps: hover pill re-arms after edit-mode click-off (EDIT-13) + rotation handle (mtr) stays fully visible when a pre-rotated shape enters edit mode (EDIT-14). Both fixes are SVG-side and lane-safe (zero counter-session conflicts).
+- [x] **Phase 13: Rotation Handle Edit-Mode Polish** — Hover pill re-arm via event delegation (EDIT-13) + rescoped "no Fabric transform handles in edit mode" (EDIT-14, Figma-style separation under narrow waiver)
+
+</details>
+
+### v2.3 Tools Polish (combined-tools rewrite + unified render)
+
+- [ ] **Phase 14: Unified SVG Callout Render + Shared Tool Foundation** — Port the text callout off its current HTML-overlay React system onto the same SVG pipeline all other annotations use (via `<foreignObject>`), and land the three cross-tool interaction foundations (crosshair cursor, Delete/Backspace, dashed creation preview) while the SVG interaction layer is already being touched for callouts.
+- [ ] **Phase 15: Line/Arrow Curvature + Arrowhead Styles** — Wire the already-ported `lineGeometry.js` curvature math (`getCurvedPath` / `getCurveEndAngle` / `shouldSnapToLinear`) into the SVG renderers + `useSVGInteraction.js` midpoint drag mode, and lift the 6-style arrowhead enum from the callout system into the line/arrow data model + render.
+- [ ] **Phase 16: Line/Arrow Mini-Toolbar + Curvature Pill + Min-Drag** — Line/arrow "act like regular shapes" with a mini-toolbar matching rect/circle/ellipse lifecycle, a hover-reveal typeable curvature pill mirroring the v2.1 `RotationInputField` + `applyOptimisticRotation` pattern, and a minimum-drag-length threshold on creation.
+- [ ] **Phase 17: Callout Handle Collisions + Rollback + Resize** — 30-px collision constraints between arrowTip/knee/textbox handles, whole-callout snap-back on drop into invalid configurations, and correct corner-resize geometry at all zoom levels (fix four underlying issues enumerated in CURRENT-REPO-AUDIT.md Gap 3).
+- [ ] **Phase 18: Callout Auto-Routing + Hover Affordances + Self-Destruct** — Liang-Barsky auto-routing so the knee wraps around the textbox without the connector lines crossing the interior, hover-reveal knee/arrowTip handles with 50 ms hide delay, selection-preview hover glow, and empty-text self-destruct on edit-mode exit.
 
 ## Phase Details
 
@@ -153,12 +165,160 @@ key decisions, issues resolved/deferred, and technical debt.
 Plans:
 - [x] **13-01-PLAN.md — EDIT-13 hover pill stale-ref fix (Gap 3)** — DONE 2026-04-14, commit 6cf9e8c9 — Modify the hover-intent `useEffect` in `SVGAnnotationLayer.jsx:213-313` so the rotation pill re-arms after any edit-mode exit path. Strategy A acceptable (add `editingAnnotationIndex` to dep array + early-return gate at effect top); Strategy B preferred (event delegation on stable SVG ancestor via `e.target.closest('[data-rotation-handle="mtr"]')`). Both must gate on `editingAnnotationIndex == null`. Preserves the load-bearing `eslint-disable react-hooks/exhaustive-deps` invariant by NOT adding tick-rate values (`annotations`, `visualTransform`) to the dep array. Files in scope: `src/components/SVGAnnotationLayer.jsx` only.
 
-- [ ] **13-02-PLAN.md — EDIT-14 mtr handle visibility fix (Gap 4)** — Make pre-rotated shapes show a fully-visible rotation handle on edit-mode entry without touching `FabricEditCanvas.jsx` (counter-session lane). **MANDATORY FIRST STEP:** Run a live-DOM diagnostic in the running app — open a pre-rotated shape, walk the ancestor chain from the FabricEditCanvas container up through the Syncfusion `e-pv-page-div`, and read `getBoundingClientRect()` + `window.getComputedStyle(el).overflow` on every link to confirm WHICH clipper actually owns the symptom (Architecture research hypothesizes a Syncfusion `e-pv-page-div` ancestor; Pitfalls research confirms the canvas pixel buffer math; both may contribute). Diagnostic resolves which. Then implement Fix A / Architecture Option C: narrow the `SVGAnnotationLayer.jsx:1050` short-circuit so it returns null only when `editIsBorderFlush && angle === 0`, and render an mtr-only stripped overlay (no bbox, no resize pills) when `editIsBorderFlush && angle !== 0`. Add a new `isEditing` prop path through `SVGSelectionOverlay.jsx` for the mtr-only render branch. SVG handle is visual-only during edit mode (the SVG root has `pointerEvents: 'none'` while `isInteractive=false`); rotation in edit mode stays out of scope per PROJECT.md line 71. Files in scope: `src/components/SVGAnnotationLayer.jsx` (narrow `:1050` condition only — never delete) + `src/components/SVGSelectionOverlay.jsx` (new `isEditing` prop, mtr-only rendering path).
+- [x] **13-02-PLAN.md — EDIT-14 mtr handle visibility fix (Gap 4)** — DONE 2026-04-14 — Rescoped mid-plan to "no Fabric transform handles in edit mode for any shape" (Figma-style separation). See v2.2 RECONCILIATION for rescope rationale.
+
+### Phase 14: Unified SVG Callout Render + Shared Tool Foundation
+
+**Goal**: Users see the text callout rendered through the same SVG pipeline as every other annotation type (via `<foreignObject>` for the text content, mirroring how text annotations work today), and experience consistent crosshair cursor + Delete/Backspace + dashed creation preview across line, arrow, and callout tools — so all downstream callout polish (collisions, rollback, resize, auto-routing, hover glow) can build against a single unified interaction surface instead of the soon-to-be-deleted `src/components/Callout/` HTML-overlay React system.
+
+**Depends on**: Phase 13 (v2.2 — hover-intent event delegation pattern + 113/113 test baseline), rewrite permission granted 2026-04-14
+
+**Requirements**: CALL-10, UX-01, KBD-01, CREATE-01
+
+**Why this is Phase 14 (the unblocker):** CALL-10 is architecturally load-bearing — once the callout renders through `svgAnnotationRenderers.jsx` + `useSVGInteraction.js` like every other annotation type, the other 9 callout requirements (CALL-01..09) fit into the existing SVG interaction pattern instead of having to be built inside the separate `src/components/Callout/` system and then re-built during unification. Doing CALL-10 first means Phases 17-18 build forward against the final render path, not a dead codepath. The three shared-tool foundations (UX-01 crosshair, KBD-01 Delete/Backspace, CREATE-01 dashed preview) ride along in this phase because they touch the same SVG interaction layer that callouts are being moved into, and because lines/arrows in Phase 15+ will need them as a baseline before their own mini-toolbar work lands.
+
+**Boundary notes (CLAUDE.md Always-Protected):**
+- `src/App.jsx` — **per-phase waiver required if touched.** This phase may need to update App-level `activeTool` handling for the new crosshair-cursor contract and the Delete/Backspace keyboard handler (currently at App.jsx:~22480). Flag loudly in plan CONTEXT; prefer routing through existing handlers when possible.
+- `src/components/SVGAnnotationLayer.jsx` — in scope for this phase (owns SVG render dispatch + hover/cursor layer).
+- `src/components/PageAnnotationLayer.jsx` — DO NOT CHANGE. PAL's legacy callout code is untouched; this phase moves the *new* React callout system, not PAL's.
+- `src/components/FabricEditCanvas.jsx` — may need `editType: 'callout'` branch updates once unified callouts enter edit mode via double-click. Flag in plan CONTEXT if touched.
+- `src/components/Callout/*` — this directory is explicitly in scope for replacement/removal per user rewrite permission.
+
+**Success Criteria** (what must be TRUE):
+
+  1. **Unified render path** — User creates, selects, and views a text callout on a page at any zoom level and the callout renders through `svgAnnotationRenderers.jsx` (new `renderCallout` implementation using `<foreignObject>` for the text content, same pattern as `renderText`), not through a CSS-transformed React overlay. The old `src/components/Callout/CalloutCanvas.jsx` + `CalloutComponent.jsx` + `index.jsx` system is no longer mounted for new callouts; the directory is either removed or reduced to a type-only shim.
+
+  2. **Crosshair while tool active (UX-01)** — User activates line, arrow, or callout tool and the SVG interaction surface shows a `crosshair` cursor until the tool deactivates or a creation drag starts. Default/move cursor returns immediately on deactivation.
+
+  3. **Delete/Backspace on selection (KBD-01)** — User selects a line, arrow, or callout (single-select), presses `Delete` or `Backspace` with no text-input focused, and the selected annotation is removed from the store with undo support. Keyboard shortcut is suppressed when focus is in a text input / contentEditable / Fabric editing field.
+
+  4. **Dashed creation preview (CREATE-01)** — User starts a click-drag to create a line, arrow, or callout and sees a dashed preview at 0.6 opacity following the pointer in real time using the same color/thickness as the committed annotation will have. Preview disappears on mouse-up and is replaced by the committed SVG annotation.
+
+  5. **Data-model continuity** — Existing callouts saved under the old HTML-overlay system continue to load, render, and select correctly through the new unified SVG path. No Supabase schema change. A callout round-tripped through save + reload + save is byte-identical in its Fabric.js JSON fields.
+
+**Plans**: TBD (populated by `/gsd:plan-phase 14`)
+
+### Phase 15: Line/Arrow Curvature + Arrowhead Styles
+
+**Goal**: Users can select a line or arrow, drag its middle handle to bend it into a quadratic bezier that passes through the handle position, drag it back near straight to auto-reset, and drag endpoints of a curved line/arrow to reshape the curve with the midpoint held fixed — and users can choose from six arrowhead styles (`NONE`, `SOLID_TRIANGLE`, `V_SHAPE`, `OPEN_CIRCLE`, `OPEN_TRIANGLE`, `HORIZONTAL_LINE`) on the selected line/arrow, with the arrowhead correctly rotating to the curve's tangent when curved.
+
+**Depends on**: Phase 14 (shared crosshair/Delete/preview foundation in place)
+
+**Requirements**: LINE-01, LINE-02, LINE-03, ARROW-01, ARROW-02, ARROW-03, ARROW-04
+
+**Why these seven together:** LINE-01..03 and ARROW-01..03 are the same wiring job against the already-ported `src/utils/lineGeometry.js` — one new `'midpoint'` drag mode in `useSVGInteraction.js`, two renderer branches (`<line>` → `<path d="M x1 y1 Q cx cy x2 y2">` when `data.midpoint` present), one new handle render in `SVGAnnotationLayer.jsx:~1263`, and the `getCurveEndAngle` tangent swap for curved-arrow heads. The math is already ported — do not rewrite. ARROW-04 (six arrowhead styles) joins this phase because the style picker's `arrowheadStyle` field lives inside the same line/arrow data model that's being extended with `data.midpoint`, the six render-switch cases are adjacent to the tangent math, and the enum is a direct lift from the existing callout system's `ARROWHEAD_STYLES` at `src/components/Callout/types.js:9-16` + `CalloutComponent.jsx:951-1089`.
+
+**Boundary notes:**
+- `src/utils/lineGeometry.js` — CONSUME, do not rewrite. `getCurvedPath`, `getCurveEndAngle`, `shouldSnapToLinear`, `getControlPoint` are already correct ports of combined-tools' math.
+- `src/components/PageAnnotationLayer.jsx` — DO NOT CHANGE. PAL is the only current live consumer of `lineGeometry.js`; leave its curved-line codepath alone. The new SVG-side wiring imports from `lineGeometry.js` directly without entangling PAL.
+- `src/components/SVGAnnotationLayer.jsx` — in scope for the new midpoint handle render at the existing `isLineType` branch (line 1221-1264). Stay out of the adjacent rotation-handle/counter zones.
+- `src/utils/svgAnnotationRenderers.jsx` — in scope for `renderLine` curved-path branch + arrow tangent swap.
+- `src/hooks/useSVGInteraction.js` — in scope for the new `'midpoint'` drag mode alongside the existing `'endpoint'` mode.
+- `src/components/FabricDrawingCanvas.jsx` — minimal changes only (tag new line/arrow JSON with the `arrowheadStyle` default when creating). Do not remove or rename the `zoomGeneration` signal.
+
+**Success Criteria** (what must be TRUE):
+
+  1. **Middle curvature handle on line (LINE-01 + LINE-02)** — User selects a line, sees a third handle at its midpoint, drags it away from the straight baseline, and sees the line bend into a quadratic curve that visibly passes through the handle position at t=0.5 (not a naive bezier control point — use the `getCurvedPath` derivation). Dragging the midpoint handle back within 10 px of the straight line auto-snaps the line to straight (drag threshold 10 px, render hysteresis 1 px). Proximity-based reset only — no click, no keyboard.
+
+  2. **Endpoint drag preserves curve midpoint (LINE-03)** — User drags a curved line's start or end handle and the curve reshapes with the midpoint held fixed in absolute page coordinates (not rigid-translated with the endpoint). If the new start+end+midpoint alignment becomes naturally collinear within the 10 px threshold, the line auto-reverts to straight with a recomputed geometric midpoint.
+
+  3. **Curved arrow tangent (ARROW-01 + ARROW-02 + ARROW-03)** — User selects an arrow, drags its middle handle to curve it, and sees the arrowhead rotate to match the curve's tangent at the endpoint via `getCurveEndAngle(start, end, midpoint)` — not the straight start-to-end angle. Straightening via the same 10 px snap threshold returns the arrowhead to linear tangent. Endpoint drag preserves the midpoint with the same auto-reversion rule as lines.
+
+  4. **Six arrowhead styles (ARROW-04)** — User can select any line or arrow and choose from `NONE`, `SOLID_TRIANGLE`, `V_SHAPE`, `OPEN_CIRCLE`, `OPEN_TRIANGLE`, `HORIZONTAL_LINE` for the head style. Defaults: `NONE` for lines, `SOLID_TRIANGLE` for arrows. Style persists across save/reload through the Fabric.js JSON `arrowheadStyle` field and renders correctly at every zoom level. (The picker UI itself ships in Phase 16 alongside the mini-toolbar; in this phase the style is readable/writable programmatically and renders correctly, so a plan can verify via manual JSON edit + reload.)
+
+  5. **No regression to straight line/arrow rendering** — Existing saved straight lines and arrows with no `data.midpoint` field continue to render through the plain `<line>` branch at identical visual output as v2.2, and 113/113 baseline tests still pass.
+
+**Plans**: TBD (populated by `/gsd:plan-phase 15`)
+
+### Phase 16: Line/Arrow Mini-Toolbar + Curvature Pill + Min-Drag
+
+**Goal**: Users interact with selected lines and arrows the same way they interact with selected rect/circle/ellipse shapes — a mini-toolbar with color, thickness, and arrowhead style picker appears at the same relative position and with the same show/hide lifecycle, a hover-reveal curvature pill near the midpoint handle shows the current curvature magnitude and accepts typed values with optimistic-paint commits (mirroring the v2.1 `RotationInputField` + `applyOptimisticRotation` pattern), and a minimum-drag-length threshold on creation prevents accidental zero-length annotations.
+
+**Depends on**: Phase 15 (curvature data model + midpoint handle wired in)
+
+**Requirements**: LINE-04, LINE-05, LINE-06, ARROW-05, ARROW-06, ARROW-07
+
+**Why these six together:** LINE-06 and ARROW-07 are the mini-toolbar lifecycle (one implementation reused for both). LINE-04 and ARROW-05 are the curvature pill — architecturally a copy of `RotationInputField` targeting the midpoint handle instead of the mtr handle, using the same HTML-portal + full-click-cycle stopPropagation + uncontrolled-input + constant-orbit-radius pattern from v2.1 Phase 12 Plan 12-02, plus `applyOptimisticRotation`-shaped paint helper for curvature. LINE-05 and ARROW-06 are min-drag-length checks in the creation mouseup handler — same check, two call sites. All six land in `FabricDrawingCanvas.jsx` (creation + min-drag) and `SVGAnnotationLayer.jsx` / new curvature-pill component (selection chrome), so they share the same file lane and verification grid.
+
+**Boundary notes:**
+- `src/components/FabricDrawingCanvas.jsx` — in scope for min-drag-length check on line/arrow mouseup. Do not touch the `zoomGeneration` signal.
+- `src/components/SVGAnnotationLayer.jsx` — in scope for the new mini-toolbar + curvature-pill render (stable mount points for hover delegation).
+- New file expected: `src/components/CurvatureInputField.jsx` (or similar) — mirrors `RotationInputField.jsx` architecture verbatim; share any helpers that make sense with `rotationInputHelpers.js`.
+- `src/hooks/useSVGInteraction.js` — minor changes for hover-intent event delegation on the midpoint handle (reuse the `data-rotation-handle` pattern from v2.2 EDIT-13).
+- Reuse the v2.2 hover-intent event-delegation pattern (`e.target.closest('[data-curvature-handle="mid"]')`) for the pill re-arm story.
+
+**Success Criteria** (what must be TRUE):
+
+  1. **Mini-toolbar parity (LINE-06 + ARROW-07)** — User selects a line or arrow and sees a mini-toolbar at the same relative position and with the same show/hide lifecycle as the rect/circle/ellipse mini-toolbars today (appears on select, hides on deselect, follows the shape across zoom + pan). Toolbar contains color picker, thickness control, and arrowhead style picker (six options from ARROW-04). Curvature value reads out in the toolbar (read-only when the curvature pill is not hovered). Lines default to `NONE` arrowhead; arrows default to `SOLID_TRIANGLE`.
+
+  2. **Hover-reveal typeable curvature pill (LINE-04 + ARROW-05)** — User hovers the midpoint handle of a selected line or arrow and, after the same hover-intent timing as the rotation pill (~150 ms), sees a curvature-indicator pill showing the current curvature magnitude. User clicks the pill, types a custom curvature value, and sees the line/arrow update live via optimistic paint (the visual updates before the store commit lands, using a `applyOptimisticRotation`-shaped helper adapted for curvature). The pill uses the same HTML-portal + full-click-cycle stopPropagation + uncontrolled-input architecture as `RotationInputField`, and the orbit radius around the midpoint stays constant across curvature magnitudes (worst-case AABB projection, v2.1 canonical pattern).
+
+  3. **Minimum-drag creation threshold (LINE-05 + ARROW-06)** — User clicks on the page with the line or arrow tool active without dragging (zero pointer displacement on mouseup, or displacement below the threshold) and NO line/arrow is created — the creation drag is cancelled silently, no zero-length annotation appears in the store, and no console error fires. Threshold is tunable in one place in `FabricDrawingCanvas.jsx`.
+
+  4. **No regression to rotation pill or mini-toolbar baselines** — 113/113 baseline tests still pass, Plan 12-02's 7-round focus-loss scenarios (RotationInputField focus on Tab, click-out, Arrow nudge, Enter commit, hover during drag, Shift modifier, blur) still pass for rotation, and the rect/circle/ellipse mini-toolbars are visually unchanged.
+
+**Plans**: TBD (populated by `/gsd:plan-phase 16`)
+
+### Phase 17: Callout Handle Collisions + Rollback + Resize
+
+**Goal**: Users can no longer drag a callout's arrowTip / knee / textbox handles into visually broken configurations (handles overlapping, knee inside textbox, arrowTip stuck under the textbox) — live 30 px collision constraints push handles apart during drag, invalid on-drop configurations snap the entire callout back to its drag-start positions, and the corner resize math produces correct geometry at every zoom level without anchor-jitter or stale-ref on rapid re-selection.
+
+**Depends on**: Phase 14 (unified SVG render for callout — collision + resize code is built against the new render path, not the old HTML-overlay system)
+
+**Requirements**: CALL-01, CALL-02, CALL-03, CALL-04, CALL-05
+
+**Why these five together:** All five are constraint / rollback / resize math that lives in the callout drag state machine. CALL-01..03 are three symmetric min-separation clamps (arrowTip↔knee, knee↔textbox border, textbox↔knee) — one constraint helper reused in three drag branches. CALL-04 (on-drop rollback) is the safety net that catches edge cases the live clamps miss. CALL-05 (corner resize) is the same file lane as the collision branches — the four underlying bugs (stale-ref on rapid re-select, hardcoded dragOffset, pixel-vs-normalized min-dimensions, corner math jitter + no flip support) are enumerated in `CURRENT-REPO-AUDIT.md` Gap 3 and must all be fixed together to give a coherent resize story.
+
+**Boundary notes:**
+- Post-Phase-14, the callout drag state machine lives in the new unified SVG path (probably `useSVGInteraction.js` + new callout-specific helpers under `src/utils/`). Exact file paths depend on how Phase 14 decomposes. Plan CONTEXT must re-read the post-Phase-14 file map before starting.
+- `src/components/PageAnnotationLayer.jsx` — DO NOT CHANGE. PAL's legacy callout path is untouched.
+- `src/App.jsx` — DO NOT CHANGE unless resize needs container-aware measurement (`containerEl.offsetWidth / pageSize.width`) reads from App-level refs. Flag in plan CONTEXT.
+
+**Success Criteria** (what must be TRUE — all verified at 50%, 100%, and 200% zoom):
+
+  1. **30 px live collision clamps (CALL-01 + CALL-02 + CALL-03)** — User drags a callout's arrowTip handle toward the knee and the handle is clamped live to a 30 px circle around the knee along the drag axis (CALL-01). User drags the knee toward the textbox border and the knee is projected outward live along the box-to-knee axis so it never enters a 30 px buffer around the closest point on the border (CALL-02). User drags the textbox toward the knee and the textbox pops out live along the axis away from the knee (nearest-edge pop-out on exact overlap) so the knee never enters its 30 px buffer (CALL-03).
+
+  2. **On-drop rollback (CALL-04)** — User drops a drag in a visually invalid configuration (arrowTip inside the textbox plus its buffer, OR knee within 24 px of the arrowTip after all live clamps have run) and the entire callout snaps back to the positions it held at drag-start — all four part positions (arrowTip, knee, textBoxPosition, textBoxWidth/Height) are restored together atomically.
+
+  3. **Resize correctness at all zoom levels (CALL-05 — four underlying bugs fixed)** — User grabs any of the four corner handles at 50%, 100%, and 200% zoom and resizes the textbox: (a) min-width / min-height constraints are enforced consistently at every zoom level (normalized-space or screen-space, not raw pixels), (b) no anchor-jitter when the pointer crosses the anchor corner, (c) no stale-ref on rapid re-selection (the initial-state ref is captured from the current `callouts` array synchronously, not one render behind), (d) the hardcoded `{x:0, y:0}` dragOffset bug from `handleCornerMouseDown` is fixed. All four bugs from `CURRENT-REPO-AUDIT.md` Gap 3 closed.
+
+  4. **No regression to single-select / move / keyboard delete** — User can still single-click the callout to select, drag the textbox to move the whole callout, and press Delete/Backspace to remove — all behaviors from Phase 14 still work.
+
+**Plans**: TBD (populated by `/gsd:plan-phase 17`)
+
+### Phase 18: Callout Auto-Routing + Hover Affordances + Self-Destruct
+
+**Goal**: Users see the callout connector auto-route around the textbox when the user drags the box across the connector path (Liang-Barsky segment clipping so the connector lines never cross the textbox interior), unselected callouts show a hover-reveal selection glow on the textbox border + connector lines and hover-reveal arrowTip + knee handles with a 50 ms hide-delay, and a newly created callout that exits edit mode with empty text self-destructs to prevent orphaned empty callouts from click-drag-release-without-typing.
+
+**Depends on**: Phase 17 (collision / rollback / resize infrastructure in place — hover affordances render on top of the stable drag-state model)
+
+**Requirements**: CALL-06, CALL-07, CALL-08, CALL-09
+
+**Why these four together:** All four are callout polish on top of the stable collision / rollback / resize foundation from Phase 17. CALL-07 (Liang-Barsky auto-routing) is ~500 lines of case analysis ported from `combined-tools/src/lib/calloutGeometry.ts:calculateCalloutConnection` — large, but self-contained inside the connector render function. CALL-06 (hover-reveal handles) and CALL-09 (hover glow) share the same hover-intent machinery and reuse the v2.2 event-delegation pattern (`e.target.closest('[data-callout-id=...]')`). CALL-08 (empty-text self-destruct) is a small check in the callout edit-mode exit handler but lives in the same file lane as the hover affordances.
+
+**Boundary notes:**
+- New expected files: `src/utils/calloutRouting.js` (or similar) — house the ported Liang-Barsky math from `combined-tools/src/lib/calloutGeometry.ts`. Existing `src/utils/calloutGeometry.js` is currently dead code on the SVG path (see CURRENT-REPO-AUDIT.md) — may be replaced, renamed, or consolidated at planner's discretion.
+- `src/components/FabricEditCanvas.jsx` — in scope minimally for the empty-text check on callout edit-mode exit. The `editType: 'callout'` branch at `FabricEditCanvas.jsx:~1335` may need a small commit-hook. Flag any broader changes in plan CONTEXT.
+- Reuse hover-intent event delegation pattern from v2.2 EDIT-13.
+
+**Success Criteria** (what must be TRUE):
+
+  1. **Liang-Barsky auto-routing (CALL-07)** — User drags a callout's textbox so that the straight `arrowTip → knee → boxEdge` connector would visually cross the textbox interior, and the knee auto-routes around the box so that neither line1 (arrowTip → knee) nor line2 (knee → boxEdge) ever crosses the textbox interior. The ~500-line case analysis from `combined-tools/src/lib/calloutGeometry.ts:calculateCalloutConnection` is ported, including the `shouldHideLine1` fallback when no valid route exists. Verified by dragging the textbox in a full circle around the arrowTip at 100% zoom and observing no interior crossings.
+
+  2. **Hover-reveal knee / arrowTip handles with 50 ms hide delay (CALL-06)** — User moves the pointer over any part of an unselected callout and the arrowTip + knee handles fade/reveal visually. Moving the pointer away hides them after a 50 ms delay to prevent flicker on transit across adjacent elements. Same hover-intent pattern as rect/circle/ellipse rotation pill, targeting the callout hit surface via event delegation.
+
+  3. **Selection-preview hover glow (CALL-09)** — User hovers an unselected callout and sees a subtle selection-preview glow on the textbox border + connector lines, matching the line tool's selection-hover glow style from Phase 16 — so line, arrow, and callout all share a consistent "you could click me" hover affordance.
+
+  4. **Empty-text self-destruct (CALL-08)** — User starts a click-drag-release to create a callout but never types any text, and when the callout exits edit mode (click-off / Escape / Enter-commit) the empty callout is automatically removed from the store. User does not see orphaned empty callout rectangles after failed creation attempts. The check fires only on *newly created* callouts; existing callouts with empty text are not deleted on edit-mode exit (safety against accidental data loss).
+
+  5. **v2.3 closes with all 26 requirements verified** — At phase close, the Traceability table in `.planning/REQUIREMENTS.md` shows all 26 requirements with Status = Complete, 113+/113+ baseline tests green, and the line / arrow / text callout tools pass a human UAT script at 50% / 100% / 200% zoom.
+
+**Plans**: TBD (populated by `/gsd:plan-phase 18`)
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
+Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -174,7 +334,12 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 10. Canvas Mount/Unmount (Pen + Eraser) | v2.0 | 2/2 | Complete | 2026-03-27 |
 | 11. Text/Shape Editing + Zoom Cleanup | v2.0 | 2/2 | Complete | 2026-04-02 |
 | 12. Shape Edit Polish | v2.1 | 3/3 | Complete | 2026-04-14 |
-| 13. Rotation Handle Edit-Mode Polish | v2.2 | Complete    | 2026-04-14 | - |
+| 13. Rotation Handle Edit-Mode Polish | v2.2 | 2/2 | Complete | 2026-04-14 |
+| 14. Unified SVG Callout Render + Shared Tool Foundation | v2.3 | 0/TBD | Not started | - |
+| 15. Line/Arrow Curvature + Arrowhead Styles | v2.3 | 0/TBD | Not started | - |
+| 16. Line/Arrow Mini-Toolbar + Curvature Pill + Min-Drag | v2.3 | 0/TBD | Not started | - |
+| 17. Callout Handle Collisions + Rollback + Resize | v2.3 | 0/TBD | Not started | - |
+| 18. Callout Auto-Routing + Hover Affordances + Self-Destruct | v2.3 | 0/TBD | Not started | - |
 
 ---
-*Last updated: 2026-04-14 — v2.2 milestone roadmap created. Phase 13 (Rotation Handle Edit-Mode Polish) defined with 2 plans (13-01 EDIT-13 hover-intent fix + 13-02 EDIT-14 mtr visibility fix). Both lane-safe (SVG-side only). Coverage 2/2 v2.2 requirements mapped. Ready for `/gsd:plan-phase 13`.*
+*Last updated: 2026-04-15 — v2.3 milestone roadmap created. Phases 14-18 defined for 26 requirements. Coverage 26/26 v2.3 requirements mapped (100%). CALL-10 lands as Phase 14 to unblock downstream callout work against the final unified render path. lineGeometry.js wiring grouped in Phase 15 (pure port, not rewrite). Ready for `/gsd:discuss-phase 14`.*
