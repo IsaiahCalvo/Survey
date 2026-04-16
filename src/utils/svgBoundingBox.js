@@ -193,8 +193,21 @@ function getPathBBox(obj) {
   const w = obj.width;
   const h = obj.height;
 
-  // If standard Fabric.js properties exist, use them (center-origin for pathOffset paths)
-  if (left != null && top != null && w != null && h != null) {
+  // pathOffset presence is the discriminator between two path storage shapes:
+  //  1) Fabric center-origin path (raw PencilBrush output + serialized pathOffset):
+  //     path data is in local coords, left/top = bbox CENTER, width/height = bbox size.
+  //  2) Absolute-coord path (user-drawn strokes committed via FabricDrawingCanvas,
+  //     which explicitly zeroes left/top; or imported PDF paths with null left/top):
+  //     path data already carries world coords, left/top (if any) is a move offset.
+  //
+  // FabricDrawingCanvas.jsx path:created handler doesn't include pathOffset in
+  // CUSTOM_PROPS, so toJSON() omits it — that absence is our signal that the
+  // stored path data is absolute. Use path-command scan + left/top as offset.
+  const hasPathOffset =
+    obj.pathOffset && (obj.pathOffset.x !== 0 || obj.pathOffset.y !== 0);
+
+  // Case 1 — Fabric center-origin path with serialized pathOffset.
+  if (hasPathOffset && left != null && top != null && w != null && h != null) {
     const sw = w * Math.abs(obj.scaleX ?? 1);
     const sh = h * Math.abs(obj.scaleY ?? 1);
     return {
@@ -206,11 +219,12 @@ function getPathBBox(obj) {
     };
   }
 
-  // Imported PDF paths: no left/top/width/height — compute bbox from path commands
+  // Case 2 — absolute-coord path (user-drawn pen strokes + imported PDF paths).
+  // Scan path commands for true bounds; apply left/top as a translation offset
+  // (0 for freshly-drawn, nonzero after drag), and scaleX/scaleY for resize.
   if (Array.isArray(obj.path) && obj.path.length > 0) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const seg of obj.path) {
-      // Extract all numeric pairs (skip command letter at index 0)
       for (let j = 1; j < seg.length; j += 2) {
         const x = seg[j];
         const y = seg[j + 1];
@@ -223,7 +237,17 @@ function getPathBBox(obj) {
       }
     }
     if (minX !== Infinity) {
-      return { left: minX, top: minY, width: maxX - minX, height: maxY - minY, angle: 0 };
+      const sx = Math.abs(obj.scaleX ?? 1);
+      const sy = Math.abs(obj.scaleY ?? 1);
+      const offsetX = left ?? 0;
+      const offsetY = top ?? 0;
+      return {
+        left: offsetX + minX * sx,
+        top: offsetY + minY * sy,
+        width: (maxX - minX) * sx,
+        height: (maxY - minY) * sy,
+        angle: obj.angle ?? 0,
+      };
     }
   }
 
@@ -339,8 +363,10 @@ function getTextBBox(obj) {
   const scaleY = Math.abs(obj.scaleY ?? 1);
   const objType = String(obj.type || '').toLowerCase();
 
-  // Textbox type: use stored width/height from Fabric.js (authoritative after edit commit)
-  // Add descender buffer (j,p,g,q,y extend below baseline) — matches renderText in svgAnnotationRenderers
+  // Textbox sizing: trust stored width/height. PDF-imported textboxes now carry
+  // Fabric-measured dims (see pdfAnnotationImporter convertFreeTextToFabricTextbox),
+  // so the SVG hit-test rect matches what Fabric actually draws. Descender
+  // buffer is added to height so the hit zone covers g/j/p/y glyphs.
   if (objType === 'textbox' && obj.width && obj.height) {
     const fontSize = obj.fontSize || 16;
     return {
@@ -352,7 +378,7 @@ function getTextBBox(obj) {
     };
   }
 
-  // i-text / text: measure tight bounds
+  // i-text / text (no stored dims): measure tight bounds with Canvas2D.
   const measured = measureTextBounds(obj);
   return {
     left: obj.left ?? 0,
