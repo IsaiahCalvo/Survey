@@ -36,6 +36,7 @@ const FabricEraserCanvas = memo(({
   pageHeight,
   annotations,
   onEraseCommit,
+  onEraseCallout,
   eraserSize = 20,
   viewerScale,
   selectedSpaceId,
@@ -67,6 +68,7 @@ const FabricEraserCanvas = memo(({
   // Closure-safe refs for props
   const annotationsRef = useRef(annotations);
   const onEraseCommitRef = useRef(onEraseCommit);
+  const onEraseCalloutRef = useRef(onEraseCallout);
   const eraserSizeRef = useRef(eraserSize);
   const viewerScaleRef = useRef(viewerScale);
   const effectiveScaleRef = useRef(1);
@@ -127,7 +129,9 @@ const FabricEraserCanvas = memo(({
   // ---------------------------------------------------------------------------
   const applyEraserAndCommit = useRef((canvas) => {
     const eraserPathData = eraserPathRef.current;
-    if (!eraserPathData || eraserPathData.length === 0) return;
+    if (!eraserPathData || eraserPathData.length === 0) {
+      return;
+    }
 
     // Single-click (only M, no L): duplicate the point so geometry eraser
     // treats it as a zero-length segment (eraser radius still applies)
@@ -271,15 +275,69 @@ const FabricEraserCanvas = memo(({
     // absolute path data (translate(0,0) is a no-op, path coords render directly).
     const canvasObjects = canvas.getObjects();
     const serializedObjects = canvasObjects.map((obj) => {
+      // Bypass toJSON for imported textboxes (see post-enliven block): Fabric
+      // 5.5.2 throws inside Text.toObject on PDF-imported Textboxes. Since
+      // imported textboxes are never mutated on this canvas, the original
+      // import JSON is still the correct serialization. Shallow-copy so the
+      // caller can't retroactively mutate our stashed reference.
+      if (obj.isPdfImported && obj.__importedJSON) {
+        return { ...obj.__importedJSON };
+      }
       const json = obj.toJSON(CUSTOM_PROPS);
       if (json.type === 'path') {
         json.left = 0;
         json.top = 0;
       }
+      // UX: imported-shape parity override (see post-enliven block in the
+      // canvas init useEffect) sets opacity: 0 on the live Fabric object
+      // to hide it under the SVG visual. Fabric's default toJSON includes
+      // opacity/stroke/strokeWidth, so without this restore the override
+      // would be persisted back to stored annotation state on every erase
+      // commit and corrupt the selector-mode render. Restore from the
+      // __orig* values stashed at load time.
+      if (obj.isPdfImported && obj.__origOpacity !== undefined) {
+        json.opacity = obj.__origOpacity;
+        if (obj.__origStroke !== undefined) json.stroke = obj.__origStroke;
+        if (obj.__origStrokeWidth !== undefined) json.strokeWidth = obj.__origStrokeWidth;
+      }
       return json;
     });
     const updatedJSON = { objects: serializedObjects };
     onEraseCommitRef.current(updatedJSON);
+
+    // Callout hit-test: callouts live in a separate React state, not in the
+    // Fabric canvas objects above. Check if the eraser path overlaps any
+    // callout's SVG bounding box on this page.
+    const calloutCallback = onEraseCalloutRef.current;
+    if (calloutCallback) {
+      try {
+        const svgEl = document.querySelector(
+          `[data-diag-svg-wrapper="${pageNumber}"] svg`
+        );
+        if (svgEl) {
+          const hitIds = [];
+          const groups = svgEl.querySelectorAll('[data-callout-id]');
+          groups.forEach((g) => {
+            const cid = g.getAttribute('data-callout-id');
+            if (hitIds.includes(cid)) return;
+            try {
+              const bbox = g.getBBox();
+              const hit = eraserPoints.some(
+                (p) =>
+                  p.x >= bbox.x - currentEraserSize &&
+                  p.x <= bbox.x + bbox.width + currentEraserSize &&
+                  p.y >= bbox.y - currentEraserSize &&
+                  p.y <= bbox.y + bbox.height + currentEraserSize
+              );
+              if (hit) hitIds.push(cid);
+            } catch (_) {}
+          });
+          if (hitIds.length > 0) {
+            calloutCallback(hitIds);
+          }
+        }
+      } catch (_) {}
+    }
   }).current;
 
   // ---------------------------------------------------------------------------
@@ -310,12 +368,61 @@ const FabricEraserCanvas = memo(({
     const annotationsToLoad = annotationsRef.current;
     const objectsArray = annotationsToLoad?.objects || [];
 
+    // Diagnostics: snapshot what goes into enlivenObjects so we can compare
+    // against what comes out. Any type mismatch / silent drop will show up here.
+    const inputTypeHistogram = {};
+    const inputDetail = objectsArray.map((o, i) => {
+      const t = o?.type || 'null';
+      inputTypeHistogram[t] = (inputTypeHistogram[t] || 0) + 1;
+      return {
+        index: i,
+        type: t,
+        dataType: o?.data?.type || null,
+        isPdfImported: !!o?.isPdfImported,
+        hasPath: Array.isArray(o?.path) && o.path.length > 0,
+        hasObjects: Array.isArray(o?.objects) && o.objects.length > 0,
+        visible: o?.visible !== false,
+        layer: o?.layer || 'native',
+        spaceId: o?.spaceId ?? null,
+        moduleId: o?.moduleId ?? null,
+        regionId: o?.regionId ?? null,
+      };
+    });
+
     if (objectsArray.length > 0) {
       fabric.util.enlivenObjects(objectsArray, (enlivenedObjects) => {
         // Guard: component may have unmounted during async load
         if (!mountedRef.current) return;
 
+        // Diagnostics: compare input vs enlivened. Any array-length mismatch
+        // or null slots means enlivenObjects silently dropped something.
+        if (typeof window !== 'undefined') {
+          const outputTypeHistogram = {};
+          const nullIndexes = [];
+          enlivenedObjects.forEach((o, i) => {
+            if (!o) {
+              nullIndexes.push(i);
+              return;
+            }
+            const t = o.type || 'null';
+            outputTypeHistogram[t] = (outputTypeHistogram[t] || 0) + 1;
+          });
+          if (!window.__diagEraserStats) window.__diagEraserStats = {};
+          window.__diagEraserStats[pageNumber] = {
+            inputCount: objectsArray.length,
+            enlivenedCount: enlivenedObjects.length,
+            nullIndexes,
+            inputTypeHistogram,
+            outputTypeHistogram,
+            inputDetail,
+          };
+          console.log(
+            `[FabricEraserCanvas p${pageNumber}] enliven — input=${objectsArray.length} output=${enlivenedObjects.length} nulls=${nullIndexes.length} types=${JSON.stringify(inputTypeHistogram)}→${JSON.stringify(outputTypeHistogram)}`
+          );
+        }
+
         enlivenedObjects.forEach((obj, index) => {
+          if (!obj) return;
           const objData = objectsArray[index];
 
           obj.set({
@@ -343,6 +450,101 @@ const FabricEraserCanvas = memo(({
           // Enforce multiply blend mode for highlights
           if (obj.highlightId || obj.needsBIC) {
             obj.set({ globalCompositeOperation: 'multiply' });
+          }
+
+          // PDF-imported shape visual parity with the selector-mode SVG render.
+          // UX: imported annotations (circle, polygon, line, polyline, path,
+          // ellipse, rect, textbox) must look identical in eraser and
+          // selector mode. The SVG layer (selector mode) renders each shape
+          // via the browser's SVG rasterizer; Fabric.js renders via Canvas2D
+          // which anti-aliases sub-pixel coordinates differently — see
+          // CLAUDE.md 2026-04-10 rasterizer-mismatch gotcha: Canvas 2D and
+          // SVG produce visibly different strokes at non-integer positions
+          // and this is NOT fixable in JS. For textboxes, the same applies
+          // to glyph rendering (CLAUDE.md 2026-04-08 + 2026-04-10): SVG
+          // uses <foreignObject><div> with browser CSS text layout, Fabric
+          // measures at CACHE_FONT_SIZE=400 and scales down (fabric.js
+          // 26261, 30731-30745).
+          //
+          // Structural fix (Phase 2 extension of the 2026-04-10 gotcha
+          // resolution): keep the Fabric object as an invisible hit zone
+          // (opacity: 0) and let the SVG <g> underneath be the single
+          // visible truth in eraser mode. The App.jsx SVG wrapper stays
+          // visible in eraser mode and SVGAnnotationLayer renders every
+          // imported annotation (not just textboxes). Two side effects:
+          //   1. Pixel-perfect visual parity on tool switch (no rasterizer
+          //      delta, no ~0.16px edge shift).
+          //   2. Eraser-mode zoom becomes as smooth as selector-mode zoom:
+          //      the user visually sees the SVG viewBox (GPU-composited,
+          //      free) and the Fabric canvas's choppy ResizeObserver redraw
+          //      happens invisibly behind opacity: 0.
+          //
+          // Textbox-specific width/height forcing: Fabric Textbox auto-wraps
+          // and recalculates width from text content. Fabric's hit-test
+          // uses obj.width/obj.height — getting those wrong misaligns the
+          // erase target rectangle. __skipDimension + stored-dim forcing
+          // preserves the stored bounds.
+          //
+          // CRITICAL: the opacity/stroke override must NEVER persist to
+          // stored annotation state. Fabric's default toJSON serializes
+          // opacity, stroke, and strokeWidth — so we stash the originals on
+          // __orig* here and restore them in the serialize path inside
+          // applyEraserAndCommit so each erase commit emits the real values,
+          // not our invisible override.
+          if (objData.isPdfImported) {
+            // Stash originals so the serialize path can restore them onto
+            // the outgoing JSON. Undefined means "use the stored JSON value
+            // for this field" — Fabric's enliven already populated obj.*
+            // from objData.*, so obj.opacity etc. already reflect stored.
+            obj.__origOpacity = obj.opacity;
+            obj.__origStroke = obj.stroke;
+            obj.__origStrokeWidth = obj.strokeWidth;
+
+            // SERIALIZE BYPASS for imported textboxes: Fabric 5.5.2 has a
+            // toJSON bug on PDF-imported Textboxes — serialization throws
+            // "Cannot read properties of undefined (reading '0')" inside
+            // Text.toObject's styles/textLines path. Root cause is a
+            // mismatch between the PDF-sourced `styles` object line-indexing
+            // and Fabric's post-initDimensions _textLines array after
+            // word-wrap at the stored width. The crash aborts the erase
+            // commit for the ENTIRE canvas: click polygon → polygon gets
+            // removed from Fabric but serialize throws on the still-present
+            // textbox → onEraseCommit never fires → SVG never updates.
+            // Workaround: for imported textboxes we never mutate the object
+            // on the erase canvas (non-path types are either kept or removed
+            // whole — see the for-loop above), so we can safely stash the
+            // original import JSON here and short-circuit the serialize loop
+            // below to return it directly, skipping the crashing toJSON()
+            // call. For non-textbox imported shapes toJSON works fine, so
+            // we only stash for textbox.
+            if (obj.type === 'textbox') {
+              obj.__importedJSON = objData;
+            }
+
+            // UX: Textboxes also drop stroke/strokeWidth — belt-and-braces
+            // against the PDF-import default red border (if opacity ever
+            // flips back to visible accidentally we still don't want that
+            // border visible). Other imported types keep their stored
+            // stroke because Fabric's erase hit-test uses
+            // getBoundingRect(true) which inflates bounds by stroke bleed;
+            // zeroing it would shrink the erase target slightly, and the
+            // bounds contribute to applyEraserAndCommit's touch-test.
+            if (obj.type === 'textbox') {
+              obj.set({ stroke: null, strokeWidth: 0, opacity: 0 });
+            } else {
+              obj.set({ opacity: 0 });
+            }
+            obj.setCoords();
+
+            if (typeof window !== 'undefined') {
+              const label =
+                obj.type === 'textbox'
+                  ? `text="${(objData.text || '').slice(0, 20)}"`
+                  : `type=${obj.type}`;
+              console.log(
+                `[FabricEraserCanvas p${pageNumber}] imported-override idx=${index} ${label} → hit-zone only, SVG renders visual`
+              );
+            }
           }
 
           canvas.add(obj);
@@ -380,7 +582,9 @@ const FabricEraserCanvas = memo(({
     canvas.on('mouse:down', (opt) => {
       // MUST check the ref, NOT the state variable, because this handler is
       // bound in useEffect([]) and the state value would be stale (always true).
-      if (isLoadingRef.current) return;
+      if (isLoadingRef.current) {
+        return;
+      }
 
       isErasingRef.current = true;
       const pointer = canvas.getPointer(opt.e);
@@ -396,7 +600,9 @@ const FabricEraserCanvas = memo(({
 
     // mouse:up
     canvas.on('mouse:up', () => {
-      if (!isErasingRef.current) return;
+      if (!isErasingRef.current) {
+        return;
+      }
       isErasingRef.current = false;
 
       applyEraserAndCommit(canvas);
@@ -414,9 +620,27 @@ const FabricEraserCanvas = memo(({
     annotationsRef.current = annotations;
   }, [annotations]);
 
+  // Diagnostics: expose this canvas by pageNumber so App.jsx's tool-switch
+  // snapshot can dump per-object Fabric state (bounds, strokes, text fields)
+  // for side-by-side compare against the SVG selector render. See handleSaveOverlayLagLog.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!window.__fabricEraserCanvases) window.__fabricEraserCanvases = new Map();
+    window.__fabricEraserCanvases.set(pageNumber, fabricRef);
+    return () => {
+      if (window.__fabricEraserCanvases) {
+        window.__fabricEraserCanvases.delete(pageNumber);
+      }
+    };
+  }, [pageNumber, fabricRef]);
+
   useEffect(() => {
     onEraseCommitRef.current = onEraseCommit;
   }, [onEraseCommit]);
+
+  useEffect(() => {
+    onEraseCalloutRef.current = onEraseCallout;
+  }, [onEraseCallout]);
 
   useEffect(() => {
     eraserSizeRef.current = eraserSize;
@@ -490,6 +714,7 @@ const FabricEraserCanvas = memo(({
   return (
     <div
       ref={containerRef}
+      data-diag-eraser-wrapper={pageNumber}
       style={{
         position: 'absolute',
         top: 0,

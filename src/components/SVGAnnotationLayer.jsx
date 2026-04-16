@@ -30,6 +30,8 @@ import {
   renderText,
   renderCallout,
   renderCounter,
+  renderPolygon,
+  renderPolyline,
 } from '../utils/svgAnnotationRenderers';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
@@ -757,6 +759,31 @@ const SVGAnnotationLayer = memo(({
       ? annotations.objects
       : [];
 
+    // DIAG: log what the SVG layer receives for each page so we can
+    // cross-reference with the [PDF-IMPORT] log. Only log when there's
+    // a PDF-imported object to avoid noise on non-imported pages.
+    try {
+      const hasPdfImported = objects.some((o) => o?.isPdfImported);
+      if (hasPdfImported) {
+        console.log(`[SVG-RENDER] Page ${pageNumber} received ${objects.length} objects`,
+          objects.map((o, i) => ({
+            i,
+            type: o?.type,
+            pdfId: o?.pdfAnnotationId,
+            text: typeof o?.text === 'string' ? o.text.slice(0, 30) : undefined,
+            visible: o?.visible,
+            isPdfImported: o?.isPdfImported,
+            left: o?.left,
+            top: o?.top,
+            width: o?.width,
+            height: o?.height,
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn('[SVG-RENDER] diag log failed', e);
+    }
+
     if (objects.length === 0) return [];
 
     // Compute region overlay state for this page
@@ -790,6 +817,18 @@ const SVGAnnotationLayer = memo(({
       noElementDispatched: [],
       maxPreviewCap: [],
     };
+
+    // UX: in eraser mode the SVG layer renders every imported annotation,
+    // not just textboxes. The App.jsx wrapper stays visible in eraser mode,
+    // and the FabricEraserCanvas layer above it hides each imported object
+    // with opacity: 0 (see FabricEraserCanvas.jsx imported-override block)
+    // — so the SVG <g> underneath is the sole visual truth. This is the
+    // Phase 2 extension of the 2026-04-10 rasterizer-mismatch structural
+    // fix: it eliminates the ~0.16px per-edge shift on tool switch and
+    // gives us smooth eraser-mode zoom for free (SVG viewBox is GPU-
+    // composited while Fabric's ResizeObserver redraw happens invisibly).
+    // No early-skip gate here — the filter renders in eraser mode
+    // identically to selector mode.
 
     for (let i = 0; i < objects.length; i++) {
       if (count >= MAX_PREVIEW_OBJECTS) {
@@ -923,6 +962,22 @@ const SVGAnnotationLayer = memo(({
       } else if (objectType === 'circle' || objectType === 'ellipse') {
         element = renderEllipse(obj, i);
       } else if (
+        objectType === 'polygon' &&
+        Array.isArray(obj.points) &&
+        obj.points.length > 0
+      ) {
+        // PDF-imported polygons arrive with points[] but no path/objects —
+        // needed so imported Polygon annotations render at parity with the
+        // FabricEraserCanvas (which native-enlivens the same JSON).
+        element = renderPolygon(obj, i);
+      } else if (
+        objectType === 'polyline' &&
+        Array.isArray(obj.points) &&
+        obj.points.length > 0
+      ) {
+        // Same fix as polygon, for open PolyLine annotations from the PDF.
+        element = renderPolyline(obj, i);
+      } else if (
         objectType === 'textbox' ||
         objectType === 'i-text' ||
         objectType === 'text'
@@ -975,6 +1030,8 @@ const SVGAnnotationLayer = memo(({
     isRegionOverlayEnabled,
     layerVisibility,
     getSpaceIdForRegion,
+    activeTool,
+    editingAnnotationIndex,
   ]);
 
   // ---------------------------------------------------------------------------
@@ -1221,6 +1278,10 @@ const SVGAnnotationLayer = memo(({
         renderElement = renderArrow(renderObj, i);
       } else if (objectType === 'circle' || objectType === 'ellipse') {
         renderElement = renderEllipse(renderObj, i);
+      } else if (objectType === 'polygon' && Array.isArray(renderObj.points) && renderObj.points.length > 0) {
+        renderElement = renderPolygon(renderObj, i);
+      } else if (objectType === 'polyline' && Array.isArray(renderObj.points) && renderObj.points.length > 0) {
+        renderElement = renderPolyline(renderObj, i);
       } else if (objectType === 'textbox' || objectType === 'i-text' || objectType === 'text') {
         renderElement = renderText(renderObj, i);
       }
