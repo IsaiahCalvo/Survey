@@ -693,24 +693,48 @@ export function useSVGInteraction({
         const obj = annotations?.objects?.[ds.annotationIndex];
         if (obj) {
           const bbox = getAnnotationBBox(obj);
-          const newLeft = ds.originalProps.left + dx;
-          const newTop = ds.originalProps.top + dy;
-
-          // Constrain to page bounds
-          const constrained = constrainToPage(newLeft, newTop, bbox.width, bbox.height, pageWidth, pageHeight);
+          // Constrain against the ABSOLUTE bbox. getAnnotationBBox returns world
+          // coords for every type — including user-drawn pen paths where obj.left
+          // is a move offset on top of absolute-coord path data. Feeding the raw
+          // offset (originalProps.left + dx) into constrainToPage produced
+          // spurious clamps to (0,0) for pen strokes drawn in the middle of the
+          // page, causing drag-left/up to snap back to origin.
+          const newAbsLeft = bbox.left + dx;
+          const newAbsTop = bbox.top + dy;
+          const constrained = constrainToPage(newAbsLeft, newAbsTop, bbox.width, bbox.height, pageWidth, pageHeight);
+          const actualDx = constrained.left - bbox.left;
+          const actualDy = constrained.top - bbox.top;
 
           // Deep clone annotations and apply position update
           const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
           const targetObj = updatedAnnotations.objects[ds.annotationIndex];
 
-          if (isImportedPath(obj)) {
-            // Imported paths: translate all path coordinates by the constrained delta
-            const actualDx = constrained.left - ds.originalProps.left;
-            const actualDy = constrained.top - ds.originalProps.top;
+          // Absolute-coord path (imported OR user-drawn from FabricDrawingCanvas
+          // which zeroes left/top + omits pathOffset): translate the path data
+          // itself. Using obj.left as an offset on top of absolute path data
+          // made the SVG renderer and Fabric eraser canvas disagree on
+          // position (Fabric auto-computes pathOffset from path data and
+          // doesn't honor our zero convention), producing a ghost stroke at
+          // the original position during eraser mode.
+          const isAbsolutePath = obj.type === 'path' && Array.isArray(obj.path) &&
+            (!obj.pathOffset || (obj.pathOffset.x === 0 && obj.pathOffset.y === 0));
+
+          if (isAbsolutePath) {
             targetObj.path = translatePathData(targetObj.path, actualDx, actualDy);
+            // For user-drawn paths reset left/top to zero so path data alone
+            // carries position. For imported paths left/top are already null
+            // (the isImportedPath convention) — don't stomp those.
+            if (!isImportedPath(obj)) {
+              targetObj.left = 0;
+              targetObj.top = 0;
+            }
           } else {
-            targetObj.left = constrained.left;
-            targetObj.top = constrained.top;
+            // Standard types (rect/circle/ellipse/line/text): accumulate delta
+            // onto originalProps.left/top. Equivalent to the previous
+            // `targetObj.left = constrained.left` for all these types since
+            // bbox.left === obj.left for rect/circle/ellipse/line/text.
+            targetObj.left = ds.originalProps.left + actualDx;
+            targetObj.top = ds.originalProps.top + actualDy;
           }
 
           // Save through existing pipeline
@@ -758,20 +782,33 @@ export function useSVGInteraction({
           const obj = updatedAnnotations.objects[idx];
           if (!obj) continue;
           const bbox = getAnnotationBBox(obj);
-          // Constrain each annotation individually to page bounds
+          // Constrain against the ABSOLUTE bbox per-annotation (same reasoning
+          // as the single-move branch above — user-drawn pen paths carry an
+          // offset in obj.left that is not a world coord, so feeding the raw
+          // offset into constrainToPage would snap them to (0,0) on left/up
+          // drags).
+          const newAbsLeft = bbox.left + dx;
+          const newAbsTop = bbox.top + dy;
           const constrained = constrainToPage(
-            orig.left + dx, orig.top + dy,
+            newAbsLeft, newAbsTop,
             bbox.width, bbox.height, pageWidth, pageHeight
           );
+          const actualDx = constrained.left - bbox.left;
+          const actualDy = constrained.top - bbox.top;
 
-          if (isImportedPath(obj)) {
-            // Imported paths: translate path coordinates by constrained delta
-            const actualDx = constrained.left - orig.left;
-            const actualDy = constrained.top - orig.top;
+          // Same dual-convention handling as the single-move branch above.
+          const isAbsolutePath = obj.type === 'path' && Array.isArray(obj.path) &&
+            (!obj.pathOffset || (obj.pathOffset.x === 0 && obj.pathOffset.y === 0));
+
+          if (isAbsolutePath) {
             obj.path = translatePathData(obj.path, actualDx, actualDy);
+            if (!isImportedPath(obj)) {
+              obj.left = 0;
+              obj.top = 0;
+            }
           } else {
-            obj.left = constrained.left;
-            obj.top = constrained.top;
+            obj.left = orig.left + actualDx;
+            obj.top = orig.top + actualDy;
           }
         }
 
