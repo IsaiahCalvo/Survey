@@ -11108,105 +11108,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [clipboardCallout, clipboardCalloutType]);
 
-  // UX: Phase 14 KBD-01 — handler for Delete/Backspace on selected callouts.
-  // Called by SVGAnnotationLayer's extended keydown effect via
-  // onDeleteSelectedCallouts prop. Uses per-action undo via
-  // addHistoryCheckpoint (Phase 9 pattern).
-  const handleDeleteSelectedCallouts = useCallback((calloutIdsToDelete) => {
-    if (!Array.isArray(calloutIdsToDelete) || calloutIdsToDelete.length === 0) return;
-    const idsSet = new Set(calloutIdsToDelete);
-    // UX: undo checkpoint BEFORE the mutation, same pattern as
-    // annotations:save (App.jsx:23752) — so Cmd+Z restores the deleted callouts.
-    addHistoryCheckpoint('callouts:delete', {
-      calloutIds: calloutIdsToDelete,
-      count: calloutIdsToDelete.length,
-    });
-    setCallouts((prev) => prev.filter((c) => !idsSet.has(c.id)));
-    setSelectedCalloutIds(new Set());
-  }, [addHistoryCheckpoint]);
-
-  // UX: Phase 14 CREATE-01 (callout half) — handler for click-drag callout
-  // creation. Called from SVGAnnotationLayer's transient creation state
-  // machine on mouseup. The new callout is already fully constructed by the
-  // creation state machine; App.jsx just commits it to setCallouts and
-  // captures an undo checkpoint.
-  const handleCreateCallout = useCallback((newCallout) => {
-    if (!newCallout || !newCallout.id) return;
-    addHistoryCheckpoint('callouts:create', {
-      calloutId: newCallout.id,
-      pageNumber: newCallout.pageNumber,
-    });
-    setCallouts((prev) => [...prev, newCallout]);
-  }, [addHistoryCheckpoint]);
-
-  // UX: Phase 14 CALL-10 (drag MVP) — commit checkpoint for a callout drag.
-  // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
-  // AFTER the live-paint has already updated the store via
-  // handleUpdateCalloutLive. Calls addHistoryCheckpoint without mutating
-  // state — one undo entry per drag, matching the Phase 9 commit pattern.
-  // Accepts an optional updatedFields patch for compatibility but ignores it
-  // because live-paint already applied the changes. Empty-patch == commit-
-  // only signal from the hook.
-  const handleUpdateCallout = useCallback((calloutId, _updatedFields) => {
-    addHistoryCheckpoint('callouts:update', { calloutId });
-  }, [addHistoryCheckpoint]);
-
-  // UX: Phase 14 CALL-10 — live paint during callout drag. No undo
-  // checkpoint; the checkpoint is saved once at pointerup via
-  // handleUpdateCallout. Mirrors the Phase 12 optimistic rotation paint
-  // pattern (STATE.md decision: "Plan 12-03 optimistic rotation paint
-  // pattern — canonical fix for commit-path latency in SVG annotation
-  // layer"). `updatedFields` is a partial callout patch keyed by field
-  // name (e.g. { arrowTip, knee, textBoxPosition }).
-  const handleUpdateCalloutLive = useCallback((calloutId, updatedFields) => {
-    if (!calloutId || !updatedFields) return;
-    setCallouts((prev) => prev.map((c) =>
-      c.id === calloutId ? { ...c, ...updatedFields } : c
-    ));
-  }, []);
-
-  // UX: Phase 14 CALL-10 — edit-mode entry for a React callout. Called
-  // from SVGAnnotationLayer's double-click dispatch (useSVGInteraction
-  // handleAnnotationDoubleClick callout branch). Builds a transient
-  // annotations shape { objects: [adapterJSON] } that FabricEditCanvas's
-  // existing loadCalloutAnnotation at :1937 can enliven via
-  // fabric.util.enlivenObjects — NO edits to FabricEditCanvas.jsx.
-  //
-  // The transient annotations object is NOT persisted back to
-  // annotationsByPage; instead the save-callback wrapper at the
-  // FabricEditCanvas mount site detects editType === 'callout' and
-  // routes the commit to setCallouts via fromFabricGroup.
-  const handleRequestCalloutEditMode = useCallback((calloutId, targetPageNumber) => {
-    const reactCallout = callouts.find((c) => c && c.id === calloutId);
-    if (!reactCallout) return;
-    // UX: resolve page size per the editing page. Fall back to the
-    // callout's recorded pageNumber if the caller didn't pass one, and
-    // to a 612x792 default if the pageSizes map hasn't been populated
-    // yet (edit mode mounts after the first layout pass, so this is
-    // defensive rather than expected).
-    const pageNum = targetPageNumber || reactCallout.pageNumber || 1;
-    const pageSizeObj = (pageSizes && pageSizes[pageNum]) || { width: 612, height: 792 };
-
-    const fabricGroup = toFabricGroup(reactCallout, pageSizeObj);
-    // UX: transient annotations array with a single group at index 0 —
-    // loadCalloutAnnotation reads from annotationsRef.current.objects
-    // and selects the object at annotationIndex. We pass index 0 so the
-    // single adapter output is the selection target.
-    const transientAnnotations = { objects: fabricGroup.objects };
-    setEditingAnnotation({
-      pageNumber: pageNum,
-      index: 0,
-      type: 'callout',
-      editType: 'callout',
-      data: fabricGroup.objects[0],
-      annotations: transientAnnotations,
-      // UX: stash identifiers the save-callback wrapper needs to route
-      // the commit back to setCallouts via fromFabricGroup.
-      reactCalloutId: calloutId,
-      originalReactCallout: reactCallout,
-      pageSize: pageSizeObj,
-    });
-  }, [callouts, pageSizes]);
+  // NOTE: Phase 14 callout handlers (handleDeleteSelectedCallouts,
+  // handleCreateCallout, handleUpdateCallout, handleUpdateCalloutLive,
+  // handleRequestCalloutEditMode) are declared AFTER addHistoryCheckpoint
+  // below — three of them list addHistoryCheckpoint in their useCallback
+  // dep arrays, which triggers a TDZ ReferenceError if declared here
+  // (addHistoryCheckpoint is a const useCallback declared ~4600 lines
+  // later in the same function body). Moved as a block; do NOT move them
+  // back without also moving addHistoryCheckpoint.
 
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
 
@@ -14910,6 +14819,107 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       });
     }
   }, [createHistoryMeta, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
+
+  // UX: Phase 14 KBD-01 — handler for Delete/Backspace on selected callouts.
+  // Called by SVGAnnotationLayer's extended keydown effect via
+  // onDeleteSelectedCallouts prop. Uses per-action undo via
+  // addHistoryCheckpoint (Phase 9 pattern). Declared AFTER
+  // addHistoryCheckpoint to avoid a TDZ ReferenceError on the dep array.
+  const handleDeleteSelectedCallouts = useCallback((calloutIdsToDelete) => {
+    if (!Array.isArray(calloutIdsToDelete) || calloutIdsToDelete.length === 0) return;
+    const idsSet = new Set(calloutIdsToDelete);
+    // UX: undo checkpoint BEFORE the mutation, same pattern as
+    // annotations:save (App.jsx:23752) — so Cmd+Z restores the deleted callouts.
+    addHistoryCheckpoint('callouts:delete', {
+      calloutIds: calloutIdsToDelete,
+      count: calloutIdsToDelete.length,
+    });
+    setCallouts((prev) => prev.filter((c) => !idsSet.has(c.id)));
+    setSelectedCalloutIds(new Set());
+  }, [addHistoryCheckpoint]);
+
+  // UX: Phase 14 CREATE-01 (callout half) — handler for click-drag callout
+  // creation. Called from SVGAnnotationLayer's transient creation state
+  // machine on mouseup. The new callout is already fully constructed by the
+  // creation state machine; App.jsx just commits it to setCallouts and
+  // captures an undo checkpoint.
+  const handleCreateCallout = useCallback((newCallout) => {
+    if (!newCallout || !newCallout.id) return;
+    addHistoryCheckpoint('callouts:create', {
+      calloutId: newCallout.id,
+      pageNumber: newCallout.pageNumber,
+    });
+    setCallouts((prev) => [...prev, newCallout]);
+  }, [addHistoryCheckpoint]);
+
+  // UX: Phase 14 CALL-10 (drag MVP) — commit checkpoint for a callout drag.
+  // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
+  // AFTER the live-paint has already updated the store via
+  // handleUpdateCalloutLive. Calls addHistoryCheckpoint without mutating
+  // state — one undo entry per drag, matching the Phase 9 commit pattern.
+  // Accepts an optional updatedFields patch for compatibility but ignores it
+  // because live-paint already applied the changes. Empty-patch == commit-
+  // only signal from the hook.
+  const handleUpdateCallout = useCallback((calloutId, _updatedFields) => {
+    addHistoryCheckpoint('callouts:update', { calloutId });
+  }, [addHistoryCheckpoint]);
+
+  // UX: Phase 14 CALL-10 — live paint during callout drag. No undo
+  // checkpoint; the checkpoint is saved once at pointerup via
+  // handleUpdateCallout. Mirrors the Phase 12 optimistic rotation paint
+  // pattern (STATE.md decision: "Plan 12-03 optimistic rotation paint
+  // pattern — canonical fix for commit-path latency in SVG annotation
+  // layer"). `updatedFields` is a partial callout patch keyed by field
+  // name (e.g. { arrowTip, knee, textBoxPosition }).
+  const handleUpdateCalloutLive = useCallback((calloutId, updatedFields) => {
+    if (!calloutId || !updatedFields) return;
+    setCallouts((prev) => prev.map((c) =>
+      c.id === calloutId ? { ...c, ...updatedFields } : c
+    ));
+  }, []);
+
+  // UX: Phase 14 CALL-10 — edit-mode entry for a React callout. Called
+  // from SVGAnnotationLayer's double-click dispatch (useSVGInteraction
+  // handleAnnotationDoubleClick callout branch). Builds a transient
+  // annotations shape { objects: [adapterJSON] } that FabricEditCanvas's
+  // existing loadCalloutAnnotation at :1937 can enliven via
+  // fabric.util.enlivenObjects — NO edits to FabricEditCanvas.jsx.
+  //
+  // The transient annotations object is NOT persisted back to
+  // annotationsByPage; instead the save-callback wrapper at the
+  // FabricEditCanvas mount site detects editType === 'callout' and
+  // routes the commit to setCallouts via fromFabricGroup.
+  const handleRequestCalloutEditMode = useCallback((calloutId, targetPageNumber) => {
+    const reactCallout = callouts.find((c) => c && c.id === calloutId);
+    if (!reactCallout) return;
+    // UX: resolve page size per the editing page. Fall back to the
+    // callout's recorded pageNumber if the caller didn't pass one, and
+    // to a 612x792 default if the pageSizes map hasn't been populated
+    // yet (edit mode mounts after the first layout pass, so this is
+    // defensive rather than expected).
+    const pageNum = targetPageNumber || reactCallout.pageNumber || 1;
+    const pageSizeObj = (pageSizes && pageSizes[pageNum]) || { width: 612, height: 792 };
+
+    const fabricGroup = toFabricGroup(reactCallout, pageSizeObj);
+    // UX: transient annotations array with a single group at index 0 —
+    // loadCalloutAnnotation reads from annotationsRef.current.objects
+    // and selects the object at annotationIndex. We pass index 0 so the
+    // single adapter output is the selection target.
+    const transientAnnotations = { objects: fabricGroup.objects };
+    setEditingAnnotation({
+      pageNumber: pageNum,
+      index: 0,
+      type: 'callout',
+      editType: 'callout',
+      data: fabricGroup.objects[0],
+      annotations: transientAnnotations,
+      // UX: stash identifiers the save-callback wrapper needs to route
+      // the commit back to setCallouts via fromFabricGroup.
+      reactCalloutId: calloutId,
+      originalReactCallout: reactCallout,
+      pageSize: pageSizeObj,
+    });
+  }, [callouts, pageSizes]);
 
   // Undo function
   const handleUndo = useCallback(() => {
@@ -25826,6 +25836,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   pageHeight={resolvedPageSize.height}
                                   annotations={pageAnnotations}
                                   onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
+                                  onEraseCallout={handleDeleteSelectedCallouts}
                                   eraserSize={eraserSize}
                                   viewerScale={scale}
                                   selectedSpaceId={annotationSpaceId}
@@ -26501,6 +26512,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         pageHeight={pageSizes[pageNumber].height}
                                         annotations={pageAnnotationsCS}
                                         onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
+                                        onEraseCallout={handleDeleteSelectedCallouts}
                                         eraserSize={eraserSize}
                                         viewerScale={scale}
                                         selectedSpaceId={annotationSpaceId}
@@ -27009,6 +27021,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       pageHeight={pageSizes[pageNum].height}
                                       annotations={pageAnnotations}
                                       onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNum, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
+                                      onEraseCallout={handleDeleteSelectedCallouts}
                                       eraserSize={eraserSize}
                                       viewerScale={scale}
                                       selectedSpaceId={annotationSpaceId}
