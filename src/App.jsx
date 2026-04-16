@@ -23,6 +23,7 @@ import PageAnnotationLayer, { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from '.
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
+import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import {
   renumberCounters,
   getCounterSeriesList,
@@ -21214,6 +21215,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         setPageHeights({ 1: firstViewport.height });
         setPageSizes({ 1: { width: firstViewport.width, height: firstViewport.height } });
         setPageObjects({ 1: firstPage });
+        // Local accumulator — React state is async, so the callout import
+        // splitter below needs a synchronous source of page dimensions
+        // built up alongside setPageSizes during the sizing loop.
+        const loadedPageSizes = { 1: { width: firstViewport.width, height: firstViewport.height } };
 
         const maxWorkers = typeof navigator !== 'undefined' && Number.isFinite(navigator.hardwareConcurrency)
           ? Math.max(2, Math.min(8, Math.floor(navigator.hardwareConcurrency / 2)))
@@ -21244,6 +21249,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             batchHeights[pageNumber] = viewport.height;
             batchSizes[pageNumber] = { width: viewport.width, height: viewport.height };
             batchPages[pageNumber] = page;
+            loadedPageSizes[pageNumber] = { width: viewport.width, height: viewport.height };
           });
 
           setPageHeights((prev) => ({ ...prev, ...batchHeights }));
@@ -21266,6 +21272,48 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           });
           if (isCancelled) return;
 
+          // UX: Phase 14 CALL-10 hotfix — FreeText annotations with
+          // /IT=FreeTextCallout arrive from the importer as fabric textboxes
+          // with data.pdfCalloutPoints / data.pdfIntent / data.pdfCalloutBoxRect.
+          // The SVG render path has no branch for "textbox that is actually a
+          // callout", and PAL's old createImportedCalloutFromTextbox is dead
+          // code since the v2.0 SVG migration. Split those textboxes out of
+          // annotationsByPage here and push them into the Phase 14 callouts[]
+          // state via the import adapter, so they render through the unified
+          // SVG callout pipeline.
+          const importedCalloutsByPage = {};
+          const filteredImportedAnnotations = {};
+          Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
+            const pageNumber = Number(pageKey);
+            const pageSize = loadedPageSizes[pageNumber];
+            const sourceObjects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+            if (!pageSize || !Number.isFinite(pageSize.width) || !Number.isFinite(pageSize.height)) {
+              filteredImportedAnnotations[pageKey] = pageData;
+              return;
+            }
+            const { remainingObjects, calloutEntries } = splitImportedCalloutsFromPage(
+              sourceObjects,
+              pageNumber,
+              pageSize.width,
+              pageSize.height,
+            );
+            filteredImportedAnnotations[pageKey] = {
+              ...(pageData || {}),
+              objects: remainingObjects,
+            };
+            if (calloutEntries.length > 0) {
+              importedCalloutsByPage[pageKey] = calloutEntries;
+            }
+          });
+
+          setCallouts((prev) => {
+            const preserved = Array.isArray(prev)
+              ? prev.filter((c) => !c?.isPdfImported)
+              : [];
+            const importedFlat = Object.values(importedCalloutsByPage).flat();
+            return [...preserved, ...importedFlat];
+          });
+
           // Replace previously imported PDF annotations (stale styling) while preserving user-created annotations.
           setAnnotationsByPage((prev) => {
             const next = {};
@@ -21280,7 +21328,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               };
             });
 
-            Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
+            Object.entries(filteredImportedAnnotations || {}).forEach(([pageKey, pageData]) => {
               const currentPage = next[pageKey] || {};
               const preservedObjects = Array.isArray(currentPage.objects) ? currentPage.objects : [];
               const importedObjects = Array.isArray(pageData?.objects) ? pageData.objects : [];
