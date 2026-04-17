@@ -11,6 +11,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45 } from '../utils/svgTransformMath';
 import { getAnnotationBBox, getLineEndpoints, isImportedPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
+// Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
+// auto-revert on collinear geometry. Pure-math from lineGeometry, drag
+// helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
+import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
+import {
+  deriveMidpointFromPointer,
+  shouldRevertEndpointCurve,
+  applyMidpointToAnnotation,
+  clearMidpointFromAnnotation,
+} from '../utils/lineDragMath.js';
 
 /**
  * @param {object} options
@@ -468,6 +478,12 @@ export function useSVGInteraction({
       const newCenterX = minX + newWidth / 2;
       const newCenterY = minY + newHeight / 2;
 
+      // LINE-03 / ARROW-03: data.midpoint stays at its absolute page coords
+      // during endpoint drag. Do NOT translate it with the pointer delta —
+      // the curve reshapes around the fixed midpoint (15-RESEARCH.md Pitfall 2).
+      // The explicit applyMidpointToAnnotation call below the commit guarantees
+      // preservation even if a future refactor to this branch rebuilds
+      // targetObj.data wholesale.
       const endpointData = {
         left: minX,
         top: minY,
@@ -484,11 +500,40 @@ export function useSVGInteraction({
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const targetObj = updatedAnnotations.objects[ds.annotationIndex];
       Object.assign(targetObj, endpointData);
+      // Phase 15 LINE-03 / ARROW-03 — belt-and-suspenders: re-apply the original
+      // midpoint from ds.originalMidpoint onto the cloned targetObj so it
+      // survives any data-object reassignment earlier in this branch. No-op
+      // when the line was straight at drag-start (ds.originalMidpoint is null).
+      if (ds.originalMidpoint) {
+        applyMidpointToAnnotation(targetObj, ds.originalMidpoint);
+      }
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'endpoint-move',
         checkpointPolicy: 'skip',
       });
+      setInteractionState('dragging');
+    } else if (ds.mode === 'midpoint') {
+      // Phase 15 LINE-01 / ARROW-01 — live-paint midpoint translate.
+      // Write data.midpoint on every pointermove; final snap-to-straight
+      // check happens on pointerup (not here) to match combined-tools "silent
+      // snap" behavior (no visual indicator during drag per 15-UI-SPEC §E).
+      // Uses 'skip' checkpoint policy so the drag doesn't flood the undo
+      // stack (Plan 12-03 optimistic-paint pattern).
+      const newMidpoint = deriveMidpointFromPointer(
+        ds.startSVGPoint,
+        svgPoint,
+        ds.originalMidpoint,
+      );
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      applyMidpointToAnnotation(targetObj, newMidpoint);
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'object:modified',
+        action: 'midpoint-move',
+        checkpointPolicy: 'skip',
+      });
+      ds.currentMidpoint = newMidpoint;
       setInteractionState('dragging');
     } else if (ds.mode === 'resize') {
       // Determine which axes this handle affects
@@ -808,9 +853,49 @@ export function useSVGInteraction({
       targetObj.x2 = ep.x2;
       targetObj.y2 = ep.y2;
 
+      // Phase 15 LINE-03 / ARROW-03 — preserve + maybe-auto-revert the midpoint.
+      // During the drag, data.midpoint was re-applied on every pointermove
+      // (Pitfall-2 defensive write above), but the live-paint clones didn't
+      // carry it here. Re-apply from ds.originalMidpoint, then check whether
+      // the new endpoint geometry is naturally collinear within 10px — if so,
+      // clear it silently so the line re-enters the straight <line> render
+      // branch. Use getLineEndpoints(targetObj) for the canonical endpoint
+      // derivation — do NOT re-derive from left/top/width/x1/x2 inline
+      // (bbox reads may be stale right after mutation).
+      if (ds.originalMidpoint) {
+        applyMidpointToAnnotation(targetObj, ds.originalMidpoint);
+        const { x1, y1, x2, y2 } = getLineEndpoints(targetObj);
+        const newStart = { x: x1, y: y1 };
+        const newEnd = { x: x2, y: y2 };
+        if (shouldRevertEndpointCurve(targetObj.data?.midpoint, newStart, newEnd, 10)) {
+          clearMidpointFromAnnotation(targetObj);
+        }
+      }
+
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'endpoint-move',
+        checkpointPolicy: 'normal',
+      });
+    } else if (ds.mode === 'midpoint' && ds.currentMidpoint) {
+      // Phase 15 LINE-02 / ARROW-02 — silent snap-to-straight at pointerup.
+      // If the user released the midpoint within 10px of the baseline, clear
+      // data.midpoint so the line re-enters the straight <line> render branch.
+      // No visual indicator during drag (combined-tools behavior, 15-UI-SPEC §E).
+      // Checkpoint policy 'normal' so this drag produces one undo entry.
+      const ep = ds.originalEndpoints;
+      const start = { x: ep.x1, y: ep.y1 };
+      const end = { x: ep.x2, y: ep.y2 };
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      if (shouldSnapToLinear(ds.currentMidpoint, start, end, 10)) {
+        clearMidpointFromAnnotation(targetObj);
+      } else {
+        applyMidpointToAnnotation(targetObj, ds.currentMidpoint);
+      }
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'object:modified',
+        action: 'midpoint-move',
         checkpointPolicy: 'normal',
       });
     } else if (ds.mode === 'group-move' && ds.groupOriginals) {
@@ -968,6 +1053,12 @@ export function useSVGInteraction({
       // fields alongside the rest of the drag state so the next drag
       // starts with a clean slate. Miss one and the drag gets stuck.
       partType: null, calloutId: null, originalCalloutPositions: null,
+      // Phase 15 LINE-01/02/03 — four-place invariant for the 'midpoint'
+      // drag mode. originalMidpoint is SET at pointerdown (both 'midpoint'
+      // AND 'endpoint' dispatch branches set it), READ at pointermove AND
+      // pointerup (both modes), and RESET here. Miss this reset and a
+      // subsequent straight-line drag would re-apply a stale midpoint.
+      originalMidpoint: null, currentMidpoint: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
@@ -991,6 +1082,33 @@ export function useSVGInteraction({
     const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const bbox = getAnnotationBBox(obj);
 
+    // Phase 15 LINE-01 / ARROW-01 — midpoint curvature drag.
+    // Capture the ORIGINAL midpoint (either data.midpoint if the line was
+    // already curved, or the geometric midpoint if straight). On pointermove
+    // we translate this by the pointer delta (see deriveMidpointFromPointer).
+    // On pointerup we snap to straight when within 10px of the baseline
+    // (silent snap — no visual indicator during drag per 15-UI-SPEC §E).
+    if (handleId === 'midpoint') {
+      const ep = getLineEndpoints(obj);
+      const start = { x: ep.x1, y: ep.y1 };
+      const end = { x: ep.x2, y: ep.y2 };
+      const originalMidpoint = obj.data?.midpoint
+        ? { x: obj.data.midpoint.x, y: obj.data.midpoint.y }
+        : getMidpoint(start, end);
+      dragStateRef.current = {
+        active: true,
+        mode: 'midpoint',
+        handleId: 'midpoint',
+        startSVGPoint: svgPoint,
+        originalEndpoints: ep,
+        originalMidpoint,
+        currentMidpoint: null,
+        annotationIndex: selectedIndex,
+        ctmInverse,
+      };
+      return;
+    }
+
     // Line/arrow endpoint drag: p1 or p2
     if (handleId === 'p1' || handleId === 'p2') {
       const ep = getLineEndpoints(obj);
@@ -1010,9 +1128,18 @@ export function useSVGInteraction({
           y2: obj.y2 ?? 0,
         },
         originalEndpoints: ep,
+        // Phase 15 LINE-03 / ARROW-03 — capture the current data.midpoint at
+        // drag-start so the pointermove branch can re-apply it defensively on
+        // every tick (belt-and-suspenders — see the pointermove branch for
+        // the full Pitfall-2 comment). Null when the line was straight at
+        // drag-start; the preserve-write then no-ops.
+        originalMidpoint: obj.data?.midpoint
+          ? { x: obj.data.midpoint.x, y: obj.data.midpoint.y }
+          : null,
         annotationIndex: selectedIndex,
         ctmInverse,
         currentEndpoint: null,
+        currentMidpoint: null,
       };
       return;
     }
