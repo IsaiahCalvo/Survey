@@ -515,19 +515,27 @@ export function useSVGInteraction({
       setInteractionState('dragging');
     } else if (ds.mode === 'midpoint') {
       // Phase 15 LINE-01 / ARROW-01 — live-paint midpoint translate.
-      // Write data.midpoint on every pointermove; final snap-to-straight
-      // check happens on pointerup (not here) to match combined-tools "silent
-      // snap" behavior (no visual indicator during drag per 15-UI-SPEC §E).
-      // Uses 'skip' checkpoint policy so the drag doesn't flood the undo
-      // stack (Plan 12-03 optimistic-paint pattern).
+      // Snap-to-straight happens LIVE during drag (not on pointerup) so the
+      // user sees the line go straight as soon as the handle enters the 10px
+      // threshold zone. Dragging back out re-curves it instantly.
+      // Endpoint drags keep their snap-on-release-only behavior since the user
+      // may be passing through collinear on the way to a new position.
       const newMidpoint = deriveMidpointFromPointer(
         ds.startSVGPoint,
         svgPoint,
         ds.originalMidpoint,
       );
+      const ep = ds.originalEndpoints;
+      const start = { x: ep.x1, y: ep.y1 };
+      const end = { x: ep.x2, y: ep.y2 };
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const targetObj = updatedAnnotations.objects[ds.annotationIndex];
-      applyMidpointToAnnotation(targetObj, newMidpoint);
+      // Live snap: clear midpoint when within threshold, re-apply when outside
+      if (shouldSnapToLinear(newMidpoint, start, end, 10)) {
+        clearMidpointFromAnnotation(targetObj);
+      } else {
+        applyMidpointToAnnotation(targetObj, newMidpoint);
+      }
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'midpoint-move',
