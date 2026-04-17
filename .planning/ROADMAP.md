@@ -232,7 +232,12 @@ Plans:
 
   5. **No regression to straight line/arrow rendering** — Existing saved straight lines and arrows with no `data.midpoint` field continue to render through the plain `<line>` branch at identical visual output as v2.2, and 113/113 baseline tests still pass.
 
-**Plans**: TBD (populated by `/gsd:plan-phase 15`)
+**Plans**: 3 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — Wave 0 validation scaffolding (4 unit test files + 4 Playwright scaffolds + baseline capture README; no src/ changes)
+- [ ] 15-02-PLAN.md — Wave 1 renderer: pure-JS lineRenderHelpers.js + renderArrowhead React helper + curved-path branch in renderLine
+- [ ] 15-03-PLAN.md — Wave 1 interaction: lineDragMath.js + midpoint handle in SVGAnnotationLayer.jsx + 'midpoint' drag mode + endpoint auto-revert in useSVGInteraction.js
 
 ### Phase 16: Line/Arrow Mini-Toolbar + Curvature Pill + Min-Drag
 
