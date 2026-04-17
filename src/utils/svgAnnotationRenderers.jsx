@@ -332,8 +332,19 @@ export const renderPolygon = (obj, index) => {
   const pathOffsetX = obj.pathOffset?.x || 0;
   const pathOffsetY = obj.pathOffset?.y || 0;
 
+  // UX: rotation must happen around the visual center of the shape, not the
+  // top-left corner. Compute the center in pre-rotation local space (after
+  // scale + pathOffset, before rotate) so it matches the rotation center
+  // used by useSVGInteraction's drag preview.
+  const pointXs = obj.points.map(p => toNumber(p?.x));
+  const pointYs = obj.points.map(p => toNumber(p?.y));
+  const rawCenterX = (Math.min(...pointXs) + Math.max(...pointXs)) / 2;
+  const rawCenterY = (Math.min(...pointYs) + Math.max(...pointYs)) / 2;
+  const rotCenterX = scaleX * (rawCenterX - pathOffsetX);
+  const rotCenterY = scaleY * (rawCenterY - pathOffsetY);
+
   let transform = `translate(${left}, ${top})`;
-  if (angle !== 0) transform += ` rotate(${angle})`;
+  if (angle !== 0) transform += ` rotate(${angle}, ${rotCenterX}, ${rotCenterY})`;
   if (scaleX !== 1 || scaleY !== 1) transform += ` scale(${scaleX}, ${scaleY})`;
   transform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
 
@@ -380,8 +391,17 @@ export const renderPolyline = (obj, index) => {
   const pathOffsetX = obj.pathOffset?.x || 0;
   const pathOffsetY = obj.pathOffset?.y || 0;
 
+  // UX: same rotation-center fix as renderPolygon — rotate around visual
+  // center, not the top-left corner.
+  const pointXs = obj.points.map(p => toNumber(p?.x));
+  const pointYs = obj.points.map(p => toNumber(p?.y));
+  const rawCenterX = (Math.min(...pointXs) + Math.max(...pointXs)) / 2;
+  const rawCenterY = (Math.min(...pointYs) + Math.max(...pointYs)) / 2;
+  const rotCenterX = scaleX * (rawCenterX - pathOffsetX);
+  const rotCenterY = scaleY * (rawCenterY - pathOffsetY);
+
   let transform = `translate(${left}, ${top})`;
-  if (angle !== 0) transform += ` rotate(${angle})`;
+  if (angle !== 0) transform += ` rotate(${angle}, ${rotCenterX}, ${rotCenterY})`;
   if (scaleX !== 1 || scaleY !== 1) transform += ` scale(${scaleX}, ${scaleY})`;
   transform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
 
