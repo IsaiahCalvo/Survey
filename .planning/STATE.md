@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: in_progress
-stopped_at: Completed 15-01-PLAN.md — Wave 0 test scaffolding; ready for 15-02 renderer
-last_updated: "2026-04-17T01:07:22.130Z"
-last_activity: "2026-04-17 — Plan 15-01 executed (3 tasks, 3 commits: 4a44f242 / 40e0055b / 2cc6ce40)"
+stopped_at: Completed 15-02-PLAN.md — Wave 1 renderer shipped; 14 tests green; ready for 15-03 wrap
+last_updated: "2026-04-17T01:19:49.786Z"
+last_activity: "2026-04-17 — Plan 15-02 executed (3 tasks, 3 commits: bcdcce4d / 8d9fc424 / final-docs-commit)"
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 8
-  completed_plans: 6
-  percent: 75
+  completed_plans: 7
+  percent: 88
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-14)
 
 **Core value:** Line/arrow/text-callout tools match the precision and feel of the `combined-tools` reference app, AND all annotations render through the same SVG pipeline for a unified select / edit / erase / undo story.
-**Current focus:** Milestone v2.3 — Phase 15 in progress (Plan 15-01 Wave 0 test scaffolds shipped 2026-04-17; Plan 15-02 Wave 1 renderer next).
+**Current focus:** Milestone v2.3 — Phase 15 in progress (Plans 15-01 Wave 0 + 15-02 Wave 1 renderer + 15-03 Wave 1 interaction all shipped 2026-04-17; phase close pending reconciliation).
 
 ## Current Position
 
 Milestone: v2.3 — Tools Polish (combined-tools rewrite + unified render)
-Phase: **Phase 15 — Line/Arrow Curvature + Arrowhead Styles** (1/3 plans complete)
-Plan: 15-01 — complete (next: 15-02 Wave 1 renderer — lineRenderHelpers.js + un-skip the 14 pre-written tests)
-Status: Phase 15 Plan 01 complete. 14 green unit tests locking lineGeometry + Fabric persistence contract. 14 file-level-skipped tests pre-writing the Plan 15-02 renderer contract. 4 Playwright fixme scaffolds (13 tests) for LINE-01/02/03 + ARROW-01/02/03/04.
-Last activity: 2026-04-17 — Plan 15-01 executed (3 tasks, 3 commits: 4a44f242 / 40e0055b / 2cc6ce40)
+Phase: **Phase 15 — Line/Arrow Curvature + Arrowhead Styles** (2/3 plans complete; 15-03 landed in parallel)
+Plan: 15-02 — complete (Wave 1 renderer shipped: lineRenderHelpers.js + renderLine curved branch + renderArrowhead export; 14 Plan-15-01 unit tests flipped from red-skip to green). Next: phase close via `/gsd:verify-work 15` + `15-RECONCILIATION.md`.
+Status: Plans 15-01 + 15-02 + 15-03 all shipped. Plan 15-02 landed 14 passing unit tests against buildLineRenderSpec + buildArrowheadRenderSpec, rewrote renderLine as a thin wrapper, exported renderArrowhead. Straight branch byte-identical to pre-Phase-15. 181/182 npm test baseline preserved.
+Last activity: 2026-04-17 — Plan 15-02 executed (3 tasks, 3 commits: bcdcce4d / 8d9fc424 / final-docs-commit)
 
-Progress: [████████░░] 75% (v2.3: 6/8 plans complete across Phase 14 + Phase 15)
+Progress: [█████████░] 88% (v2.3: 7/8 plans complete across Phase 14 + Phase 15)
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [████████░░] 75% (v2.3: 6/8 plans complete across 
 
 **Tests:** 113/113 green at v2.2 close (v2.3 must preserve this baseline). Plan 14-03 preserves 143/144 unit-test baseline (1 pre-existing pdfAnnotationImporter failure, out of scope per 14-01/14-02 deferred-items.md).
 | Phase 15 P01 | 7min | 3 tasks | 10 files |
+| Phase 15 P02 | 6min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,9 @@ Progress: [████████░░] 75% (v2.3: 6/8 plans complete across 
 - [Phase 14]: Plan 14-03: pre-existing working-tree WIP in App.jsx (tool-switch diagnostics) and SVGAnnotationLayer.jsx (polygon/polyline PDF import) was deliberately NOT staged via git add -p split — belongs to separate lanes.
 - [Phase 15]: Plan 15-01: file-level `test.describe.skip` wrapper with dynamic `await import('../src/utils/lineRenderHelpers.js')` inside the body — Plan 15-02 flips the single `describe.skip` → `describe` to un-skip the whole file atomically. Dynamic import inside the skipped describe prevents `ERR_MODULE_NOT_FOUND` while the helper does not yet exist.
 - [Phase 15]: Plan 15-01: sidestepped pre-existing node-canvas NODE_MODULE_VERSION 116↔127 mismatch by simulating Fabric.Line.toJSON(['data']) shape in tests instead of importing fabric directly. Logged rebuild follow-up in 15-deferred-items.md (infra, out of Plan 15-01 zero-src-change scope).
+- [Phase 15]: Plan 15-02: straight branch byte-identical to pre-Phase-15 renderLine. buildLineRenderSpec's straight branch reproduces the exact center-relative x1/y1/x2/y2 + lineEndX/lineEndY shortening for filled-triangle arrowheads. Verified by tests/svgLineRenderer.test.mjs #1 + #2.
+- [Phase 15]: Plan 15-02: two entry points for arrowhead rendering. Module-scoped renderArrowheadFromSpec(spec) is single source of truth for kind→element mapping. Exported renderArrowhead(style,tipX,tipY,angleDeg,color,sw) wraps buildArrowheadRenderSpec + dispatches. Internal renderLine curved branch bypasses buildArrowheadRenderSpec (spec already in spec.arrowhead).
+- [Phase 15]: Plan 15-02: Playwright phase15-arrowhead-styles.spec.mjs kept as test.fixme (plan-sanctioned fallback). No window.__test_injectAnnotation hook in src/ today. Plan 15-03 annotation-injection harness is the natural unblocker. Spec-level contract already locked by 14 unit tests (svgLineRenderer + renderArrowhead).
 
 ### Roadmap Evolution
 
@@ -135,8 +139,8 @@ Progress: [████████░░] 75% (v2.3: 6/8 plans complete across 
 
 ## Session Continuity
 
-Last session: 2026-04-17T01:07:22.127Z
-Stopped at: Completed 15-01-PLAN.md — Wave 0 test scaffolding; ready for 15-02 renderer
+Last session: 2026-04-17T01:19:13.012Z
+Stopped at: Completed 15-02-PLAN.md — Wave 1 renderer shipped; 14 tests green; ready for 15-03 wrap
 
 ### Resume instructions for the next session (read carefully)
 
