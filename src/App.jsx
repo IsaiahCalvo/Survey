@@ -25763,8 +25763,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       console.warn(`[App p${pageNumber}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
                                       return;
                                     }
-                                    // Non-editable types: pen strokes, highlights, lines, imported paths
-                                    if (annotationType === 'path' || annotationType === 'line') {
+                                    // Non-editable types: pen strokes, highlights, lines, polygons, polylines, imported paths
+                                    // (polygon/polyline edit-mode support is a future phase; for now they route
+                                    // through the select tool's move/vertex-handle UX instead — preventing the
+                                    // else-branch editType='callout' fallback that caused the "drag → enter
+                                    // edit mode → everything vanishes" bug.)
+                                    if (annotationType === 'path' || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
                                       console.log(`[App p${pageNumber}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`, {
                                         NOTE: 'Lines/arrows are blocked from edit mode — need line/arrow edit support',
                                         annotationData: { type: annotationData.type, left: annotationData.left, top: annotationData.top, x1: annotationData.x1, y1: annotationData.y1, x2: annotationData.x2, y2: annotationData.y2 },
@@ -26441,8 +26445,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           console.warn(`[App p${pageNumber}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
                                           return;
                                         }
-                                        // Non-editable types: pen strokes, highlights, lines, imported paths
-                                        if (annotationType === 'path' || annotationType === 'line') {
+                                        // Non-editable types: pen strokes, highlights, lines, polygons, polylines, imported paths
+                                    // (polygon/polyline edit-mode support is a future phase; for now they route
+                                    // through the select tool's move/vertex-handle UX instead — preventing the
+                                    // else-branch editType='callout' fallback that caused the "drag → enter
+                                    // edit mode → everything vanishes" bug.)
+                                        if (annotationType === 'path' || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
                                           console.log(`[App p${pageNumber}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`, {
                                             NOTE: 'Lines/arrows are blocked from edit mode — need line/arrow edit support',
                                             annotationData: { type: annotationData.type, left: annotationData.left, top: annotationData.top, x1: annotationData.x1, y1: annotationData.y1, x2: annotationData.x2, y2: annotationData.y2 },
@@ -26953,7 +26961,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           console.warn(`[App p${pageNum}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
                                           return;
                                         }
-                                        if (annotationType === 'path' || annotationType === 'line') {
+                                        if (annotationType === 'path' || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
                                           console.log(`[App p${pageNum}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`, {
                                             NOTE: 'Lines/arrows are blocked from edit mode — need line/arrow edit support',
                                             annotationData: { type: annotationData.type, left: annotationData.left, top: annotationData.top, x1: annotationData.x1, y1: annotationData.y1, x2: annotationData.x2, y2: annotationData.y2 },

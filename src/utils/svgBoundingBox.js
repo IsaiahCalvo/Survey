@@ -38,6 +38,9 @@ export function getAnnotationBBox(obj) {
     case 'i-text':
     case 'text':
       return getTextBBox(obj);
+    case 'polygon':
+    case 'polyline':
+      return getPointsBBox(obj);
     default:
       // Fallback: treat as rect-like
       return getRectBBox(obj);
@@ -333,6 +336,50 @@ function getGroupArrowBBox(obj) {
     top: objTop,
     width: Math.abs((obj.width ?? 10) * (obj.scaleX ?? 1)),
     height: Math.abs((obj.height ?? 10) * (obj.scaleY ?? 1)),
+    angle: obj.angle ?? 0,
+  };
+}
+
+// Polygon + polyline share the same SVG transform chain as renderPolygon /
+// renderPolyline in svgAnnotationRenderers.jsx: for each stored point (p.x, p.y),
+// world position = (left + scaleX*(p.x - pathOffsetX), top + scaleY*(p.y - pathOffsetY)).
+// We scan obj.points[] for local-space min/max, then apply left/top as translation
+// + scaleX/scaleY as magnification. Without this, polygons/polylines fell through to
+// getRectBBox which uses {obj.left, obj.top, obj.width, obj.height} — that rect
+// can sit far from where SVG actually draws the shape (left/top are a translation
+// offset, not the drawn bbox corner), producing hit-test zones that don't match
+// the visible shape and missed clicks entirely.
+function getPointsBBox(obj) {
+  if (!Array.isArray(obj.points) || obj.points.length === 0) {
+    return { left: 0, top: 0, width: 0, height: 0, angle: 0 };
+  }
+
+  const pathOffsetX = obj.pathOffset?.x || 0;
+  const pathOffsetY = obj.pathOffset?.y || 0;
+  const sx = Math.abs(obj.scaleX ?? 1);
+  const sy = Math.abs(obj.scaleY ?? 1);
+  const left = obj.left ?? 0;
+  const top = obj.top ?? 0;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of obj.points) {
+    const px = typeof p?.x === 'number' ? p.x : 0;
+    const py = typeof p?.y === 'number' ? p.y : 0;
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+
+  if (minX === Infinity) {
+    return { left: 0, top: 0, width: 0, height: 0, angle: 0 };
+  }
+
+  return {
+    left: left + sx * (minX - pathOffsetX),
+    top: top + sy * (minY - pathOffsetY),
+    width: (maxX - minX) * sx,
+    height: (maxY - minY) * sy,
     angle: obj.angle ?? 0,
   };
 }

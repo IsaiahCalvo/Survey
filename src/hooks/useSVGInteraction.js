@@ -83,6 +83,16 @@ export function useSVGInteraction({
   });
   const interactionStateRef = useRef('idle');
 
+  // UX: when a drag commits (move or group-move with > 2px delta), stamp
+  // this ref with `Date.now()`. The browser's native `dblclick` event fires
+  // when two pointerdowns land on the same target within ~300-500ms — a
+  // click-to-select followed by a click-and-drag-to-move hits that timing,
+  // causing the drag's pointerup to emit a spurious dblclick that enters
+  // edit mode. `handleAnnotationDoubleClick` consults this ref and bails
+  // if a drag just ended within a 400ms window. Mirrors the 300ms
+  // `editModeCooldownRef` pattern in App.jsx:26690.
+  const justDraggedAtRef = useRef(0);
+
   // Keep interactionStateRef in sync
   useEffect(() => {
     interactionStateRef.current = interactionState;
@@ -283,6 +293,21 @@ export function useSVGInteraction({
    * adapter path (Plan 14-03 Task 3 in App.jsx).
    */
   const handleAnnotationDoubleClick = useCallback((e, index) => {
+    // UX: suppress the browser's native dblclick when a drag just ended.
+    // Repro: click polygon to select, then click-and-drag to move — the
+    // two pointerdowns fall inside the browser's ~300-500ms dblclick
+    // window, so pointerup fires dblclick and enters edit mode on the
+    // dragged shape. For a polyline, `editType` falls through to
+    // 'callout' in App.jsx:26717, FabricEditCanvas mounts with a broken
+    // callout adapter, and every annotation appears to vanish until the
+    // user clicks away to exit edit mode. 400ms is larger than the
+    // browser's dblclick window so we catch the spurious dblclick, but
+    // short enough that an intentional dblclick (deliberate, after the
+    // user has stopped dragging for a moment) still works.
+    if (Date.now() - justDraggedAtRef.current < 400) {
+      e.stopPropagation();
+      return;
+    }
     // UX: Phase 14 CALL-10 — callout double-click enters edit mode via
     // FabricEditCanvas + calloutEditAdapter (see Plan 14-03 Task 3 in App.jsx).
     // Uses event-delegation via data-callout-id (same pattern as v2.2 EDIT-13
@@ -743,6 +768,14 @@ export function useSVGInteraction({
             action: 'move',
             checkpointPolicy: 'normal',
           });
+
+          // UX: the browser will emit a native `dblclick` if this pointerup
+          // closes a click sequence that matches the double-click timing
+          // window (click-to-select → click-drag-to-move fits it). Stamp
+          // the drag-end time so `handleAnnotationDoubleClick` can suppress
+          // that spurious dblclick and prevent the "everything vanishes"
+          // edit-mode entry bug (see justDraggedAtRef declaration).
+          justDraggedAtRef.current = Date.now();
         }
       }
     } else if (ds.mode === 'endpoint' && ds.currentEndpoint) {
@@ -817,6 +850,9 @@ export function useSVGInteraction({
           action: 'group-move',
           checkpointPolicy: 'normal',
         });
+
+        // UX: see move-branch comment — same spurious-dblclick guard.
+        justDraggedAtRef.current = Date.now();
       }
     } else if (ds.mode === 'resize' && ds.currentResize) {
       const { newScaleX, newScaleY, newLeft, newTop } = ds.currentResize;
