@@ -593,10 +593,26 @@ export function useSVGInteraction({
       // Store resize state for commit on pointerup
       dragStateRef.current.currentResize = { newScaleX, newScaleY, newLeft, newTop };
       setInteractionState('resizing');
+
+      // UX: polygon/polyline live preview. SVGAnnotationLayer re-renders the
+      // shape by applying these `left`/`top` values through the renderer's
+      // transform chain `translate(left, top) scale(sx, sy) translate(-pathOffset)`
+      // — i.e. OBJECT-space. The resize formula above produced `newLeft`/`newTop`
+      // in visible-bbox space (since originalProps.left was set to bbox.left at
+      // pointer-down). Translate here so the live preview tracks the cursor
+      // instead of drifting off the page.
+      let visualLeft = newLeft;
+      let visualTop = newTop;
+      if (ds.originalProps.isPointsShape) {
+        const sxAbs = Math.abs(newScaleX);
+        const syAbs = Math.abs(newScaleY);
+        visualLeft = newLeft - sxAbs * (ds.originalProps.pointsLocalMinX - ds.originalProps.pointsPathOffsetX);
+        visualTop = newTop - syAbs * (ds.originalProps.pointsLocalMinY - ds.originalProps.pointsPathOffsetY);
+      }
       setVisualTransform({
         id: ds.annotationIndex,
         dx: 0, dy: 0,
-        resize: { scaleX: newScaleX, scaleY: newScaleY, left: newLeft, top: newTop, anchorX: ds.anchorX, anchorY: ds.anchorY },
+        resize: { scaleX: newScaleX, scaleY: newScaleY, left: visualLeft, top: visualTop, anchorX: ds.anchorX, anchorY: ds.anchorY },
       });
     } else if (ds.mode === 'rotate') {
       // Compute angle from center of annotation to current pointer position
@@ -882,6 +898,22 @@ export function useSVGInteraction({
           obj.scaleY = 1;
           obj.left = newLeft;
           obj.top = newTop;
+        } else if (ds.originalProps.isPointsShape) {
+          // UX: polygon/polyline. `newLeft`/`newTop` are in visible-bbox space
+          // (the resize formula used bbox.left/top as the reference). Convert
+          // back to object-space so obj.left/top — through the SVG transform
+          // chain `translate(obj.left, obj.top) scale(sx, sy) translate(-pathOffset)`
+          // — lands the visible bbox at the target position. Derivation:
+          //   visibleLeft = obj.left + sx*(localMinX - pathOffsetX)
+          //   ⇒ obj.left = visibleLeft - sx*(localMinX - pathOffsetX)
+          // Scale is already clamped positive upstream (polygon does not
+          // support flip), so |newScaleX| === newScaleX here.
+          const sx = Math.abs(newScaleX);
+          const sy = Math.abs(newScaleY);
+          obj.scaleX = sx;
+          obj.scaleY = sy;
+          obj.left = newLeft - sx * (ds.originalProps.pointsLocalMinX - ds.originalProps.pointsPathOffsetX);
+          obj.top = newTop - sy * (ds.originalProps.pointsLocalMinY - ds.originalProps.pointsPathOffsetY);
         } else {
           // Bug #8: normalize flip to positive scale on commit. For rect/
           // circle/ellipse a mirrored shape is visually identical to a non-
@@ -1006,6 +1038,39 @@ export function useSVGInteraction({
     // Imported paths: derive position/size from bbox
     const imported = isImportedPath(obj);
 
+    // UX: polygon/polyline are treated like imported paths for resize purposes.
+    // Fabric doesn't reliably populate obj.width/height after a JSON round-trip
+    // (it computes them at construct-time but drops them during persistence),
+    // so rawWidth/height falls through to 0 and the resize formula's
+    // `originalProps.width !== 0` guard silently skips all scale updates —
+    // the visible symptom is the "resize handle does nothing" no-op bug.
+    // Also, obj.left for polygon is NOT the visible-bbox top-left; the SVG
+    // transform chain is `translate(obj.left, obj.top) scale(sx, sy)
+    // translate(-pathOffsetX, -pathOffsetY)`, so the visible bbox sits at
+    // `obj.left + sx*(minX - pathOffsetX)`. We scan the points once here to
+    // capture (a) the unscaled bbox size and (b) the local-space min corner
+    // + pathOffset so the commit branch can translate back to object-space.
+    const objType = String(obj.type || '').toLowerCase();
+    const isPointsShape = (objType === 'polygon' || objType === 'polyline')
+      && Array.isArray(obj.points) && obj.points.length > 0;
+    let pointsLocalMinX = 0, pointsLocalMinY = 0;
+    let pointsPathOffsetX = 0, pointsPathOffsetY = 0;
+    if (isPointsShape) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of obj.points) {
+        const px = typeof p?.x === 'number' ? p.x : 0;
+        const py = typeof p?.y === 'number' ? p.y : 0;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+      }
+      pointsLocalMinX = minX;
+      pointsLocalMinY = minY;
+      pointsPathOffsetX = obj.pathOffset?.x ?? 0;
+      pointsPathOffsetY = obj.pathOffset?.y ?? 0;
+    }
+
     // Raw unscaled dimensions — the value that, multiplied by newScaleX, gives
     // the new rendered width. Must match how the SVG renderer treats "raw" for
     // each type: rect/text use obj.width, circle uses radius*2, ellipse uses
@@ -1015,8 +1080,16 @@ export function useSVGInteraction({
     if (imported) {
       rawWidth = bbox.width;
       rawHeight = bbox.height;
+    } else if (isPointsShape) {
+      // Points-based shapes: bbox is already scaled (see getPointsBBox), so
+      // divide out the current scale to get the unscaled raw dimensions. If
+      // scale is zero for any reason, fall back to the points-scan delta.
+      const curSx = Math.abs(obj.scaleX ?? 1) || 1;
+      const curSy = Math.abs(obj.scaleY ?? 1) || 1;
+      rawWidth = bbox.width / curSx;
+      rawHeight = bbox.height / curSy;
     } else {
-      const type = String(obj.type || '').toLowerCase();
+      const type = objType;
       if (type === 'circle') {
         rawWidth = (obj.radius ?? 0) * 2;
         rawHeight = (obj.radius ?? 0) * 2;
@@ -1035,13 +1108,24 @@ export function useSVGInteraction({
       handleId,
       startSVGPoint: svgPoint,
       originalProps: {
-        left: imported ? bbox.left : (obj.left ?? 0),
-        top: imported ? bbox.top : (obj.top ?? 0),
+        // Imported + points-based shapes: use visible-bbox left/top so the
+        // resize formula (which produces a new left/top in visible-space)
+        // has a matching reference point. Commit branch translates back to
+        // object-space for polygon/polyline.
+        left: (imported || isPointsShape) ? bbox.left : (obj.left ?? 0),
+        top: (imported || isPointsShape) ? bbox.top : (obj.top ?? 0),
         scaleX: imported ? 1 : (obj.scaleX ?? 1),
         scaleY: imported ? 1 : (obj.scaleY ?? 1),
         angle: obj.angle ?? 0,
         width: rawWidth,
         height: rawHeight,
+        // Points-based shapes need these at commit time to convert the
+        // visible-space newLeft/newTop back to object-space obj.left/top.
+        isPointsShape,
+        pointsLocalMinX,
+        pointsLocalMinY,
+        pointsPathOffsetX,
+        pointsPathOffsetY,
       },
       annotationIndex: selectedIndex,
       ctmInverse,
