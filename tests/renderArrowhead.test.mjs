@@ -6,21 +6,14 @@
 // the legacy PAL createArrowhead max(12, sw*3) formula. Preserves pre-Phase-15
 // arrow visuals per UI-SPEC §D (Head-Size Formula Reconciliation).
 //
-// Plan 15-02 Task 1 will create `src/utils/lineRenderHelpers.js` exporting
-// `buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw)`. Until
-// then the file-level test.describe.skip wrapper below keeps these tests
-// green-skipped so the 113-test `npm test` baseline stays green.
-//
-// TODO Plan 15-02: un-skip by changing `test.describe.skip` to
-//   `test.describe` on the line below. The file-level wrapper is
-//   intentional — do NOT un-skip individual `test('...')` calls; flip
-//   the single describe.skip atomically.
+// Plan 15-02 un-skipped the file-level describe below — `src/utils/lineRenderHelpers.js`
+// now lands with this plan and exports `buildArrowheadRenderSpec`.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARROWHEAD_STYLES } from '../src/components/Callout/types.js';
 
-test.describe.skip('renderArrowhead (Plan 15-02 target — skipped until lineRenderHelpers.js lands)', async () => {
+test.describe('renderArrowhead (Plan 15-02 target)', async () => {
   const { buildArrowheadRenderSpec } = await import('../src/utils/lineRenderHelpers.js');
 
   test('NONE: returns { kind: "none" } and renders nothing', () => {

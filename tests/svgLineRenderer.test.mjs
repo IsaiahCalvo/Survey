@@ -9,21 +9,14 @@
 // runner verify the contract without needing to load .jsx modules (Phase 14
 // calloutRenderer.test.mjs precedent).
 //
-// Plan 15-02 Task 1 will create lineRenderHelpers.js. Until it exists,
-// the file-level test.describe.skip wrapper below keeps these tests
-// green-skipped so the 113-test `npm test` baseline stays green. The
-// dynamic `await import(...)` inside the describe body (not a top-level
-// import) means the module-not-found error does not fire while skipped.
-//
-// TODO Plan 15-02: un-skip by changing `test.describe.skip` to
-//   `test.describe` on the line below. The file-level wrapper is
-//   intentional — do NOT un-skip individual `test('...')` calls; flip
-//   the single describe.skip atomically.
+// Plan 15-02 un-skipped the file-level describe below — lineRenderHelpers.js
+// now lands with this plan. The dynamic `await import(...)` inside the
+// describe body still resolves at describe-execution time.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-test.describe.skip('svgLineRenderer (Plan 15-02 target — skipped until lineRenderHelpers.js lands)', async () => {
+test.describe('svgLineRenderer (Plan 15-02 target)', async () => {
   const { buildLineRenderSpec } = await import('../src/utils/lineRenderHelpers.js');
 
   test('buildLineRenderSpec: straight line (no data.midpoint) returns kind "straight" with line attrs (x1, y1, x2, y2, stroke, strokeWidth)', () => {
