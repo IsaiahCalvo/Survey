@@ -1458,6 +1458,254 @@ const SVGAnnotationLayer = memo(({
             );
           }
 
+          // UX: shape-tracing hover halos for polygon / polyline / rect /
+          // circle / ellipse. Each branch duplicates the shape's own geometry
+          // as a fat transparent-blue stroke so the halo hugs the outline
+          // instead of a bbox rectangle around it. Hit-area stays a bbox rect
+          // (unchanged from the old generic branch) so click-to-select
+          // behavior is identical. Width formula Math.max(6, sw + 4) matches
+          // the line-hover pattern at :1360-1369.
+          if ((objTypeLower === 'polygon' || objTypeLower === 'polyline')
+              && Array.isArray(renderObj.points) && renderObj.points.length > 0) {
+            const isPolygonShape = objTypeLower === 'polygon';
+            const pointsStr = renderObj.points
+              .map((p) => `${p?.x ?? 0},${p?.y ?? 0}`)
+              .join(' ');
+            const shapeLeft = renderObj.left ?? 0;
+            const shapeTop = renderObj.top ?? 0;
+            const shapeAngle = renderObj.angle ?? 0;
+            const shapeSx = renderObj.scaleX ?? 1;
+            const shapeSy = renderObj.scaleY ?? 1;
+            const shapePathOffsetX = renderObj.pathOffset?.x || 0;
+            const shapePathOffsetY = renderObj.pathOffset?.y || 0;
+            // Same transform chain as renderPolygon / renderPolyline.
+            let shapeTransform = `translate(${shapeLeft}, ${shapeTop})`;
+            if (shapeAngle !== 0) shapeTransform += ` rotate(${shapeAngle})`;
+            if (shapeSx !== 1 || shapeSy !== 1) shapeTransform += ` scale(${shapeSx}, ${shapeSy})`;
+            shapeTransform += ` translate(${-shapePathOffsetX}, ${-shapePathOffsetY})`;
+            const sw = renderObj.strokeWidth || 1;
+            const hitRotate = bbox.angle
+              ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})`
+              : undefined;
+            return (
+              <g>
+                {annotationIsHovered && (
+                  isPolygonShape ? (
+                    <polygon
+                      points={pointsStr}
+                      transform={shapeTransform}
+                      fill="none"
+                      stroke="#4a90e2"
+                      strokeOpacity={0.4}
+                      strokeWidth={Math.max(6, sw + 4)}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  ) : (
+                    <polyline
+                      points={pointsStr}
+                      transform={shapeTransform}
+                      fill="none"
+                      stroke="#4a90e2"
+                      strokeOpacity={0.4}
+                      strokeWidth={Math.max(6, sw + 4)}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  )
+                )}
+                <rect
+                  x={bbox.left}
+                  y={bbox.top}
+                  width={Math.max(bbox.width, 10)}
+                  height={Math.max(bbox.height, 10)}
+                  transform={hitRotate}
+                  fill="transparent"
+                  stroke="none"
+                  pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                  onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                  onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                  onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                  onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                />
+              </g>
+            );
+          }
+
+          if (objTypeLower === 'rect') {
+            // Rect hover: fat stroked rectangle tracing the shape's own edges.
+            // Dims come straight from the renderRect formula (renderObj.width
+            // * scaleX, etc.) so the halo aligns to the drawn rect, not the
+            // bbox AABB (they coincide for non-rotated rects; for rotated
+            // rects the rect renders with its own rotate transform).
+            const rectW = Math.abs((renderObj.width || 0) * (renderObj.scaleX || 1));
+            const rectH = Math.abs((renderObj.height || 0) * (renderObj.scaleY || 1));
+            const rectL = renderObj.left || 0;
+            const rectT = renderObj.top || 0;
+            const rectCX = rectL + rectW / 2;
+            const rectCY = rectT + rectH / 2;
+            const sw = renderObj.strokeWidth || 1;
+            const rectRotate = renderObj.angle
+              ? `rotate(${renderObj.angle}, ${rectCX}, ${rectCY})`
+              : undefined;
+            const hitRotate = bbox.angle
+              ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})`
+              : undefined;
+            return (
+              <g>
+                {annotationIsHovered && (
+                  <rect
+                    x={rectL}
+                    y={rectT}
+                    width={rectW}
+                    height={rectH}
+                    transform={rectRotate}
+                    fill="none"
+                    stroke="#4a90e2"
+                    strokeOpacity={0.4}
+                    strokeWidth={Math.max(6, sw + 4)}
+                    strokeLinejoin="round"
+                    vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                <rect
+                  x={bbox.left}
+                  y={bbox.top}
+                  width={Math.max(bbox.width, 10)}
+                  height={Math.max(bbox.height, 10)}
+                  transform={hitRotate}
+                  fill="transparent"
+                  stroke="none"
+                  pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                  onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                  onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                  onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                  onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                />
+              </g>
+            );
+          }
+
+          if (objTypeLower === 'circle' || objTypeLower === 'ellipse') {
+            // Ellipse/circle hover: fat stroked ellipse at the same cx/cy/rx/ry
+            // as renderEllipse. Circle uses radius*scale; ellipse uses rx/ry*scale.
+            let rx;
+            let ry;
+            if (objTypeLower === 'circle' || renderObj.radius != null) {
+              rx = (renderObj.radius || 0) * Math.abs(renderObj.scaleX || 1);
+              ry = (renderObj.radius || 0) * Math.abs(renderObj.scaleY || 1);
+            } else {
+              rx = (renderObj.rx || 0) * Math.abs(renderObj.scaleX || 1);
+              ry = (renderObj.ry || 0) * Math.abs(renderObj.scaleY || 1);
+            }
+            const cx = (renderObj.left || 0) + rx;
+            const cy = (renderObj.top || 0) + ry;
+            const sw = renderObj.strokeWidth || 1;
+            const ellipseRotate = renderObj.angle
+              ? `rotate(${renderObj.angle}, ${cx}, ${cy})`
+              : undefined;
+            const hitRotate = bbox.angle
+              ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})`
+              : undefined;
+            return (
+              <g>
+                {annotationIsHovered && (
+                  <ellipse
+                    cx={cx}
+                    cy={cy}
+                    rx={rx}
+                    ry={ry}
+                    transform={ellipseRotate}
+                    fill="none"
+                    stroke="#4a90e2"
+                    strokeOpacity={0.4}
+                    strokeWidth={Math.max(6, sw + 4)}
+                    vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                <rect
+                  x={bbox.left}
+                  y={bbox.top}
+                  width={Math.max(bbox.width, 10)}
+                  height={Math.max(bbox.height, 10)}
+                  transform={hitRotate}
+                  fill="transparent"
+                  stroke="none"
+                  pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                  onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                  onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                  onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                  onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                />
+              </g>
+            );
+          }
+
+          if (objTypeLower === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
+            // UX: pen-stroke hover halo traces the actual stroke geometry
+            // (soft blue glow along the squiggle), not the surrounding bbox
+            // rectangle — matches the line hover pattern above at :1360-1369.
+            // A bbox-rect halo around a freehand stroke looks disconnected
+            // from the shape. Hit-area stays as the bbox rect (same behavior
+            // as before this change) so click target is unchanged; only the
+            // visual glow is stroke-shaped.
+            const pathD = renderObj.path.map((seg) => seg.join(' ')).join(' ');
+            const pathLeft = renderObj.left ?? 0;
+            const pathTop = renderObj.top ?? 0;
+            const pathAngle = renderObj.angle ?? 0;
+            const pathScaleX = renderObj.scaleX ?? 1;
+            const pathScaleY = renderObj.scaleY ?? 1;
+            const pathOffsetX = renderObj.pathOffset?.x || 0;
+            const pathOffsetY = renderObj.pathOffset?.y || 0;
+            // Same transform chain as renderPath in svgAnnotationRenderers.jsx:72-75.
+            let pathTransform = `translate(${pathLeft}, ${pathTop})`;
+            if (pathAngle !== 0) pathTransform += ` rotate(${pathAngle})`;
+            if (pathScaleX !== 1 || pathScaleY !== 1) pathTransform += ` scale(${pathScaleX}, ${pathScaleY})`;
+            pathTransform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
+            const sw = renderObj.strokeWidth || 1;
+            return (
+              <g>
+                {annotationIsHovered && (
+                  <path
+                    d={pathD}
+                    transform={pathTransform}
+                    stroke="#4a90e2"
+                    strokeOpacity={0.4}
+                    // UX: match line-hover width formula — Math.max(6, sw + 4).
+                    // Ensures thin strokes still get a visible halo floor.
+                    strokeWidth={Math.max(6, sw + 4)}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                {/* Bbox hit area — unchanged from generic branch. Keeps the
+                    click target identical so hover-swap is purely visual. */}
+                <rect
+                  x={bbox.left}
+                  y={bbox.top}
+                  width={Math.max(bbox.width, 10)}
+                  height={Math.max(bbox.height, 10)}
+                  fill="transparent"
+                  stroke="none"
+                  pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                  onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                  onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                  onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                  onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                />
+              </g>
+            );
+          }
+
           return (
             <g transform={bbox.angle ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})` : undefined}>
               {/* Hover outline (shown before click, not when already selected) */}
