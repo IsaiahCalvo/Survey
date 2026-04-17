@@ -1374,6 +1374,12 @@ export function useSVGInteraction({
     // Selection state
     selectedIds,
     hoveredId,
+    // UX: exposed so App.jsx can drive pan-mode hover glow via pendingHover
+    // prop. Mirrors the selectAnnotation/pendingSelection pattern — App.jsx
+    // owns the document-level mousemove + resolveAnnotationAt hit-test, this
+    // layer just renders the glow when told. Select-mode hover still uses
+    // the internal onPointerEnter/Leave path.
+    setHoveredId,
     inverseScale,
     interactionState,
     visualTransform,
