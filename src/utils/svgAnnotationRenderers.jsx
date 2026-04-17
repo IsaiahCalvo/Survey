@@ -23,6 +23,44 @@ import {
   buildLineRenderSpec,
   buildArrowheadRenderSpec,
 } from './lineRenderHelpers.js';
+// Fill-bleed diagnostics (2026-04-16). Off by default; the wrapper calls are
+// cheap no-ops when disabled. Toggle in DevTools console:
+//   __shapeSpyOn()  __shapeSpyOff()  __captureAllShapes()
+// Cmd/Ctrl+Shift+click on a shape (with spy on) captures it to disk.
+// See src/utils/shapeBleedDiagnostics.js for details.
+import {
+  logShapeRender as __logShapeRender,
+  captureShape as __captureShape,
+} from './shapeBleedDiagnostics';
+
+const __shapeClick = (e) => __captureShape(e.currentTarget, e);
+
+/**
+ * UX fix (2026-04-16): "fill bleeds past border" on Square/Circle/Polygon
+ * annotations.
+ *
+ * SVG strokes are centered on the shape edge by default — half paints inside
+ * the shape, half paints outside. The outside half is a strokeWidth/2-wide
+ * ring that extends past the shape's geometric edge. When the border color
+ * has the same tone as the fill (e.g. PDF /C and /IC both set with /CA
+ * opacity baked in, so both colors are rgba(..., 0.3)), that outer ring is
+ * visually indistinguishable from the fill — the user perceives the fill as
+ * "bleeding" past where the border sits.
+ *
+ * Fix: clip the shape to its own geometric outline. The clip path mirrors the
+ * shape exactly (same coords + transform). The fill is unaffected (fill is
+ * already inside the shape). The inner half of the stroke is kept. The outer
+ * half of the stroke is removed by the clip.
+ *
+ * Side effect: visible stroke width is effectively halved (inner half only).
+ * Acceptable trade — the user's original complaint was the bleed, not the
+ * thickness. If thickness becomes a problem we can compensate by doubling
+ * strokeWidth before rendering.
+ *
+ * Only called when strokeWidth > 0 — no point clipping a shape without a
+ * border, and skipping the clip keeps the DOM smaller for the common case.
+ */
+const shouldInsetStroke = (obj) => Number(obj?.strokeWidth) > 0;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -119,21 +157,52 @@ export const renderRect = (obj, index) => {
   const isHighlight = obj.globalCompositeOperation === 'multiply';
 
   const key = `rect-${obj.id || obj.highlightId || index}`;
+  const shapeId = obj.id || obj.pdfAnnotationId || obj.highlightId || key;
+  __logShapeRender(obj, 'rect');
 
-  return (
+  const rotateTransform = obj.angle
+    ? `rotate(${obj.angle}, ${obj.left + effectiveWidth / 2}, ${obj.top + effectiveHeight / 2})`
+    : undefined;
+  const inset = !isHighlight && shouldInsetStroke(obj);
+  const clipId = inset ? `clip-${shapeId}` : undefined;
+
+  const rectEl = (
     <rect
-      key={key}
       x={obj.left}
       y={obj.top}
       width={effectiveWidth}
       height={effectiveHeight}
-      transform={obj.angle ? `rotate(${obj.angle}, ${obj.left + effectiveWidth / 2}, ${obj.top + effectiveHeight / 2})` : undefined}
+      transform={rotateTransform}
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
       opacity={obj.opacity ?? 1}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+      clipPath={clipId ? `url(#${clipId})` : undefined}
+      data-shape-id={shapeId}
+      data-shape-kind="rect"
+      onClick={__shapeClick}
     />
+  );
+
+  if (!inset) return React.cloneElement(rectEl, { key });
+
+  // UX: clipPath mirrors the visible rect exactly so only the inner half of
+  // the stroke paints. Outer half is clipped → border sits flush with the
+  // shape edge, no pink sliver poking past it. See shouldInsetStroke doc.
+  return (
+    <g key={key}>
+      <clipPath id={clipId}>
+        <rect
+          x={obj.left}
+          y={obj.top}
+          width={effectiveWidth}
+          height={effectiveHeight}
+          transform={rotateTransform}
+        />
+      </clipPath>
+      {rectEl}
+    </g>
   );
 };
 
@@ -350,7 +419,16 @@ export const renderPolygon = (obj, index) => {
 
   const isHighlight = obj.globalCompositeOperation === 'multiply';
   const key = `polygon-${obj.id || obj.pdfAnnotationId || index}`;
+  const shapeId = obj.id || obj.pdfAnnotationId || key;
+  __logShapeRender(obj, 'polygon');
 
+  // 2026-04-17: inset-clip disabled for polygon — the clipPath + polygon +
+  // nested-translate transform combination renders as invisible in Chromium
+  // even when wrapped in <g transform>. The fill-bleed fix (2026-04-16) is
+  // restored here to the pre-clip state so PDF-imported polygons remain
+  // visible. Re-apply a stroke-inset fix for polygons via a different
+  // mechanism (e.g. pre-transformed absolute points, or paint-order + fill
+  // + transparent stroke) once a non-clipPath approach is proven.
   return (
     <polygon
       key={key}
@@ -362,6 +440,9 @@ export const renderPolygon = (obj, index) => {
       opacity={obj.opacity ?? 1}
       strokeLinejoin="round"
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+      data-shape-id={shapeId}
+      data-shape-kind="polygon"
+      onClick={__shapeClick}
     />
   );
 };
@@ -411,6 +492,8 @@ export const renderPolyline = (obj, index) => {
   const fill = !rawFill || rawFill === 'transparent' ? 'none' : rawFill;
 
   const key = `polyline-${obj.id || obj.pdfAnnotationId || index}`;
+  const shapeId = obj.id || obj.pdfAnnotationId || key;
+  __logShapeRender(obj, 'polyline');
 
   return (
     <polyline
@@ -423,6 +506,9 @@ export const renderPolyline = (obj, index) => {
       opacity={obj.opacity ?? 1}
       strokeLinecap="round"
       strokeLinejoin="round"
+      data-shape-id={shapeId}
+      data-shape-kind="polyline"
+      onClick={__shapeClick}
     />
   );
 };
@@ -453,21 +539,43 @@ export const renderEllipse = (obj, index) => {
 
   const key = `ellipse-${obj.id || index}`;
   const isHighlight = obj.globalCompositeOperation === 'multiply';
+  const shapeId = obj.id || obj.pdfAnnotationId || key;
+  __logShapeRender(obj, 'ellipse');
 
-  return (
+  const rotateTransform = obj.angle ? `rotate(${obj.angle}, ${cx}, ${cy})` : undefined;
+  const inset = !isHighlight && shouldInsetStroke(obj);
+  const clipId = inset ? `clip-${shapeId}` : undefined;
+
+  const ellEl = (
     <ellipse
-      key={key}
       cx={cx}
       cy={cy}
       rx={rx}
       ry={ry}
-      transform={obj.angle ? `rotate(${obj.angle}, ${cx}, ${cy})` : undefined}
+      transform={rotateTransform}
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
       opacity={obj.opacity ?? 1}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+      clipPath={clipId ? `url(#${clipId})` : undefined}
+      data-shape-id={shapeId}
+      data-shape-kind="ellipse"
+      onClick={__shapeClick}
     />
+  );
+
+  if (!inset) return React.cloneElement(ellEl, { key });
+
+  // UX: clip the ellipse to its own outline so the stroke's outer half is
+  // removed. See shouldInsetStroke doc.
+  return (
+    <g key={key}>
+      <clipPath id={clipId}>
+        <ellipse cx={cx} cy={cy} rx={rx} ry={ry} transform={rotateTransform} />
+      </clipPath>
+      {ellEl}
+    </g>
   );
 };
 
@@ -593,7 +701,7 @@ export const renderText = (obj, index) => {
  * @param {Function} calculateConnection - calculateCalloutConnection function
  * @returns {React.ReactElement|null}
  */
-export const renderCallout = (callout, index, pageSize, calculateConnection) => {
+export const renderCallout = (callout, index, pageSize, calculateConnection, hideText = false, liveBounds = null) => {
   if (!callout || !callout.arrowTip || !callout.knee) return null;
   const { width: pageWidth = 0, height: pageHeight = 0 } = pageSize || {};
 
@@ -606,17 +714,33 @@ export const renderCallout = (callout, index, pageSize, calculateConnection) => 
     x: callout.knee.x * pageWidth,
     y: callout.knee.y * pageHeight,
   };
-  const textBox = {
+  // UX: Phase 15 UAT-2 — when editing this callout, liveBounds carries the
+  // page-space textbox bounds from Fabric.Textbox (updated on every 'changed'
+  // event). Using live bounds for calculateConnection makes line1 retract to
+  // the live edge as the textbox auto-grows, preventing the visible
+  // disconnect users saw while typing. liveBounds is null when not editing,
+  // or when App.jsx hasn't yet received the first changed event. Falls back
+  // to the stored normalized dims so initial paint before any edit still works.
+  const textBox = liveBounds ? {
+    x: liveBounds.left,
+    y: liveBounds.top,
+    width: Math.max(18, liveBounds.width),
+    height: Math.max(18, liveBounds.height),
+  } : {
     x: (callout.textBoxPosition?.x ?? callout.textBox?.x ?? 0) * pageWidth,
     y: (callout.textBoxPosition?.y ?? callout.textBox?.y ?? 0) * pageHeight,
     width: Math.max(18, (callout.textBoxWidth ?? callout.textBox?.width ?? 0.1) * pageWidth),
     height: Math.max(18, (callout.textBoxHeight ?? callout.textBox?.height ?? 0.05) * pageHeight),
   };
 
-  // Style extraction (same defaults and clamps as pre-Phase-14 version)
-  const lineColor = callout.style?.borderColor || callout.style?.lineColor || '#4A90E2';
+  // Style extraction. Phase 15 UAT-2 (2026-04-17): defaults aligned with
+  // Fabric edit overlay so view and edit render identically without a user
+  // style override. lineColor default '#1e293b' matches defaultCalloutStyle
+  // (types.js :116) + calloutEditAdapter toFabricGroup stroke (:92). fillColor
+  // default 'transparent' matches Fabric textbox backgroundColor: '' (:171).
+  const lineColor = callout.style?.borderColor || callout.style?.lineColor || '#1e293b';
   const lineThickness = Math.max(1, callout.style?.lineThickness || 2);
-  const fillColor = callout.style?.fillColor || 'rgba(255, 255, 255, 0.22)';
+  const fillColor = callout.style?.fillColor || 'transparent';
   const fillOpacity = Math.max(0.08, Math.min(1, callout.style?.fillOpacity ?? 0.4));
   const borderOpacity = Math.max(0.2, Math.min(1, callout.style?.borderOpacity ?? 1));
   // UX: single-name fontFamily prevents Fabric.js cursor drift (see CLAUDE.md
@@ -628,6 +752,37 @@ export const renderCallout = (callout, index, pageSize, calculateConnection) => 
     textBox.x, textBox.y, textBox.width, textBox.height,
     knee, arrowTip, lineThickness
   );
+
+  // [CALLOUT-DIAG] Phase 15 UAT-2 diagnostic — full per-render dump every call.
+  // Stage A (initial render) + Stage B (edit-entry render when hideText flips)
+  // + Stage C (keystroke re-render with live bounds) all captured here.
+  // Remove after live-grow + line1 retraction bug is closed.
+  try {
+    // eslint-disable-next-line no-console
+    console.log('[CALLOUT-DIAG] renderCallout', JSON.stringify({
+      t: Date.now(),
+      calloutId: callout.id,
+      hideText,
+      hasLiveBounds: !!liveBounds,
+      liveBounds: liveBounds || null,
+      storedNormalized: {
+        textBoxPosition: callout.textBoxPosition,
+        textBoxWidth: callout.textBoxWidth,
+        textBoxHeight: callout.textBoxHeight,
+        arrowTip: callout.arrowTip,
+        knee: callout.knee,
+      },
+      style: callout.style,
+      text: (callout.text || '').slice(0, 60),
+      finalTextBox: textBox,
+      pageKnee: knee,
+      pageArrowTip: arrowTip,
+      lineColor,
+      lineThickness,
+      fillColor,
+      connection,
+    }));
+  } catch (_e) { /* diag-only */ }
 
   const key = `callout-${callout.id || index}`;
 
@@ -685,63 +840,76 @@ export const renderCallout = (callout, index, pageSize, calculateConnection) => 
         r={Math.max(2, lineThickness + 0.4)}
         fill={lineColor}
       />
-      {/* Text box rect */}
-      <rect
-        // UX: data-callout-part='textBox' — Phase 14 drag target + Phase 17
-        // collision clamp hit-test surface. (CALL-10)
-        data-callout-part="textBox"
-        x={textBox.x}
-        y={textBox.y}
-        width={textBox.width}
-        height={textBox.height}
-        fill={fillColor}
-        fillOpacity={fillOpacity}
-        stroke={lineColor}
-        strokeWidth={Math.max(1, lineThickness * 0.7)}
-        rx={4}
-        ry={4}
-        vectorEffect="non-scaling-stroke"
-      />
-      {/* Text foreignObject — always rendered so the data-callout-part='text'
-          hit-test surface exists for double-click edit-mode entry, even when
-          the callout's text is empty (renders as a blank div). */}
-      <foreignObject
-        // UX: data-callout-part='text' — double-click edit-mode entry hit-test
-        // surface. Phase 14 Area 2c dispatches onRequestEditMode(id, 'callout')
-        // when this element is double-clicked. (CALL-10)
-        data-callout-part="text"
-        x={textBox.x}
-        y={textBox.y}
-        width={textBox.width}
-        height={textBox.height}
-        overflow="visible"
-      >
-        <div
-          xmlns="http://www.w3.org/1999/xhtml"
-          // UX: inner div style mirrors renderText at :457. Single-name
-          // fontFamily prevents Fabric.js cursor drift (CLAUDE.md 2026-04-08
-          // gotcha). antialiased + grayscale smoothing matches renderText
-          // visual parity. (CALL-10)
-          style={{
-            width: '100%',
-            height: '100%',
-            fontSize: `${callout.style?.fontSize || 12}px`,
-            fontFamily: safeFontFamily,
-            color: callout.style?.fontColor || callout.style?.textColor || '#000',
-            overflow: 'visible',
-            wordWrap: 'break-word',
-            whiteSpace: 'pre-wrap',
-            boxSizing: 'border-box',
-            padding: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            WebkitFontSmoothing: 'antialiased',
-            MozOsxFontSmoothing: 'grayscale',
-          }}
-        >
-          {callout.text || ''}
-        </div>
-      </foreignObject>
+      {/* Text box rect + text foreignObject — rendered as a pair when
+          hideText=false. Both hide together when the callout is being edited
+          (hideText=true): FabricEditCanvas mounts a Fabric.Textbox over the
+          bbox that carries its own stroke/rx/ry (see calloutEditAdapter.js
+          toFabricGroup post-Phase-15-UAT-2), so a static SVG rect below would
+          double up with the edit overlay's border. Phase 15 UAT-2 (2026-04-17):
+          rect + foreignObject share source-of-truth with the Fabric Textbox
+          during edit, so the unified textbox-IS-the-box model preserves the
+          auto-sized growth the user sees while typing. */}
+      {!hideText && (
+        <>
+          <rect
+            // UX: data-callout-part='textBox' — Phase 14 drag target + Phase 17
+            // collision clamp hit-test surface. (CALL-10)
+            data-callout-part="textBox"
+            x={textBox.x}
+            y={textBox.y}
+            width={textBox.width}
+            height={textBox.height}
+            fill={fillColor}
+            fillOpacity={fillOpacity}
+            stroke={lineColor}
+            strokeWidth={Math.max(1, lineThickness * 0.7)}
+            rx={0}
+            ry={0}
+            vectorEffect="non-scaling-stroke"
+          />
+          <foreignObject
+            // UX: data-callout-part='text' — double-click edit-mode entry
+            // hit-test surface. Phase 14 Area 2c dispatches
+            // onRequestEditMode(id, 'callout') when this is double-clicked.
+            // (CALL-10)
+            data-callout-part="text"
+            x={textBox.x}
+            y={textBox.y}
+            width={textBox.width}
+            height={textBox.height}
+            overflow="visible"
+          >
+            <div
+              xmlns="http://www.w3.org/1999/xhtml"
+              // UX: inner div style mirrors renderText at :457. Single-name
+              // fontFamily prevents Fabric.js cursor drift (CLAUDE.md 2026-04-08
+              // gotcha). antialiased + grayscale smoothing matches renderText
+              // visual parity. (CALL-10)
+              //
+              // Phase 15 UAT-2 (2026-04-17): padding dropped to 0 so SVG view
+              // text position matches the Fabric edit overlay's flush-left
+              // default — prevents the "text jump" a user saw when entering
+              // edit mode under the old +8/+4 offset model.
+              style={{
+                width: '100%',
+                height: '100%',
+                fontSize: `${callout.style?.fontSize || 12}px`,
+                fontFamily: safeFontFamily,
+                color: callout.style?.fontColor || callout.style?.textColor || '#000',
+                overflow: 'visible',
+                wordWrap: 'break-word',
+                whiteSpace: 'pre-wrap',
+                boxSizing: 'border-box',
+                padding: 0,
+                WebkitFontSmoothing: 'antialiased',
+                MozOsxFontSmoothing: 'grayscale',
+              }}
+            >
+              {callout.text || ''}
+            </div>
+          </foreignObject>
+        </>
+      )}
     </g>
   );
 };

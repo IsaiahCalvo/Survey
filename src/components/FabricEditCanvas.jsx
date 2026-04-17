@@ -875,6 +875,20 @@ const FabricEditCanvas = memo(({
   // number-input enabled/disabled state (only editable when groupSize === 1).
   // 0 / undefined for non-counter shapes.
   counterGroupSize,
+  // Phase 15 UAT-2 — parameterize the edit-mode container outline color so
+  // callout edits can match the callout's own border color (view/edit parity).
+  // Defaults to '#000' to preserve the existing text-edit visual. Applied at
+  // all 5 hardcoded outline sites: new-text reveal (direct DOM + React state),
+  // existing-text reveal (direct DOM + React state), and zoom-settle resync.
+  outlineColor = '#000',
+  // Phase 15 UAT-2 — live text-bounds broadcast during callout edit. Fires
+  // on every Fabric Textbox 'changed' event with page-space bounds
+  // { left, top, width, height }. App.jsx feeds this back into SVGAnnotationLayer
+  // so line1 retracts to the live textbox edge as the box auto-grows, instead
+  // of attaching to the stale edge computed at edit-mode entry. Only wired for
+  // callout edits (App.jsx checks editingAnnotation.reactCalloutId before
+  // passing this prop). Optional — safe no-op for plain text edits.
+  onLiveTextGrow,
 }) => {
   // -------------------------------------------------------------------------
   // State
@@ -1359,6 +1373,13 @@ const FabricEditCanvas = memo(({
         fontWeight: 'normal',
         styles: {},
         charSpacing: 0,
+        // Default 1px black border on brand-new textboxes created via edit
+        // mode so they read as a distinct "text box" out of the box. Mirrors
+        // FabricTextCanvas.jsx default. Future mini-toolbar will let users
+        // toggle border / fill / font / alignment per textbox.
+        stroke: '#000000',
+        strokeWidth: 1,
+        strokeUniform: true,
         editable: true,
         selectable: true,
         evented: true,
@@ -1416,7 +1437,7 @@ const FabricEditCanvas = memo(({
         c.style.width = neededW + 'px';
         c.style.height = neededH + 'px';
         c.style.visibility = 'visible';
-        c.style.outline = '1px solid #000';
+        c.style.outline = `1px solid ${outlineColor}`;
         // Inset the outline by BBOX_PADDING*es on each side so it matches the tight
         // SVG rect position (which draws at textW x textH without any padding).
         // Wrapper size is (textW+40)*es, outline inset by 20*es = visible outline at
@@ -1430,7 +1451,7 @@ const FabricEditCanvas = memo(({
           width: neededW,
           height: neededH,
           visibility: 'visible',
-          outline: '1px solid #000',
+          outline: `1px solid ${outlineColor}`,
           outlineOffset: `-${BBOX_PADDING * es}px`,
           backgroundColor: 'transparent',
         }));
@@ -1531,7 +1552,7 @@ const FabricEditCanvas = memo(({
           c.style.width = neededW + 'px';
           c.style.height = neededH + 'px';
           c.style.visibility = 'visible';
-          c.style.outline = '1px solid #000';
+          c.style.outline = `1px solid ${outlineColor}`;
           // Inset outline by padding*es to match the tight SVG rect position.
           // See new-text reveal path for full explanation.
           c.style.outlineOffset = `-${BBOX_PADDING * es}px`;
@@ -1541,7 +1562,7 @@ const FabricEditCanvas = memo(({
             width: neededW,
             height: neededH,
             visibility: 'visible',
-            outline: '1px solid #000',
+            outline: `1px solid ${outlineColor}`,
             outlineOffset: `-${BBOX_PADDING * es}px`,
             backgroundColor: 'transparent',
           }));
@@ -1556,10 +1577,115 @@ const FabricEditCanvas = memo(({
           const naturalH = textObj.calcTextHeight();
           const storedH2 = originalAnnotationRef.current?.height || 0;
           const effectiveH = Math.max(naturalH, storedH2);
-          const h = (effectiveH + BBOX_PADDING * 2) * es + 8;
+          // UX: edit box must stay the same size on first keystroke as on
+          // edit-enter — the sibling formula above (line ~1534) has no +8 buffer,
+          // so adding one here made the box visibly jump on the first letter and
+          // left the connector line anchored inside the (now-taller) outline.
+          const h = (effectiveH + BBOX_PADDING * 2) * es;
           const newH = Math.max(Math.round(30 * es), Math.ceil(h));
           canvas.setDimensions({ height: newH });
           containerRef.current.style.height = newH + 'px';
+          // UX: Phase 15 UAT-2 — broadcast live page-space bounds to App.jsx
+          // so callout line1 retracts to the live textbox edge while typing.
+          // bboxOriginRef.current holds the page-space origin the textbox was
+          // loaded from; the textbox width is fixed for wrapping; height grows
+          // via the same max(natural, stored) rule above.
+          if (onLiveTextGrow && bboxOriginRef.current) {
+            const pageW = (textObj.width || 0) * (textObj.scaleX || 1);
+            const bounds = {
+              left: bboxOriginRef.current.left || 0,
+              top: bboxOriginRef.current.top || 0,
+              width: pageW,
+              height: effectiveH,
+            };
+            // [CALLOUT-DIAG] Phase 15 UAT-2 diagnostic — MAX depth. Captures
+            // every dimension source (Fabric state, DOM rects, canvas dims,
+            // upper/lower canvas pixel sizes, bounding rects, SVG live rects)
+            // so we can cross-check where the visible growth actually lives.
+            try {
+              const c = containerRef.current;
+              const cRect = c ? c.getBoundingClientRect() : null;
+              const lowerCanvas = c ? c.querySelector('.lower-canvas') : null;
+              const upperCanvas = c ? c.querySelector('.upper-canvas') : null;
+              const textarea = c ? c.querySelector('.fabric-hidden-textarea, textarea') : null;
+              const bbox = textObj.getBoundingRect ? textObj.getBoundingRect(true, true) : null;
+              // SVG DOM rects of the same callout (hidden text path still renders
+              // line1/line2/arrowTip; rect+foreignObject skipped because hideText=true)
+              let svgRootRect = null, svgLine1Rect = null, svgLine2Rect = null, svgRectRect = null, svgFoRect = null;
+              if (typeof document !== 'undefined') {
+                const svgRoot = document.querySelector('g[data-callout-id]');
+                if (svgRoot) {
+                  svgRootRect = svgRoot.getBoundingClientRect();
+                  const l1 = svgRoot.querySelector('[data-callout-part="line1"]');
+                  const l2 = svgRoot.querySelector('[data-callout-part="line2"]');
+                  const r = svgRoot.querySelector('[data-callout-part="textBox"]');
+                  const fo = svgRoot.querySelector('foreignObject[data-callout-part="text"]');
+                  if (l1) svgLine1Rect = l1.getBoundingClientRect();
+                  if (l2) svgLine2Rect = l2.getBoundingClientRect();
+                  if (r) svgRectRect = r.getBoundingClientRect();
+                  if (fo) svgFoRect = fo.getBoundingClientRect();
+                }
+              }
+              console.log('[CALLOUT-DIAG] textbox.changed', JSON.stringify({
+                t: Date.now(),
+                textContent: (textObj.text || '').slice(0, 80),
+                charCount: (textObj.text || '').length,
+                lineCount: textObj._textLines ? textObj._textLines.length : null,
+                textLines: textObj._textLines ? textObj._textLines.map(l => Array.isArray(l) ? l.join('') : String(l)).slice(0, 10) : null,
+                fabric: {
+                  rawWidth: textObj.width,
+                  rawHeight: textObj.height,
+                  scaleX: textObj.scaleX,
+                  scaleY: textObj.scaleY,
+                  scaledWidth: textObj.getScaledWidth ? textObj.getScaledWidth() : null,
+                  scaledHeight: textObj.getScaledHeight ? textObj.getScaledHeight() : null,
+                  calcTextHeight: naturalH,
+                  lineHeight: textObj.lineHeight,
+                  fontSize: textObj.fontSize,
+                  fontSizeMult: textObj._fontSizeMult,
+                  charSpacing: textObj.charSpacing,
+                  left: textObj.left,
+                  top: textObj.top,
+                  boundingRect_abs: bbox,
+                },
+                computed: {
+                  storedH: storedH2,
+                  effectiveH,
+                  wrapperH_px: newH,
+                  canvasZoom_es: es,
+                },
+                canvasDom: {
+                  width: canvas.width,
+                  height: canvas.height,
+                  lowerCanvas_w: lowerCanvas?.width,
+                  lowerCanvas_h: lowerCanvas?.height,
+                  lowerCanvas_offsetW: lowerCanvas?.offsetWidth,
+                  lowerCanvas_offsetH: lowerCanvas?.offsetHeight,
+                  upperCanvas_w: upperCanvas?.width,
+                  upperCanvas_h: upperCanvas?.height,
+                  textarea_rect: textarea ? { w: textarea.offsetWidth, h: textarea.offsetHeight } : null,
+                },
+                containerDom: {
+                  offsetW: c?.offsetWidth,
+                  offsetH: c?.offsetHeight,
+                  styleW: c?.style?.width,
+                  styleH: c?.style?.height,
+                  rect: cRect ? { x: cRect.x, y: cRect.y, w: cRect.width, h: cRect.height } : null,
+                  outline: c?.style?.outline,
+                },
+                svgDom: {
+                  root: svgRootRect ? { x: svgRootRect.x, y: svgRootRect.y, w: svgRootRect.width, h: svgRootRect.height } : null,
+                  rect: svgRectRect ? { x: svgRectRect.x, y: svgRectRect.y, w: svgRectRect.width, h: svgRectRect.height } : null,
+                  foreignObject: svgFoRect ? { x: svgFoRect.x, y: svgFoRect.y, w: svgFoRect.width, h: svgFoRect.height } : null,
+                  line1: svgLine1Rect ? { x: svgLine1Rect.x, y: svgLine1Rect.y, w: svgLine1Rect.width, h: svgLine1Rect.height } : null,
+                  line2: svgLine2Rect ? { x: svgLine2Rect.x, y: svgLine2Rect.y, w: svgLine2Rect.width, h: svgLine2Rect.height } : null,
+                },
+                bboxOrigin: bboxOriginRef.current,
+                broadcastedBounds: bounds,
+              }));
+            } catch (_e) { console.log('[CALLOUT-DIAG] log error', _e?.message); }
+            onLiveTextGrow(bounds);
+          }
         });
       });
     }
@@ -2363,7 +2489,7 @@ const FabricEditCanvas = memo(({
               pointerEvents: 'auto',
               // Preserve tight outline-offset for text during zoom settle re-sync
               ...(isText ? {
-                outline: '1px solid #000',
+                outline: `1px solid ${outlineColor}`,
                 outlineOffset: `-${BBOX_PADDING * effectiveScale}px`,
                 backgroundColor: 'transparent',
                 visibility: 'visible',

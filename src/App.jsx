@@ -23,6 +23,7 @@ import PageAnnotationLayer, { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from '.
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
+import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import {
   renumberCounters,
@@ -10889,6 +10890,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => window.removeEventListener('pointermove', trackPointer);
   }, []);
 
+  // UX: ref bridge for pasteAnnotationAt (declared far below, after
+  // handleSaveAnnotations). The keydown useEffect at ~line 24020 needs to
+  // call it for Cmd+V, but the useCallback can't be declared above
+  // handleSaveAnnotations without a TDZ crash on its dep array. Using a ref
+  // lets the keydown handler read pasteAnnotationAt at call time instead of
+  // capturing it in the useEffect's dep array.
+  const pasteAnnotationAtRef = useRef(null);
+
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
   const activeToolRef = useRef('pan');
@@ -10935,6 +10944,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Edit mode state: tracks which annotation is being edited via double-click
   // { pageNumber, index, type, editType ('text'|'shape'|'callout'), data }
   const [editingAnnotation, setEditingAnnotation] = useState(null);
+  // UX: Phase 15 UAT-2 — live page-space bounds of the callout textbox during
+  // edit. Updated on every FabricEditCanvas onLiveTextGrow fire (Fabric Textbox
+  // 'changed' event). Null when no callout is being edited. SVGAnnotationLayer
+  // reads this via the liveCalloutEditBounds prop and forwards to renderCallout
+  // so line1 retracts to the live edge as the textbox auto-grows during typing.
+  // Cleared automatically when editingAnnotation becomes null or changes id.
+  const [liveCalloutEditBounds, setLiveCalloutEditBounds] = useState(null);
+  useEffect(() => {
+    // Reset live bounds when exiting edit mode or switching to a different
+    // callout. Prevents stale bounds from lingering after commit/cancel.
+    if (!editingAnnotation?.reactCalloutId) {
+      setLiveCalloutEditBounds(null);
+    }
+  }, [editingAnnotation?.reactCalloutId]);
   const editModeCooldownRef = useRef(0); // timestamp — prevents re-entering edit mode immediately after dismiss
   const textToolDragRef = useRef(null); // { startX, startY, pageNumber, rect, effectiveScale } for drag-to-create
 
@@ -11040,6 +11063,34 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [selectedCalloutIds, setSelectedCalloutIds] = useState(() => new Set());
   const [clipboardCallout, setClipboardCallout] = useState(null);
   const [clipboardCalloutType, setClipboardCalloutType] = useState(null); // 'cut' | 'copy'
+  // UX: right-click Copy/Cut stashes a plain (non-callout) annotation here so
+  // Paste can later drop a clone onto any page. Shape is { object, sourcePageNumber, mode }
+  // where `object` is the Fabric JSON for that annotation and `mode` is 'copy' | 'cut'.
+  // 'cut' differs from 'copy' only in that the original is removed at Copy time,
+  // matching the callout clipboard contract at ~line 11085.
+  const [clipboardAnnotation, setClipboardAnnotation] = useState(null);
+  // UX: annotation right-click menu — anchored to the pointer. { x, y, pageNumber, annotationIndex }.
+  // Opened by document-level contextmenu dispatcher in src/utils/contextMenuDiagnostics.js
+  // via window.__onAnnotationContextMenu. Dismissed by click-outside or Escape.
+  const [annotationContextMenu, setAnnotationContextMenu] = useState(null);
+  // UX: pan-mode quick-click selection command. Set by the document-level
+  // mousedown/mouseup listeners below when a short click lands on an
+  // annotation while activeTool === 'pan'. Each SVGAnnotationLayer instance
+  // ignores commands targeted at a different pageNumber. The `tick` field
+  // increments so clicking the same annotation twice re-triggers selection.
+  // Null when no command is pending. Callouts are handled by a separate
+  // session and are intentionally skipped here.
+  const [pendingSvgSelection, setPendingSvgSelection] = useState(null);
+  // UX: pan-mode hover broadcast. Set by the document-level mousemove
+  // listener (declared after the mousedown/mouseup pair below) to
+  // { pageNumber, annotationIndex } whenever the cursor is over an
+  // annotation while activeTool === 'pan'. Null when the cursor is over
+  // empty page space or when not in pan mode. SVGAnnotationLayer instances
+  // ignore messages targeted at other pages. The field set is a plain
+  // object (no `tick`) because hover is a steady state, not a command —
+  // re-renders only fire when the (pageNumber, annotationIndex) pair
+  // changes, which matches our needs.
+  const [pendingSvgHover, setPendingSvgHover] = useState(null);
   const lightweightCalloutCountByPage = useMemo(() => {
     const counts = {};
     callouts.forEach((callout) => {
@@ -11107,6 +11158,171 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setClipboardCalloutType(null);
     }
   }, [clipboardCallout, clipboardCalloutType]);
+
+  // Register the global annotation right-click handler. contextMenuDiagnostics.js
+  // resolves (pageNumber, annotationIndex) from the click target and invokes this
+  // — one listener, always on, covers every page without needing PAL to be mounted.
+  useEffect(() => {
+    window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, event }) => {
+      setAnnotationContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        pageNumber,
+        annotationIndex,
+        calloutId,
+        kind, // 'page' | 'callout' | 'counter' | 'annotation'
+      });
+    };
+    return () => {
+      if (window.__onAnnotationContextMenu) delete window.__onAnnotationContextMenu;
+    };
+  }, []);
+
+  // Dismiss the annotation context menu on outside click or Escape.
+  // UX: capture phase + data-annotation-context-menu marker check. Capture
+  // fires BEFORE any descendant's stopPropagation (e.g. Syncfusion's own
+  // click handlers on its text/annotation layers), which is why the earlier
+  // bubble-phase listener silently dropped clicks on Syncfusion surfaces.
+  // Marker check replaces the menu-div's own onMouseDown stopPropagation
+  // so the logic lives in one place: "is the click target inside the menu?"
+  useEffect(() => {
+    if (!annotationContextMenu) return undefined;
+    const close = (e) => {
+      if (e?.target?.closest && e.target.closest('[data-annotation-context-menu]')) return;
+      setAnnotationContextMenu(null);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setAnnotationContextMenu(null); };
+    // Delay attaching so the opening right-click's own mousedown doesn't
+    // instantly re-close the menu.
+    const t = window.setTimeout(() => {
+      window.addEventListener('mousedown', close, true);
+      window.addEventListener('keydown', onKey);
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('mousedown', close, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [annotationContextMenu]);
+
+  // UX: pan-mode quick-click → select annotation + auto-switch to Select tool.
+  // Records pointer position on mousedown; on mouseup, if the cursor moved
+  // less than QUICK_CLICK_PX and we're in pan mode and a non-callout
+  // annotation sits under the cursor, auto-switch to the Select tool and
+  // broadcast a selection command to the matching SVGAnnotationLayer.
+  // Callouts are intentionally skipped — they're wired in a parallel session.
+  useEffect(() => {
+    // 4px tolerance matches trackpad + mouse in local testing. Tune here if
+    // users report accidental drags. Too low → hair-trigger drags fire as
+    // clicks; too high → actual pan gestures get treated as selection taps.
+    const QUICK_CLICK_PX = 4;
+    let downAt = null;
+    const onDown = (e) => {
+      if (e.button !== 0) return; // left button only
+      downAt = { x: e.clientX, y: e.clientY, t: Date.now() };
+    };
+    const onUp = (e) => {
+      const start = downAt;
+      downAt = null;
+      if (!start) return;
+      if (activeTool !== 'pan') return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
+      const hit = resolveAnnotationAt(e);
+      if (!hit) return;
+      // Skip callouts (handled elsewhere) and non-annotation hits.
+      if (hit.kind !== 'annotation') return;
+      if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
+      setActiveTool('select');
+      setPendingSvgSelection({
+        pageNumber: hit.pageNumber,
+        annotationIndex: hit.annotationIndex,
+        tick: Date.now(),
+      });
+    };
+    window.addEventListener('mousedown', onDown, true);
+    window.addEventListener('mouseup', onUp, true);
+    return () => {
+      window.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('mouseup', onUp, true);
+    };
+  }, [activeTool]);
+
+  // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
+  // show the same blue hover glow the Select tool shows AND switch the
+  // cursor to `pointer` so the user can tell "click here to pick this up."
+  // Over empty page space, leave the cursor alone (Syncfusion owns pan /
+  // grab styling). Uses the same resolveAnnotationAt hit-test as the
+  // pan-mode click listener, so behavior is consistent between "what will
+  // a click pick?" and "what does the glow preview?".
+  //
+  // Rationale for document-level mousemove (vs flipping SVG pointer-events):
+  // the SVG layer is `pointer-events: none` in pan mode so empty-space
+  // clicks pass through to Syncfusion for panning. Re-enabling pointer
+  // events on hit-zones would require guarding their onPointerDown to
+  // avoid fighting pan gestures — more changes + more risk than a single
+  // mousemove listener that reuses the hit-test already in production.
+  //
+  // Throttled via requestAnimationFrame so resolveAnnotationAt (composedPath
+  // + elementsFromPoint + querySelectorAll fallback) runs at most once per
+  // frame, not per mousemove event.
+  useEffect(() => {
+    if (activeTool !== 'pan') {
+      // Tool changed away from pan — clear any lingering hover state + cursor.
+      setPendingSvgHover((prev) => (prev == null ? prev : null));
+      if (document.body.style.cursor === 'pointer') {
+        document.body.style.cursor = '';
+      }
+      return undefined;
+    }
+    let rafId = 0;
+    let latestEvent = null;
+    let lastKey = '';
+    const applyHover = () => {
+      rafId = 0;
+      const e = latestEvent;
+      latestEvent = null;
+      if (!e) return;
+      const hit = resolveAnnotationAt(e);
+      // Only treat plain annotations as hover targets. Callouts + counters
+      // flow through their own hover paths (or none) and the parallel
+      // callout session owns their interaction.
+      const isAnnotation = hit && hit.kind === 'annotation'
+        && typeof hit.annotationIndex === 'number'
+        && hit.pageNumber != null;
+      const nextKey = isAnnotation ? `${hit.pageNumber}:${hit.annotationIndex}` : '';
+      if (nextKey === lastKey) return;
+      lastKey = nextKey;
+      if (isAnnotation) {
+        setPendingSvgHover({ pageNumber: hit.pageNumber, annotationIndex: hit.annotationIndex });
+        // UX: pointer cursor over annotations in pan mode. document.body is
+        // the lowest-priority target so Syncfusion-level pan cursor wins
+        // everywhere else. Cleared on no-hit and on tool-change cleanup.
+        if (document.body.style.cursor !== 'pointer') {
+          document.body.style.cursor = 'pointer';
+        }
+      } else {
+        setPendingSvgHover((prev) => (prev == null ? prev : null));
+        if (document.body.style.cursor === 'pointer') {
+          document.body.style.cursor = '';
+        }
+      }
+    };
+    const onMove = (e) => {
+      latestEvent = e;
+      if (!rafId) rafId = requestAnimationFrame(applyHover);
+    };
+    window.addEventListener('mousemove', onMove, true);
+    return () => {
+      window.removeEventListener('mousemove', onMove, true);
+      if (rafId) cancelAnimationFrame(rafId);
+      setPendingSvgHover((prev) => (prev == null ? prev : null));
+      if (document.body.style.cursor === 'pointer') {
+        document.body.style.cursor = '';
+      }
+    };
+  }, [activeTool]);
 
   // NOTE: Phase 14 callout handlers (handleDeleteSelectedCallouts,
   // handleCreateCallout, handleUpdateCallout, handleUpdateCalloutLive,
@@ -11354,6 +11570,432 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (activeTool === 'pan' || activeTool === 'select') {
       setActiveCategoryDropdown(null);
     }
+  }, [activeTool]);
+
+  // ---------------------------------------------------------------------------
+  // TOOL-SWITCH DIAGNOSTICS (annotation render mismatch investigation)
+  // Captures a full-window screenshot + structured state dump 50ms after
+  // switching to 'eraser' or 'select'. Two slots are kept in window.__diagBuffer;
+  // the Save Log button dumps both into the "Testing Logs" folder.
+  // Do not remove — this is the debug harness for the eraser/selector bug.
+  // ---------------------------------------------------------------------------
+  const diagLiveStateRef = useRef(null);
+  useEffect(() => {
+    diagLiveStateRef.current = {
+      pdfName: pdfFile?.name || null,
+      pdfId,
+      pageNumber: Number(pageNumRef.current) || 1,
+      activeTool,
+      annotationsByPage,
+      callouts,
+      activeSpaceId,
+      activeRegionId,
+      annotationSpaceId,
+      selectedModuleId,
+      showSurveyPanel,
+      annotationLayerVisibility,
+      spaces,
+    };
+    if (typeof window !== 'undefined') {
+      window.__diagState = diagLiveStateRef.current;
+    }
+  });
+
+  useEffect(() => {
+    if (activeTool !== 'eraser' && activeTool !== 'select') return;
+    const slot = activeTool;
+    const t0 = performance.now();
+    console.log(`[Diag] tool-switch DETECTED → ${slot} (scheduling t+1000ms capture)`);
+    const timer = setTimeout(async () => {
+      try {
+        const state = diagLiveStateRef.current || {};
+        const pageNum = state.pageNumber || 1;
+        const pageAnno = state.annotationsByPage?.[pageNum] || { objects: [] };
+        const objects = Array.isArray(pageAnno.objects) ? pageAnno.objects : [];
+        const pageCallouts = Array.isArray(state.callouts)
+          ? state.callouts.filter((c) => c?.pageNumber === pageNum)
+          : [];
+
+        const snapshot = {
+          timestamp: new Date().toISOString(),
+          capturedAtMs: Math.round(performance.now() - t0),
+          slot,
+          activeTool: state.activeTool,
+          pdfName: state.pdfName,
+          pdfId: state.pdfId,
+          pageNumber: pageNum,
+          counts: {
+            totalAnnotations: objects.length,
+            totalPageCallouts: pageCallouts.length,
+          },
+          filterState: {
+            activeSpaceId: state.activeSpaceId ?? null,
+            activeRegionId: state.activeRegionId ?? null,
+            annotationSpaceId: state.annotationSpaceId ?? null,
+            selectedModuleId: state.selectedModuleId ?? null,
+            showSurveyPanel: !!state.showSurveyPanel,
+            annotationLayerVisibility: state.annotationLayerVisibility || null,
+          },
+          annotations: objects.map((obj, i) => {
+            // Pull the DOM rect for this annotation's SVG wrapper (if rendered).
+            // Captures the actual on-screen bounding box so we can detect any
+            // layout difference between selector (SVG visible) and eraser (SVG hidden).
+            let svgDomBounds = null;
+            try {
+              const nodes = Array.from(
+                document.querySelectorAll(`[data-diag-svg-wrapper] [data-annotation-index="${i}"]`)
+              );
+              if (nodes.length > 0) {
+                const rect = nodes[0].getBoundingClientRect();
+                svgDomBounds = {
+                  x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+                  wrapperVisibility: getComputedStyle(nodes[0].closest('[data-diag-svg-wrapper]') || nodes[0]).visibility,
+                };
+              }
+            } catch (_) {}
+            return {
+              index: i,
+              type: obj?.type || null,
+              dataType: obj?.data?.type || null,
+              isPdfImported: !!obj?.isPdfImported,
+              pdfAnnotationType: obj?.pdfAnnotationType || null,
+              spaceId: obj?.spaceId ?? null,
+              moduleId: obj?.moduleId ?? null,
+              regionId: obj?.regionId ?? null,
+              layer: obj?.layer || 'native',
+              visible: obj?.visible !== false,
+              hasPath: Array.isArray(obj?.path) && obj.path.length > 0,
+              hasObjects: Array.isArray(obj?.objects) && obj.objects.length > 0,
+              // Position / sizing
+              left: obj?.left,
+              top: obj?.top,
+              width: obj?.width,
+              height: obj?.height,
+              scaleX: obj?.scaleX,
+              scaleY: obj?.scaleY,
+              angle: obj?.angle,
+              flipX: obj?.flipX,
+              flipY: obj?.flipY,
+              originX: obj?.originX,
+              originY: obj?.originY,
+              // Stroke / fill
+              fill: obj?.fill,
+              stroke: obj?.stroke,
+              strokeWidth: obj?.strokeWidth,
+              strokeDashArray: obj?.strokeDashArray ?? null,
+              strokeLineCap: obj?.strokeLineCap ?? null,
+              strokeLineJoin: obj?.strokeLineJoin ?? null,
+              strokeUniform: obj?.strokeUniform ?? null,
+              opacity: obj?.opacity,
+              // Shape-specific
+              radius: obj?.radius ?? null,
+              rx: obj?.rx ?? null,
+              ry: obj?.ry ?? null,
+              x1: obj?.x1 ?? null,
+              y1: obj?.y1 ?? null,
+              x2: obj?.x2 ?? null,
+              y2: obj?.y2 ?? null,
+              pointCount: Array.isArray(obj?.points) ? obj.points.length : null,
+              pathLength: Array.isArray(obj?.path) ? obj.path.length : null,
+              // Text-specific
+              text: obj?.text ?? null,
+              fontSize: obj?.fontSize ?? null,
+              fontFamily: obj?.fontFamily ?? null,
+              fontWeight: obj?.fontWeight ?? null,
+              fontStyle: obj?.fontStyle ?? null,
+              textAlign: obj?.textAlign ?? null,
+              lineHeight: obj?.lineHeight ?? null,
+              charSpacing: obj?.charSpacing ?? null,
+              // Live SVG DOM bounds (null when SVG wrapper hidden in eraser mode)
+              svgDomBounds,
+            };
+          }),
+          callouts: pageCallouts.map((c) => ({
+            id: c?.id,
+            type: c?.type,
+            pageNumber: c?.pageNumber,
+            moduleId: c?.moduleId ?? null,
+            left: c?.left,
+            top: c?.top,
+            width: c?.width,
+            height: c?.height,
+          })),
+          domState: (() => {
+            try {
+              const svgLayerWrappers = Array.from(
+                document.querySelectorAll('[data-diag-svg-wrapper]')
+              );
+              const eraserWrappers = Array.from(
+                document.querySelectorAll('[data-diag-eraser-wrapper]')
+              );
+              const allSvgAnnotations = Array.from(
+                document.querySelectorAll('[data-diag-svg-wrapper] svg [data-annotation-index]')
+              );
+              const visibleSvgAnnotations = allSvgAnnotations.filter((el) => {
+                const wrapper = el.closest('[data-diag-svg-wrapper]');
+                if (!wrapper) return false;
+                return getComputedStyle(wrapper).visibility !== 'hidden';
+              });
+              const eraserCanvases = Array.from(
+                document.querySelectorAll('[data-diag-eraser-wrapper] canvas')
+              );
+              return {
+                svgWrapperCount: svgLayerWrappers.length,
+                svgWrapperVisibilities: svgLayerWrappers.map((el) => getComputedStyle(el).visibility),
+                svgAnnotationElementCount: allSvgAnnotations.length,
+                svgVisibleAnnotationElementCount: visibleSvgAnnotations.length,
+                svgAnnotationIndexes: allSvgAnnotations.map((el) => el.getAttribute('data-annotation-index')),
+                eraserWrapperCount: eraserWrappers.length,
+                eraserCanvasCount: eraserCanvases.length,
+                eraserCanvasSizes: eraserCanvases.map((c) => ({ w: c.width, h: c.height })),
+              };
+            } catch (err) {
+              return { error: String(err) };
+            }
+          })(),
+          svgFilterStats: window.__diagSVGFilterStats?.[pageNum] || null,
+          eraserStats: window.__diagEraserStats?.[pageNum] || null,
+          // ==========================================================
+          // T1-vs-T2 ELEMENT TABLE (per HANDOFF.md user-corrected design).
+          // Single page only — the current page in view. Each entry is
+          // keyed by stable identity ("svg-anno:6:0", "eraser-canvas:6",
+          // "callout:6:abc") so the same element can be matched across
+          // the eraser-mode (T1) and selector-mode (T2) snapshots, and
+          // any rect/style change is surfaced by the Save Log diff.
+          //
+          // Whitelist (intentional toggles, not bugs):
+          //   - svg-wrapper / svg-layer visibility    (eraser hides SVG)
+          //   - eraser-wrapper / eraser-canvas mount  (selector unmounts canvas)
+          //   - cursor / pointer-events on wrappers
+          // Anything else is a real visual delta and gets flagged.
+          //
+          // Fabric canvas objects are NOT in this table — they only exist
+          // in T1 and would always show as "disappeared". They live in
+          // .fabricEraserObjects below for context only.
+          // ==========================================================
+          elements: (() => {
+            const out = {};
+            const captureRect = (el) => {
+              try {
+                const r = el.getBoundingClientRect();
+                return { x: r.x, y: r.y, width: r.width, height: r.height };
+              } catch (_) { return null; }
+            };
+            const captureStyle = (el) => {
+              try {
+                const cs = getComputedStyle(el);
+                return {
+                  visibility: cs.visibility,
+                  opacity: cs.opacity,
+                  transform: cs.transform,
+                  pointerEvents: cs.pointerEvents,
+                  display: cs.display,
+                  cursor: cs.cursor,
+                };
+              } catch (_) { return null; }
+            };
+
+            // 1. SVG annotation layer + wrapper for the current page
+            try {
+              const svgLayer = document.querySelector(`[data-svg-annotation-layer="${pageNum}"]`);
+              if (svgLayer) {
+                out[`svg-layer:${pageNum}`] = {
+                  kind: 'svg-layer',
+                  tag: svgLayer.tagName,
+                  rect: captureRect(svgLayer),
+                  style: captureStyle(svgLayer),
+                };
+                const svgWrapper = svgLayer.closest('[data-diag-svg-wrapper]');
+                if (svgWrapper) {
+                  out[`svg-wrapper:${pageNum}`] = {
+                    kind: 'svg-wrapper',
+                    tag: svgWrapper.tagName,
+                    rect: captureRect(svgWrapper),
+                    style: captureStyle(svgWrapper),
+                  };
+                }
+                // Per-annotation g elements
+                svgLayer.querySelectorAll('[data-annotation-index]').forEach((g) => {
+                  const idxAttr = g.getAttribute('data-annotation-index');
+                  const idxNum = Number(idxAttr);
+                  const obj = Number.isFinite(idxNum) ? objects[idxNum] : null;
+                  // Tight callout check: only TRUE composite callouts created
+                  // by PageAnnotationLayer (type='callout' or data.type='callout').
+                  // We deliberately do NOT match pdfIntent='FreeTextCallout' here —
+                  // a PDF can carry that intent on a textbox we render as a plain
+                  // textbox (no leader line), and treating that as a callout would
+                  // hide a real bug behind the "callouts excluded from flagging" rule.
+                  const isCalloutObj =
+                    obj?.type === 'callout'
+                    || obj?.data?.type === 'callout';
+                  out[`svg-anno:${pageNum}:${idxAttr}`] = {
+                    kind: 'svg-anno',
+                    tag: g.tagName,
+                    rect: captureRect(g),
+                    style: captureStyle(g),
+                    fabricType: obj?.type || null,
+                    isCallout: isCalloutObj,
+                  };
+                });
+              }
+            } catch (_) {}
+
+            // 2. Fabric eraser wrapper + canvas for the current page (only
+            //    mounted in eraser mode — its absence in selector mode is a
+            //    whitelisted intentional toggle, see Save Log diff)
+            try {
+              const reg = window.__fabricEraserCanvases;
+              const refLike = reg?.get?.(pageNum);
+              const fabricCanvas = refLike?.current || refLike || null;
+              const upperCanvas = fabricCanvas?.upperCanvasEl || null;
+              if (upperCanvas) {
+                const eraserWrapper =
+                  upperCanvas.closest('[data-diag-eraser-wrapper]') || upperCanvas.parentElement;
+                if (eraserWrapper) {
+                  out[`eraser-wrapper:${pageNum}`] = {
+                    kind: 'eraser-wrapper',
+                    tag: eraserWrapper.tagName,
+                    rect: captureRect(eraserWrapper),
+                    style: captureStyle(eraserWrapper),
+                  };
+                }
+                out[`eraser-canvas:${pageNum}`] = {
+                  kind: 'eraser-canvas',
+                  tag: 'CANVAS',
+                  rect: captureRect(upperCanvas),
+                  style: captureStyle(upperCanvas),
+                  bitmapSize: { width: upperCanvas.width, height: upperCanvas.height },
+                };
+              }
+            } catch (_) {}
+
+            // 3. Composite callouts on this page (marked isCallout so the
+            //    Save Log diff tracks them but doesn't flag them as bugs —
+            //    SVG↔Fabric callout drift is known and deferred per CLAUDE.md)
+            try {
+              document.querySelectorAll('[data-callout-id]').forEach((el) => {
+                const id = el.getAttribute('data-callout-id');
+                const pageEl = el.closest('[data-page-number]');
+                if (pageEl && Number(pageEl.getAttribute('data-page-number')) !== pageNum) return;
+                out[`callout:${pageNum}:${id}`] = {
+                  kind: 'callout',
+                  tag: el.tagName,
+                  rect: captureRect(el),
+                  style: captureStyle(el),
+                  isCallout: true,
+                };
+              });
+            } catch (_) {}
+
+            return out;
+          })(),
+          // Live Fabric objects from the FabricEraserCanvas for this page.
+          // Empty/null in selector mode because the canvas unmounts — useful
+          // for diffing what eraser sees vs what selector sees.
+          fabricEraserObjects: (() => {
+            try {
+              const reg = window.__fabricEraserCanvases;
+              if (!reg || typeof reg.get !== 'function') return null;
+              const refLike = reg.get(pageNum);
+              const canvas = refLike?.current || refLike || null;
+              if (!canvas || typeof canvas.getObjects !== 'function') return null;
+              return canvas.getObjects().map((o, i) => {
+                let br = null;
+                try { br = o.getBoundingRect ? o.getBoundingRect(true, true) : null; } catch (_) {}
+                return {
+                  index: i,
+                  type: o.type || null,
+                  isPdfImported: !!o.isPdfImported,
+                  pdfAnnotationType: o.pdfAnnotationType || null,
+                  left: o.left, top: o.top, width: o.width, height: o.height,
+                  scaleX: o.scaleX, scaleY: o.scaleY, angle: o.angle,
+                  strokeWidth: o.strokeWidth,
+                  strokeDashArray: o.strokeDashArray ?? null,
+                  strokeLineCap: o.strokeLineCap ?? null,
+                  strokeLineJoin: o.strokeLineJoin ?? null,
+                  strokeUniform: o.strokeUniform ?? null,
+                  fill: o.fill, stroke: o.stroke,
+                  opacity: o.opacity,
+                  // Textbox fields — important for "Rrvrv" box compare
+                  text: o.text ?? null,
+                  fontSize: o.fontSize ?? null,
+                  fontFamily: o.fontFamily ?? null,
+                  fontWeight: o.fontWeight ?? null,
+                  fontStyle: o.fontStyle ?? null,
+                  textAlign: o.textAlign ?? null,
+                  lineHeight: o.lineHeight ?? null,
+                  // Shape-specific
+                  radius: o.radius ?? null,
+                  rx: o.rx ?? null,
+                  ry: o.ry ?? null,
+                  x1: o.x1 ?? null, y1: o.y1 ?? null, x2: o.x2 ?? null, y2: o.y2 ?? null,
+                  pointCount: Array.isArray(o.points) ? o.points.length : null,
+                  pathLength: Array.isArray(o.path) ? o.path.length : null,
+                  boundingRect: br,
+                };
+              });
+            } catch (err) {
+              return { error: String(err) };
+            }
+          })(),
+        };
+
+        // Serialize the SVG annotation layer's outerHTML as a "visual snapshot".
+        // Works without any new IPC and avoids the capturePage focus/cursor side-effect.
+        let svgMarkup = null;
+        try {
+          const wrappers = Array.from(document.querySelectorAll('[data-diag-svg-wrapper]'));
+          svgMarkup = wrappers.map((w) => {
+            const svg = w.querySelector('svg');
+            return svg ? svg.outerHTML : '<!-- no svg in wrapper -->';
+          }).join('\n<!-- ---- next wrapper ---- -->\n');
+        } catch (err) {
+          svgMarkup = `<!-- svg capture error: ${String(err)} -->`;
+        }
+
+        if (!window.__diagBuffer) {
+          window.__diagBuffer = { eraser: null, select: null };
+        }
+        window.__diagBuffer[slot] = { snapshot, svgMarkup };
+
+        // ============================================================
+        // Real PNG screenshot via Electron webContents.capturePage().
+        // Saved immediately to disk (not buffered in memory) so two
+        // ~500KB PNGs don't sit on the heap between snapshots. Save
+        // Log just reads the latest pair from disk by filename.
+        // The screenshot is the user's ground-truth visual diff —
+        // the DOM element table is the fast scan, this is the proof.
+        // ============================================================
+        try {
+          if (window.electronAPI?.capturePage) {
+            const pngBytes = await window.electronAPI.capturePage();
+            if (pngBytes) {
+              const screenshotPath = `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-${slot}.png`;
+              await window.electronAPI.writeFile(screenshotPath, pngBytes);
+              const sizeBytes = pngBytes.byteLength || pngBytes.length || 0;
+              console.log(`[Diag ${slot}] screenshot saved (${Math.round(sizeBytes / 1024)} KB) → ${screenshotPath}`);
+            }
+          }
+        } catch (shotErr) {
+          console.warn(`[Diag ${slot}] screenshot capture failed:`, shotErr?.message || shotErr);
+        }
+
+        console.log(
+          `[Diag ${slot}] CAPTURED @ t+${snapshot.capturedAtMs}ms — ` +
+          `annotations=${snapshot.counts.totalAnnotations} callouts=${snapshot.counts.totalPageCallouts} ` +
+          `svgWrappers=${snapshot.domState.svgWrapperCount} ` +
+          `svgVis=[${snapshot.domState.svgWrapperVisibilities?.join(',')}] ` +
+          `svgElems=${snapshot.domState.svgAnnotationElementCount} ` +
+          `svgVisElems=${snapshot.domState.svgVisibleAnnotationElementCount} ` +
+          `eraserCanvases=${snapshot.domState.eraserCanvasCount} ` +
+          `svgMarkupBytes=${svgMarkup?.length || 0}`
+        );
+      } catch (err) {
+        console.error(`[Diag ${slot}] capture error:`, err);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
   }, [activeTool]);
 
   // Close menus when clicking outside
@@ -12287,11 +12929,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       ? (coercePageNumber(restoreSnapshot.pageNum, resolvedPageCount || Number.POSITIVE_INFINITY) || currentPage)
       : currentPage;
 
+    // Default to Fit Page on first open of a PDF when no saved view state exists.
+    // If the tab has a restored zoom (restoreSnapshot) or saved initialViewState.scale,
+    // respect that instead — user had already customized the zoom for this PDF.
+    const isFreshOpen = !restoreSnapshot && !(initialViewState && Number.isFinite(initialViewState.scale));
+
     scaleRef.current = restoredScale;
     setScale(restoredScale);
     setManualZoomScale(restoredScale);
-    setZoomMode(ZOOM_MODES.MANUAL);
+    setZoomMode(isFreshOpen ? ZOOM_MODES.FIT_PAGE : ZOOM_MODES.MANUAL);
     setRenderedPages(new Set());
+
+    // Every fresh PDF open must start with an uncalibrated Electron factor.
+    // Previously a wrong first-fit-page call could lock in a bogus factor
+    // and every subsequent click reused it, producing the "click 3 times to
+    // converge" bug. Clearing here forces re-calibration on the next fit.
+    if (isFreshOpen) {
+      syncfusionElectronFactorRef.current = null;
+      pendingInitialFitPageRef.current = true;
+    }
 
     // Bug #1b — Syncfusion's React wrapper getZoomValue() lies at mount:
     // it reports the last-persisted value while the viewer itself already
@@ -12317,10 +12973,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       return true;
     };
+    // Trigger fit-page ONLY after reconcile has produced a trustworthy scaleRef —
+    // otherwise the in-branch self-calibration computes the electron factor from a
+    // stale scale and locks in a wrong value for the rest of the session.
+    const triggerInitialFitPageIfPending = () => {
+      if (!pendingInitialFitPageRef.current) return;
+      if (!handleZoomModeSelectRef.current) return;
+      pendingInitialFitPageRef.current = false;
+      // 3-pass fit-page: Syncfusion's page layout settles asynchronously after each
+      // zoomTo call, so a single fit-page call reads stale wrapper/pageDiv dims and
+      // produces a wrong scale. The user previously had to click fit-page 3 times
+      // manually for it to converge — this fires those 3 passes automatically with
+      // delays long enough for Syncfusion's relayout to settle between passes.
+      const fire = () => handleZoomModeSelectRef.current?.(ZOOM_MODES.FIT_PAGE);
+      setTimeout(fire, 0);
+      setTimeout(fire, 250);
+      setTimeout(fire, 550);
+    };
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      if (!reconcileScaleFromDOM()) {
+      if (reconcileScaleFromDOM()) {
+        triggerInitialFitPageIfPending();
+      } else {
         setTimeout(() => {
-          if (!reconcileScaleFromDOM()) setTimeout(reconcileScaleFromDOM, 500);
+          if (reconcileScaleFromDOM()) {
+            triggerInitialFitPageIfPending();
+          } else {
+            setTimeout(() => {
+              reconcileScaleFromDOM();
+              triggerInitialFitPageIfPending();
+            }, 500);
+          }
         }, 150);
       }
     }));
@@ -12800,6 +13482,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const zoomPreferencesRef = useRef(initialZoomPreferences);
   const scaleRef = useRef(initialZoomPreferences.manualScale);
   const pageNumRef = useRef(1);
+  // Late-bound handler + flag for "apply fit-page on first open" (set in the
+  // Syncfusion document-load handler, consumed by an effect once pageSizes exist).
+  const handleZoomModeSelectRef = useRef(null);
+  const pendingInitialFitPageRef = useRef(false);
   const pageSizesRef = useRef({});
   const manualZoomScaleRef = useRef(initialZoomPreferences.manualScale);
   // Bug #2.6 calibration: Syncfusion's page div at 100% is pdfPageSize.width * electronFactor
@@ -12872,9 +13558,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const wrapperH = wrapperEl?.clientHeight || 0;
         const pdfPageSize = pageSizesRef.current?.[pageNumRef.current]
           || (pageSizesRef.current && Object.values(pageSizesRef.current)[0]);
-        // Fallback to 1.0 on first click before any calibration has happened.
-        // Safe default: may produce a slightly off fit on the very first session click,
-        // but never the 10% catastrophic fail. Subsequent clicks self-correct.
+        // Self-calibrate Electron factor BEFORE the first fit calculation if it hasn't
+        // been set yet. Previously the factor defaulted to 1.0 on first click, which
+        // caused the "click fit-page 3 times before it takes" convergence bug — each
+        // click was effectively recalibrating from a wrong prior scale. Measure the live
+        // page div against the known current scale to get the factor in one shot.
+        if (!syncfusionElectronFactorRef.current && scaleRef.current > 0 && pdfPageSize?.width > 0) {
+          const liveDiv = syncfusionWrapperRef.current?.querySelector('.e-pv-page-div');
+          if (liveDiv && liveDiv.offsetWidth > 0) {
+            const inferred = liveDiv.offsetWidth / (pdfPageSize.width * scaleRef.current);
+            if (inferred > 0.3 && inferred < 5) {
+              syncfusionElectronFactorRef.current = inferred;
+            }
+          }
+        }
+        // Fallback to 1.0 if we still don't have one — e.g. page div not ready yet.
         const electronFactor = syncfusionElectronFactorRef.current || 1.0;
 
         if (mode === ZOOM_MODES.FIT_PAGE) {
@@ -12928,6 +13626,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       controller.setMode(mode);
     }
   }, [persistZoomPreferences, useSyncfusionRenderer]);
+
+  // Keep a ref to the handler so the document-load callback (defined earlier,
+  // before handleZoomModeSelect) can trigger fit-page without a circular dep.
+  handleZoomModeSelectRef.current = handleZoomModeSelect;
+
+  // (Default-open fit-page trigger now fires inline at the end of the reconcile cascade
+  // in handleSyncfusionDocumentLoad — the earlier useEffect version fired too early,
+  // before scaleRef had been reconciled from the DOM, locking in a bad Electron factor.)
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -13891,21 +14597,515 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [getOverlayLagRecorderDump]);
 
   const handleSaveOverlayLagLog = useCallback(async () => {
-    const LOG_PATH = '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log';
-    const buffer = window.__consoleLogBuffer;
-    if (!buffer || buffer.length === 0) {
-      console.warn('[SaveLog] No console logs captured yet');
+    // Diagnostics sink: writes FLAT files with the prefix "testlog-" directly
+    // into the Survey-BetaSafeS2 directory (no subfolder — sidesteps stale
+    // main.js that lacks auto-mkdir). Uses only the original fs:writeFile IPC
+    // so it works regardless of whether Electron main has been restarted.
+    const BASE = '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog';
+    const api = window.electronAPI;
+    if (!api?.writeFile) {
+      console.warn('[SaveLog] electronAPI.writeFile unavailable');
       return null;
     }
-    const content = buffer.join('\n');
+
+    const written = [];
+    const writeSafe = async (suffix, data) => {
+      const fullPath = `${BASE}-${suffix}`;
+      try {
+        await api.writeFile(fullPath, data);
+        written.push(fullPath);
+      } catch (err) {
+        console.error(`[SaveLog] write "${suffix}" failed:`, err?.message || err);
+      }
+    };
+
+    const consoleBuffer = window.__consoleLogBuffer;
+    const consoleText = Array.isArray(consoleBuffer) && consoleBuffer.length > 0
+      ? consoleBuffer.join('\n')
+      : '(no console output captured)';
+    await writeSafe('console.log', consoleText);
+
+    const diag = window.__diagBuffer || { eraser: null, select: null };
+
+    if (diag.eraser?.snapshot) {
+      await writeSafe('state-eraser.json', JSON.stringify(diag.eraser.snapshot, null, 2));
+    }
+    if (diag.select?.snapshot) {
+      await writeSafe('state-selector.json', JSON.stringify(diag.select.snapshot, null, 2));
+    }
+    if (diag.eraser?.svgMarkup) {
+      await writeSafe('svg-eraser.html', diag.eraser.svgMarkup);
+    }
+    if (diag.select?.svgMarkup) {
+      await writeSafe('svg-selector.html', diag.select.svgMarkup);
+    }
+
+    if (diag.eraser?.snapshot && diag.select?.snapshot) {
+      const e = diag.eraser.snapshot;
+      const s = diag.select.snapshot;
+      const eIndexes = new Set(e.annotations.map((a) => a.index));
+      const sIndexes = new Set(s.annotations.map((a) => a.index));
+      const diff = {
+        pdfName: e.pdfName,
+        pageNumber: e.pageNumber,
+        eraser: {
+          totalAnnotations: e.counts.totalAnnotations,
+          svgVisibleAnnotationElementCount: e.domState?.svgVisibleAnnotationElementCount,
+          svgWrapperVisibilities: e.domState?.svgWrapperVisibilities,
+          eraserCanvasCount: e.domState?.eraserCanvasCount,
+          svgFilterStats: e.svgFilterStats,
+          eraserStats: e.eraserStats,
+        },
+        selector: {
+          totalAnnotations: s.counts.totalAnnotations,
+          svgVisibleAnnotationElementCount: s.domState?.svgVisibleAnnotationElementCount,
+          svgWrapperVisibilities: s.domState?.svgWrapperVisibilities,
+          eraserCanvasCount: s.domState?.eraserCanvasCount,
+          svgFilterStats: s.svgFilterStats,
+          eraserStats: s.eraserStats,
+        },
+        onlyInEraserDataModel: [...eIndexes].filter((i) => !sIndexes.has(i)),
+        onlyInSelectorDataModel: [...sIndexes].filter((i) => !eIndexes.has(i)),
+        filterStateChanged: JSON.stringify(e.filterState) !== JSON.stringify(s.filterState),
+        filterStateEraser: e.filterState,
+        filterStateSelector: s.filterState,
+      };
+      await writeSafe('diff.json', JSON.stringify(diff, null, 2));
+
+      // Per-annotation auto-diff summary. Compares every captured field across
+      // modes and dumps human-readable bullets. Also compares selector's data
+      // model against eraser's live Fabric canvas objects (eraser mode hides SVG).
+      try {
+        const SKIP_FIELDS = new Set(['svgDomBounds', 'index', 'visible']);
+        const fmt = (v) => {
+          if (v === null || v === undefined) return String(v);
+          if (Array.isArray(v)) return `[${v.join(',')}]`;
+          if (typeof v === 'object') return JSON.stringify(v);
+          return String(v);
+        };
+        const approxEq = (a, b) => {
+          if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) < 0.01;
+          return fmt(a) === fmt(b);
+        };
+        const lines = [];
+        lines.push(`# Diff Summary — ${e.pdfName} page ${e.pageNumber}`);
+        lines.push(`# Eraser: ${e.counts.totalAnnotations} annotations, svgVis=${e.domState?.svgVisibleAnnotationElementCount}, eraserCanvases=${e.domState?.eraserCanvasCount}`);
+        lines.push(`# Selector: ${s.counts.totalAnnotations} annotations, svgVis=${s.domState?.svgVisibleAnnotationElementCount}, eraserCanvases=${s.domState?.eraserCanvasCount}`);
+        lines.push('');
+
+        // Data-model drift: both slots should share the same annotationsByPage array
+        // because nothing mutates it on tool switch. Any delta here is a bug.
+        lines.push('## Data-model drift (annotationsByPage[page].objects)');
+        const maxLen = Math.max(e.annotations.length, s.annotations.length);
+        let dataDeltas = 0;
+        for (let i = 0; i < maxLen; i++) {
+          const ea = e.annotations[i];
+          const sa = s.annotations[i];
+          if (!ea || !sa) {
+            lines.push(`- [${i}] present in ${ea ? 'eraser' : 'selector'} only`);
+            dataDeltas++;
+            continue;
+          }
+          const fields = new Set([...Object.keys(ea), ...Object.keys(sa)]);
+          const deltas = [];
+          fields.forEach((f) => {
+            if (SKIP_FIELDS.has(f)) return;
+            if (!approxEq(ea[f], sa[f])) {
+              deltas.push(`${f}: eraser=${fmt(ea[f])} vs selector=${fmt(sa[f])}`);
+            }
+          });
+          if (deltas.length > 0) {
+            lines.push(`- [${i}] ${ea.type}: ${deltas.join(', ')}`);
+            dataDeltas++;
+          }
+        }
+        if (dataDeltas === 0) lines.push('- (no differences — data model is identical between modes as expected)');
+        lines.push('');
+
+        // Selector SVG DOM bounds — what the user actually sees when in selector mode.
+        lines.push('## Selector SVG DOM bounds (visible render)');
+        s.annotations.forEach((a) => {
+          const b = a.svgDomBounds;
+          if (b) lines.push(`- [${a.index}] ${a.type}: x=${b.x?.toFixed(1)} y=${b.y?.toFixed(1)} w=${b.width?.toFixed(1)} h=${b.height?.toFixed(1)} vis=${b.wrapperVisibility}`);
+          else lines.push(`- [${a.index}] ${a.type}: (no SVG DOM node)`);
+        });
+        lines.push('');
+
+        // Eraser live Fabric objects — what the user actually sees when in eraser mode.
+        lines.push('## Eraser Fabric canvas objects (live render)');
+        const fObjs = e.fabricEraserObjects;
+        if (!fObjs) {
+          lines.push('- (no fabricEraserObjects captured — window.__fabricEraserCanvases missing)');
+        } else if (fObjs.error) {
+          lines.push(`- (error: ${fObjs.error})`);
+        } else if (!Array.isArray(fObjs) || fObjs.length === 0) {
+          lines.push('- (eraser canvas has 0 objects)');
+        } else {
+          fObjs.forEach((o) => {
+            const br = o.boundingRect;
+            const brStr = br ? ` bbox=${br.left?.toFixed(1)},${br.top?.toFixed(1)} ${br.width?.toFixed(1)}x${br.height?.toFixed(1)}` : '';
+            const extra = [];
+            if (o.strokeDashArray) extra.push(`dash=${fmt(o.strokeDashArray)}`);
+            if (o.text !== null) extra.push(`text="${o.text}"`);
+            if (o.fontFamily) extra.push(`font=${o.fontFamily}@${o.fontSize}`);
+            if (o.radius !== null) extra.push(`r=${o.radius}`);
+            if (o.pointCount !== null) extra.push(`pts=${o.pointCount}`);
+            lines.push(`- [${o.index}] ${o.type}: stroke=${o.stroke} fill=${o.fill} sw=${o.strokeWidth}${brStr}${extra.length ? ' ' + extra.join(' ') : ''}`);
+          });
+        }
+        lines.push('');
+
+        // Per-textbox parity audit — the user's real question is whether each
+        // imported textbox renders IDENTICALLY in selector (SVG) and eraser
+        // (Fabric) modes. This section pulls together:
+        //   - stored dims (annotationsByPage[i].width/height)
+        //   - SVG g DOM rect (selector mode getBoundingClientRect)
+        //   - Fabric live width/height (eraser mode obj.width/height)
+        //   - Fabric boundingRect (eraser mode getBoundingRect on screen)
+        // So you can see at a glance whether they agree. Target: stored
+        // matches Fabric live (the FabricEraserCanvas post-enliven override
+        // forces this). SVG g rect will equal stored * viewport scale.
+        lines.push('## Per-textbox parity audit (stored ↔ SVG ↔ Fabric)');
+        const textboxRows = s.annotations.filter((a) => a.type === 'textbox');
+        if (textboxRows.length === 0) {
+          lines.push('- (no textboxes on this page)');
+        } else {
+          textboxRows.forEach((a) => {
+            const svgR = a.svgDomBounds;
+            const fabricObj = Array.isArray(fObjs) ? fObjs.find((o) => o.index === a.index) : null;
+            const fabW = fabricObj?.width ?? null;
+            const fabH = fabricObj?.height ?? null;
+            const fabBR = fabricObj?.boundingRect;
+            const storedStr = `stored=${a.width?.toFixed(2) ?? '?'}x${a.height?.toFixed(2) ?? '?'}`;
+            const svgStr = svgR
+              ? `svg-g=${svgR.width?.toFixed(2)}x${svgR.height?.toFixed(2)}`
+              : 'svg-g=(none)';
+            const fabStr = fabW !== null
+              ? `fabric.width/height=${fabW?.toFixed(2)}x${fabH?.toFixed(2)}`
+              : 'fabric=(none)';
+            const fabBRStr = fabBR
+              ? `fabric.bbox=${fabBR.width?.toFixed(2)}x${fabBR.height?.toFixed(2)}`
+              : 'fabric.bbox=(none)';
+            const parityStored = fabW !== null && Math.abs((a.width ?? 0) - fabW) < 1
+              ? 'PARITY ✓'
+              : 'MISMATCH ✗';
+            const textPreview = a.text ? ` text="${String(a.text).slice(0, 16)}"` : '';
+            lines.push(
+              `- [${a.index}] textbox${textPreview} isPdfImported=${a.isPdfImported}`
+            );
+            lines.push(`    ${storedStr}`);
+            lines.push(`    ${svgStr}`);
+            lines.push(`    ${fabStr}  ${fabBRStr}`);
+            lines.push(`    stored vs fabric.width/height: ${parityStored}`);
+          });
+        }
+        lines.push('');
+
+        // (legacy "Cross-render compare" and "Multi-page render comparison"
+        // sections removed — they used the wrong frame, see HANDOFF.md
+        // "Failed Approaches". The new T1-vs-T2 element diff lives in its
+        // own file, testlog-tool-switch-diff.txt, written below.)
+        lines.push('## See testlog-tool-switch-diff.txt');
+        lines.push('# The actionable T1 (eraser) vs T2 (selector) element diff is in');
+        lines.push('# testlog-tool-switch-diff.txt — that file flags any visual change');
+        lines.push('# between modes. This file is per-mode descriptive context only.');
+
+        await writeSafe('diff-summary.txt', lines.join('\n'));
+      } catch (summaryErr) {
+        console.warn('[SaveLog] diff-summary build failed:', summaryErr);
+      }
+
+      // ================================================================
+      // T1-vs-T2 ELEMENT DIFF (per HANDOFF.md user-corrected design)
+      // Compares the SAME element across two snapshots taken at different
+      // times (T1=eraser mode, T2=selector mode). Any rect or style delta
+      // outside the whitelist is a real visual bug — the user invariant
+      // is that switching tools should change NOTHING visible besides
+      // cursor + toolbar button + erase-capability.
+      //
+      // Whitelisted (intentional toggles, not bugs):
+      //   - svg-wrapper / svg-layer visibility    (eraser hides SVG)
+      //   - eraser-wrapper / eraser-canvas mount  (selector unmounts canvas)
+      //   - cursor / pointer-events on wrappers
+      // Callouts marked [CALLOUT] and tracked in their own section but
+      // NOT flagged as bugs (SVG↔Fabric callout drift is known + deferred
+      // per CLAUDE.md 2026-04-08).
+      //
+      // The screenshots testlog-screenshot-eraser.png and
+      // testlog-screenshot-selector.png are the visual ground truth
+      // (DOM diff is the fast scan, screenshots are the proof).
+      // ================================================================
+      try {
+        const RECT_TOL = 1.0; // pixels — sub-pixel rect noise is normal
+        const STYLE_FIELDS = ['visibility', 'opacity', 'transform', 'pointerEvents', 'display'];
+        // (kind, field) pairs that are allowed to differ between modes.
+        // Existence (mount/unmount) is handled separately by ALLOWED_TOGGLE_KINDS.
+        const ALLOWED_STYLE = new Set([
+          'svg-wrapper:visibility',
+          'svg-layer:visibility',
+          'svg-wrapper:display',
+          'svg-layer:display',
+          'svg-wrapper:pointerEvents',
+          'svg-layer:pointerEvents',
+          'svg-wrapper:cursor',
+          'svg-layer:cursor',
+          // Per-annotation visibility/pointerEvents toggles in lockstep with
+          // mode: in eraser mode every svg-anno g is hidden so the Fabric
+          // eraser canvas can render them; in selector mode they become
+          // visible again. This is the actual implementation, verified in
+          // the first diagnostic run (5/6 annotations + 1 callout all flipped
+          // in unison). Rect remains stable across modes (getBoundingClientRect
+          // returns the layout box even when visibility:hidden), so geometry
+          // bugs are still caught.
+          'svg-anno:visibility',
+          'svg-anno:pointerEvents',
+          'eraser-wrapper:visibility',
+          'eraser-canvas:visibility',
+          'eraser-wrapper:display',
+          'eraser-canvas:display',
+          'eraser-wrapper:pointerEvents',
+          'eraser-canvas:pointerEvents',
+          'eraser-wrapper:cursor',
+          'eraser-canvas:cursor',
+        ]);
+        // Element kinds whose existence is intentionally toggled between
+        // modes — these are expected to appear/disappear on tool switch.
+        const ALLOWED_TOGGLE_KINDS = new Set(['eraser-wrapper', 'eraser-canvas']);
+
+        const eEl = e.elements || {};
+        const sEl = s.elements || {};
+        const allKeys = new Set([...Object.keys(eEl), ...Object.keys(sEl)]);
+
+        const moved = [];
+        const styleChanged = [];
+        const disappeared = [];
+        const appeared = [];
+        const calloutsTracked = [];
+
+        for (const key of allKeys) {
+          const t1 = eEl[key];
+          const t2 = sEl[key];
+
+          // Existence diff
+          if (t1 && !t2) {
+            if (ALLOWED_TOGGLE_KINDS.has(t1.kind)) continue;
+            if (t1.isCallout) {
+              calloutsTracked.push({ key, kind: t1.kind, note: 'in eraser only' });
+            } else {
+              disappeared.push({ key, kind: t1.kind });
+            }
+            continue;
+          }
+          if (!t1 && t2) {
+            if (ALLOWED_TOGGLE_KINDS.has(t2.kind)) continue;
+            if (t2.isCallout) {
+              calloutsTracked.push({ key, kind: t2.kind, note: 'in selector only' });
+            } else {
+              appeared.push({ key, kind: t2.kind });
+            }
+            continue;
+          }
+
+          // Element exists in both — compare rect + style
+          const kind = t1.kind || t2.kind;
+          const isCallout = t1.isCallout || t2.isCallout;
+
+          if (t1.rect && t2.rect) {
+            const dx = t2.rect.x - t1.rect.x;
+            const dy = t2.rect.y - t1.rect.y;
+            const dw = t2.rect.width - t1.rect.width;
+            const dh = t2.rect.height - t1.rect.height;
+            if (
+              Math.abs(dx) > RECT_TOL || Math.abs(dy) > RECT_TOL ||
+              Math.abs(dw) > RECT_TOL || Math.abs(dh) > RECT_TOL
+            ) {
+              const entry = { key, kind, t1, t2, dx, dy, dw, dh };
+              if (isCallout) calloutsTracked.push(entry);
+              else moved.push(entry);
+            }
+          }
+
+          if (t1.style && t2.style) {
+            const styleDiffs = [];
+            for (const f of STYLE_FIELDS) {
+              if (t1.style[f] === t2.style[f]) continue;
+              if (ALLOWED_STYLE.has(`${kind}:${f}`)) continue;
+              styleDiffs.push({ field: f, t1: t1.style[f], t2: t2.style[f] });
+            }
+            if (styleDiffs.length > 0) {
+              const entry = { key, kind, styleDiffs };
+              if (isCallout) calloutsTracked.push(entry);
+              else styleChanged.push(entry);
+            }
+          }
+        }
+
+        const r = [];
+        r.push(`# Tool-Switch Diff — ${e.pdfName} page ${e.pageNumber}`);
+        r.push(`# T1 = eraser mode  @ ${e.timestamp}`);
+        r.push(`# T2 = selector mode @ ${s.timestamp}`);
+        r.push(`# Element keys captured: T1=${Object.keys(eEl).length}, T2=${Object.keys(sEl).length}`);
+        r.push(`# Visual ground truth: testlog-screenshot-eraser.png  ↔  testlog-screenshot-selector.png`);
+        r.push('');
+        r.push(`## Summary`);
+        r.push(`- Elements that moved (rect changed > ${RECT_TOL}px): ${moved.length}`);
+        r.push(`- Elements with style changes (excl. allowed deltas): ${styleChanged.length}`);
+        r.push(`- Elements that disappeared T1→T2 (excl. expected toggles): ${disappeared.length}`);
+        r.push(`- Elements that appeared T1→T2 (excl. expected toggles): ${appeared.length}`);
+        r.push(`- Callouts tracked (SVG↔Fabric drift expected, NOT flagged): ${calloutsTracked.length}`);
+        r.push('');
+        r.push(`## Verdict`);
+        const realBugs = moved.length + styleChanged.length + disappeared.length + appeared.length;
+        if (realBugs === 0) {
+          r.push(`- ✓ NO VISUAL DELTA between eraser and selector modes (callouts excluded — known drift).`);
+          r.push(`-   Cross-check the screenshot pair to confirm the user-visible result matches.`);
+        } else {
+          r.push(`- ⚠ ${realBugs} real visual delta(s) detected. Switching tools changed something the user can see.`);
+          r.push(`-   Cross-check the screenshot pair for visual confirmation.`);
+        }
+        r.push('');
+
+        r.push(`## Elements that moved`);
+        if (moved.length === 0) {
+          r.push('- (none — every element has the same rect in both modes)');
+        } else {
+          moved.forEach((m) => {
+            const t1r = m.t1.rect;
+            const t2r = m.t2.rect;
+            r.push(
+              `- ${m.key} (${m.kind}): ` +
+              `T1 rect=(${t1r.x.toFixed(1)}, ${t1r.y.toFixed(1)}, ${t1r.width.toFixed(1)}, ${t1r.height.toFixed(1)}) → ` +
+              `T2 rect=(${t2r.x.toFixed(1)}, ${t2r.y.toFixed(1)}, ${t2r.width.toFixed(1)}, ${t2r.height.toFixed(1)}) ` +
+              `Δ=(${m.dx.toFixed(1)}, ${m.dy.toFixed(1)}, ${m.dw.toFixed(1)}, ${m.dh.toFixed(1)})`
+            );
+          });
+        }
+        r.push('');
+
+        r.push(`## Elements with style changes`);
+        if (styleChanged.length === 0) {
+          r.push('- (none — visibility/opacity/transform/pointer-events/display identical, except whitelisted toggles)');
+        } else {
+          styleChanged.forEach((sc) => {
+            const diffStr = sc.styleDiffs.map((d) => `${d.field}: ${d.t1} → ${d.t2}`).join(', ');
+            r.push(`- ${sc.key} (${sc.kind}): ${diffStr}`);
+          });
+        }
+        r.push('');
+
+        r.push(`## Elements that disappeared (T1 eraser → T2 selector)`);
+        if (disappeared.length === 0) {
+          r.push('- (none — every eraser-mode element is also present in selector mode)');
+        } else {
+          disappeared.forEach((d) => {
+            r.push(`- ${d.key} (${d.kind}): present in eraser, absent in selector`);
+          });
+        }
+        r.push('');
+
+        r.push(`## Elements that appeared (T1 eraser → T2 selector)`);
+        if (appeared.length === 0) {
+          r.push('- (none — every selector-mode element was also present in eraser mode)');
+        } else {
+          appeared.forEach((a) => {
+            r.push(`- ${a.key} (${a.kind}): absent in eraser, appeared in selector`);
+          });
+        }
+        r.push('');
+
+        if (calloutsTracked.length > 0) {
+          r.push(`## Callout drift (tracked, NOT flagged — known per CLAUDE.md 2026-04-08)`);
+          calloutsTracked.forEach((c) => {
+            if (c.dx !== undefined) {
+              r.push(
+                `- ${c.key} [CALLOUT] moved Δ=(${c.dx.toFixed(1)}, ${c.dy.toFixed(1)}, ${c.dw.toFixed(1)}, ${c.dh.toFixed(1)})`
+              );
+            } else if (c.styleDiffs) {
+              const diffStr = c.styleDiffs.map((d) => `${d.field}: ${d.t1} → ${d.t2}`).join(', ');
+              r.push(`- ${c.key} [CALLOUT] style: ${diffStr}`);
+            } else if (c.note) {
+              r.push(`- ${c.key} [CALLOUT] ${c.note}`);
+            }
+          });
+          r.push('');
+        }
+
+        r.push(`## Whitelist (allowed deltas — these are intentional, not bugs)`);
+        r.push(`- svg-wrapper / svg-layer: visibility, display, pointer-events, cursor`);
+        r.push(`- eraser-wrapper / eraser-canvas: existence (mount/unmount), visibility, display, pointer-events, cursor`);
+        r.push(`- callouts: any rect or style change (known SVG↔Fabric drift, deferred)`);
+
+        await writeSafe('tool-switch-diff.txt', r.join('\n'));
+      } catch (toolDiffErr) {
+        console.warn('[SaveLog] tool-switch-diff build failed:', toolDiffErr);
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // Callout geometry dump — SVG capture (per callout, per render) +
+    // Fabric capture (per edit entry) + auto-generated diff. Populated by
+    // src/utils/calloutGeometryDiag.js. Also snapshots a screenshot right
+    // at the moment Save Log is pressed (the "after double-click" frame).
+    // --------------------------------------------------------------------
     try {
-      await window.electronAPI.writeFile(LOG_PATH, content);
-      console.log(`[SaveLog] ${buffer.length} lines written to ${LOG_PATH}`);
-      return { filename: LOG_PATH, lineCount: buffer.length };
-    } catch (err) {
-      console.error('[SaveLog] Failed to write:', err);
-      return null;
+      const geomBuf = window.__calloutGeomBuffer;
+      if (geomBuf && typeof geomBuf.dump === 'function') {
+        const geomJson = geomBuf.dump();
+        await writeSafe('callout-geom.json', geomJson);
+
+        // Plain-text human-readable summary so we can scan it without opening JSON.
+        try {
+          const parsed = JSON.parse(geomJson);
+          const lines = [];
+          lines.push(`# Callout Geometry — ${parsed.capturedAt}`);
+          lines.push(`# SVG captures: ${Object.keys(parsed.svgCaptures).length}`);
+          lines.push(`# Fabric captures: ${Object.keys(parsed.fabricCaptures).length}`);
+          lines.push(`# Diffs: ${Object.keys(parsed.diffs).length}`);
+          lines.push(`# Events in log: ${parsed.events.length}`);
+          lines.push('');
+          Object.entries(parsed.diffs).forEach(([id, d]) => {
+            lines.push(`## Callout ${id}`);
+            const s = d.svg || {};
+            const f = d.fabric || {};
+            lines.push(`SVG foreignObject screen rect: ${JSON.stringify(s.foreignObjectScreen)}`);
+            lines.push(`SVG text div screen rect:      ${JSON.stringify(s.textDivScreen)}`);
+            lines.push(`SVG font-size (computed):      ${s.fontSize_computed}`);
+            lines.push(`SVG font-family (computed):    ${s.fontFamily_computed}`);
+            lines.push(`Fabric canvas screen rect:     ${JSON.stringify(f.canvasScreen)}`);
+            lines.push(`Fabric zoom / retina:          ${f.zoom} / ${f.retina}`);
+            if (f.textbox) {
+              lines.push(`Fabric textbox (canvas-space): left=${f.textbox.left} top=${f.textbox.top} w=${f.textbox.width} h=${f.textbox.height} scaleX=${f.textbox.scaleX} scaleY=${f.textbox.scaleY} fontSize=${f.textbox.textExtras?.fontSize} fontFamily=${f.textbox.textExtras?.fontFamily}`);
+              lines.push(`Fabric textbox naive screen:  ${JSON.stringify(f.naiveTextScreenRect)}`);
+            } else {
+              lines.push(`Fabric textbox: (none found)`);
+            }
+            lines.push(`Deltas screen px: ${JSON.stringify(d.deltas_screenPx, null, 2)}`);
+            lines.push('');
+          });
+          await writeSafe('callout-geom-summary.txt', lines.join('\n'));
+        } catch (txtErr) {
+          console.warn('[SaveLog] callout-geom-summary build failed:', txtErr?.message || txtErr);
+        }
+      } else {
+        await writeSafe('callout-geom.json', '{}');
+      }
+
+      // After-double-click screenshot — capture right now (Save Log time).
+      if (window.electronAPI?.capturePage && window.electronAPI?.writeFile) {
+        const pngBytes = await window.electronAPI.capturePage();
+        if (pngBytes) {
+          const shotPath = `${BASE}-screenshot-callout-after.png`;
+          await window.electronAPI.writeFile(shotPath, pngBytes);
+          written.push(shotPath);
+          console.log(`[SaveLog] callout-after screenshot saved (${Math.round((pngBytes.byteLength || pngBytes.length || 0) / 1024)} KB)`);
+        }
+      }
+    } catch (geomErr) {
+      console.warn('[SaveLog] callout geometry dump failed:', geomErr?.message || geomErr);
     }
+
+    console.log(`[SaveLog] wrote ${written.length} files with prefix ${BASE}-: ${written.map((p) => p.split('/').pop()).join(', ')}`);
+    return { files: written };
   }, []);
 
   useEffect(() => {
@@ -14838,6 +16038,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setSelectedCalloutIds(new Set());
   }, [addHistoryCheckpoint]);
 
+  // UX: when a freshly-created callout lands in state, auto-open its text
+  // in edit mode so the user can start typing immediately (matches
+  // combined-tools behavior — creating a callout drops you straight into
+  // the text box). Ref holds { calloutId, pageNumber } between the
+  // setCallouts call and the commit effect below; cleared after firing.
+  const pendingAutoEditCalloutRef = useRef(null);
+
   // UX: Phase 14 CREATE-01 (callout half) — handler for click-drag callout
   // creation. Called from SVGAnnotationLayer's transient creation state
   // machine on mouseup. The new callout is already fully constructed by the
@@ -14849,6 +16056,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       calloutId: newCallout.id,
       pageNumber: newCallout.pageNumber,
     });
+    // UX: flag this callout for auto-edit-mode entry once setCallouts has
+    // committed — the useEffect below detects the new id in the callouts
+    // array and fires handleRequestCalloutEditMode (same path as
+    // double-click-to-edit). Using a ref instead of inline setEditingAnnotation
+    // keeps the fresh-callout lookup (toFabricGroup etc.) consistent with
+    // the double-click edit path.
+    pendingAutoEditCalloutRef.current = {
+      calloutId: newCallout.id,
+      pageNumber: newCallout.pageNumber,
+    };
     setCallouts((prev) => [...prev, newCallout]);
   }, [addHistoryCheckpoint]);
 
@@ -14900,26 +16117,98 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const pageNum = targetPageNumber || reactCallout.pageNumber || 1;
     const pageSizeObj = (pageSizes && pageSizes[pageNum]) || { width: 612, height: 792 };
 
+    // Phase 15 UAT-1 restructure (2026-04-17): route callout edit through
+    // the known-good text-edit path (loadTextAnnotation) instead of the
+    // parallel loadCalloutAnnotation. The textbox child from toFabricGroup
+    // already has type='textbox' with page-space left/top/width, which is
+    // exactly what loadTextAnnotation expects for an existing-text edit.
+    // FabricEditCanvas mounts a small bbox-sized canvas over the textbox
+    // and uses Fabric's native text:editing:exited event to commit —
+    // the full-page-container click-outside bug in loadCalloutAnnotation
+    // is eliminated. The 3 non-textbox children (line1, line2, tipDot) are
+    // stashed as `calloutChildren` so onEditCommit can synthesize the full
+    // 4-object array back through fromFabricGroup. Phase 15 UAT-2
+    // (2026-04-17): the rect child was dropped — textbox IS the box now,
+    // carrying its own stroke/rx/ry. See calloutEditAdapter.js toFabricGroup.
     const fabricGroup = toFabricGroup(reactCallout, pageSizeObj);
-    // UX: transient annotations array with a single group at index 0 —
-    // loadCalloutAnnotation reads from annotationsRef.current.objects
-    // and selects the object at annotationIndex. We pass index 0 so the
-    // single adapter output is the selection target.
-    const transientAnnotations = { objects: fabricGroup.objects };
+    const children = fabricGroup.objects || [];
+    const textboxChild = children.find((o) => o && o.type === 'textbox') || children[4];
+    const nonTextChildren = children.filter((o) => o !== textboxChild);
+    if (!textboxChild) return;
+    // [CALLOUT-DIAG] Phase 15 UAT-2 — Stage B marker. Fires on double-click
+    // entry. Captures stored callout + the Fabric shape we hand to EditCanvas.
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[CALLOUT-DIAG] edit-enter', JSON.stringify({
+        t: Date.now(),
+        calloutId,
+        pageNumber: targetPageNumber,
+        reactCallout: {
+          arrowTip: reactCallout.arrowTip,
+          knee: reactCallout.knee,
+          textBoxPosition: reactCallout.textBoxPosition,
+          textBoxWidth: reactCallout.textBoxWidth,
+          textBoxHeight: reactCallout.textBoxHeight,
+          text: (reactCallout.text || '').slice(0, 60),
+          style: reactCallout.style,
+        },
+        pageSize: pageSizeObj,
+        textboxChildAsHandedToEditCanvas: {
+          type: textboxChild.type,
+          left: textboxChild.left,
+          top: textboxChild.top,
+          width: textboxChild.width,
+          height: textboxChild.height,
+          scaleX: textboxChild.scaleX,
+          scaleY: textboxChild.scaleY,
+          stroke: textboxChild.stroke,
+          strokeWidth: textboxChild.strokeWidth,
+          fill: textboxChild.fill,
+          backgroundColor: textboxChild.backgroundColor,
+          fontFamily: textboxChild.fontFamily,
+          fontSize: textboxChild.fontSize,
+          text: (textboxChild.text || '').slice(0, 60),
+          rx: textboxChild.rx,
+          ry: textboxChild.ry,
+        },
+      }));
+    } catch (_e) { /* diag-only */ }
+
+    // Single-element transient annotations array — loadTextAnnotation's
+    // existing-text branch reads annotationsRef.current.objects[annotationIndex]
+    // and we want index 0 to resolve to the textbox child.
+    const transientAnnotations = { objects: [textboxChild] };
+
     setEditingAnnotation({
       pageNumber: pageNum,
       index: 0,
-      type: 'callout',
-      editType: 'callout',
-      data: fabricGroup.objects[0],
+      type: 'text',
+      editType: 'text',
+      data: textboxChild,
       annotations: transientAnnotations,
-      // UX: stash identifiers the save-callback wrapper needs to route
-      // the commit back to setCallouts via fromFabricGroup.
+      // UX: reactCalloutId presence is the sentinel that routes commit
+      // through fromFabricGroup to setCallouts. Non-null = callout edit.
       reactCalloutId: calloutId,
       originalReactCallout: reactCallout,
+      calloutChildren: nonTextChildren,
       pageSize: pageSizeObj,
     });
   }, [callouts, pageSizes]);
+
+  // UX: auto-open newly-created callout in edit mode. handleCreateCallout
+  // sets pendingAutoEditCalloutRef; this effect waits for the new callout
+  // id to appear in the callouts array (next render after setCallouts
+  // commits), then fires handleRequestCalloutEditMode so the user can
+  // immediately start typing. Ref is cleared on fire so it only runs once
+  // per creation.
+  useEffect(() => {
+    const pending = pendingAutoEditCalloutRef.current;
+    if (!pending) return;
+    const exists = callouts.some((c) => c && c.id === pending.calloutId);
+    if (!exists) return;
+    pendingAutoEditCalloutRef.current = null;
+    handleRequestCalloutEditMode(pending.calloutId, pending.pageNumber);
+  }, [callouts, handleRequestCalloutEditMode]);
 
   // Undo function
   const handleUndo = useCallback(() => {
@@ -22734,6 +24023,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             zoomControllerRef.current?.setMode(ZOOM_MODES.MANUAL, { scale: scaleRef.current });
             return;
           }
+          // UX: Cmd+V / Ctrl+V — paste the clipboard annotation onto the
+          // page under the cursor, centered at the cursor. Mirrors the
+          // right-click Paste menu behavior exactly (shares pasteAnnotationAt).
+          // No-op when the clipboard is empty OR when the cursor isn't over a
+          // PDF page, letting the browser handle Cmd+V everywhere else
+          // (form fields, system paste, etc). Resolves the target page from
+          // the cursor via elementFromPoint → closest('.e-pv-page-div') →
+          // data attribute lookup, matching the resolveAnnotationAt pattern.
+          if (key === 'v' && !e.shiftKey && clipboardAnnotation) {
+            const { x, y } = lastPointerPosRef.current;
+            const elAtCursor = document.elementFromPoint(x, y);
+            const pageDiv = elAtCursor?.closest?.('.e-pv-page-div') || null;
+            const palWrap = pageDiv?.querySelector?.('[data-diag-svg-wrapper], [data-pal-root]');
+            const pageNumAttr = palWrap?.getAttribute?.('data-diag-svg-wrapper')
+              || palWrap?.getAttribute?.('data-pal-root');
+            const pageNumber = pageNumAttr ? parseInt(pageNumAttr, 10) : null;
+            if (pageNumber != null && pasteAnnotationAtRef.current) {
+              e.preventDefault();
+              pasteAnnotationAtRef.current(pageNumber, x, y);
+              return;
+            }
+          }
         }
       }
 
@@ -22748,7 +24059,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode]);
+  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation]);
 
   // Electron: listen for pdf-zoom custom events forwarded from main process
   // (Ctrl/Cmd+Plus/Minus are intercepted by electron-main.js to prevent UI zoom)
@@ -23152,6 +24463,164 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setCounterUITick((t) => t + 1);
     }
     console.log(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} → updated ${updates.length} page(s)`);
+  }, [handleSaveAnnotations]);
+
+  // UX: shared paste-annotation routine used by both the right-click Paste
+  // menu item and the Cmd+V / Ctrl+V keyboard shortcut. Drops a deep clone of
+  // the clipboard annotation onto `pageNumber`, centered at the client-space
+  // point (clientX, clientY). Handles the CSS-pixels → stored-viewBox-space
+  // coord transform so shapes land under the cursor at any zoom. Declared
+  // AFTER handleSaveAnnotations so the dep array doesn't TDZ-crash at
+  // first render (same pattern as handleDeleteSelectedCallouts).
+  const pasteAnnotationAt = useCallback((pageNumber, clientX, clientY) => {
+    if (!clipboardAnnotation || pageNumber == null) return false;
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+    const next = JSON.parse(JSON.stringify(page));
+    if (!Array.isArray(next.objects)) next.objects = [];
+    const pasted = JSON.parse(JSON.stringify(clipboardAnnotation.object));
+    // UX: clone needs a fresh id so the SVG renderer and selection path
+    // don't treat it as the same shape as the source. Keep `isPdfImported`
+    // so imported shapes paste back through the same visual path.
+    pasted.pdfAnnotationId = `paste-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (pasted.id && typeof pasted.id === 'string') {
+      pasted.id = `${pasted.id}-paste-${Date.now().toString(36)}`;
+    }
+    const originalLeft = typeof pasted.left === 'number' ? pasted.left : 0;
+    const originalTop = typeof pasted.top === 'number' ? pasted.top : 0;
+
+    let resolvedVia = 'fallback:original+20';
+    let pastedLeft = originalLeft + 20;
+    let pastedTop = originalTop + 20;
+    try {
+      const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
+      const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
+      const pageDiv = (svgWrap || palRoot)?.closest?.('.e-pv-page-div') || null;
+      const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
+      const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
+      const viewBoxW = vb && vb.length === 4 ? parseFloat(vb[2]) : NaN;
+      const viewBoxH = vb && vb.length === 4 ? parseFloat(vb[3]) : NaN;
+      const pageRect = pageDiv?.getBoundingClientRect?.() || null;
+      const pageOffsetW = pageDiv?.offsetWidth ?? pageRect?.width ?? null;
+      const pageOffsetH = pageDiv?.offsetHeight ?? pageRect?.height ?? null;
+      const scaleX = (pageOffsetW && viewBoxW) ? pageOffsetW / viewBoxW : null;
+      const scaleY = (pageOffsetH && viewBoxH) ? pageOffsetH / viewBoxH : null;
+      if (pageRect && scaleX && scaleY) {
+        const cursorStoredX = (clientX - pageRect.left) / scaleX;
+        const cursorStoredY = (clientY - pageRect.top) / scaleY;
+        const halfW = (typeof pasted.width === 'number' ? pasted.width
+          : (typeof pasted.radius === 'number' ? pasted.radius * 2 : 0)) / 2;
+        const halfH = (typeof pasted.height === 'number' ? pasted.height
+          : (typeof pasted.radius === 'number' ? pasted.radius * 2 : 0)) / 2;
+        pastedLeft = cursorStoredX - halfW;
+        pastedTop = cursorStoredY - halfH;
+        resolvedVia = 'cursor-centered';
+      }
+    } catch (err) {
+      console.warn('[Paste] coord transform failed, using original+20', err?.message || err);
+    }
+
+    pasted.left = pastedLeft;
+    pasted.top = pastedTop;
+    next.objects.push(pasted);
+
+    console.log(`[PasteDiag] resolvedVia=${resolvedVia} click=(${clientX},${clientY}) pasted=(${pastedLeft.toFixed(2)},${pastedTop.toFixed(2)}) original=(${originalLeft},${originalTop}) type=${pasted.type} page=${pageNumber}`);
+
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'paste',
+      checkpointPolicy: 'normal',
+    });
+    if (clipboardAnnotation.mode === 'cut') {
+      setClipboardAnnotation(null);
+    }
+    return true;
+  }, [clipboardAnnotation, handleSaveAnnotations]);
+  // Keep the ref in sync so the keydown useEffect (declared above
+  // pasteAnnotationAt) can call it without TDZ'ing on the dep array.
+  pasteAnnotationAtRef.current = pasteAnnotationAt;
+
+  // UX: Shared annotation Copy handler — called by the Cmd+C hotkey wired
+  // from SVGAnnotationLayer's per-page keydown useEffect (and available for
+  // future reuse). Deep-clones the targeted shape onto clipboardAnnotation
+  // with mode='copy' so doPasteAnnotation keeps the clipboard across multiple
+  // pastes (copy is repeatable; only cut is one-shot). Matches the right-click
+  // "Copy" menu handler at ~line 26293 but takes (pageNumber, annotationIndex)
+  // directly instead of reading ctx.
+  const handleCopyAnnotation = useCallback((pageNumber, annotationIndex) => {
+    if (pageNumber == null || annotationIndex == null) return;
+    const page = annotationsByPageRef.current?.[pageNumber];
+    const obj = page?.objects?.[annotationIndex];
+    if (!obj) return;
+    setClipboardAnnotation({
+      object: JSON.parse(JSON.stringify(obj)),
+      sourcePageNumber: pageNumber,
+      mode: 'copy',
+    });
+  }, []);
+
+  // UX: Shared annotation Cut handler — called by the Cmd+X hotkey. Same
+  // shape as the right-click "Cut" menu handler at ~line 26265: stashes a
+  // clone on the clipboard with mode='cut' (one-shot paste, matches
+  // Acrobat/Figma), splices the original out of that page's objects,
+  // commits via handleSaveAnnotations so undo + cloud sync behave identically
+  // to menu Cut, and broadcasts a clear-selection command through
+  // pendingSvgSelection so the neighbor shape that slides into the spliced
+  // index slot doesn't look selected after the save.
+  const handleCutAnnotation = useCallback((pageNumber, annotationIndex) => {
+    if (pageNumber == null || annotationIndex == null) return;
+    const page = annotationsByPageRef.current?.[pageNumber];
+    if (!page?.objects) return;
+    if (annotationIndex < 0 || annotationIndex >= page.objects.length) return;
+    const obj = page.objects[annotationIndex];
+    if (!obj) return;
+    setClipboardAnnotation({
+      object: JSON.parse(JSON.stringify(obj)),
+      sourcePageNumber: pageNumber,
+      mode: 'cut',
+    });
+    const next = JSON.parse(JSON.stringify(page));
+    next.objects.splice(annotationIndex, 1);
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'cut',
+      checkpointPolicy: 'normal',
+    });
+    setPendingSvgSelection({
+      pageNumber,
+      annotationIndex: null,
+      tick: Date.now(),
+    });
+  }, [handleSaveAnnotations]);
+
+  // UX: Shared annotation z-order reorder handler. Called by the right-click
+  // menu's Bring to Front / Forward / Send Backward / to Back items and by
+  // the Cmd+]/Cmd+[/Cmd+Shift+]/Cmd+Shift+[ hotkeys (SVGAnnotationLayer
+  // keydown useEffect). Splices the shape out of its current slot and
+  // reinserts it at a clamped target index, then broadcasts a
+  // pendingSvgSelection pointing at the new index so the selection "follows"
+  // the shape instead of sticking to whichever neighbor slid into the
+  // original slot (matches Illustrator/Figma/Photoshop). toIndex is clamped
+  // to [0, objects.length - 1]; same-index is a no-op.
+  const handleReorderAnnotation = useCallback((pageNumber, fromIndex, toIndex) => {
+    if (pageNumber == null || fromIndex == null) return;
+    const page = annotationsByPageRef.current?.[pageNumber];
+    if (!page?.objects) return;
+    if (fromIndex < 0 || fromIndex >= page.objects.length) return;
+    const clamped = Math.max(0, Math.min(toIndex, page.objects.length - 1));
+    if (clamped === fromIndex) return;
+    const next = JSON.parse(JSON.stringify(page));
+    const [moved] = next.objects.splice(fromIndex, 1);
+    next.objects.splice(clamped, 0, moved);
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'reorder',
+      checkpointPolicy: 'normal',
+    });
+    setPendingSvgSelection({
+      pageNumber,
+      annotationIndex: clamped,
+      tick: Date.now(),
+    });
   }, [handleSaveAnnotations]);
 
   // [COUNTER WIP — DO NOT TOUCH] Counter drag-to-place helpers.
@@ -24845,6 +26314,294 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   return (
     <>
+      {/* Annotation right-click menu. Anchored to pointer via fixed position.
+          UX: stops propagation on its own mousedown so clicking an item doesn't
+          also trigger the outside-click closer. Menu items depend on the
+          right-click "kind": page (empty canvas), callout, counter/pin, or
+          generic annotation. Items without wired actions stay as no-op logs. */}
+      {annotationContextMenu && createPortal((() => {
+        const ctx = annotationContextMenu;
+        const logStub = (key) => console.log(`[AnnotCtxMenu] ${key} kind=${ctx.kind} page=${ctx.pageNumber} annoIdx=${ctx.annotationIndex} calloutId=${ctx.calloutId}`);
+        // Menu item builder. action = wired callback; omit to log a stub.
+        // UX: `enabled` (default true) controls the grayed-out / click-blocked
+        // state for items like Paste-when-clipboard-empty. Disabled items still
+        // render (so users can see the option exists) but clicks are ignored
+        // and styling is muted to match Acrobat / Bluebeam / Figma behavior.
+        const item = (label, key, action, enabled = true) => ({
+          label, key,
+          disabled: !enabled,
+          onClick: enabled
+            ? () => {
+                if (action) action(); else logStub(key);
+                setAnnotationContextMenu(null);
+              }
+            : undefined,
+        });
+        // UX: each separator must have a unique key. Previous `const SEP =
+        // {..., key: sep-<rand>}` reused the same object across multiple slots
+        // in the items array, which made React warn about duplicate children
+        // keys. Factory ensures a fresh key per separator.
+        let _sepCounter = 0;
+        const sep = () => ({ separator: true, key: `sep-${_sepCounter++}` });
+
+        // UX: right-click Paste just delegates to pasteAnnotationAt (declared
+        // at top-level alongside handlePasteCallout so Cmd+V can share it).
+        // Keeps this render closure small.
+        const doPasteAnnotation = () => pasteAnnotationAt(ctx.pageNumber, ctx.x, ctx.y);
+
+        let items;
+        if (ctx.kind === 'callout') {
+          items = [
+            item('Cut', 'cut', () => ctx.calloutId && handleCutCallout(ctx.calloutId)),
+            item('Copy', 'copy', () => ctx.calloutId && handleCopyCallout(ctx.calloutId)),
+            item('Paste', 'paste', () => handlePasteCallout(ctx.pageNumber)),
+            item('Delete', 'delete'),
+            sep(),
+            item('Group', 'group'),
+            item('Ungroup', 'ungroup'),
+            sep(),
+            item('Properties…', 'properties'),
+          ];
+        } else if (ctx.kind === 'counter') {
+          items = [
+            item('Continue Pin', 'continuePin'),
+            sep(),
+            item('Properties…', 'properties'),
+          ];
+        } else if (ctx.kind === 'annotation') {
+          items = [
+            // UX: Cut = Copy + Delete. Stashes a deep clone of the shape on
+            // the clipboard with mode='cut' (so doPasteAnnotation clears the
+            // clipboard after the first paste, matching Acrobat/Figma), then
+            // splices the original out of the page. Clears selection after
+            // the splice the same way right-click Delete does — the index
+            // slot now points at a different shape, so keeping it selected
+            // would be confusing. If the page or index isn't resolvable this
+            // falls through as a no-op rather than corrupting state.
+            item('Cut', 'cut', () => {
+              const page = annotationsByPageRef.current?.[ctx.pageNumber];
+              if (!page?.objects || ctx.annotationIndex == null) return;
+              if (ctx.annotationIndex < 0 || ctx.annotationIndex >= page.objects.length) return;
+              const obj = page.objects[ctx.annotationIndex];
+              if (!obj) return;
+              setClipboardAnnotation({
+                object: JSON.parse(JSON.stringify(obj)),
+                sourcePageNumber: ctx.pageNumber,
+                mode: 'cut',
+              });
+              const next = JSON.parse(JSON.stringify(page));
+              next.objects.splice(ctx.annotationIndex, 1);
+              handleSaveAnnotations(ctx.pageNumber, next, {
+                source: 'object:modified',
+                action: 'cut',
+                checkpointPolicy: 'normal',
+              });
+              setPendingSvgSelection({
+                pageNumber: ctx.pageNumber,
+                annotationIndex: null,
+                tick: Date.now(),
+              });
+            }),
+            // UX: Copy stashes the targeted shape's Fabric JSON + source page
+            // on the clipboardAnnotation state (see ~line 11058). No visual
+            // change — Paste is where the user sees the result. Matches the
+            // callout clipboard pattern at ~line 11097.
+            item('Copy', 'copy', () => {
+              const page = annotationsByPageRef.current?.[ctx.pageNumber];
+              const obj = page?.objects?.[ctx.annotationIndex];
+              if (!obj) return;
+              setClipboardAnnotation({
+                object: JSON.parse(JSON.stringify(obj)),
+                sourcePageNumber: ctx.pageNumber,
+                mode: 'copy',
+              });
+            }),
+            // UX: Paste drops a clone of the clipboardAnnotation onto the
+            // right-clicked page. See doPasteAnnotation() above for the full
+            // behavior + live diagnostic dump. Grayed out when the clipboard
+            // is empty — matches Acrobat, Drawboard PDF, Bluebeam, Figma.
+            item('Paste', 'paste', doPasteAnnotation, Boolean(clipboardAnnotation)),
+            // UX: right-click Delete mirrors the keyboard Delete/Backspace path —
+            // splice the targeted shape out of that page's objects and commit
+            // via handleSaveAnnotations. Same save path as useSVGInteraction's
+            // deleteSelected, so undo + cloud sync behave identically to pressing
+            // Delete with a selection. No-op if the page/index isn't resolvable.
+            // After the save, broadcast a "clear selection on this page" command
+            // via pendingSvgSelection (annotationIndex: null) so the selection
+            // doesn't stick to the shape that slides into the deleted index
+            // slot after the splice — the user expects everything dismissed.
+            item('Delete', 'delete', () => {
+              const page = annotationsByPageRef.current?.[ctx.pageNumber];
+              if (!page?.objects || ctx.annotationIndex == null) return;
+              if (ctx.annotationIndex < 0 || ctx.annotationIndex >= page.objects.length) return;
+              const next = JSON.parse(JSON.stringify(page));
+              next.objects.splice(ctx.annotationIndex, 1);
+              handleSaveAnnotations(ctx.pageNumber, next, {
+                source: 'object:modified',
+                action: 'delete',
+                checkpointPolicy: 'normal',
+              });
+              setPendingSvgSelection({
+                pageNumber: ctx.pageNumber,
+                annotationIndex: null,
+                tick: Date.now(),
+              });
+            }),
+            sep(),
+            // UX: z-order — mirrors Illustrator/Figma/Photoshop placement
+            // (flat block after Delete, above Group). Handler clamps toIndex
+            // and re-broadcasts the selection at the new slot so the shape
+            // stays visibly selected after reorder. Hotkey parity lives in
+            // SVGAnnotationLayer's keydown useEffect:
+            //   Cmd+Shift+]  → Bring to Front
+            //   Cmd+]        → Bring Forward
+            //   Cmd+[        → Send Backward
+            //   Cmd+Shift+[  → Send to Back
+            item('Bring to Front', 'bringToFront', () => {
+              const page = annotationsByPageRef.current?.[ctx.pageNumber];
+              if (!page?.objects) return;
+              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, page.objects.length - 1);
+            }),
+            item('Bring Forward', 'bringForward', () => {
+              if (ctx.annotationIndex == null) return;
+              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, ctx.annotationIndex + 1);
+            }),
+            item('Send Backward', 'sendBackward', () => {
+              if (ctx.annotationIndex == null) return;
+              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, ctx.annotationIndex - 1);
+            }),
+            item('Send to Back', 'sendToBack', () => {
+              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 0);
+            }),
+            sep(),
+            item('Group', 'group'),
+            item('Ungroup', 'ungroup'),
+            sep(),
+            item('Properties…', 'properties'),
+          ];
+        } else {
+          // Empty canvas / page — only Paste lives here (for annotation paste).
+          // Page-level operations (Cut/Copy/Delete/Rotate/Mirror) belong in the
+          // thumbnails sidebar (src/sidebar/PagesPanel.jsx), not the canvas
+          // right-click. This matches Acrobat and Bluebeam: right-click a page
+          // thumbnail for page ops; right-click the page body for annotation
+          // ops. Shares doPasteAnnotation with the annotation menu above.
+          items = [
+            item('Paste', 'paste', doPasteAnnotation, Boolean(clipboardAnnotation)),
+          ];
+        }
+
+        return (
+          <div
+            data-annotation-context-menu="true"
+            ref={(el) => {
+              // UX: keep the menu inside the PDF page the user right-clicked
+              // on (not just the viewport). When the cursor is near the right
+              // or bottom edge of a page, flip the menu's anchor so its
+              // right/bottom corner aligns with the cursor — this keeps the
+              // pointer still resting on the clicked item/shape. Falls back
+              // to a viewport clamp if the page element can't be found (e.g.
+              // right-click landed in an empty zone). 8px margin so the menu
+              // never kisses the page border.
+              if (!el) return;
+              const rect = el.getBoundingClientRect();
+              const margin = 8;
+
+              // Resolve the bounding box we want to keep the menu inside of.
+              // First preference: the PDF page wrapper for ctx.pageNumber.
+              // Fallback: the Syncfusion page div at the same index. Fallback
+              // of fallback: the viewport.
+              let bounds = null;
+              if (ctx.pageNumber != null) {
+                const pageEl =
+                  document.querySelector(`[data-diag-svg-wrapper="${ctx.pageNumber}"]`)
+                  || document.querySelector(`[data-pal-root="${ctx.pageNumber}"]`);
+                if (pageEl) {
+                  // Walk up to the syncfusion page div so the bounds match
+                  // what the user visually sees as "the page".
+                  const pageDiv = pageEl.closest('.e-pv-page-div') || pageEl;
+                  const r = pageDiv.getBoundingClientRect();
+                  if (r.width > 0 && r.height > 0) bounds = r;
+                }
+              }
+              if (!bounds) {
+                bounds = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight };
+              }
+
+              // Horizontal: flip left if opening rightward would overflow.
+              let nextLeft = ctx.x;
+              if (ctx.x + rect.width + margin > bounds.right) {
+                nextLeft = ctx.x - rect.width; // flip: menu opens leftward
+              }
+              // Then clamp so we never go past the left edge.
+              if (nextLeft < bounds.left + margin) {
+                nextLeft = Math.max(margin, bounds.left + margin);
+              }
+              // If the menu is wider than the bounds, keep it pinned to the
+              // left edge with the margin (rather than going negative).
+              if (rect.width + margin * 2 > bounds.width) {
+                nextLeft = Math.max(margin, bounds.left + margin);
+              }
+
+              // Vertical: same logic for top/bottom.
+              let nextTop = ctx.y;
+              if (ctx.y + rect.height + margin > bounds.bottom) {
+                nextTop = ctx.y - rect.height;
+              }
+              if (nextTop < bounds.top + margin) {
+                nextTop = Math.max(margin, bounds.top + margin);
+              }
+              if (rect.height + margin * 2 > bounds.height) {
+                nextTop = Math.max(margin, bounds.top + margin);
+              }
+
+              el.style.left = `${nextLeft}px`;
+              el.style.top = `${nextTop}px`;
+            }}
+            style={{
+              position: 'fixed',
+              left: ctx.x,
+              top: ctx.y,
+              background: '#fff',
+              border: '1px solid #ccc',
+              borderRadius: 4,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              zIndex: 10000,
+              minWidth: 160,
+              padding: '4px 0',
+              fontSize: 13,
+              fontFamily: 'system-ui, sans-serif',
+            }}
+          >
+            {items.map((it) => (
+              it.separator
+                ? <div key={it.key} style={{ height: 1, background: '#eee', margin: '4px 0' }} />
+                : (
+                  <div
+                    key={it.key}
+                    onClick={it.disabled ? undefined : it.onClick}
+                    // UX: disabled items (e.g. Paste when the clipboard is
+                    // empty) render in muted gray with a default cursor and no
+                    // hover highlight — the user can see the option exists but
+                    // that it's not currently actionable. Matches standard
+                    // desktop-app menu behavior.
+                    style={{
+                      padding: '6px 14px',
+                      cursor: it.disabled ? 'default' : 'pointer',
+                      userSelect: 'none',
+                      color: it.disabled ? '#999' : 'inherit',
+                    }}
+                    onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = '#eef'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    {it.label}
+                  </div>
+                )
+            ))}
+          </div>
+        );
+      })(), document.body)}
+
       {/* Unsupported Annotations Notice */}
       {showUnsupportedNotice && unsupportedAnnotationTypes.length > 0 && (
         <UnsupportedAnnotationsNotice
@@ -24854,6 +26611,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       )}
 
       {/* Eraser Cursor Overlay */}
+      {/*
+        UX: circular ring showing the eraser radius, centered on the pointer,
+        rendered only while the eraser tool is active. The ring MUST appear at
+        the pointer on the first render (not at top-left) — the fix-me race was
+        that the ref-based transform write at 22437 runs before the ref is
+        attached (setState is async, element mounts next tick), so we seed the
+        transform inline from lastPointerPosRef so React mounts the div in the
+        correct spot. Subsequent moves use the direct-DOM transform path in
+        handleMouseMove for perf.
+      */}
       {activeTool === 'eraser' && eraserCursorPos.visible && (
         <div
           ref={eraserCursorRef}
@@ -24863,13 +26630,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             top: 0,
             width: eraserSize * 2 * scale,
             height: eraserSize * 2 * scale,
+            transform: `translate3d(${lastPointerPosRef.current.x - eraserSize * scale}px, ${lastPointerPosRef.current.y - eraserSize * scale}px, 0)`,
             borderRadius: '50%',
             backgroundColor: 'rgba(128, 128, 128, 0.2)',
             border: `${Math.max(1, 2 * scale)}px solid rgba(100, 100, 100, 0.6)`,
             pointerEvents: 'none',
             zIndex: 99999,
             willChange: 'transform',
-            // Removed transitions for instant follow
           }}
         />
       )}
@@ -25713,8 +27480,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   />
                                 </div>
                               )}
-                              {/* SVG layer -- hidden when eraser or callout edit is mounted */}
+                              {/* SVG layer -- hidden only when a callout edit is mounted.
+                                  UX: in eraser mode the wrapper stays visible so SVGAnnotationLayer
+                                  can still render imported textboxes underneath the Fabric eraser
+                                  canvas (opacity-0 hit zones up there). Pointer-events remain
+                                  'none' for eraser because svgInteractive is false, so clicks still
+                                  reach the eraser canvas at zIndex 101. Ref CLAUDE.md 2026-04-10
+                                  rasterizer-mismatch gotcha + FabricEraserCanvas.jsx textbox override. */}
                               <div
+                                data-diag-svg-wrapper={pageNumber}
                                 style={{
                                   position: 'absolute',
                                   top: 0,
@@ -25723,7 +27497,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   height: '100%',
                                   pointerEvents: (svgInteractive && !isEditMode) ? 'auto' : 'none',
                                   zIndex: 100,
-                                  visibility: (isEraserTool || (isEditMode && editingAnnotation?.editType === 'callout')) ? 'hidden' : 'visible',
+                                  // UX: Fix 3 (2026-04-16) — SVG layer stays visible during
+                                  // callout edit. Previously `visibility: hidden` blanked the
+                                  // ENTIRE layer to avoid double-rendering the edited callout
+                                  // under the Fabric edit canvas; that hid every other
+                                  // annotation on the page. Now SVGAnnotationLayer skips only
+                                  // the single callout being edited via `editingCalloutId`
+                                  // (mirrors the text-annotation `hideForEdit` pattern at
+                                  // SVGAnnotationLayer.jsx:~1332).
                                   cursor: (svgInteractive && !isEditMode) ? 'default' : undefined,
                                 }}
                                 onPointerDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
@@ -25811,6 +27592,34 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   onCreateCallout={handleCreateCallout}
                                   onUpdateCallout={handleUpdateCallout}
                                   onUpdateCalloutLive={handleUpdateCalloutLive}
+                                  // UX: Cmd+C / Cmd+X hotkey handlers. SVGAnnotationLayer's
+                                  // per-page keydown useEffect fires these when that page
+                                  // has exactly one shape selected. Matches the right-click
+                                  // menu's Copy/Cut behavior — same clipboard shape, same
+                                  // commit path, so keyboard and menu flows stay consistent.
+                                  onCopyAnnotation={handleCopyAnnotation}
+                                  onCutAnnotation={handleCutAnnotation}
+                                  // UX: z-order hotkeys (Cmd+]/[ + Shift variants). Fires
+                                  // from SVGAnnotationLayer's keydown useEffect when that
+                                  // page has exactly one shape selected. Matches the
+                                  // right-click menu's Bring to Front / Forward / Send
+                                  // Backward / to Back items — same handler, same commit path.
+                                  onReorderAnnotation={handleReorderAnnotation}
+                                  // UX: Fix 3 (2026-04-16) — id of the callout currently in
+                                  // Fabric edit mode, or null. SVGAnnotationLayer skips this
+                                  // one callout in filteredCallouts so the live Fabric edit
+                                  // canvas doesn't render on top of a duplicate SVG copy.
+                                  // Mirrors the text-annotation hideForEdit pattern.
+                                  editingCalloutId={editingAnnotation?.reactCalloutId || null}
+                                  // UX: Phase 15 UAT-2 — live textbox bounds from
+                                  // FabricEditCanvas.onLiveTextGrow. Feeds renderCallout
+                                  // so line1 retracts to the live edge during typing.
+                                  liveCalloutEditBounds={liveCalloutEditBounds}
+                                  // UX: pan-mode quick-click selection command. See
+                                  // pendingSvgSelection state at ~line 11046 for details.
+                                  pendingSelection={pendingSvgSelection}
+                                  // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
+                                  pendingHover={pendingSvgHover}
                                 />
                               </div>
 
@@ -26176,29 +27985,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   editType={editingAnnotation.editType}
                                   annotationData={editingAnnotation.data}
                                   annotationIndex={editingAnnotation.index}
-                                  // UX: Phase 14 CALL-10 — when editing a callout, pass
-                                  // the transient annotations shape built by
-                                  // handleRequestCalloutEditMode (via toFabricGroup)
-                                  // instead of pageAnnotations. FabricEditCanvas's
-                                  // loadCalloutAnnotation at :1937 reads from
-                                  // annotationsRef.current.objects and enlivens via
-                                  // fabric.util.enlivenObjects — no FabricEditCanvas
-                                  // edits needed.
-                                  annotations={editingAnnotation.editType === 'callout'
+                                  // UX: Phase 15 UAT-1 restructure (2026-04-17) — callout
+                                  // edit now routes through the text-edit path. The
+                                  // transient annotations is a single-element array
+                                  // containing the textbox child; reactCalloutId is the
+                                  // sentinel that routes the commit through
+                                  // fromFabricGroup instead of handleSaveAnnotations.
+                                  annotations={editingAnnotation.reactCalloutId
                                     ? editingAnnotation.annotations
                                     : pageAnnotations}
                                   isNewText={editingAnnotation.isNewText || false}
                                   clickPosition={editingAnnotation.clickPosition || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
+                                  // UX: Phase 15 UAT-2 — match the edit-mode outline
+                                  // to the callout's own border color so view and
+                                  // edit look identical. Text edits keep the default
+                                  // black outline.
+                                  outlineColor={editingAnnotation?.reactCalloutId
+                                    ? (editingAnnotation?.originalReactCallout?.style?.borderColor
+                                       || editingAnnotation?.originalReactCallout?.style?.lineColor
+                                       || '#1e293b')
+                                    : '#000'}
+                                  // UX: Phase 15 UAT-2 — receive live textbox bounds
+                                  // from Fabric on every 'changed' event so line1
+                                  // retracts to the live edge as text auto-grows.
+                                  // Only fires for callout edits (reactCalloutId set).
+                                  onLiveTextGrow={editingAnnotation?.reactCalloutId
+                                    ? setLiveCalloutEditBounds
+                                    : undefined}
                                   onEditCommit={(updatedJSON) => {
-                                    // UX: Phase 14 CALL-10 — detect callout edit session
-                                    // and route the commit to setCallouts via
-                                    // fromFabricGroup (reverse adapter). Non-callout
-                                    // edits still flow through handleSaveAnnotations.
-                                    if (editingAnnotation.editType === 'callout' && editingAnnotation.reactCalloutId) {
-                                      const editedGroup = { objects: updatedJSON?.objects || [] };
+                                    // UX: Phase 15 UAT-1 restructure — reactCalloutId
+                                    // routes callout commit through fromFabricGroup.
+                                    // updatedJSON.objects[0] is the edited textbox in
+                                    // page coords (text path's commit already translated
+                                    // from bbox-local back to page space). Synthesize
+                                    // the full 4-object array from the 3 stashed
+                                    // non-textbox children + the edited textbox.
+                                    // fromFabricGroup reads by data.calloutPart marker
+                                    // (not by index), so child order here is flexible.
+                                    if (editingAnnotation.reactCalloutId) {
+                                      const editedTextbox = updatedJSON?.objects?.[0];
+                                      const synthesized = [
+                                        ...(editingAnnotation.calloutChildren || []),
+                                        editedTextbox,
+                                      ].filter(Boolean);
                                       const updatedReactCallout = fromFabricGroup(
-                                        editedGroup,
+                                        { objects: synthesized },
                                         editingAnnotation.pageSize || resolvedPageSize,
                                         editingAnnotation.originalReactCallout
                                       );
@@ -26228,7 +28060,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     // UX: Phase 14 CALL-10 — live previews during callout
                                     // edit are swallowed (no live save to setCallouts);
                                     // the commit flows only on onEditCommit.
-                                    if (editingAnnotation.editType === 'callout') return;
+                                    if (editingAnnotation.reactCalloutId) return;
                                     handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
                                   }}
                                   strokeColor={strokeColor}
@@ -26409,9 +28241,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                                   return (
                                   <>
-                                    {/* SVG layer -- hidden when eraser or callout edit is mounted */}
+                                    {/* SVG layer -- hidden only when a callout edit is mounted.
+                                        UX: eraser mode keeps this visible so imported textboxes render
+                                        through the opacity-0 hit zones in FabricEraserCanvas. Ref
+                                        CLAUDE.md 2026-04-10 rasterizer-mismatch gotcha. */}
                                     <div
-                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: (svgInteractive && !isEditMode) ? 'auto' : 'none', zIndex: 100, visibility: (isEraserTool || (isEditMode && editingAnnotation?.editType === 'callout')) ? 'hidden' : 'visible', cursor: (svgInteractive && !isEditMode) ? 'default' : undefined }}
+                                      data-diag-svg-wrapper={pageNumber}
+                                      // UX: Fix 3 (2026-04-16) — see first SVGAnnotationLayer
+                                      // mount site. No layer-wide visibility hide; per-callout
+                                      // skip happens inside SVGAnnotationLayer via editingCalloutId.
+                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: (svgInteractive && !isEditMode) ? 'auto' : 'none', zIndex: 100, cursor: (svgInteractive && !isEditMode) ? 'default' : undefined }}
                                       onPointerDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
                                       onMouseDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
                                     >
@@ -26491,6 +28330,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       onCreateCallout={handleCreateCallout}
                                       onUpdateCallout={handleUpdateCallout}
                                       onUpdateCalloutLive={handleUpdateCalloutLive}
+                                      // UX: Cmd+C / Cmd+X hotkey handlers — see first mount site.
+                                      onCopyAnnotation={handleCopyAnnotation}
+                                      onCutAnnotation={handleCutAnnotation}
+                                      // UX: z-order hotkeys — see first mount site.
+                                      onReorderAnnotation={handleReorderAnnotation}
+                                      // UX: Fix 3 (2026-04-16) — see first mount site.
+                                      editingCalloutId={editingAnnotation?.reactCalloutId || null}
+                                      // UX: Phase 15 UAT-2 — see first mount site.
+                                      liveCalloutEditBounds={liveCalloutEditBounds}
+                                      // UX: pan-mode quick-click selection — see first mount site.
+                                      pendingSelection={pendingSvgSelection}
+                                      // UX: pan-mode hover glow — see first mount site.
+                                      pendingHover={pendingSvgHover}
                                     />
                                     </div>
 
@@ -26641,22 +28493,38 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         editType={editingAnnotation.editType}
                                         annotationData={editingAnnotation.data}
                                         annotationIndex={editingAnnotation.index}
-                                        // UX: Phase 14 CALL-10 — callout edit uses the
-                                        // transient annotations shape from
-                                        // handleRequestCalloutEditMode, not pageAnnotationsCS.
-                                        annotations={editingAnnotation.editType === 'callout'
+                                        // UX: Phase 15 UAT-1 restructure — callout edit
+                                        // now uses editType='text' with a single-textbox
+                                        // transient annotations array. reactCalloutId is
+                                        // the sentinel that routes back to setCallouts.
+                                        annotations={editingAnnotation.reactCalloutId
                                           ? editingAnnotation.annotations
                                           : pageAnnotationsCS}
                                         isNewText={editingAnnotation.isNewText || false}
                                         clickPosition={editingAnnotation.clickPosition || null}
                                         textBoxWidth={editingAnnotation.textBoxWidth}
+                                        // UX: Phase 15 UAT-2 — see mount site 1 for
+                                        // the outlineColor rationale.
+                                        outlineColor={editingAnnotation?.reactCalloutId
+                                          ? (editingAnnotation?.originalReactCallout?.style?.borderColor
+                                             || editingAnnotation?.originalReactCallout?.style?.lineColor
+                                             || '#1e293b')
+                                          : '#000'}
+                                        // UX: Phase 15 UAT-2 — see mount site 1.
+                                        onLiveTextGrow={editingAnnotation?.reactCalloutId
+                                          ? setLiveCalloutEditBounds
+                                          : undefined}
                                         onEditCommit={(updatedJSON) => {
-                                          // UX: Phase 14 CALL-10 — callout commit routes to
-                                          // setCallouts via fromFabricGroup.
-                                          if (editingAnnotation.editType === 'callout' && editingAnnotation.reactCalloutId) {
-                                            const editedGroup = { objects: updatedJSON?.objects || [] };
+                                          // UX: Phase 15 UAT-1 restructure — see mount
+                                          // site 1 for the synthesis rationale.
+                                          if (editingAnnotation.reactCalloutId) {
+                                            const editedTextbox = updatedJSON?.objects?.[0];
+                                            const synthesized = [
+                                              ...(editingAnnotation.calloutChildren || []),
+                                              editedTextbox,
+                                            ].filter(Boolean);
                                             const updatedReactCallout = fromFabricGroup(
-                                              editedGroup,
+                                              { objects: synthesized },
                                               editingAnnotation.pageSize || { width: pageSizes[pageNumber].width, height: pageSizes[pageNumber].height },
                                               editingAnnotation.originalReactCallout
                                             );
@@ -26683,7 +28551,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           setEditingAnnotation(null);
                                         }}
                                         onLivePreview={(json) => {
-                                          if (editingAnnotation.editType === 'callout') return;
+                                          if (editingAnnotation.reactCalloutId) return;
                                           handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
                                         }}
                                         strokeColor={strokeColor}
@@ -26918,14 +28786,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
                               return (
                                 <>
+                                  {/* UX: SVG layer stays visible in eraser mode so imported
+                                      textboxes render underneath the Fabric eraser canvas
+                                      (which leaves them as opacity-0 hit zones). Ref
+                                      CLAUDE.md 2026-04-10 rasterizer-mismatch gotcha. */}
                                   <div
+                                    data-diag-svg-wrapper={pageNum}
                                     style={{
                                       position: 'relative',
                                       width: '100%',
                                       height: '100%',
                                       pointerEvents: (svgInteractive && !isEditMode) ? 'auto' : 'none',
                                       zIndex: 100,
-                                      visibility: (isEraserTool || (isEditMode && editingAnnotation?.editType === 'callout')) ? 'hidden' : 'visible',
+                                      // UX: Fix 3 (2026-04-16) — see first SVGAnnotationLayer
+                                      // mount site. No layer-wide visibility hide; per-callout
+                                      // skip via editingCalloutId prop.
                                       cursor: (svgInteractive && !isEditMode) ? 'default' : undefined,
                                     }}
                                     onPointerDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
@@ -27002,6 +28877,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       onCreateCallout={handleCreateCallout}
                                       onUpdateCallout={handleUpdateCallout}
                                       onUpdateCalloutLive={handleUpdateCalloutLive}
+                                      // UX: Cmd+C / Cmd+X hotkey handlers — see first mount site.
+                                      onCopyAnnotation={handleCopyAnnotation}
+                                      onCutAnnotation={handleCutAnnotation}
+                                      // UX: z-order hotkeys — see first mount site.
+                                      onReorderAnnotation={handleReorderAnnotation}
+                                      // UX: Fix 3 (2026-04-16) — see first mount site.
+                                      editingCalloutId={editingAnnotation?.reactCalloutId || null}
+                                      // UX: Phase 15 UAT-2 — see first mount site.
+                                      liveCalloutEditBounds={liveCalloutEditBounds}
+                                      // UX: pan-mode quick-click selection — see first mount site.
+                                      pendingSelection={pendingSvgSelection}
+                                      // UX: pan-mode hover glow — see first mount site.
+                                      pendingHover={pendingSvgHover}
                                     />
                                   </div>
 
@@ -27332,22 +29220,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       editType={editingAnnotation.editType}
                                       annotationData={editingAnnotation.data}
                                       annotationIndex={editingAnnotation.index}
-                                      // UX: Phase 14 CALL-10 — callout edit uses the
-                                      // transient annotations shape from
-                                      // handleRequestCalloutEditMode, not pageAnnotations.
-                                      annotations={editingAnnotation.editType === 'callout'
+                                      // UX: Phase 15 UAT-1 restructure — see mount site 1
+                                      // for details. reactCalloutId routes callout edit.
+                                      annotations={editingAnnotation.reactCalloutId
                                         ? editingAnnotation.annotations
                                         : pageAnnotations}
                                       isNewText={editingAnnotation.isNewText || false}
                                       clickPosition={editingAnnotation.clickPosition || null}
                                       textBoxWidth={editingAnnotation.textBoxWidth}
+                                      // UX: Phase 15 UAT-2 — see mount site 1 for
+                                      // the outlineColor rationale.
+                                      outlineColor={editingAnnotation?.reactCalloutId
+                                        ? (editingAnnotation?.originalReactCallout?.style?.borderColor
+                                           || editingAnnotation?.originalReactCallout?.style?.lineColor
+                                           || '#1e293b')
+                                        : '#000'}
+                                      // UX: Phase 15 UAT-2 — see mount site 1.
+                                      onLiveTextGrow={editingAnnotation?.reactCalloutId
+                                        ? setLiveCalloutEditBounds
+                                        : undefined}
                                       onEditCommit={(updatedJSON) => {
-                                        // UX: Phase 14 CALL-10 — callout commit routes to
-                                        // setCallouts via fromFabricGroup.
-                                        if (editingAnnotation.editType === 'callout' && editingAnnotation.reactCalloutId) {
-                                          const editedGroup = { objects: updatedJSON?.objects || [] };
+                                        // UX: Phase 15 UAT-1 restructure — see mount
+                                        // site 1 for the synthesis rationale.
+                                        if (editingAnnotation.reactCalloutId) {
+                                          const editedTextbox = updatedJSON?.objects?.[0];
+                                          const synthesized = [
+                                            ...(editingAnnotation.calloutChildren || []),
+                                            editedTextbox,
+                                          ].filter(Boolean);
                                           const updatedReactCallout = fromFabricGroup(
-                                            editedGroup,
+                                            { objects: synthesized },
                                             editingAnnotation.pageSize || { width: pageSizes[pageNum].width, height: pageSizes[pageNum].height },
                                             editingAnnotation.originalReactCallout
                                           );
@@ -27374,7 +29276,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         setEditingAnnotation(null);
                                       }}
                                       onLivePreview={(json) => {
-                                        if (editingAnnotation.editType === 'callout') return;
+                                        if (editingAnnotation.reactCalloutId) return;
                                         handleSaveAnnotations(pageNum, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
                                       }}
                                       strokeColor={strokeColor}

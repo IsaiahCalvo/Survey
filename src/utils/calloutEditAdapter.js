@@ -61,8 +61,14 @@ export function sanitizeFontFamily(raw) {
  * `loadCalloutAnnotation` already expects for legacy PAL Fabric-Group callouts.
  *
  * Returns an object with:
- *   - objects: array of 5 plain JSON Fabric objects (line1, line2, rect,
- *     arrowTip circle, textbox) in PAGE coordinates
+ *   - objects: array of 4 plain JSON Fabric objects (line1, line2, textbox,
+ *     arrowTip circle) in PAGE coordinates. The textbox IS the visible box —
+ *     it carries its own stroke/rx/ry and is the single source of truth for
+ *     the callout's text-card bounds. Phase 15 UAT-2 (2026-04-17): the
+ *     previous 5-object shape had a separate `rect` child that did not resize
+ *     as the Fabric Textbox grew during edit, producing a visible
+ *     rect/textbox disconnect while typing. The unified model mirrors regular
+ *     text annotations (FabricTextCanvas :148-164), so the box-is-the-textbox.
  *   - reactCalloutId: the original React callout.id, stashed for Plan 14-03's
  *     App.jsx commit wrapper to route save-backs to setCallouts
  *   - reactCalloutSnapshot: frozen copy of the input for round-trip fidelity
@@ -83,7 +89,12 @@ export function toFabricGroup(reactCallout, pageSize) {
   const tbY = tb.y * H;
   const style = reactCallout.style || {};
 
-  const stroke = style.borderColor || '#1e293b';
+  // Phase 15 UAT-2 (2026-04-17): same 2-tier lookup as renderCallout
+  // (svgAnnotationRenderers.jsx :725) + buildCalloutRenderSpec (:322). Legacy
+  // callouts stored with style.lineColor but no style.borderColor would render
+  // a colored border in view and a slate-default border in edit without this
+  // fallback.
+  const stroke = style.borderColor || style.lineColor || '#1e293b';
   const strokeWidth = style.lineThickness || 2;
 
   // Plain JSON Fabric object shapes. `fabric.util.enlivenObjects` in
@@ -112,20 +123,6 @@ export function toFabricGroup(reactCallout, pageSize) {
     strokeUniform: true,
     data: { calloutPart: 'line2' },
   };
-  const rect = {
-    type: 'rect',
-    left: tbX,
-    top: tbY,
-    width: tbW,
-    height: tbH,
-    fill: style.fillColor || '#ffffff',
-    stroke,
-    strokeWidth,
-    rx: 4,
-    ry: 4,
-    strokeUniform: true,
-    data: { calloutPart: 'textBox' },
-  };
   const tipDot = {
     type: 'circle',
     left: at.x * W - 3,
@@ -134,21 +131,59 @@ export function toFabricGroup(reactCallout, pageSize) {
     fill: stroke,
     data: { calloutPart: 'arrowTip' },
   };
+  // Phase 15 UAT-2 (2026-04-17): textbox IS the box. No separate rect child.
+  // The textbox carries its own stroke/rx/ry — when the user types and the
+  // Textbox auto-grows vertically, the visible border grows with it (same
+  // source of truth). Matches regular text annotations (FabricTextCanvas
+  // defaults :148-164) + renderText's borderless-textbox render path
+  // (svgAnnotationRenderers.jsx :623-675).
   const textbox = {
     type: 'textbox',
-    left: tbX + 4,
-    top: tbY + 4,
-    width: Math.max(8, tbW - 8),
+    // UX: textbox sits at the full callout box bounds (no +8/+4 padding
+    // offset). Breathing room between text and border comes from the inner
+    // div's CSS padding in renderCallout (:851-854). Fabric Textbox height
+    // cannot be pinned (always auto-sizes to content); this is now the whole
+    // callout box's height too.
+    left: tbX,
+    top: tbY,
+    width: tbW,
+    height: tbH,
     fontSize: style.fontSize || 14,
     // Pitfall 2: single-name fontFamily only — strip fallback stacks
     fontFamily: sanitizeFontFamily(style.fontFamily),
     fontWeight: style.bold ? 'bold' : 'normal',
     fill: style.fontColor || '#1e293b',
     text: reactCallout.text || '',
-    data: { calloutPart: 'text' },
+    // UX: splitByGrapheme matches regular text annotation behavior
+    // (loadTextAnnotation:1360) — text wraps at the fixed width and the
+    // Textbox grows vertically.
+    splitByGrapheme: true,
+    // UX: callout box styling — textbox owns its own border and corners.
+    // strokeWidth matches the SVG rect's rendered border thickness
+    // (renderCallout line 808: Math.max(1, lineThickness * 0.7)).
+    stroke,
+    strokeWidth: Math.max(1, strokeWidth * 0.7),
+    strokeUniform: true,
+    rx: 0,
+    ry: 0,
+    // UX: transparent selection chrome — same pattern as regular text
+    // annotations. The textbox's own stroke is the only visible outline.
+    // backgroundColor stays empty per user 2026-04-17 decision: callouts
+    // are clear inside for now (mini-toolbar later controls fill).
+    cursorColor: '#007AFF',
+    editingBorderColor: 'transparent',
+    borderColor: 'transparent',
+    backgroundColor: '',
+    textBackgroundColor: '',
+    hasBorders: false,
+    hasControls: false,
+    data: { calloutPart: 'textBox' },
   };
 
-  const objects = [line1, line2, rect, tipDot, textbox];
+  // Order: [line1, line2, textbox, tipDot]. fromFabricGroup reads by
+  // data.calloutPart to stay robust to child-array ordering changes in
+  // App.jsx's onEditCommit synthesis.
+  const objects = [line1, line2, textbox, tipDot];
 
   // Plan 14-03's App.jsx commit wrapper uses `reactCalloutId` to route the
   // save back to setCallouts instead of setAnnotationsByPage. Mirror the
@@ -195,37 +230,49 @@ export function fromFabricGroup(fabricGroup, pageSize, originalReactCallout) {
     children = [];
   }
 
-  // Index-addressed child ordering (locked by toFabricGroup):
-  //   [0] line1   — textbox-center → knee
-  //   [1] line2   — knee → arrowTip
-  //   [2] rect    — textbox
-  //   [3] tipDot  — circle at arrowTip (redundant, not used for position)
-  //   [4] textbox — text content
-  const line1 = children[0] || {};
-  const line2 = children[1] || {};
-  const rect = children[2] || {};
-  const textbox = children[4] || {};
+  // Phase 15 UAT-2 (2026-04-17): read by data.calloutPart marker, not by
+  // index. App.jsx's onEditCommit synthesis rebuilds the children array from
+  // [...nonTextChildren, editedTextbox], which may reorder from toFabricGroup's
+  // original [line1, line2, textbox, tipDot]. Part-marker lookup is robust to
+  // both shapes and to any future re-ordering.
+  const findByPart = (partName) =>
+    children.find((c) => c && c.data && c.data.calloutPart === partName) || {};
+  // Legacy-shape fallback: old 5-object groups (pre-UAT-2) used part='textBox'
+  // on the rect and part='text' on the textbox. When a textbox isn't found by
+  // part='textBox', try part='text'. If still not found, fall back to finding
+  // any type==='textbox' child (covers live fabric.Group instances that may
+  // strip the data marker during enliven).
+  let textbox = findByPart('textBox');
+  if (!textbox.type) textbox = findByPart('text');
+  if (!textbox.type) {
+    textbox = children.find((c) => c && c.type === 'textbox') || {};
+  }
+  // Line1: textbox-center → knee. Line1.x2/y2 is the knee point.
+  const line1 = findByPart('line1');
+  // Line2: knee → arrowTip. Line2.x2/y2 is the arrow tip point.
+  const line2 = findByPart('line2');
 
   // Knee comes from line1's end (x2, y2) — that's where line1 meets line2.
   // ArrowTip comes from line2's end (x2, y2) — that's where the callout points.
   const kneePx = { x: line1.x2 ?? 0, y: line1.y2 ?? 0 };
   const arrowTipPx = { x: line2.x2 ?? 0, y: line2.y2 ?? 0 };
-  // Rect carries textbox position + dimensions. Honor scaleX/scaleY if present
-  // (live fabric.Group may have applied user resize before commit).
-  const rectLeft = rect.left ?? 0;
-  const rectTop = rect.top ?? 0;
-  const scaleX = rect.scaleX ?? 1;
-  const scaleY = rect.scaleY ?? 1;
-  const rectWidth = (rect.width ?? 0) * scaleX;
-  const rectHeight = (rect.height ?? 0) * scaleY;
+  // Textbox IS the box. Read bounds directly from the textbox. Fabric Textbox
+  // auto-sizes height to content, so this reflects whatever final dimensions
+  // the Textbox ended with after user typed.
+  const tbLeft = textbox.left ?? 0;
+  const tbTop = textbox.top ?? 0;
+  const scaleX = textbox.scaleX ?? 1;
+  const scaleY = textbox.scaleY ?? 1;
+  const tbWidth = (textbox.width ?? 0) * scaleX;
+  const tbHeight = (textbox.height ?? 0) * scaleY;
 
   return {
     ...originalReactCallout,
     arrowTip: { x: arrowTipPx.x / W, y: arrowTipPx.y / H },
     knee: { x: kneePx.x / W, y: kneePx.y / H },
-    textBoxPosition: { x: rectLeft / W, y: rectTop / H },
-    textBoxWidth: rectWidth / W,
-    textBoxHeight: rectHeight / H,
+    textBoxPosition: { x: tbLeft / W, y: tbTop / H },
+    textBoxWidth: tbWidth / W,
+    textBoxHeight: tbHeight / H,
     text: textbox.text ?? originalReactCallout.text ?? '',
   };
 }
@@ -275,11 +322,12 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
     height: Math.max(18, (callout.textBoxHeight ?? callout.textBox?.height ?? 0.05) * ph),
   };
 
-  // Style extraction — keep the existing defaults and clamps from the legacy
-  // renderCallout (lines 516-521 of svgAnnotationRenderers.jsx).
-  const lineColor = callout.style?.borderColor || callout.style?.lineColor || '#4A90E2';
+  // Style extraction — defaults aligned with renderCallout + Fabric edit
+  // overlay post-Phase-15-UAT-2 (2026-04-17). Mirrors renderCallout :725-727
+  // exactly so view and edit render identically.
+  const lineColor = callout.style?.borderColor || callout.style?.lineColor || '#1e293b';
   const lineThickness = Math.max(1, callout.style?.lineThickness || 2);
-  const fillColor = callout.style?.fillColor || 'rgba(255, 255, 255, 0.22)';
+  const fillColor = callout.style?.fillColor || 'transparent';
   const fillOpacity = Math.max(0.08, Math.min(1, callout.style?.fillOpacity ?? 0.4));
   const borderOpacity = Math.max(0.2, Math.min(1, callout.style?.borderOpacity ?? 1));
   // Pitfall 2: sanitize fontFamily at the render surface (single-name only)
@@ -372,8 +420,8 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
       fillOpacity: fillOpacity,
       stroke: lineColor,
       strokeWidth: Math.max(1, lineThickness * 0.7),
-      rx: 4,
-      ry: 4,
+      rx: 0,
+      ry: 0,
       vectorEffect: 'non-scaling-stroke',
     },
   });
@@ -405,7 +453,9 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
         // UX: inner div style mirrors renderText at svgAnnotationRenderers.jsx:457
         // — single-name fontFamily prevents Fabric.js cursor drift (CLAUDE.md
         // 2026-04-08 gotcha), antialiased + grayscale font smoothing for visual
-        // parity with renderText. (CALL-10)
+        // parity with renderText. Phase 15 UAT-2 (2026-04-17): padding dropped
+        // to 0 to match Fabric edit overlay's flush-left default — text position
+        // is now identical between view and edit.
         style: {
           width: '100%',
           height: '100%',
@@ -416,9 +466,7 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
           wordWrap: 'break-word',
           whiteSpace: 'pre-wrap',
           boxSizing: 'border-box',
-          padding: '4px',
-          display: 'flex',
-          alignItems: 'center',
+          padding: 0,
           WebkitFontSmoothing: 'antialiased',
           MozOsxFontSmoothing: 'grayscale',
         },

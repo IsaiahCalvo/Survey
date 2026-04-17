@@ -20,7 +20,7 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation visual + pointer wiring
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
-import React, { memo, useMemo, useEffect, useRef, useState, useCallback } from 'react';
+import React, { memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import {
   renderPath,
   renderRect,
@@ -50,6 +50,9 @@ import {
   getAnnotationVisibilityScope,
   isAnnotationVisibleByPageControl
 } from '../utils/annotationVisibilityRules';
+// Diagnostic: record every SVG callout's source data + DOM rects so Save Log
+// can dump a full geometry comparison against the Fabric edit-mode capture.
+import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -145,6 +148,50 @@ const SVGAnnotationLayer = memo(({
   onCreateCallout,
   onUpdateCallout,
   onUpdateCalloutLive,
+  // Fix 3 (2026-04-16): id of the callout currently being edited in
+  // FabricEditCanvas, or null. When set, filteredCallouts below skips that
+  // single callout so the live Fabric edit view isn't stacked on top of a
+  // stale SVG copy. Replaces the previous layer-wide `visibility: hidden`
+  // hack in App.jsx which blanked every other annotation on the page.
+  // Mirrors the text-annotation hideForEdit pattern (:~1332).
+  editingCalloutId,
+  // UX: Phase 15 UAT-2 — live page-space bounds of the editing callout's
+  // textbox, fed from FabricEditCanvas.onLiveTextGrow via App.jsx on every
+  // Fabric Textbox 'changed' event. When present + editingCalloutId matches
+  // the rendered callout's id, the renderer uses these bounds instead of the
+  // stored normalized dims so line1 tracks the live edge as the box grows.
+  // Shape: { left, top, width, height } in page space, or null.
+  liveCalloutEditBounds,
+  // UX: pan-mode quick-click selection — App.jsx sets this to
+  // { pageNumber, annotationIndex, tick } when a pan-mode single-click lands
+  // on an annotation. Each instance checks whether the pageNumber matches its
+  // own and, if so, calls selectAnnotation(annotationIndex). The `tick` field
+  // is a monotonically increasing counter so that clicking the same
+  // annotation twice in a row still re-fires the effect.
+  pendingSelection,
+  // UX: pan-mode hover glow — App.jsx runs a document-level mousemove
+  // listener in pan mode and, via resolveAnnotationAt, broadcasts
+  // { pageNumber, annotationIndex } (or null) whenever the cursor enters
+  // or leaves an annotation. Each instance ignores messages for other
+  // pages. Drives the same hoveredId state the Select-mode hover uses, so
+  // the existing glow renders "for free" without duplicating styles.
+  pendingHover,
+  // UX: Cmd+C / Cmd+X hotkey handlers. The per-page keydown useEffect
+  // below fires these when this page has exactly one shape selected (and
+  // no text input is focused). App.jsx wraps them to stash clipboardAnnotation
+  // + call handleSaveAnnotations, so keyboard Copy/Cut behave identically to
+  // the right-click menu's Copy/Cut items. Callouts have their own Cut/Copy
+  // path owned by the parallel callout session — this handler only runs for
+  // `annotations.objects[i]` selections (selectedIds), never for callouts.
+  onCopyAnnotation,
+  onCutAnnotation,
+  // UX: z-order reorder handler. Signature: (pageNumber, fromIndex, toIndex).
+  // Fired from the keydown useEffect below on Cmd+]/Cmd+[ (with Shift for
+  // full-front / full-back). App.jsx clamps toIndex and re-selects the shape
+  // at the new slot so the user's selection follows the shape after reorder.
+  // Same handler backs the right-click menu's Bring to Front / Forward /
+  // Send Backward / to Back items.
+  onReorderAnnotation,
 }) => {
   // ---------------------------------------------------------------------------
   // Refs
@@ -168,6 +215,15 @@ const SVGAnnotationLayer = memo(({
     isSelected, deleteSelected,
     // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint
     applyOptimisticRotation, clearOptimisticRotation,
+    // Pan-mode quick-click: App.jsx drives selection via pendingSelection.
+    selectAnnotation,
+    // UX: App.jsx can also drive a "clear selection on this page" command
+    // through pendingSelection (annotationIndex: null). Used after right-click
+    // Delete so the selection doesn't stick to the new shape that slides into
+    // the deleted shape's index slot.
+    deselectAll,
+    // Pan-mode hover: App.jsx drives hover glow via pendingHover.
+    setHoveredId,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
@@ -182,6 +238,49 @@ const SVGAnnotationLayer = memo(({
     onUpdateCalloutLive,
     onUpdateCallout,
   });
+
+  // UX: apply a pan-mode quick-click selection command from App.jsx. Matches
+  // this layer's pageNumber, then calls the hook's selectAnnotation. The
+  // `tick` field on pendingSelection forces re-run even if the same index is
+  // clicked twice. No-op when pendingSelection is null or for a different
+  // page (other layer instances ignore it). Special case: annotationIndex
+  // === null is a "clear selection on this page" command (used by App.jsx
+  // after right-click Delete so selectedIds doesn't stick to the shape that
+  // slides into the deleted slot after the splice).
+  //
+  // useLayoutEffect (not useEffect) so the clear runs AFTER the commit that
+  // brings in the new annotations but BEFORE the browser paints. Without
+  // this, the select-tool user sees a one-frame flash where the neighbor
+  // shape (now occupying the deleted index) appears selected — the save and
+  // the deselect arrive in separate renders otherwise.
+  useLayoutEffect(() => {
+    if (!pendingSelection) return;
+    if (pendingSelection.pageNumber !== pageNumber) return;
+    if (pendingSelection.annotationIndex === null) {
+      deselectAll();
+      return;
+    }
+    if (typeof pendingSelection.annotationIndex !== 'number') return;
+    selectAnnotation(pendingSelection.annotationIndex, false);
+  }, [pendingSelection, pageNumber, selectAnnotation, deselectAll]);
+
+  // UX: apply a pan-mode hover target from App.jsx. If pendingHover is null
+  // OR targets a different page, clear this layer's hoveredId (a previously
+  // hovered annotation should lose its glow when the cursor moves off).
+  // Otherwise paint the glow by setting hoveredId to the matching index.
+  // This deliberately mirrors the Select-mode onPointerEnter/Leave path so
+  // one glow implementation serves both modes.
+  useEffect(() => {
+    if (!pendingHover || pendingHover.pageNumber !== pageNumber) {
+      setHoveredId((prev) => (prev == null ? prev : null));
+      return;
+    }
+    if (typeof pendingHover.annotationIndex !== 'number') {
+      setHoveredId((prev) => (prev == null ? prev : null));
+      return;
+    }
+    setHoveredId(pendingHover.annotationIndex);
+  }, [pendingHover, pageNumber, setHoveredId]);
 
   // Determine pointer events mode: interactive when select tool active AND not in edit mode
   // When editingAnnotationIndex is set, FabricEditCanvas + MiniToolbar need to receive clicks
@@ -362,6 +461,80 @@ const SVGAnnotationLayer = memo(({
     deleteSelected,
     effectiveDeleteCalloutsCallback,
   ]);
+
+  // UX: KBD-02 — single-shape annotation hotkeys: Cmd+C (copy), Cmd+X (cut),
+  // and the Illustrator/Figma/Photoshop z-order block:
+  //   Cmd+]          → Bring Forward
+  //   Cmd+Shift+]    → Bring to Front
+  //   Cmd+[          → Send Backward
+  //   Cmd+Shift+[    → Send to Back
+  // Mirrors the Delete/Backspace useEffect above: each SVGAnnotationLayer
+  // instance attaches its own window-level keydown listener, and the
+  // early-return guarantees only the page with a single-shape selection
+  // does any work. Skips when:
+  //   - No shape is selected, OR more than one is (the right-click menu
+  //     is single-shape too — multi-select ops are out of scope).
+  //   - Fabric edit mode is live (editingAnnotationIndex != null) —
+  //     keyboard shortcuts belong to the text editor in that case.
+  //   - Any text input / contentEditable / Fabric hidden textarea is
+  //     focused (same focus-guard as Delete/Backspace).
+  // Callouts have their own Cut/Copy/Paste + (future) z-order wired by the
+  // parallel callout session; this handler only reads selectedIds, so
+  // callout hotkeys are untouched. Uses e.code for the brackets so the
+  // shortcuts are layout-independent (Shift+] → "}" via e.key, but
+  // e.code stays "BracketRight").
+  useEffect(() => {
+    if (selectedIds.size !== 1) return;
+    if (editingAnnotationIndex != null) return;
+
+    const handleKeyDown = (e) => {
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (!isMeta || e.altKey) return;
+      const k = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+      const code = e.code;
+      const isCopy = !e.shiftKey && k === 'c';
+      const isCut = !e.shiftKey && k === 'x';
+      const isBracketRight = code === 'BracketRight';
+      const isBracketLeft = code === 'BracketLeft';
+      if (!isCopy && !isCut && !isBracketRight && !isBracketLeft) return;
+
+      // UX: focus guard — same shape as the Delete/Backspace handler above.
+      const el = document.activeElement;
+      if (el) {
+        if (el.tagName === 'INPUT') return;
+        if (el.tagName === 'TEXTAREA') return;
+        if (el.isContentEditable === true) return;
+        if (el.contentEditable === 'true') return;
+        if (typeof el.closest === 'function' && el.closest('.fabric-hidden-textarea')) return;
+      }
+
+      const annotationIndex = Array.from(selectedIds)[0];
+      if (typeof annotationIndex !== 'number') return;
+
+      if (isCopy && typeof onCopyAnnotation === 'function') {
+        e.preventDefault();
+        onCopyAnnotation(pageNumber, annotationIndex);
+      } else if (isCut && typeof onCutAnnotation === 'function') {
+        e.preventDefault();
+        onCutAnnotation(pageNumber, annotationIndex);
+      } else if (isBracketRight && typeof onReorderAnnotation === 'function') {
+        // UX: toIndex goes to POSITIVE_INFINITY for "Bring to Front" so the
+        // handler's clamp (Math.min(toIndex, objects.length - 1)) lands on
+        // the last slot without the SVG layer needing to know the object
+        // count. Keeps the effect's dep array free of `annotations`, which
+        // would make it re-run on every annotation update.
+        e.preventDefault();
+        const toIndex = e.shiftKey ? Number.POSITIVE_INFINITY : annotationIndex + 1;
+        onReorderAnnotation(pageNumber, annotationIndex, toIndex);
+      } else if (isBracketLeft && typeof onReorderAnnotation === 'function') {
+        e.preventDefault();
+        const toIndex = e.shiftKey ? 0 : annotationIndex - 1;
+        onReorderAnnotation(pageNumber, annotationIndex, toIndex);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds, editingAnnotationIndex, pageNumber, onCopyAnnotation, onCutAnnotation, onReorderAnnotation]);
 
   // ---------------------------------------------------------------------------
   // Phase 14 CREATE-01 (callout half) — window-level pointermove/up while
@@ -1168,8 +1341,22 @@ const SVGAnnotationLayer = memo(({
         if (callout.moduleId !== selectedModuleId) continue;
       }
 
+      // UX: Phase 15 UAT-1 restructure (2026-04-17) — when a callout is in
+      // edit mode, render its 4 static chrome parts (line1, line2, arrowTip,
+      // textBox rect) but skip the text foreignObject. FabricEditCanvas
+      // overlays the textbox child via the known-good text-edit path; the
+      // static parts remain as visual anchors underneath. Replaces the prior
+      // full-callout skip which left the edit canvas orphaned visually.
+      const hideText = !!(editingCalloutId && callout.id === editingCalloutId);
+      // UX: Phase 15 UAT-2 — pass live textbox bounds only to the currently-
+      // editing callout so line1 retracts to the live edge as the textbox
+      // auto-grows. Other callouts render from stored normalized dims.
+      const liveBoundsForCallout = (editingCalloutId && callout.id === editingCalloutId)
+        ? (liveCalloutEditBounds || null)
+        : null;
+
       // UX: CALL-10 — new signature takes pageSize object, emits data attributes
-      const element = renderCallout(callout, i, pageSize, calculateCalloutConnection);
+      const element = renderCallout(callout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout);
       if (!element) continue;
 
       // UX: Phase 14 Task 2 — invisible hit-target overlays for callout
@@ -1200,7 +1387,35 @@ const SVGAnnotationLayer = memo(({
     // module-scope imports — stable. renderCalloutHitTargets is a stable
     // useCallback derived from calculateCalloutConnection (module import).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height]);
+  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, editingCalloutId, liveCalloutEditBounds]);
+
+  // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
+  // the source data + every rendered element's screen rect per callout id.
+  // Save Log reads window.__calloutGeomBuffer on demand.
+  useEffect(() => {
+    if (!Array.isArray(callouts) || callouts.length === 0) return;
+    // Double-RAF so foreignObject children have laid out. Single RAF can fire
+    // before the browser has run the foreignObject's block-layout pass on
+    // Chromium — the second frame is safe.
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        for (let i = 0; i < callouts.length; i++) {
+          const c = callouts[i];
+          if (!c || c.pageNumber !== pageNumber) continue;
+          captureSvgCallout(c, pageNumber, {
+            editingCalloutId: editingCalloutId || null,
+            pageSize: { width, height },
+          });
+        }
+      });
+    });
+    return () => {
+      if (raf1) cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [callouts, pageNumber, editingCalloutId, width, height]);
 
   const objectCount = filteredAnnotations.length;
   const calloutCount = filteredCallouts.length;
@@ -1794,6 +2009,18 @@ const SVGAnnotationLayer = memo(({
       }}
       onPointerMove={isInteractive ? handlePointerMove : undefined}
       onPointerUp={isInteractive ? handlePointerUp : undefined}
+      // UX: Phase 15 UAT #1 — double-click anywhere inside a callout (text
+      // foreignObject, connector segments, arrowTip, knee) must enter edit
+      // mode so the user can type/edit text. The existing
+      // handleAnnotationDoubleClick already hit-tests data-callout-id and
+      // calls onRequestEditMode(id, 'callout'), but without this root-level
+      // binding the handler never fires when the click target is inside
+      // the callout's foreignObject (no onDoubleClick on that element).
+      // The handler safely no-ops for non-callout double-clicks on the SVG
+      // background because its secondary branch requires annotations.objects[index]
+      // and `index` is undefined here. Gated on isSelectTool so double-
+      // clicking empty space during creation tools doesn't misfire.
+      onDoubleClick={isSelectTool ? handleAnnotationDoubleClick : undefined}
     >
       {wrappedAnnotations}
       {filteredCallouts}

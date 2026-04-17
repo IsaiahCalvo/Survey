@@ -117,7 +117,14 @@ export const defaultCalloutStyle = {
   borderOpacity: 1,
   lineThickness: 2,
   arrowheadStyle: ARROWHEAD_STYLES.SOLID_TRIANGLE,
-  fillColor: '#ffffff',
+  // UX: transparent by default so view mode matches Fabric edit overlay
+  // (backgroundColor: '' → transparent on the textbox in calloutEditAdapter
+  // toFabricGroup :171). User rule 2026-04-17: "There visually needs to be
+  // no difference between edit mode and not edit mode regarding fill, stroke,
+  // and line weight." A baked-in white fill made view look opaque while edit
+  // looked hollow. A future mini-toolbar (Phase 16+) will control fill as
+  // an explicit user choice.
+  fillColor: 'transparent',
   fillOpacity: 1,
   // UX: single-name fontFamily prevents Fabric.js Textbox cursor drift
   // when the default style is assigned to an edit-mode Textbox. Fabric
