@@ -132,7 +132,6 @@ export const renderRect = (obj, index) => {
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
       opacity={obj.opacity ?? 1}
-      vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
     />
   );
@@ -351,7 +350,6 @@ export const renderPolygon = (obj, index) => {
       strokeWidth={obj.strokeWidth || 1}
       opacity={obj.opacity ?? 1}
       strokeLinejoin="round"
-      vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
     />
   );
@@ -405,7 +403,6 @@ export const renderPolyline = (obj, index) => {
       opacity={obj.opacity ?? 1}
       strokeLinecap="round"
       strokeLinejoin="round"
-      vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
     />
   );
 };
@@ -449,7 +446,6 @@ export const renderEllipse = (obj, index) => {
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
       opacity={obj.opacity ?? 1}
-      vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
     />
   );

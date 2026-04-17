@@ -24255,6 +24255,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (obj.type !== 'rect') return true;
           if (!obj.fill || typeof obj.fill !== 'string') return true;
           if (!obj.fill.includes('rgba')) return true;
+          // UX: never treat PDF-imported annotations (e.g. Square / Cloud
+          // rectangles with translucent fills like rgba(250,50,55,0.30))
+          // as orphaned survey highlights — they are legitimate
+          // annotations and must survive this cleanup pass.
+          if (obj.isPdfImported || obj?.data?.isPdfImported || obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType) return true;
 
           // Normalize object bounds to unscaled coordinates
           const objX = (obj.left || 0) / currentScale;
