@@ -44,6 +44,7 @@ import { screenToSVG } from '../utils/svgTransformMath';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints } from '../utils/svgBoundingBox';
+import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
@@ -2025,6 +2026,24 @@ const SVGAnnotationLayer = memo(({
             cursor: 'grab',
             pointerEvents: 'auto',
           };
+          // Phase 15 LINE-01 / ARROW-01 — midpoint curvature handle.
+          // Position: saved data.midpoint if curved (the bezier passes through
+          // it at t=0.5 by construction), geometric midpoint if straight.
+          // Offset by the same visual-drag transform (dx, dy) as the endpoints
+          // so all three handles move together during a 'move' drag.
+          const dataMidpoint = obj.data?.midpoint;
+          const midpointBase = resolveMidpointHandlePosition(
+            { x: ep.x1, y: ep.y1 },
+            { x: ep.x2, y: ep.y2 },
+            dataMidpoint,
+          );
+          // UX: 3rd handle, visibly smaller than endpoints (r=5 vs r=7) to
+          // signal "secondary control" per 15-UI-SPEC §A. Same white-fill /
+          // blue-ring / drop-shadow as the endpoints so the visual language
+          // is unified. cursor:'grab' so all three handles share grabbable
+          // semantics. Dispatches handleId='midpoint' to the existing hook
+          // dispatcher — wired in useSVGInteraction.js Plan 15-03 Task 3.
+          const midpointR = 5 * handleIs;
           return (
             <g key={`selection-wrapper-${selectedIndex}`}>
               {/* Start handle (line start / arrow tail) */}
@@ -2049,6 +2068,27 @@ const SVGAnnotationLayer = memo(({
                 style={handleStyle}
                 onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p2'); }}
               />
+              {/* Phase 15 midpoint curvature handle — Phase 15 LINE-01/ARROW-01.
+                  Smaller r than endpoints (5 vs 7) marks it as a "secondary
+                  control" per 15-UI-SPEC §A. Sits on the curve at t=0.5 when
+                  curved, geometric midpoint when straight. onPointerDown
+                  dispatches 'midpoint' handleId to the existing
+                  handleHandlePointerDown hook (see useSVGInteraction.js). */}
+              <circle
+                data-handle="midpoint"
+                cx={midpointBase.x + dx}
+                cy={midpointBase.y + dy}
+                r={midpointR}
+                fill="#ffffff"
+                stroke="#4a90e2"
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
+                style={handleStyle}
+                onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'midpoint'); }}
+              >
+                {/* Browser-native tooltip per 15-UI-SPEC §Copywriting. */}
+                <title>Drag to bend</title>
+              </circle>
             </g>
           );
         }
