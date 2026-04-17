@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: in_progress
-stopped_at: Completed 15-02-PLAN.md — Wave 1 renderer shipped; 14 tests green; ready for 15-03 wrap
-last_updated: "2026-04-17T01:19:49.786Z"
+status: Plans 15-01 + 15-02 + 15-03 all shipped. Plan 15-02 landed 14 passing unit tests against buildLineRenderSpec + buildArrowheadRenderSpec, rewrote renderLine as a thin wrapper, exported renderArrowhead. Straight branch byte-identical to pre-Phase-15. 181/182 npm test baseline preserved.
+stopped_at: Completed 15-03-PLAN.md — Wave 1 interaction layer (midpoint handle + drag mode + endpoint auto-revert); Phase 15 functionally complete (3/3 plans)
+last_updated: "2026-04-17T01:24:01.254Z"
 last_activity: "2026-04-17 — Plan 15-02 executed (3 tasks, 3 commits: bcdcce4d / 8d9fc424 / final-docs-commit)"
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
   percent: 88
 ---
 
@@ -57,6 +57,7 @@ Progress: [█████████░] 88% (v2.3: 7/8 plans complete across 
 **Tests:** 113/113 green at v2.2 close (v2.3 must preserve this baseline). Plan 14-03 preserves 143/144 unit-test baseline (1 pre-existing pdfAnnotationImporter failure, out of scope per 14-01/14-02 deferred-items.md).
 | Phase 15 P01 | 7min | 3 tasks | 10 files |
 | Phase 15 P02 | 6min | 3 tasks | 7 files |
+| Phase 15 P03 | 11min | 4 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,9 @@ Progress: [█████████░] 88% (v2.3: 7/8 plans complete across 
 - [Phase 15]: Plan 15-02: straight branch byte-identical to pre-Phase-15 renderLine. buildLineRenderSpec's straight branch reproduces the exact center-relative x1/y1/x2/y2 + lineEndX/lineEndY shortening for filled-triangle arrowheads. Verified by tests/svgLineRenderer.test.mjs #1 + #2.
 - [Phase 15]: Plan 15-02: two entry points for arrowhead rendering. Module-scoped renderArrowheadFromSpec(spec) is single source of truth for kind→element mapping. Exported renderArrowhead(style,tipX,tipY,angleDeg,color,sw) wraps buildArrowheadRenderSpec + dispatches. Internal renderLine curved branch bypasses buildArrowheadRenderSpec (spec already in spec.arrowhead).
 - [Phase 15]: Plan 15-02: Playwright phase15-arrowhead-styles.spec.mjs kept as test.fixme (plan-sanctioned fallback). No window.__test_injectAnnotation hook in src/ today. Plan 15-03 annotation-injection harness is the natural unblocker. Spec-level contract already locked by 14 unit tests (svgLineRenderer + renderArrowhead).
+- [Phase 15]: Plan 15-03: Pitfall-2 defensive preserve-write in endpoint drag pointermove + pointerup using ds.originalMidpoint captured at dispatch. Auto-revert via shouldRevertEndpointCurve + getLineEndpoints(targetObj) canonical endpoint derivation (dodges stale Fabric bbox reads).
+- [Phase 15]: Plan 15-03: lineDragMath.js extracted as pure-JS helper module with zero React/DOM deps — Node --test unit-testable without JSX loader. Matches Phase 14 buildCalloutRenderSpec precedent. 5 exports (deriveMidpointFromPointer, shouldRevertEndpointCurve, applyMidpointToAnnotation, clearMidpointFromAnnotation, resolveMidpointHandlePosition) cover the full drag-commit contract.
+- [Phase 15]: Plan 15-03: 3 Playwright primary-case scenarios upgraded to real UI-driven flows with runtime-skip fallback (Phase 14 pattern); 3 secondary-case scenarios kept as test.fixme because app does not expose window.__injectAnnotation test hook. Contract locked by unit tests instead (tests/lineDragMath.test.mjs + Plan 15-02's svgLineRenderer.test.mjs + renderArrowhead.test.mjs).
 
 ### Roadmap Evolution
 
@@ -139,8 +143,8 @@ Progress: [█████████░] 88% (v2.3: 7/8 plans complete across 
 
 ## Session Continuity
 
-Last session: 2026-04-17T01:19:13.012Z
-Stopped at: Completed 15-02-PLAN.md — Wave 1 renderer shipped; 14 tests green; ready for 15-03 wrap
+Last session: 2026-04-17T01:24:01.250Z
+Stopped at: Completed 15-03-PLAN.md — Wave 1 interaction layer (midpoint handle + drag mode + endpoint auto-revert); Phase 15 functionally complete (3/3 plans)
 
 ### Resume instructions for the next session (read carefully)
 

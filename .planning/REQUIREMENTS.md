@@ -22,18 +22,18 @@ Audits of both codebases: `.planning/research/COMBINED-TOOLS-AUDIT.md` and `.pla
 
 ### Line Tool (6)
 
-- [ ] **LINE-01**: User can select a line and drag its middle curvature handle to bend the line into a quadratic curve that visibly passes through the handle position. Curvature is stored as an absolute midpoint `(x, y)` in page coordinates.
-- [ ] **LINE-02**: User can drag a curved line's middle handle back near the straight baseline and the line auto-resets to straight (10 px drag snap threshold, 1 px render hysteresis). Proximity-based reset only — no click, no keyboard.
-- [ ] **LINE-03**: User can drag a curved line's start or end handle and the curve reshapes — the midpoint stays fixed in absolute coords. If the new geometry becomes naturally collinear within the snap threshold, the line auto-reverts to straight with a recomputed geometric midpoint.
+- [x] **LINE-01**: User can select a line and drag its middle curvature handle to bend the line into a quadratic curve that visibly passes through the handle position. Curvature is stored as an absolute midpoint `(x, y)` in page coordinates.
+- [x] **LINE-02**: User can drag a curved line's middle handle back near the straight baseline and the line auto-resets to straight (10 px drag snap threshold, 1 px render hysteresis). Proximity-based reset only — no click, no keyboard.
+- [x] **LINE-03**: User can drag a curved line's start or end handle and the curve reshapes — the midpoint stays fixed in absolute coords. If the new geometry becomes naturally collinear within the snap threshold, the line auto-reverts to straight with a recomputed geometric midpoint.
 - [ ] **LINE-04**: User sees a curvature-indicator pill near the midpoint handle that appears on hover-intent (same timing as the rotation pill) and shows the current curvature magnitude. User can click to type a custom curvature value and the line updates live via optimistic paint (same pattern as v2.1 `RotationInputField` + `applyOptimisticRotation`).
 - [ ] **LINE-05**: Click-to-create with zero drag distance does not create a line — a minimum drag length is required before a new line is committed. Prevents accidental degenerate zero-length lines during tool clicks.
 - [ ] **LINE-06**: Selected line shows a mini-toolbar (color, thickness, arrowhead style picker — `NONE` by default, curvature value read-only when not hovering) at the same relative position and with the same show/hide lifecycle that rect/circle/ellipse mini-toolbars use today. Line annotations "act like regular shapes" in the select lifecycle.
 
 ### Arrow Tool (7)
 
-- [ ] **ARROW-01**: User can select an arrow and drag its middle curvature handle to bend it. The arrowhead rotates to match the curve's tangent at the endpoint (not the straight start-to-end angle).
-- [ ] **ARROW-02**: User can drag a curved arrow's middle handle back near straight and the arrow resets to straight with the arrowhead returning to linear tangent. Same thresholds as LINE-02.
-- [ ] **ARROW-03**: User can drag a curved arrow's start/end handle and the curve reshapes with the midpoint held fixed. Auto-reversion on natural collinearity applies the same way.
+- [x] **ARROW-01**: User can select an arrow and drag its middle curvature handle to bend it. The arrowhead rotates to match the curve's tangent at the endpoint (not the straight start-to-end angle).
+- [x] **ARROW-02**: User can drag a curved arrow's middle handle back near straight and the arrow resets to straight with the arrowhead returning to linear tangent. Same thresholds as LINE-02.
+- [x] **ARROW-03**: User can drag a curved arrow's start/end handle and the curve reshapes with the midpoint held fixed. Auto-reversion on natural collinearity applies the same way.
 - [ ] **ARROW-04**: User can choose the arrowhead style for a selected line or arrow from six options — `NONE`, `SOLID_TRIANGLE`, `V_SHAPE`, `OPEN_CIRCLE`, `OPEN_TRIANGLE`, `HORIZONTAL_LINE` — via the mini-toolbar style picker. Default: `NONE` for lines, `SOLID_TRIANGLE` for arrows. Persists across save/reload.
 - [ ] **ARROW-05**: Arrow selection shows the same curvature-indicator pill as LINE-04 (hover-reveal, typeable, live optimistic commit).
 - [ ] **ARROW-06**: Click-to-create with zero drag distance does not create an arrow. Same minimum-drag-length rule as LINE-05.
