@@ -1345,7 +1345,12 @@ const SVGAnnotationLayer = memo(({
       // overlays the textbox child via the known-good text-edit path; the
       // static parts remain as visual anchors underneath. Replaces the prior
       // full-callout skip which left the edit canvas orphaned visually.
-      const hideText = !!(editingCalloutId && callout.id === editingCalloutId);
+      // Plan 15-04 Step 2 — Previously the SVG callout's textbox rect + text
+      // hid during edit so the Fabric overlay could render its own. Now that
+      // the Fabric textbox is transparent (fill+stroke rgba 0), the SVG
+      // callout stays visible and serves as the visual truth. No more
+      // "border grows" effect from the overlay's slightly different bounds.
+      const hideText = false;
       // UX: Phase 15 UAT-2 — pass live textbox bounds only to the currently-
       // editing callout so line1 retracts to the live edge as the textbox
       // auto-grows. Other callouts render from stored normalized dims.
@@ -1536,13 +1541,16 @@ const SVGAnnotationLayer = memo(({
     })();
 
     const isBeingEdited = editingAnnotationIndex != null && i === editingAnnotationIndex;
-    // Shape edit: SVG stays visible as the visual truth while Fabric provides an
-    // invisible hit-zone + handles. This sidesteps the Canvas 2D vs SVG rasterizer
-    // stroke difference documented in CLAUDE.md 2026-04-10. Text/callout still hide
-    // SVG so Fabric can render live content.
+    // Plan 15-04 Step 1: extended "SVG stays visible as the visual truth" pattern
+    // from shapes to textbox + i-text + text. Sidesteps the Canvas 2D vs SVG
+    // rasterizer divergence documented in CLAUDE.md 2026-04-10 and fixes the
+    // edit-enter visual jump (Bug C). Fabric will be rendered transparently in
+    // a follow-up step so only the caret shows; for now both layers may
+    // visually overlap while we confirm the swap is structurally safe.
     const objTypeForEdit = String(obj.type || '').toLowerCase();
-    const isShapeEdit = isBeingEdited && ['rect', 'circle', 'ellipse', 'triangle'].includes(objTypeForEdit);
-    const hideForEdit = isBeingEdited && !isShapeEdit;
+    const EDIT_IN_PLACE_TYPES = ['rect', 'circle', 'ellipse', 'triangle', 'textbox', 'i-text', 'text'];
+    const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.includes(objTypeForEdit);
+    const hideForEdit = isBeingEdited && !isInPlaceEdit;
 
     return (
       <g

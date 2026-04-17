@@ -972,6 +972,15 @@ const FabricEditCanvas = memo(({
       json.opacity = originalAnnotationRef.current?.opacity ?? 1;
       if (activeObj._realStrokeWidth !== undefined) json.strokeWidth = activeObj._realStrokeWidth;
     }
+    // Plan 15-04 Step 2 — Text/callout edit sets fill+stroke to transparent so the
+    // SVG renders as the visible truth during typing. Restore from the pre-edit
+    // snapshot before persisting so the saved annotation carries its real colors.
+    if ((editTypeRef.current === 'text' || editTypeRef.current === 'callout')
+        && originalAnnotationRef.current) {
+      const orig = originalAnnotationRef.current;
+      if (orig.fill !== undefined) json.fill = orig.fill;
+      if (orig.stroke !== undefined) json.stroke = orig.stroke;
+    }
     console.log(`[EditCanvas] COMMIT pre-convert — text="${(json.text||'').slice(0,20)}" fontSize=${json.fontSize} width=${json.width} height=${json.height} scaleX=${json.scaleX} scaleY=${json.scaleY} left=${json.left} top=${json.top} isNewText=${isNewText}`);
 
     // Task 3 — Tight-width fit on commit (NEW TEXT ONLY). Fabric Textbox.width
@@ -1509,6 +1518,12 @@ const FabricEditCanvas = memo(({
             textBackgroundColor: '',
             hasBorders: false,
             hasControls: false,
+            // Plan 15-04 Step 2 — Hide Fabric's rendered glyphs + stroke while
+            // editing so the SVG text underneath is the visible truth. The
+            // caret still paints via renderCursor. Originals are restored in
+            // commitAndClose from originalAnnotationRef before persisting.
+            fill: 'rgba(0,0,0,0)',
+            stroke: 'rgba(0,0,0,0)',
           });
         }
 
@@ -1552,18 +1567,20 @@ const FabricEditCanvas = memo(({
           c.style.width = neededW + 'px';
           c.style.height = neededH + 'px';
           c.style.visibility = 'visible';
-          c.style.outline = `1px solid ${outlineColor}`;
-          // Inset outline by padding*es to match the tight SVG rect position.
-          // See new-text reveal path for full explanation.
-          c.style.outlineOffset = `-${BBOX_PADDING * es}px`;
+          // Plan 15-04 Step 2 — No container outline during existing-text edit.
+          // The SVG text box renders its own border underneath (if strokeWidth>0)
+          // and is the visual truth. A Fabric-drawn outline here would paint at
+          // a slightly offset position and produce the "two borders" effect.
+          c.style.outline = 'none';
+          c.style.outlineOffset = '0';
           c.style.backgroundColor = 'transparent';
           setContainerStyle(prev => ({
             ...prev,
             width: neededW,
             height: neededH,
             visibility: 'visible',
-            outline: `1px solid ${outlineColor}`,
-            outlineOffset: `-${BBOX_PADDING * es}px`,
+            outline: 'none',
+            outlineOffset: '0',
             backgroundColor: 'transparent',
           }));
           setIsLoading(false);
@@ -2107,6 +2124,18 @@ const FabricEditCanvas = memo(({
             hasControls: false,
             hasBorders: false,
           });
+          // Plan 15-04 Step 2 — Callout's textbox child uses the same transparent
+          // glyph/stroke trick as plain text edit. The SVG callout renders
+          // underneath as the visible truth. Caret still paints via the
+          // renderCursor override. Original fill/stroke are restored in
+          // commitAndClose before persisting.
+          const objTypeLc = String(obj.type || '').toLowerCase();
+          if (objTypeLc === 'textbox' || objTypeLc === 'i-text' || objTypeLc === 'text') {
+            obj.set({
+              fill: 'rgba(0,0,0,0)',
+              stroke: 'rgba(0,0,0,0)',
+            });
+          }
         } else {
           obj.set({
             selectable: false,
