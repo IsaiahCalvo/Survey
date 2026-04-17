@@ -24601,12 +24601,51 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // the shape instead of sticking to whichever neighbor slid into the
   // original slot (matches Illustrator/Figma/Photoshop). toIndex is clamped
   // to [0, objects.length - 1]; same-index is a no-op.
-  const handleReorderAnnotation = useCallback((pageNumber, fromIndex, toIndex) => {
+  const handleReorderAnnotation = useCallback((pageNumber, fromIndex, target) => {
     if (pageNumber == null || fromIndex == null) return;
     const page = annotationsByPageRef.current?.[pageNumber];
     if (!page?.objects) return;
     if (fromIndex < 0 || fromIndex >= page.objects.length) return;
-    const clamped = Math.max(0, Math.min(toIndex, page.objects.length - 1));
+    // UX: Figma-style z-order — "Bring Forward" / "Send Backward" skip over
+    // any non-overlapping neighbors and land the moved shape immediately
+    // above/below the nearest shape that spatially overlaps it. Matches user
+    // intuition ("each press moves past one visible shape") when the page
+    // contains many scattered annotations (e.g. imported from the PDF).
+    // `target` is either a string direction ('forward'|'backward'|'front'|'back')
+    // or a raw numeric index (legacy path, retained for safety).
+    const objectsLen = page.objects.length;
+    const resolveOverlapTarget = (direction) => {
+      if (direction === 'front') return objectsLen - 1;
+      if (direction === 'back') return 0;
+      const stepFallback = direction === 'forward' ? fromIndex + 1 : fromIndex - 1;
+      if (direction !== 'forward' && direction !== 'backward') return fromIndex;
+      const svg = document.querySelector(`[data-svg-annotation-layer="${pageNumber}"]`);
+      if (!svg) return stepFallback;
+      const bboxOf = (i) => {
+        const g = svg.querySelector(`[data-annotation-index="${i}"]`);
+        if (!g || typeof g.getBBox !== 'function') return null;
+        try { return g.getBBox(); } catch (_e) { return null; }
+      };
+      const intersects = (a, b) => {
+        if (!a || !b) return false;
+        return !(a.x + a.width < b.x || b.x + b.width < a.x
+             || a.y + a.height < b.y || b.y + b.height < a.y);
+      };
+      const fromBbox = bboxOf(fromIndex);
+      if (!fromBbox) return stepFallback;
+      if (direction === 'forward') {
+        for (let j = fromIndex + 1; j < objectsLen; j++) {
+          if (intersects(fromBbox, bboxOf(j))) return j;
+        }
+        return fromIndex;
+      }
+      for (let j = fromIndex - 1; j >= 0; j--) {
+        if (intersects(fromBbox, bboxOf(j))) return j;
+      }
+      return fromIndex;
+    };
+    const resolved = typeof target === 'string' ? resolveOverlapTarget(target) : target;
+    const clamped = Math.max(0, Math.min(resolved, objectsLen - 1));
     if (clamped === fromIndex) return;
     const next = JSON.parse(JSON.stringify(page));
     const [moved] = next.objects.splice(fromIndex, 1);
@@ -26449,8 +26488,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }),
             sep(),
             // UX: z-order — mirrors Illustrator/Figma/Photoshop placement
-            // (flat block after Delete, above Group). Handler clamps toIndex
-            // and re-broadcasts the selection at the new slot so the shape
+            // (flat block after Delete, above Group). Handler resolves each
+            // direction ('forward' / 'backward' / 'front' / 'back') with a
+            // Figma-style overlap-aware target so each press lands the shape
+            // past the next spatially-overlapping neighbor. Re-broadcasts
+            // the selection at the new slot so the shape
             // stays visibly selected after reorder. Hotkey parity lives in
             // SVGAnnotationLayer's keydown useEffect:
             //   Cmd+Shift+]  → Bring to Front
@@ -26458,20 +26500,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             //   Cmd+[        → Send Backward
             //   Cmd+Shift+[  → Send to Back
             item('Bring to Front', 'bringToFront', () => {
-              const page = annotationsByPageRef.current?.[ctx.pageNumber];
-              if (!page?.objects) return;
-              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, page.objects.length - 1);
+              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'front');
             }),
             item('Bring Forward', 'bringForward', () => {
               if (ctx.annotationIndex == null) return;
-              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, ctx.annotationIndex + 1);
+              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'forward');
             }),
             item('Send Backward', 'sendBackward', () => {
               if (ctx.annotationIndex == null) return;
-              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, ctx.annotationIndex - 1);
+              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'backward');
             }),
             item('Send to Back', 'sendToBack', () => {
-              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 0);
+              handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back');
             }),
             sep(),
             item('Group', 'group'),

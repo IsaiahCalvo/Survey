@@ -518,18 +518,16 @@ const SVGAnnotationLayer = memo(({
         e.preventDefault();
         onCutAnnotation(pageNumber, annotationIndex);
       } else if (isBracketRight && typeof onReorderAnnotation === 'function') {
-        // UX: toIndex goes to POSITIVE_INFINITY for "Bring to Front" so the
-        // handler's clamp (Math.min(toIndex, objects.length - 1)) lands on
-        // the last slot without the SVG layer needing to know the object
-        // count. Keeps the effect's dep array free of `annotations`, which
-        // would make it re-run on every annotation update.
+        // UX: direction strings ('front' / 'forward') route through the
+        // handler's Figma-style overlap resolver so each press lands the
+        // shape above the next spatially-overlapping neighbor, not just
+        // the next slot in the array. Keeps the effect's dep array free
+        // of `annotations`, which would make it re-run on every update.
         e.preventDefault();
-        const toIndex = e.shiftKey ? Number.POSITIVE_INFINITY : annotationIndex + 1;
-        onReorderAnnotation(pageNumber, annotationIndex, toIndex);
+        onReorderAnnotation(pageNumber, annotationIndex, e.shiftKey ? 'front' : 'forward');
       } else if (isBracketLeft && typeof onReorderAnnotation === 'function') {
         e.preventDefault();
-        const toIndex = e.shiftKey ? 0 : annotationIndex - 1;
-        onReorderAnnotation(pageNumber, annotationIndex, toIndex);
+        onReorderAnnotation(pageNumber, annotationIndex, e.shiftKey ? 'back' : 'backward');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
