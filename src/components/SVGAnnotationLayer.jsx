@@ -160,8 +160,17 @@ const SVGAnnotationLayer = memo(({
   // Fabric Textbox 'changed' event. When present + editingCalloutId matches
   // the rendered callout's id, the renderer uses these bounds instead of the
   // stored normalized dims so line1 tracks the live edge as the box grows.
-  // Shape: { left, top, width, height } in page space, or null.
+  // Shape: { left, top, width, height, text?, textLines?, fontSize?,
+  // lineHeight? } in page space, or null. Plan 15-04 Step 3 added the text
+  // payload so renderCallout also swaps in live-typed glyphs per keystroke.
   liveCalloutEditBounds,
+  // UX: Plan 15-04 Step 3 — live page-space bounds + text for the editing
+  // plain-text annotation (non-callout), same shape as liveCalloutEditBounds.
+  // Keyed by editingAnnotationIndex; renderText receives it as its 3rd arg
+  // so the visible SVG textbox renders the typed characters in real time
+  // (Fabric's textbox is painted transparent during edit — this is the only
+  // visible copy).
+  liveTextEditBounds,
   // UX: pan-mode quick-click selection — App.jsx sets this to
   // { pageNumber, annotationIndex, tick } when a pan-mode single-click lands
   // on an annotation. Each instance checks whether the pageNumber matches its
@@ -281,6 +290,103 @@ const SVGAnnotationLayer = memo(({
     }
     setHoveredId(pendingHover.annotationIndex);
   }, [pendingHover, pageNumber, setHoveredId]);
+
+  // TEXTBOX HOVER/SELECT DIAG — records the blue hover-glow rect vs the text
+  // content rect vs every rect in the annotation's <g> every time a textbox
+  // becomes hovered or selected. User is chasing a "hover glow overhangs the
+  // textbox border (especially below)" bug, so we need screen-space bounds
+  // for all candidate rects plus the raw annotation data so a single Save
+  // Log dump is enough to diagnose both user-drawn and PDF-imported textboxes.
+  //
+  // Output goes to console.log which main.jsx's global buffer captures into
+  // TestLogs/testlog-console.log when the user clicks Save Log.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const indexes = new Set();
+    if (typeof hoveredId === 'number') indexes.add(hoveredId);
+    if (selectedIds && typeof selectedIds.forEach === 'function') {
+      selectedIds.forEach((id) => { if (typeof id === 'number') indexes.add(id); });
+    }
+    if (indexes.size === 0) return;
+
+    const snapRect = (r) => r ? {
+      top: r.top, bottom: r.bottom, left: r.left, right: r.right,
+      width: r.width, height: r.height,
+    } : null;
+
+    indexes.forEach((i) => {
+      const obj = annotations?.[i];
+      if (!obj) return;
+      const type = String(obj.type || '').toLowerCase();
+      if (type !== 'textbox' && type !== 'i-text' && type !== 'text') return;
+
+      const group = svg.querySelector(`[data-annotation-index="${i}"]`);
+      if (!group) return;
+
+      const groupRect = snapRect(group.getBoundingClientRect());
+      const hoverGlowEl = group.querySelector('rect[stroke="#4a90e2"]');
+      const hoverGlowRect = hoverGlowEl ? snapRect(hoverGlowEl.getBoundingClientRect()) : null;
+      const foreignObjectEl = group.querySelector('foreignObject');
+      const foreignObjectRect = foreignObjectEl ? snapRect(foreignObjectEl.getBoundingClientRect()) : null;
+      const svgTextEl = group.querySelector('text');
+      const svgTextRect = svgTextEl ? snapRect(svgTextEl.getBoundingClientRect()) : null;
+      const allRectsInGroup = Array.from(group.querySelectorAll('rect')).map((r) => ({
+        stroke: r.getAttribute('stroke'),
+        fill: r.getAttribute('fill'),
+        pointerEvents: r.getAttribute('pointer-events') || r.style?.pointerEvents,
+        x: r.getAttribute('x'),
+        y: r.getAttribute('y'),
+        width: r.getAttribute('width'),
+        height: r.getAttribute('height'),
+        screen: snapRect(r.getBoundingClientRect()),
+      }));
+
+      const isSelectedNow = !!(selectedIds && selectedIds.has && selectedIds.has(i));
+      const isHoveredNow = hoveredId === i;
+
+      const contentForDelta = foreignObjectRect || svgTextRect;
+      const glowVsContentDelta = (hoverGlowRect && contentForDelta) ? {
+        topOverhangPx: contentForDelta.top - hoverGlowRect.top,
+        bottomOverhangPx: hoverGlowRect.bottom - contentForDelta.bottom,
+        leftOverhangPx: contentForDelta.left - hoverGlowRect.left,
+        rightOverhangPx: hoverGlowRect.right - contentForDelta.right,
+      } : null;
+
+      const payload = {
+        page: pageNumber,
+        index: i,
+        state: { isHovered: isHoveredNow, isSelected: isSelectedNow },
+        annotation: {
+          type,
+          id: obj.id,
+          pdfAnnotationId: obj.pdfAnnotationId,
+          isPdfImported: !!obj.isPdfImported,
+          left: obj.left,
+          top: obj.top,
+          width: obj.width,
+          height: obj.height,
+          scaleX: obj.scaleX,
+          scaleY: obj.scaleY,
+          angle: obj.angle,
+          fontSize: obj.fontSize,
+          fontFamily: obj.fontFamily,
+          lineHeight: obj.lineHeight,
+          strokeWidth: obj.strokeWidth,
+          textPreview: typeof obj.text === 'string' ? obj.text.slice(0, 80) : undefined,
+        },
+        groupBounds: groupRect,
+        hoverGlowBounds: hoverGlowRect,
+        foreignObjectBounds: foreignObjectRect,
+        svgTextBounds: svgTextRect,
+        allRectsInGroup,
+        glowVsContentDelta,
+      };
+
+      console.log('[TextboxHoverDiag]', payload);
+    });
+  }, [hoveredId, selectedIds, annotations, pageNumber]);
 
   // Determine pointer events mode: interactive when select tool active AND not in edit mode
   // When editingAnnotationIndex is set, FabricEditCanvas + MiniToolbar need to receive clicks
@@ -1549,8 +1655,18 @@ const SVGAnnotationLayer = memo(({
     // visually overlap while we confirm the swap is structurally safe.
     const objTypeForEdit = String(obj.type || '').toLowerCase();
     const EDIT_IN_PLACE_TYPES = ['rect', 'circle', 'ellipse', 'triangle', 'textbox', 'i-text', 'text'];
+    const TEXT_EDIT_TYPES = ['textbox', 'i-text', 'text'];
     const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.includes(objTypeForEdit);
     const hideForEdit = isBeingEdited && !isInPlaceEdit;
+
+    // Plan 15-04 Step 3 — when the currently-edited annotation is text, swap
+    // in a live-rendered version driven by Fabric's per-keystroke bounds+text
+    // payload. The filteredAnnotations useMemo renders from stored obj only;
+    // per-keystroke repaint happens here, so the memo doesn't churn on every
+    // letter typed.
+    if (isBeingEdited && TEXT_EDIT_TYPES.includes(objTypeForEdit) && liveTextEditBounds) {
+      renderElement = renderText(renderObj, i, liveTextEditBounds);
+    }
 
     return (
       <g

@@ -1607,100 +1607,28 @@ const FabricEditCanvas = memo(({
           // bboxOriginRef.current holds the page-space origin the textbox was
           // loaded from; the textbox width is fixed for wrapping; height grows
           // via the same max(natural, stored) rule above.
+          //
+          // Plan 15-04 Step 3 — extend payload to carry the live text content
+          // and Fabric's pre-wrapped line array (`_textLines`). The SVG renderer
+          // consumes these to repaint per keystroke, so the user sees the typed
+          // text grow inside the SVG box in real time (previously SVG showed
+          // stale pre-edit text during edit because Fabric's text lived only in
+          // Canvas 2D until commit).
           if (onLiveTextGrow && bboxOriginRef.current) {
             const pageW = (textObj.width || 0) * (textObj.scaleX || 1);
+            const lines = Array.isArray(textObj._textLines)
+              ? textObj._textLines.map(l => Array.isArray(l) ? l.join('') : String(l))
+              : null;
             const bounds = {
               left: bboxOriginRef.current.left || 0,
               top: bboxOriginRef.current.top || 0,
               width: pageW,
               height: effectiveH,
+              text: textObj.text || '',
+              textLines: lines,
+              fontSize: textObj.fontSize,
+              lineHeight: textObj.lineHeight,
             };
-            // [CALLOUT-DIAG] Phase 15 UAT-2 diagnostic — MAX depth. Captures
-            // every dimension source (Fabric state, DOM rects, canvas dims,
-            // upper/lower canvas pixel sizes, bounding rects, SVG live rects)
-            // so we can cross-check where the visible growth actually lives.
-            try {
-              const c = containerRef.current;
-              const cRect = c ? c.getBoundingClientRect() : null;
-              const lowerCanvas = c ? c.querySelector('.lower-canvas') : null;
-              const upperCanvas = c ? c.querySelector('.upper-canvas') : null;
-              const textarea = c ? c.querySelector('.fabric-hidden-textarea, textarea') : null;
-              const bbox = textObj.getBoundingRect ? textObj.getBoundingRect(true, true) : null;
-              // SVG DOM rects of the same callout (hidden text path still renders
-              // line1/line2/arrowTip; rect+foreignObject skipped because hideText=true)
-              let svgRootRect = null, svgLine1Rect = null, svgLine2Rect = null, svgRectRect = null, svgFoRect = null;
-              if (typeof document !== 'undefined') {
-                const svgRoot = document.querySelector('g[data-callout-id]');
-                if (svgRoot) {
-                  svgRootRect = svgRoot.getBoundingClientRect();
-                  const l1 = svgRoot.querySelector('[data-callout-part="line1"]');
-                  const l2 = svgRoot.querySelector('[data-callout-part="line2"]');
-                  const r = svgRoot.querySelector('[data-callout-part="textBox"]');
-                  const fo = svgRoot.querySelector('foreignObject[data-callout-part="text"]');
-                  if (l1) svgLine1Rect = l1.getBoundingClientRect();
-                  if (l2) svgLine2Rect = l2.getBoundingClientRect();
-                  if (r) svgRectRect = r.getBoundingClientRect();
-                  if (fo) svgFoRect = fo.getBoundingClientRect();
-                }
-              }
-              console.log('[CALLOUT-DIAG] textbox.changed', JSON.stringify({
-                t: Date.now(),
-                textContent: (textObj.text || '').slice(0, 80),
-                charCount: (textObj.text || '').length,
-                lineCount: textObj._textLines ? textObj._textLines.length : null,
-                textLines: textObj._textLines ? textObj._textLines.map(l => Array.isArray(l) ? l.join('') : String(l)).slice(0, 10) : null,
-                fabric: {
-                  rawWidth: textObj.width,
-                  rawHeight: textObj.height,
-                  scaleX: textObj.scaleX,
-                  scaleY: textObj.scaleY,
-                  scaledWidth: textObj.getScaledWidth ? textObj.getScaledWidth() : null,
-                  scaledHeight: textObj.getScaledHeight ? textObj.getScaledHeight() : null,
-                  calcTextHeight: naturalH,
-                  lineHeight: textObj.lineHeight,
-                  fontSize: textObj.fontSize,
-                  fontSizeMult: textObj._fontSizeMult,
-                  charSpacing: textObj.charSpacing,
-                  left: textObj.left,
-                  top: textObj.top,
-                  boundingRect_abs: bbox,
-                },
-                computed: {
-                  storedH: storedH2,
-                  effectiveH,
-                  wrapperH_px: newH,
-                  canvasZoom_es: es,
-                },
-                canvasDom: {
-                  width: canvas.width,
-                  height: canvas.height,
-                  lowerCanvas_w: lowerCanvas?.width,
-                  lowerCanvas_h: lowerCanvas?.height,
-                  lowerCanvas_offsetW: lowerCanvas?.offsetWidth,
-                  lowerCanvas_offsetH: lowerCanvas?.offsetHeight,
-                  upperCanvas_w: upperCanvas?.width,
-                  upperCanvas_h: upperCanvas?.height,
-                  textarea_rect: textarea ? { w: textarea.offsetWidth, h: textarea.offsetHeight } : null,
-                },
-                containerDom: {
-                  offsetW: c?.offsetWidth,
-                  offsetH: c?.offsetHeight,
-                  styleW: c?.style?.width,
-                  styleH: c?.style?.height,
-                  rect: cRect ? { x: cRect.x, y: cRect.y, w: cRect.width, h: cRect.height } : null,
-                  outline: c?.style?.outline,
-                },
-                svgDom: {
-                  root: svgRootRect ? { x: svgRootRect.x, y: svgRootRect.y, w: svgRootRect.width, h: svgRootRect.height } : null,
-                  rect: svgRectRect ? { x: svgRectRect.x, y: svgRectRect.y, w: svgRectRect.width, h: svgRectRect.height } : null,
-                  foreignObject: svgFoRect ? { x: svgFoRect.x, y: svgFoRect.y, w: svgFoRect.width, h: svgFoRect.height } : null,
-                  line1: svgLine1Rect ? { x: svgLine1Rect.x, y: svgLine1Rect.y, w: svgLine1Rect.width, h: svgLine1Rect.height } : null,
-                  line2: svgLine2Rect ? { x: svgLine2Rect.x, y: svgLine2Rect.y, w: svgLine2Rect.width, h: svgLine2Rect.height } : null,
-                },
-                bboxOrigin: bboxOriginRef.current,
-                broadcastedBounds: bounds,
-              }));
-            } catch (_e) { console.log('[CALLOUT-DIAG] log error', _e?.message); }
             onLiveTextGrow(bounds);
           }
         });

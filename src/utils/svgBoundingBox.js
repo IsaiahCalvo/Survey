@@ -412,15 +412,17 @@ function getTextBBox(obj) {
 
   // Textbox sizing: trust stored width/height. PDF-imported textboxes now carry
   // Fabric-measured dims (see pdfAnnotationImporter convertFreeTextToFabricTextbox),
-  // so the SVG hit-test rect matches what Fabric actually draws. Descender
-  // buffer is added to height so the hit zone covers g/j/p/y glyphs.
+  // so the SVG hit-test rect matches what Fabric actually draws. No descender
+  // buffer — Fabric's stored height already covers g/j/p/q/y glyphs (the
+  // border rect in renderText hugs descenders cleanly), so the prior
+  // `+ fontSize * 0.35` padding added a visible overhang to the hover glow
+  // and pushed the bottom selection handles below the true border.
   if (objType === 'textbox' && obj.width && obj.height) {
-    const fontSize = obj.fontSize || 16;
     return {
       left: obj.left ?? 0,
       top: obj.top ?? 0,
       width: obj.width * scaleX,
-      height: obj.height * scaleY + fontSize * 0.35,
+      height: obj.height * scaleY,
       angle: obj.angle ?? 0,
     };
   }

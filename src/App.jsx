@@ -10950,6 +10950,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // reads this via the liveCalloutEditBounds prop and forwards to renderCallout
   // so line1 retracts to the live edge as the textbox auto-grows during typing.
   // Cleared automatically when editingAnnotation becomes null or changes id.
+  //
+  // Plan 15-04 Step 3 — payload also carries { text, textLines, fontSize,
+  // lineHeight } so the SVG renderer can repaint live text per keystroke
+  // instead of showing stale pre-edit text.
   const [liveCalloutEditBounds, setLiveCalloutEditBounds] = useState(null);
   useEffect(() => {
     // Reset live bounds when exiting edit mode or switching to a different
@@ -10958,6 +10962,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setLiveCalloutEditBounds(null);
     }
   }, [editingAnnotation?.reactCalloutId]);
+  // UX: Plan 15-04 Step 3 — parallel state for plain-text (non-callout) edits.
+  // Same shape as liveCalloutEditBounds; keyed by annotation index via the
+  // editingAnnotationIndex prop on SVGAnnotationLayer. Drives live typing
+  // inside the SVG text box so Fabric's transparent textbox no longer leaves
+  // the visible SVG stale during edit.
+  const [liveTextEditBounds, setLiveTextEditBounds] = useState(null);
+  useEffect(() => {
+    if (!editingAnnotation || editingAnnotation.reactCalloutId) {
+      setLiveTextEditBounds(null);
+    }
+  }, [editingAnnotation?.pageNumber, editingAnnotation?.index, editingAnnotation?.reactCalloutId]);
   const editModeCooldownRef = useRef(0); // timestamp — prevents re-entering edit mode immediately after dismiss
   const textToolDragRef = useRef(null); // { startX, startY, pageNumber, rect, effectiveScale } for drag-to-create
 
@@ -16135,44 +16150,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const textboxChild = children.find((o) => o && o.type === 'textbox') || children[4];
     const nonTextChildren = children.filter((o) => o !== textboxChild);
     if (!textboxChild) return;
-    // [CALLOUT-DIAG] Phase 15 UAT-2 — Stage B marker. Fires on double-click
-    // entry. Captures stored callout + the Fabric shape we hand to EditCanvas.
-    try {
-      // eslint-disable-next-line no-console
-      console.log('[CALLOUT-DIAG] edit-enter', JSON.stringify({
-        t: Date.now(),
-        calloutId,
-        pageNumber: targetPageNumber,
-        reactCallout: {
-          arrowTip: reactCallout.arrowTip,
-          knee: reactCallout.knee,
-          textBoxPosition: reactCallout.textBoxPosition,
-          textBoxWidth: reactCallout.textBoxWidth,
-          textBoxHeight: reactCallout.textBoxHeight,
-          text: (reactCallout.text || '').slice(0, 60),
-          style: reactCallout.style,
-        },
-        pageSize: pageSizeObj,
-        textboxChildAsHandedToEditCanvas: {
-          type: textboxChild.type,
-          left: textboxChild.left,
-          top: textboxChild.top,
-          width: textboxChild.width,
-          height: textboxChild.height,
-          scaleX: textboxChild.scaleX,
-          scaleY: textboxChild.scaleY,
-          stroke: textboxChild.stroke,
-          strokeWidth: textboxChild.strokeWidth,
-          fill: textboxChild.fill,
-          backgroundColor: textboxChild.backgroundColor,
-          fontFamily: textboxChild.fontFamily,
-          fontSize: textboxChild.fontSize,
-          text: (textboxChild.text || '').slice(0, 60),
-          rx: textboxChild.rx,
-          ry: textboxChild.ry,
-        },
-      }));
-    } catch (_e) { /* diag-only */ }
 
     // Single-element transient annotations array — loadTextAnnotation's
     // existing-text branch reads annotationsRef.current.objects[annotationIndex]
@@ -27655,6 +27632,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   // FabricEditCanvas.onLiveTextGrow. Feeds renderCallout
                                   // so line1 retracts to the live edge during typing.
                                   liveCalloutEditBounds={liveCalloutEditBounds}
+                                  // UX: Plan 15-04 Step 3 — live textbox bounds for
+                                  // plain-text (non-callout) edits; feeds renderText so
+                                  // typed characters appear in the SVG textbox live.
+                                  liveTextEditBounds={liveTextEditBounds}
                                   // UX: pan-mode quick-click selection command. See
                                   // pendingSvgSelection state at ~line 11046 for details.
                                   pendingSelection={pendingSvgSelection}
@@ -28052,7 +28033,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   // Only fires for callout edits (reactCalloutId set).
                                   onLiveTextGrow={editingAnnotation?.reactCalloutId
                                     ? setLiveCalloutEditBounds
-                                    : undefined}
+                                    : setLiveTextEditBounds}
                                   onEditCommit={(updatedJSON) => {
                                     // UX: Phase 15 UAT-1 restructure — reactCalloutId
                                     // routes callout commit through fromFabricGroup.
@@ -28379,6 +28360,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       editingCalloutId={editingAnnotation?.reactCalloutId || null}
                                       // UX: Phase 15 UAT-2 — see first mount site.
                                       liveCalloutEditBounds={liveCalloutEditBounds}
+                                      // UX: Plan 15-04 Step 3 — see first mount site.
+                                      liveTextEditBounds={liveTextEditBounds}
                                       // UX: pan-mode quick-click selection — see first mount site.
                                       pendingSelection={pendingSvgSelection}
                                       // UX: pan-mode hover glow — see first mount site.
@@ -28553,7 +28536,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         // UX: Phase 15 UAT-2 — see mount site 1.
                                         onLiveTextGrow={editingAnnotation?.reactCalloutId
                                           ? setLiveCalloutEditBounds
-                                          : undefined}
+                                          : setLiveTextEditBounds}
                                         onEditCommit={(updatedJSON) => {
                                           // UX: Phase 15 UAT-1 restructure — see mount
                                           // site 1 for the synthesis rationale.
@@ -28926,6 +28909,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       editingCalloutId={editingAnnotation?.reactCalloutId || null}
                                       // UX: Phase 15 UAT-2 — see first mount site.
                                       liveCalloutEditBounds={liveCalloutEditBounds}
+                                      // UX: Plan 15-04 Step 3 — see first mount site.
+                                      liveTextEditBounds={liveTextEditBounds}
                                       // UX: pan-mode quick-click selection — see first mount site.
                                       pendingSelection={pendingSvgSelection}
                                       // UX: pan-mode hover glow — see first mount site.
@@ -29278,7 +29263,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       // UX: Phase 15 UAT-2 — see mount site 1.
                                       onLiveTextGrow={editingAnnotation?.reactCalloutId
                                         ? setLiveCalloutEditBounds
-                                        : undefined}
+                                        : setLiveTextEditBounds}
                                       onEditCommit={(updatedJSON) => {
                                         // UX: Phase 15 UAT-1 restructure — see mount
                                         // site 1 for the synthesis rationale.

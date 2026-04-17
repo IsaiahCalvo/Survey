@@ -59,32 +59,12 @@ Continues the shape editing momentum from the post-v2.0 cleanup branch.
 Circle handle alignment, live scaling, and clipping are fixed — these two
 items use the same code paths and finish the editing interaction model.
 
-- [ ] **Shift+rotate snaps to 45° increments** — hold Shift during rotation handle drag to snap to 0°/45°/90°/135°/etc. Needs both SVG rotation path (`useSVGInteraction.js` ~line 391, check `e.shiftKey` + `Math.round(angle/45)*45`) and Fabric edit path (toggle `obj.snapAngle=45` via keydown/keyup listeners in `FabricEditCanvas.jsx` shape loading). ~10 lines total.
-- [ ] **Zoom floor at 10%** — change `MIN_SCALE` from `0.5` to `0.1` in `src/utils/zoomController.js`. Every zoom path goes through `clampScale()` so this is a single constant change. Prevents unusably small annotations at extreme zoom-out.
-
-### Rotation handle relocates to opposite side when off-screen
-
-**Source:** 12-02-UAT Test 14 user feedback, captured as Gap 2 (status: feature_request)
-**Priority:** v2.2+
-**Context:** When user places a shape near the page edge and rotates it, the mtr rotation handle can go off-screen. Currently the user must move the shape away from the edge to re-grab the handle. Desired flow: place shape near edge → rotate → if handle would be off-screen, it relocates to the opposite side of the shape (or nearest visible side) so the user can re-grab it without moving the shape first. Pill follows the new handle position.
-**Scope:** SVGSelectionOverlay (handle placement logic), not RotationInputField (pill already clamps correctly).
-
-### Rotation pill reappears on hover after returning from edit mode via click-off
-
-**Source:** 12-02-UAT Gap 3 (discovered during 12-03 UAT re-run, 2026-04-14)
-**Priority:** v2.2+ polish (minor severity — workaround exists)
-**Symptom:** Double-click shape → enter edit mode → click off shape → mini toolbar dismisses → user back in select mode → hover rotation handle → pill does NOT appear. Workaround: fully deselect + reselect shape.
-**Log evidence:** `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log` — hover-intent effect RUN selectedIds.size=1 → attaching listeners to handleEl, but NO subsequent pointerenter on mtr fires on hover until after the deselect/reselect cycle.
-**Suspected root cause:** mtr handle DOM element stale after React reconciles overlay post-edit-commit. Hover-intent effect in `SVGAnnotationLayer.jsx` attaches listeners on a handle ref that no longer corresponds to the visible element. Likely the dep array needs to re-run after edit-commit triggers an `annotations` identity change, or the ref resolution needs a tick delay.
-**Scope:** `src/components/SVGAnnotationLayer.jsx` hover-intent effect only. Out of scope for 12-03 (strictly commit-path fix). Filed from Phase 12 close as carry-forward.
-
-### Rotation handle fully visible when rotated shape enters edit mode
-
-**Source:** 12-02-UAT Gap 4 (discovered during 12-03 UAT re-run, 2026-04-14)
-**Priority:** v2.2+ polish (minor severity)
-**Symptom:** Rotate shape to non-zero angle → double-click to enter edit mode → mini toolbar renders correctly on top → BUT mtr rotation handle is partially clipped by an invisible boundary. Does NOT happen at 0° rotation — only when shape is pre-rotated.
-**Suspected root cause:** `FabricEditCanvas` or its wrapper container has `overflow: hidden` / tight clip-path boundary that crops content outside the shape's local bounding box. When shape is rotated, rotation handle geometry extends into the clipped region.
-**Scope:** `src/components/FabricEditCanvas.jsx` container CSS/overflow rules, and SVGSelectionOverlay render-order + z-index during edit mode. Out of scope for 12-03. Filed from Phase 12 close as carry-forward.
+- [x] **Shift+rotate snaps to 45° increments** — done (verified 2026-04-16)
+- [x] **Zoom floor at 10%** — done (verified 2026-04-16)
+- [x] **Rotation handle relocates to opposite side when off-screen** — done (verified 2026-04-16)
+- [x] **Rotation pill reappears on hover after returning from edit mode** — done (verified 2026-04-16)
+- [x] **Rotation handle fully visible when rotated shape enters edit mode** — done (verified 2026-04-16)
+- [x] **Polygon/polyline rotation offset bug** — fixed (user confirmed 2026-04-17)
 
 **Momentum:** Shape edit handles → rotation precision → zoom range. Each builds
 on the same interaction surface. After this, shape editing is feature-complete
@@ -238,6 +218,50 @@ wired; the remaining work is CRDT merge logic, presence tracking, and UI.
 - [ ] **Avatar hover tooltips** — full user name on hover `[PDF-App]`
 - [ ] **Cursor position broadcasting** — see where other users are looking `[PDF2]`
 - [ ] **Per-user undo/redo** — undo only your own changes, not teammates' `[PDF-App]`
+
+---
+
+## Line/Arrow Mini-Toolbar *(captured 2026-04-16 — Phase 16 candidate)*
+
+Phase 15 shipped the curvature handle + 6 arrowhead style data model and
+renderer, but there's no UI for users to pick an arrowhead style yet (testing
+required JSON editing). The line/arrow mini-toolbar appears on select and
+exposes style controls inline. Building this first gives the Text Box
+Mini-Toolbar (below) a proven pattern to reuse.
+
+- [ ] **Line/arrow mini-toolbar on select** — appears next to the selected
+  line or arrow, reuses the shape mini-toolbar positioning infrastructure.
+  - [ ] Arrowhead style picker (6 styles: solid triangle, open triangle,
+    open circle, filled circle, pipe, none — data model + renderer already
+    shipped in Phase 15, just needs the selector UI)
+  - [ ] Stroke color
+  - [ ] Stroke width
+  - [ ] Curvature pill indicator (visual cue that the line is curved;
+    shares momentum with the midpoint handle from Phase 15)
+  - [ ] Shares component infrastructure with the text box mini-toolbar
+    below — building line/arrow first establishes the pattern.
+
+---
+
+## Text Box Mini-Toolbar *(captured 2026-04-15 — Phase 16 candidate)*
+
+Text boxes currently have no edit-mode toolbar. Shapes already get a mini-toolbar
+on select/edit. Text boxes should get the same treatment so users can style them
+inline without diving into menus.
+
+- [ ] **Text box mini-toolbar on double-click / select** — reuse the shape
+  mini-toolbar infrastructure; appears next to the selected textbox.
+  - [ ] Fill color (background — currently no background, clear only)
+  - [ ] Border / stroke color + width (default is now 1px black after
+    2026-04-15 fix; toolbar lets users change or remove it)
+  - [ ] Font family picker (respect single-name-font rule from CLAUDE.md
+    2026-04-08 cursor-drift gotcha — no CSS fallback stacks)
+  - [ ] Font size
+  - [ ] Text alignment (left / center / right / justify)
+  - [ ] Bold / Italic / Underline / Strikethrough
+  - [ ] Belongs with v2.3 Phase 16 (mini-toolbar + curvature pill wave) or a
+    dedicated follow-up; shares component infrastructure with the line/arrow
+    mini-toolbar, so building in the same phase is cheaper.
 
 ---
 

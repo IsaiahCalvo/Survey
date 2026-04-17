@@ -588,7 +588,7 @@ export const renderEllipse = (obj, index) => {
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement}
  */
-export const renderText = (obj, index) => {
+export const renderText = (obj, index, liveBounds = null) => {
   const scaleX = Math.abs(obj.scaleX ?? 1);
   const scaleY = Math.abs(obj.scaleY ?? 1);
   const objType = String(obj.type || '').toLowerCase();
@@ -598,8 +598,17 @@ export const renderText = (obj, index) => {
   // convertFreeTextToFabricTextbox) and user-edited textboxes carry committed
   // dims, so both are authoritative. i-text / text without stored bounds fall
   // through to measureTextBounds.
+  //
+  // Plan 15-04 Step 3 — during edit, liveBounds overrides stored dims + text.
+  // The Fabric textbox is painted transparently so only the SVG is visible;
+  // feeding Fabric-measured width/height and the live text string here keeps
+  // the SVG in lockstep with the caret per keystroke without a background
+  // Fabric overlay doubling the glyphs.
   let effectiveWidth, effectiveHeight;
-  if (objType === 'textbox' && obj.width && obj.height) {
+  if (liveBounds && liveBounds.width > 0 && liveBounds.height > 0) {
+    effectiveWidth = liveBounds.width;
+    effectiveHeight = liveBounds.height;
+  } else if (objType === 'textbox' && obj.width && obj.height) {
     effectiveWidth = obj.width * scaleX;
     effectiveHeight = obj.height * scaleY;
   } else {
@@ -607,9 +616,14 @@ export const renderText = (obj, index) => {
     effectiveWidth = measured.width;
     effectiveHeight = measured.height;
   }
-  const left = obj.left || 0;
-  const top = obj.top || 0;
+  const left = (liveBounds && typeof liveBounds.left === 'number') ? liveBounds.left : (obj.left || 0);
+  const top = (liveBounds && typeof liveBounds.top === 'number') ? liveBounds.top : (obj.top || 0);
   const angle = obj.angle || 0;
+  // Live text string wins during edit; stored text is used for non-edit paint
+  // and also as the fallback when liveBounds omits text (e.g. initial frame).
+  const displayedText = (liveBounds && typeof liveBounds.text === 'string')
+    ? liveBounds.text
+    : (obj.text || '');
 
   const key = `text-${obj.id || index}`;
   // Add buffer for descenders (j,p,g,q,y) + bottom breathing room
@@ -668,7 +682,7 @@ export const renderText = (obj, index) => {
             MozOsxFontSmoothing: 'grayscale',
           }}
         >
-          {obj.text || ''}
+          {displayedText}
         </div>
       </foreignObject>
     </g>
@@ -752,37 +766,6 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
     textBox.x, textBox.y, textBox.width, textBox.height,
     knee, arrowTip, lineThickness
   );
-
-  // [CALLOUT-DIAG] Phase 15 UAT-2 diagnostic — full per-render dump every call.
-  // Stage A (initial render) + Stage B (edit-entry render when hideText flips)
-  // + Stage C (keystroke re-render with live bounds) all captured here.
-  // Remove after live-grow + line1 retraction bug is closed.
-  try {
-    // eslint-disable-next-line no-console
-    console.log('[CALLOUT-DIAG] renderCallout', JSON.stringify({
-      t: Date.now(),
-      calloutId: callout.id,
-      hideText,
-      hasLiveBounds: !!liveBounds,
-      liveBounds: liveBounds || null,
-      storedNormalized: {
-        textBoxPosition: callout.textBoxPosition,
-        textBoxWidth: callout.textBoxWidth,
-        textBoxHeight: callout.textBoxHeight,
-        arrowTip: callout.arrowTip,
-        knee: callout.knee,
-      },
-      style: callout.style,
-      text: (callout.text || '').slice(0, 60),
-      finalTextBox: textBox,
-      pageKnee: knee,
-      pageArrowTip: arrowTip,
-      lineColor,
-      lineThickness,
-      fillColor,
-      connection,
-    }));
-  } catch (_e) { /* diag-only */ }
 
   const key = `callout-${callout.id || index}`;
 
@@ -905,7 +888,9 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
                 MozOsxFontSmoothing: 'grayscale',
               }}
             >
-              {callout.text || ''}
+              {(liveBounds && typeof liveBounds.text === 'string')
+                ? liveBounds.text
+                : (callout.text || '')}
             </div>
           </foreignObject>
         </>
