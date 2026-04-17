@@ -38,3 +38,41 @@ Run `npm rebuild canvas` (or `npm install` after blowing away `node_modules/canv
 - Any Phase 15 plan (15-01 / 15-02 / 15-03) — all tests that matter pass.
 - Any Playwright test — Playwright runs real Fabric in a real browser.
 - Any production code — the Electron main + browser dev flow is unaffected.
+
+---
+
+## Infra: `@syncfusion/ej2-base` Rollup resolution error in `npm run build`
+
+**Discovered during:** Plan 15-02 Task 2 — running `npm run build` as part of the acceptance gate.
+
+**Symptom:**
+
+```
+[vite]: Rollup failed to resolve import "@syncfusion/ej2-base"
+from "/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/src/main.jsx".
+```
+
+**Context:**
+
+- Reproduces on pristine `HEAD` (7423eca4) with zero WIP — confirmed by `git stash && npm run build`.
+- Pre-dates Plan 15-02's changes by at least one commit. Rollup warns but exits with code 0 (the "Build failed" line is console-cosmetic, not a shell-exit signal).
+- `package.json` is in the project-wide "Always Protected" list per CLAUDE.md — touching it requires a per-phase waiver.
+- The Electron dev flow (`npm run dev`) is unaffected because Vite dev-server resolves the import differently than Rollup's production bundler.
+
+**Scope verdict (Rule 3 boundary):**
+
+Plan 15-02's touch-list is limited to `src/utils/lineRenderHelpers.js` + `src/utils/svgAnnotationRenderers.jsx`. The Syncfusion resolution failure is a dependency-graph / bundler-config issue under `package.json` and `vite.config.js` (both protected). Does NOT belong in this plan.
+
+**Follow-up (medium priority — blocks production bundle):**
+
+Likely remedies (to evaluate in a dedicated infra plan):
+1. `npm install @syncfusion/ej2-base` if it's a missing sibling dep.
+2. Add `build.rollupOptions.external` entry in `vite.config.js` if Syncfusion is genuinely external.
+3. Verify `@syncfusion/ej2-react-pdfviewer` is pulling in `@syncfusion/ej2-base` transitively as expected.
+
+**Does NOT block:**
+
+- Plan 15-02 acceptance (unit tests + svgLineRenderer contract — all green).
+- Plan 15-03 (already committed to HEAD).
+- The Electron dev flow (`npm run dev` works).
+

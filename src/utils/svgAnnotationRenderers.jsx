@@ -15,6 +15,14 @@ import { measureTextBounds } from './svgBoundingBox';
 // the render surface (CLAUDE.md 2026-04-08 gotcha) — kept imported here for
 // any future direct use at this layer.
 import { buildCalloutRenderSpec, sanitizeFontFamily } from './calloutEditAdapter';
+// Phase 15 LINE-01/02/ARROW-01/02/04: pure-JS spec builders for line/arrow
+// rendering. Same .jsx-vs-Node-test strategy as calloutEditAdapter — tests
+// import the spec shape from a .js module; this .jsx wraps the spec 1:1 via
+// React.createElement so the SVG output is locked by the unit tests.
+import {
+  buildLineRenderSpec,
+  buildArrowheadRenderSpec,
+} from './lineRenderHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -131,71 +139,111 @@ export const renderRect = (obj, index) => {
 };
 
 /**
- * Render a Fabric.js line object as an SVG <line> element.
- * Uses non-scaling-stroke for constant thickness at all zoom levels.
+ * Dispatch a pre-built arrowhead spec to its SVG primitive.
  *
- * @param {object} obj - Fabric.js line JSON object
+ * Module-scoped (not exported). Used by both renderArrowhead (external,
+ * spec-builder wrapper) and renderLine (internal, spec already built via
+ * buildLineRenderSpec). Single source of truth for kind → React element
+ * mapping — adding a new arrowhead style means adding one case here + one
+ * branch in buildArrowheadRenderSpec.
+ *
+ * @param {object} spec - buildArrowheadRenderSpec output (has `.kind` + one
+ *   of `.polygon`/`.polyline`/`.circle`/`.line`)
+ * @returns {React.ReactElement|null}
+ */
+const renderArrowheadFromSpec = (spec) => {
+  switch (spec.kind) {
+    case 'none': return null;
+    case 'solidTriangle': return <polygon {...spec.polygon} />;
+    case 'openTriangle': return <polygon {...spec.polygon} />;
+    case 'openCircle': return <circle {...spec.circle} />;
+    case 'vShape': return <polyline {...spec.polyline} />;
+    case 'horizontalLine': return <line {...spec.line} />;
+    default: return null;
+  }
+};
+
+/**
+ * Render one of 6 arrowhead styles (ARROW-04) as a standalone SVG element.
+ *
+ * UX: Head-size uses max(8, sw*3) to preserve pre-Phase-15 arrow visuals per
+ * 15-UI-SPEC §D. Stroke-width floor of 2 on non-SOLID_TRIANGLE styles ensures
+ * visibility on 1px base lines.
+ *
+ * Exported for external callers (e.g. future mini-toolbar style-picker
+ * previews, selection overlays) that don't already hold a buildLineRenderSpec
+ * result. The internal renderLine path uses renderArrowheadFromSpec directly
+ * because buildLineRenderSpec has already produced the arrowhead spec — this
+ * avoids double-building the spec and keeps kind→element mapping DRY.
+ *
+ * @param {string} style - ARROWHEAD_STYLES value
+ * @param {number} tipX - Absolute X of the arrowhead tip
+ * @param {number} tipY - Absolute Y of the arrowhead tip
+ * @param {number} angleDeg - Rotation angle in degrees
+ * @param {string} color - Stroke/fill color
+ * @param {number} sw - Base line strokeWidth
+ * @returns {React.ReactElement|null}
+ */
+export const renderArrowhead = (style, tipX, tipY, angleDeg, color, sw) => {
+  const spec = buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw);
+  return renderArrowheadFromSpec(spec);
+};
+
+/**
+ * Render a Fabric.js line/arrow as SVG primitives.
+ *
+ * Branches:
+ *   - Straight (<line>): when obj.data.midpoint is absent or within 1px of
+ *     the straight baseline (render hysteresis per 15-UI-SPEC §B).
+ *   - Curved (<path d="M sx,sy Q cx,cy ex,ey">): when obj.data.midpoint is
+ *     set AND distance > 1px from baseline.
+ *
+ * Arrowhead dispatched via renderArrowheadFromSpec (unified for all 6 styles
+ * across straight and curved branches — ARROW-04). Curved-arrow arrowhead
+ * rotates to the curve tangent at t=1 via getCurveEndAngle (ARROW-01/02),
+ * NOT Math.atan2(dy, dx).
+ *
+ * Preserves pre-Phase-15 byte-identical rendering when obj.data.midpoint is
+ * absent: the straight branch emits the same line.x1/y1/x2=lineEndX/y2=lineEndY
+ * coords and the same <polygon> at the same <transform> as the pre-Phase-15
+ * implementation (svgLineRenderer.test.mjs #1 + #2 lock this).
+ *
+ * @param {object} obj - Fabric.js Line toJSON (tool: 'line' | 'arrow',
+ *   optional data: { midpoint, arrowheadStyle })
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement}
  */
 export const renderLine = (obj, index) => {
-  // Fabric.js Line toJSON(): left/top = bounding box top-left corner,
-  // x1/y1/x2/y2 = offsets from bounding box CENTER.
-  // Must compute center first, then add offsets to get absolute coords.
-  const centerX = (obj.left || 0) + (obj.width || 0) / 2;
-  const centerY = (obj.top || 0) + (obj.height || 0) / 2;
-  const x1 = centerX + (obj.x1 || 0);
-  const y1 = centerY + (obj.y1 || 0);
-  const x2 = centerX + (obj.x2 || 0);
-  const y2 = centerY + (obj.y2 || 0);
-
+  const spec = buildLineRenderSpec(obj);
   const isArrow = obj.tool === 'arrow';
   const key = `${isArrow ? 'arrow' : 'line'}-${obj.id || index}`;
-  const strokeColor = obj.stroke || '#000';
-  const sw = obj.strokeWidth || 2;
+  const opacity = obj.opacity ?? 1;
 
-  if (isArrow) {
-    // Arrow: line + arrowhead polygon centered on endpoint 2
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const angleRad = Math.atan2(dy, dx);
-    const angleDeg = angleRad * (180 / Math.PI);
-    const headSize = Math.max(8, sw * 3);
-
-    // Shorten line so it ends at the back of the centered arrowhead (doesn't poke through)
-    const lineEndX = x2 - (headSize / 3) * Math.cos(angleRad);
-    const lineEndY = y2 - (headSize / 3) * Math.sin(angleRad);
-
+  if (spec.kind === 'curved') {
+    // UX: Curved line/arrow — <path> + optional arrowhead inside <g>.
+    // fill='none' on <path> is CRITICAL (Pitfall 5) — otherwise the bezier
+    // fills black between the curve and the start-to-end chord. Emitted
+    // explicitly by buildLineRenderSpec.
     return (
-      <g key={key} opacity={obj.opacity ?? 1}>
-        <line
-          x1={x1} y1={y1} x2={lineEndX} y2={lineEndY}
-          stroke={strokeColor}
-          strokeWidth={sw}
-          strokeLinecap="round"
-        />
-        <polygon
-          points={`${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`}
-          fill={strokeColor}
-          transform={`translate(${x2},${y2}) rotate(${angleDeg})`}
-        />
+      <g key={key} opacity={opacity}>
+        <path {...spec.path} />
+        {renderArrowheadFromSpec(spec.arrowhead)}
       </g>
     );
   }
 
-  return (
-    <line
-      key={key}
-      x1={x1}
-      y1={y1}
-      x2={x2}
-      y2={y2}
-      stroke={strokeColor}
-      strokeWidth={sw}
-      strokeLinecap="round"
-      opacity={obj.opacity ?? 1}
-    />
-  );
+  // Straight branch — byte-identical to pre-Phase-15 when no data.midpoint.
+  // Arrowhead may be 'none' (plain line, no <g> wrapper) or any of the 5
+  // visible styles (line + arrowhead wrapped in <g>).
+  if (spec.arrowhead.kind !== 'none') {
+    return (
+      <g key={key} opacity={opacity}>
+        <line {...spec.line} />
+        {renderArrowheadFromSpec(spec.arrowhead)}
+      </g>
+    );
+  }
+  return <line key={key} {...spec.line} opacity={opacity} />;
 };
 
 /**
@@ -450,9 +498,25 @@ export const renderText = (obj, index) => {
 
   return (
     <g key={key} opacity={obj.opacity ?? 1} transform={rotateTransform}>
-      {/* No bounding rect: Fabric Textbox draws no native border, so the SVG must
-          not draw one either — otherwise selector mode shows a black box that
-          disappears on switch to eraser mode, looking like the textbox "broke". */}
+      {/* Border rect: drawn only when the textbox carries a positive strokeWidth.
+          PDF-imported FreeText annotations with BS.W>0 (see
+          pdfAnnotationImporter.convertFreeTextToFabricTextbox) and user-created
+          textboxes (FabricTextCanvas/FabricEditCanvas default: 1px black) both
+          land here. Textboxes with strokeWidth=0 render borderless. Uses
+          effectiveHeight (not displayHeight with descenderBuffer) so the border
+          hugs Fabric's logical bounds and matches the eraser-canvas render. */}
+      {obj.strokeWidth > 0 && obj.stroke ? (
+        <rect
+          x={left}
+          y={top}
+          width={effectiveWidth}
+          height={effectiveHeight}
+          fill="none"
+          stroke={obj.stroke}
+          strokeWidth={obj.strokeWidth}
+          vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
+        />
+      ) : null}
       <foreignObject
         x={left}
         y={top}
