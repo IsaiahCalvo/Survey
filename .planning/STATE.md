@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: completed
-stopped_at: Phase 15 context gathered
-last_updated: "2026-04-16T04:03:28.289Z"
-last_activity: "2026-04-15 — Plan 14-03 executed (3 tasks, 3 commits: c2c05b7a / dce2b756 / 71fcdff9)"
+status: in_progress
+stopped_at: Completed 15-01-PLAN.md — Wave 0 test scaffolding; ready for 15-02 renderer
+last_updated: "2026-04-17T01:07:22.130Z"
+last_activity: "2026-04-17 — Plan 15-01 executed (3 tasks, 3 commits: 4a44f242 / 40e0055b / 2cc6ce40)"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
+  total_plans: 8
+  completed_plans: 6
+  percent: 75
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-14)
 
 **Core value:** Line/arrow/text-callout tools match the precision and feel of the `combined-tools` reference app, AND all annotations render through the same SVG pipeline for a unified select / edit / erase / undo story.
-**Current focus:** Milestone v2.3 — Phases 14-18 defined, awaiting `/gsd:discuss-phase 14` to kick off plan decomposition for the SVG unification of callouts + shared tool foundation.
+**Current focus:** Milestone v2.3 — Phase 15 in progress (Plan 15-01 Wave 0 test scaffolds shipped 2026-04-17; Plan 15-02 Wave 1 renderer next).
 
 ## Current Position
 
 Milestone: v2.3 — Tools Polish (combined-tools rewrite + unified render)
-Phase: **Phase 14 — Unified SVG Callout Render + Shared Tool Foundation** (COMPLETE — 3/3 plans shipped)
-Plan: 14-03 — complete (next: `/gsd:verify-work 14` + phase RECONCILIATION.md)
-Status: Phase 14 complete. All 4 requirements (CALL-10, UX-01, KBD-01, CREATE-01) functionally complete end-to-end.
-Last activity: 2026-04-15 — Plan 14-03 executed (3 tasks, 3 commits: c2c05b7a / dce2b756 / 71fcdff9)
+Phase: **Phase 15 — Line/Arrow Curvature + Arrowhead Styles** (1/3 plans complete)
+Plan: 15-01 — complete (next: 15-02 Wave 1 renderer — lineRenderHelpers.js + un-skip the 14 pre-written tests)
+Status: Phase 15 Plan 01 complete. 14 green unit tests locking lineGeometry + Fabric persistence contract. 14 file-level-skipped tests pre-writing the Plan 15-02 renderer contract. 4 Playwright fixme scaffolds (13 tests) for LINE-01/02/03 + ARROW-01/02/03/04.
+Last activity: 2026-04-17 — Plan 15-01 executed (3 tasks, 3 commits: 4a44f242 / 40e0055b / 2cc6ce40)
 
-Progress: [██████████] 100% (Phase 14: 3/3 plans complete, advances to Phase 15 on next plan)
+Progress: [████████░░] 75% (v2.3: 6/8 plans complete across Phase 14 + Phase 15)
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100% (Phase 14: 3/3 plans complete, a
 | 14-03 | ~20 min  | 3     | 3       | 11     | Wave 2 — filteredCallouts unwound + callout-part drag + edit-mode adapter + creation preview + 5 Callout stubs (−3,412 LOC) |
 
 **Tests:** 113/113 green at v2.2 close (v2.3 must preserve this baseline). Plan 14-03 preserves 143/144 unit-test baseline (1 pre-existing pdfAnnotationImporter failure, out of scope per 14-01/14-02 deferred-items.md).
+| Phase 15 P01 | 7min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,8 @@ Progress: [██████████] 100% (Phase 14: 3/3 plans complete, a
 - [Phase 14]: Plan 14-03: 4-place invariant enforced for 'callout-part' drag mode — dragStateRef init + handleSvgPointerDown set + handlePointerMove case + handlePointerUp commit + reset. Whole-move triggers: connector-line drag OR Cmd/Ctrl modifier.
 - [Phase 14]: Plan 14-03: 5 HTML-overlay Callout/*.jsx files retired to null-render stubs (~3,412 LOC deleted). types.js preserved as enum/factory shim. PAL import contract preserved without a PAL waiver — existing <CalloutOverlay> mount sites render nothing.
 - [Phase 14]: Plan 14-03: pre-existing working-tree WIP in App.jsx (tool-switch diagnostics) and SVGAnnotationLayer.jsx (polygon/polyline PDF import) was deliberately NOT staged via git add -p split — belongs to separate lanes.
+- [Phase 15]: Plan 15-01: file-level `test.describe.skip` wrapper with dynamic `await import('../src/utils/lineRenderHelpers.js')` inside the body — Plan 15-02 flips the single `describe.skip` → `describe` to un-skip the whole file atomically. Dynamic import inside the skipped describe prevents `ERR_MODULE_NOT_FOUND` while the helper does not yet exist.
+- [Phase 15]: Plan 15-01: sidestepped pre-existing node-canvas NODE_MODULE_VERSION 116↔127 mismatch by simulating Fabric.Line.toJSON(['data']) shape in tests instead of importing fabric directly. Logged rebuild follow-up in 15-deferred-items.md (infra, out of Plan 15-01 zero-src-change scope).
 
 ### Roadmap Evolution
 
@@ -132,8 +135,8 @@ Progress: [██████████] 100% (Phase 14: 3/3 plans complete, a
 
 ## Session Continuity
 
-Last session: 2026-04-16T04:03:28.282Z
-Stopped at: Phase 15 context gathered
+Last session: 2026-04-17T01:07:22.127Z
+Stopped at: Completed 15-01-PLAN.md — Wave 0 test scaffolding; ready for 15-02 renderer
 
 ### Resume instructions for the next session (read carefully)
 

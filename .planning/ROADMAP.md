@@ -235,7 +235,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 15-01-PLAN.md — Wave 0 validation scaffolding (4 unit test files + 4 Playwright scaffolds + baseline capture README; no src/ changes)
+- [x] 15-01-PLAN.md — Wave 0 validation scaffolding (4 unit test files + 4 Playwright scaffolds + baseline capture README; no src/ changes) — **DONE 2026-04-17** (`15-01-SUMMARY.md`: 14 green unit tests + 14 file-level-skipped tests + 13 Playwright fixme scaffolds, 3 commits, zero src/ changes)
 - [ ] 15-02-PLAN.md — Wave 1 renderer: pure-JS lineRenderHelpers.js + renderArrowhead React helper + curved-path branch in renderLine
 - [ ] 15-03-PLAN.md — Wave 1 interaction: lineDragMath.js + midpoint handle in SVGAnnotationLayer.jsx + 'midpoint' drag mode + endpoint auto-revert in useSVGInteraction.js
 
@@ -345,7 +345,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 | 12. Shape Edit Polish | v2.1 | 3/3 | Complete | 2026-04-14 |
 | 13. Rotation Handle Edit-Mode Polish | v2.2 | 2/2 | Complete | 2026-04-14 |
 | 14. Unified SVG Callout Render + Shared Tool Foundation | 3/3 | Complete   | 2026-04-15 | - |
-| 15. Line/Arrow Curvature + Arrowhead Styles | v2.3 | 0/TBD | Not started | - |
+| 15. Line/Arrow Curvature + Arrowhead Styles | 1/3 | In Progress|  | - |
 | 16. Line/Arrow Mini-Toolbar + Curvature Pill + Min-Drag | v2.3 | 0/TBD | Not started | - |
 | 17. Callout Handle Collisions + Rollback + Resize | v2.3 | 0/TBD | Not started | - |
 | 18. Callout Auto-Routing + Hover Affordances + Self-Destruct | v2.3 | 0/TBD | Not started | - |
