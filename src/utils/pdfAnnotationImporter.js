@@ -746,6 +746,20 @@ function toRelativeFabricPoints(points) {
 }
 
 function extractAnnotationDashArray(annotation) {
+  // Per PDF spec (ISO 32000-2 §12.5.4), the /D dash array is only meaningful
+  // when /S is /D. Upstream parsers (PDF.js, Syncfusion) sometimes surface a
+  // leftover [3] on borderStyle.dash / borderDashArray for SOLID lines too
+  // (confirmed on SE-011 Security Shop Drawing), which previously produced
+  // spurious dashed rendering in FabricEraserCanvas and FabricEditCanvas.
+  //
+  // Strict gate: only return a dash array when we have explicit evidence that
+  // /S is /D. If borderStyleType is missing or anything other than 'D', the
+  // annotation is solid — return null and ignore any dash candidates.
+  const borderStyleType = normalizePdfNameToken(
+    annotation?.borderStyle?.style || annotation?.borderStyleType || ''
+  );
+  if (borderStyleType !== 'D') return null;
+
   const dashCandidates = [
     annotation?.borderDashArray,
     annotation?.borderStyle?.dashArray,
@@ -761,12 +775,8 @@ function extractAnnotationDashArray(annotation) {
     }
   }
 
-  const borderStyleType = normalizePdfNameToken(annotation?.borderStyle?.style || annotation?.borderStyleType || '');
-  if (borderStyleType === 'D') {
-    return [3, 3];
-  }
-
-  return null;
+  // /S is explicitly /D but no /D entry present: fall back to [3, 3].
+  return [3, 3];
 }
 
 function decodeStreamBytesToLatin1(bytes) {
@@ -1434,6 +1444,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   const calloutPoints = convertPdfPointListToViewportPoints(annotation.calloutLine, viewport, scale);
   const intent = normalizePdfNameToken(annotation.intent || '');
   const isCalloutIntent = intent === 'FreeTextCallout' || calloutPoints.length >= 2;
+
   const appearanceTextBoxRect = isCalloutIntent
     ? extractCalloutTextBoxRectFromAppearance(annotation, viewport, scale)
     : null;
@@ -1487,12 +1498,27 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
       : {})
   };
 
+  // Plan 15-04 Issue 4 follow-up (2026-04-17): the SVG renderer insets text
+  // content by a 6-pixel gutter inside the border on every side. PDF imports
+  // used to render edge-to-edge, so source-PDF rects were sized exactly to the
+  // text. Without expansion here, the padded content area is 12 px smaller
+  // than the source and the bottom line visibly spilled on first render. Bump
+  // stored dims by 2*6 and shift anchor by -6 so the padded content area ==
+  // original source rect; border grows outward by 6 on each side. Only applies
+  // to plain FreeText; callout-intent imports are routed through renderCallout
+  // elsewhere and already include the right breathing room.
+  const TEXT_PADDING = 6; // keep in sync with svgAnnotationRenderers.TEXT_PADDING
+  const padLeft = isCalloutIntent ? targetRect.left : targetRect.left - TEXT_PADDING;
+  const padTop = isCalloutIntent ? targetRect.top : targetRect.top - TEXT_PADDING;
+  const padWidth = isCalloutIntent ? targetRect.width : targetRect.width + 2 * TEXT_PADDING;
+  const padHeight = isCalloutIntent ? targetRect.height : targetRect.height + 2 * TEXT_PADDING;
+
   return {
     type: 'textbox',
-    left: targetRect.left,
-    top: targetRect.top,
-    width: targetRect.width,
-    height: targetRect.height,
+    left: padLeft,
+    top: padTop,
+    width: padWidth,
+    height: padHeight,
     text: text,
     fill: textColor,
     stroke: strokeWidth > 0 ? borderColor : null,
@@ -2077,6 +2103,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       const fabricObjects = [];
       supported.forEach(annotation => {
         const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
+
         const fabricObj = convertPdfAnnotationToFabric(annotation, viewport, 1, rawMetadata);
         if (fabricObj) {
           fabricObjects.push(fabricObj);
