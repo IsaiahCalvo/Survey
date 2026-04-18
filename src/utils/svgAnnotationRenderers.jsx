@@ -35,6 +35,15 @@ import {
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
 
+// UX (Plan 15-04 Issue 4, 2026-04-17): text gutter inside the textbox / callout
+// border. Chosen value 6 — breathier than the pre-fix 0 (text hugged border,
+// descenders cut through bottom edge) without becoming a visually large margin.
+// PDF imports are exempt (obj.isPdfImported) so authored PDFs render
+// edge-to-edge as intended. Kept as module-level constant so FabricEditCanvas
+// imports it and the edit-side Fabric wrap width stays in lockstep with the
+// renderer's CSS wrap width.
+export const TEXT_PADDING = 6;
+
 /**
  * UX fix (2026-04-16): "fill bleeds past border" on Square/Circle/Polygon
  * annotations.
@@ -630,6 +639,15 @@ export const renderText = (obj, index, liveBounds = null) => {
   const fontSize = obj.fontSize || 16;
   const descenderBuffer = fontSize * 0.35;
   const displayHeight = effectiveHeight + descenderBuffer;
+  // UX (Plan 15-04 Issue 4, 2026-04-17): gutter between the border and text
+  // content so text doesn't hug the border and descenders don't cut the
+  // bottom edge. Applied uniformly — PDF imports included — so all textboxes
+  // share one visual contract. (Earlier draft exempted `obj.isPdfImported`;
+  // removed after user UAT confirmed imports look better with the padding too.)
+  const pad = TEXT_PADDING;
+  const innerWidth = Math.max(0, effectiveWidth - 2 * pad);
+  const innerHeight = Math.max(0, effectiveHeight - 2 * pad);
+  const innerDisplayHeight = innerHeight + descenderBuffer;
   const rotateTransform = angle !== 0
     ? `rotate(${angle}, ${left + effectiveWidth / 2}, ${top + displayHeight / 2})`
     : undefined;
@@ -656,10 +674,10 @@ export const renderText = (obj, index, liveBounds = null) => {
         />
       ) : null}
       <foreignObject
-        x={left}
-        y={top}
-        width={effectiveWidth}
-        height={displayHeight}
+        x={left + pad}
+        y={top + pad}
+        width={innerWidth}
+        height={innerDisplayHeight}
         overflow="visible"
       >
         <div
@@ -876,11 +894,19 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
             // hit-test surface. Phase 14 Area 2c dispatches
             // onRequestEditMode(id, 'callout') when this is double-clicked.
             // (CALL-10)
+            //
+            // Plan 15-04 Issue 4 (2026-04-17): inset by TEXT_PADDING so text
+            // doesn't hug the callout border and descenders don't cut the
+            // bottom edge. Border rect above stays at the full textBox dims;
+            // only the foreignObject shrinks. CSS word-break: break-all wraps
+            // at this narrower inner width, so Fabric edit-mode Textbox wrap
+            // width must also subtract 2*TEXT_PADDING to stay in lockstep
+            // (see calloutEditAdapter / FabricEditCanvas callout edit path).
             data-callout-part="text"
-            x={textBox.x}
-            y={textBox.y}
-            width={textBox.width}
-            height={textBox.height}
+            x={textBox.x + TEXT_PADDING}
+            y={textBox.y + TEXT_PADDING}
+            width={Math.max(0, textBox.width - 2 * TEXT_PADDING)}
+            height={Math.max(0, textBox.height - 2 * TEXT_PADDING)}
             overflow="visible"
           >
             <div

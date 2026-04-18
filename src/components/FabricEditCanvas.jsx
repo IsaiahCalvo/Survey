@@ -25,6 +25,12 @@ import { createPortal } from 'react-dom';
 import { flushSync } from 'react-dom';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
+// Plan 15-04 Issue 4 (2026-04-17): TEXT_PADDING is the gutter between the
+// Fabric Textbox wrap boundary and the visible SVG border. Fabric.width =
+// visible - 2*TEXT_PADDING so wrap parity with CSS `word-break: break-all`
+// inside the foreignObject is preserved. Canonicalized in
+// src/utils/svgAnnotationRenderers.jsx so both sides cannot drift.
+import { TEXT_PADDING } from '../utils/svgAnnotationRenderers';
 // measureTextBounds removed — edit canvas uses Textbox wrapping width, not tight text bounds
 
 // Fix Fabric.js 5.x cursor overlap bug: cursor was centered on character boundary
@@ -994,6 +1000,10 @@ const FabricEditCanvas = memo(({
     // size is locked. Re-entering edit mode and typing more must not shrink or
     // re-fit the box. A future per-annotation "Auto-fit on commit" setting will
     // make this configurable (see FEATURE-BACKLOG.md Stage 3).
+    // Plan 15-04 Issue 4 — convert Fabric's INNER width/height back to the
+    // OUTER stored dims by adding 2*pad. Applied uniformly (imports included)
+    // per user UAT feedback — view + edit share one contract.
+    const commitPad = TEXT_PADDING;
     if (isNewText && activeObj.type === 'textbox') {
       // Tight-fit only applies when the user's text is a single line that
       // fits inside the textbox wrap target (e.g. "aaaaa" in a 400-px drag).
@@ -1016,12 +1026,23 @@ const FabricEditCanvas = memo(({
           maxLineWidth = activeObj.calcTextWidth();
         }
         if (maxLineWidth > 0) {
-          // 2px breathing room so stroke edge doesn't clip last glyph
-          json.width = Math.ceil(maxLineWidth + 2);
+          // 2px breathing room so stroke edge doesn't clip last glyph;
+          // +2*commitPad converts inner tight-fit → outer stored width.
+          json.width = Math.ceil(maxLineWidth + 2) + 2 * commitPad;
         }
+      } else {
+        // Multi-line: keep Fabric's wrap width so committed SVG wraps to the
+        // same lines the user saw live, and add 2*commitPad so json.width is
+        // OUTER (renderText consumes outer; border rect lives there).
+        json.width = (activeObj.width || 0) + 2 * commitPad;
       }
-      // When wrappedLineCount > 1, keep json.width = activeObj.width so the
-      // committed SVG wraps to the same lines the user saw live.
+      // Height for new text: activeObj.height from toJSON() is INNER
+      // (calcTextHeight-derived). Store OUTER so renderText's border rect
+      // encloses the inner padded content.
+      const naturalH = activeObj.calcTextHeight
+        ? activeObj.calcTextHeight()
+        : (activeObj.height || 0);
+      json.height = naturalH + 2 * commitPad;
     }
 
     // Re-edit path: preserve the user's chosen size, but allow the textbox to
@@ -1031,19 +1052,26 @@ const FabricEditCanvas = memo(({
     // Future "Preferences → Annotations → Auto-fit textbox on commit" setting
     // will toggle this behavior (see FEATURE-BACKLOG.md Stage 3).
     if (!isNewText && activeObj.type === 'textbox' && originalAnnotationRef.current) {
+      // Plan 15-04 Issue 4 — activeObj.width/calcTextHeight are INNER; origW/H
+      // are OUTER (stored). Convert inner→outer via +2*commitPad before the
+      // max() so growth + stored compare in the same coordinate space.
       const naturalH = activeObj.calcTextHeight
         ? activeObj.calcTextHeight()
         : (activeObj.height || 0);
       const origH = originalAnnotationRef.current.height || 0;
       const origW = originalAnnotationRef.current.width || 0;
-      json.width = Math.max(activeObj.width || 0, origW);
-      json.height = Math.max(naturalH, origH);
+      json.width = Math.max((activeObj.width || 0) + 2 * commitPad, origW);
+      json.height = Math.max(naturalH + 2 * commitPad, origH);
     }
 
     // For new text in page-space: offset from bbox origin (same as existing text)
     if (isNewText) {
-      json.left = json.left - BBOX_PADDING;
-      json.top = json.top - BBOX_PADDING;
+      // Plan 15-04 Issue 4 — the Textbox was shifted by TEXT_PADDING inside
+      // the canvas so the caret lands at the first inner column. The stored
+      // left/top must be the OUTER (border) corner, so subtract commitPad in
+      // addition to BBOX_PADDING before re-anchoring to the page origin.
+      json.left = json.left - BBOX_PADDING - commitPad;
+      json.top = json.top - BBOX_PADDING - commitPad;
       json.scaleX = 1;
       json.scaleY = 1;
       if (bboxOriginRef.current) {
@@ -1051,9 +1079,13 @@ const FabricEditCanvas = memo(({
         json.top += bboxOriginRef.current.top;
       }
     } else if (editTypeRef.current !== 'callout' && bboxOriginRef.current) {
-      // For bbox mode (text/shape): reverse coordinate offset
-      json.left = bboxOriginRef.current.left + (json.left - BBOX_PADDING);
-      json.top = bboxOriginRef.current.top + (json.top - BBOX_PADDING);
+      // For bbox mode (text/shape): reverse coordinate offset. Plan 15-04
+      // Issue 4 — textboxes additionally carry a TEXT_PADDING shift inside
+      // the canvas (so caret sits at the first inner column), so we subtract
+      // commitPad only for textboxes. Shapes stay unaffected (padForCommit=0).
+      const padForCommit = activeObj.type === 'textbox' ? commitPad : 0;
+      json.left = bboxOriginRef.current.left + (json.left - BBOX_PADDING - padForCommit);
+      json.top = bboxOriginRef.current.top + (json.top - BBOX_PADDING - padForCommit);
       // Restore the original rotation angle (stripped during edit for easier interaction)
       if (bboxOriginRef.current.angle) {
         json.angle = bboxOriginRef.current.angle;
@@ -1391,12 +1423,18 @@ const FabricEditCanvas = memo(({
       const intendedFill = strokeColor || '#007AFF';
       const intendedStroke = '#000000';
 
+      // Plan 15-04 Issue 4 — visibleOuterW is what the user draws by drag.
+      // Fabric's textObj.width stores the WRAP target (inner content width).
+      // Shrink by 2*PAD so CSS + Fabric wrap at the same pixel boundary, and
+      // shift the textbox inward by PAD so Fabric's caret lands at the first
+      // inner column (which is where SVG renderText paints the glyph).
+      const visibleOuterW = textBoxWidth || 160;
       const textObj = new fabric.Textbox('', {
         type: 'textbox',
-        left: BBOX_PADDING,
-        top: BBOX_PADDING,
+        left: BBOX_PADDING + TEXT_PADDING,
+        top: BBOX_PADDING + TEXT_PADDING,
         angle: 0,
-        width: textBoxWidth || 160,
+        width: Math.max(8, visibleOuterW - 2 * TEXT_PADDING),
         fontSize: 16,
         fill: 'rgba(0,0,0,0)',
         fontFamily: DEFAULT_FONT_FAMILY,
@@ -1445,11 +1483,16 @@ const FabricEditCanvas = memo(({
       canvas.add(textObj);
       canvas.setActiveObject(textObj);
 
-      // Resize canvas to fit (same as existing text path)
+      // Resize canvas to fit (same as existing text path). actualW/H are the
+      // inner Fabric dims; visible outer = inner + 2*TEXT_PADDING (Plan 15-04
+      // Issue 4). Canvas must hold BBOX_PADDING + PAD + innerContent + PAD +
+      // BBOX_PADDING, i.e. outer + 2*BBOX_PADDING.
       const actualW = textObj.width * (textObj.scaleX || 1);
       const actualH = textObj.calcTextHeight ? textObj.calcTextHeight() : textObj.height * (textObj.scaleY || 1);
-      const neededW = Math.ceil((actualW + BBOX_PADDING * 2) * es);
-      const neededH = Math.ceil((actualH + BBOX_PADDING * 2) * es);
+      const outerW = actualW + 2 * TEXT_PADDING;
+      const outerH = actualH + 2 * TEXT_PADDING;
+      const neededW = Math.ceil((outerW + BBOX_PADDING * 2) * es);
+      const neededH = Math.ceil((outerH + BBOX_PADDING * 2) * es);
 
       canvas.setDimensions({ width: neededW, height: neededH });
 
@@ -1501,15 +1544,20 @@ const FabricEditCanvas = memo(({
       // Mirrors the existing-text broadcast at ~line 1617 but runs pre-typing
       // so the empty outlined box shows the moment drag-to-create lands.
       if (onLiveTextGrow && bboxOriginRef.current) {
-        const pageW = (textObj.width || 0) * (textObj.scaleX || 1);
-        const pageH = textObj.calcTextHeight
+        // Plan 15-04 Issue 4 — broadcast OUTER visible dims (inner Fabric dims
+        // + 2*TEXT_PADDING). Renderer treats liveBounds.width/height as the
+        // border rect size; foreignObject re-insets by PAD inside that rect.
+        const innerW = (textObj.width || 0) * (textObj.scaleX || 1);
+        const innerH = textObj.calcTextHeight
           ? textObj.calcTextHeight()
           : textObj.height * (textObj.scaleY || 1);
+        const outerW = innerW + 2 * TEXT_PADDING;
+        const outerH = innerH + 2 * TEXT_PADDING;
         onLiveTextGrow({
           left: bboxOriginRef.current.left || 0,
           top: bboxOriginRef.current.top || 0,
-          width: pageW,
-          height: pageH,
+          width: outerW,
+          height: outerH,
           text: '',
           textLines: [],
           fontSize: textObj.fontSize,
@@ -1535,18 +1583,22 @@ const FabricEditCanvas = memo(({
         // isCreating:true tells SVGAnnotationLayer to synthesize a preview
         // annotation from these bounds (no backing annotation exists yet).
         if (onLiveTextGrow && bboxOriginRef.current) {
-          const pageW = (textObj.width || 0) * (textObj.scaleX || 1);
-          const pageH = textObj.calcTextHeight
+          // Plan 15-04 Issue 4 — OUTER visible dims, see comment at initial
+          // broadcast above.
+          const innerW = (textObj.width || 0) * (textObj.scaleX || 1);
+          const innerH = textObj.calcTextHeight
             ? textObj.calcTextHeight()
             : textObj.height * (textObj.scaleY || 1);
+          const outerW = innerW + 2 * TEXT_PADDING;
+          const outerH = innerH + 2 * TEXT_PADDING;
           const lines = Array.isArray(textObj._textLines)
             ? textObj._textLines.map(l => Array.isArray(l) ? l.join('') : String(l))
             : null;
           onLiveTextGrow({
             left: bboxOriginRef.current.left || 0,
             top: bboxOriginRef.current.top || 0,
-            width: pageW,
-            height: pageH,
+            width: outerW,
+            height: outerH,
             text: textObj.text || '',
             textLines: lines,
             fontSize: textObj.fontSize,
@@ -1580,14 +1632,20 @@ const FabricEditCanvas = memo(({
         // before being repositioned to BBOX_PADDING.
         {
           const json = textObj.toJSON(CUSTOM_PROPS);
+          // Plan 15-04 Issue 4 — all textboxes (including PDF imports) carry
+          // a TEXT_PADDING gutter so view + edit share one contract. stored
+          // json.width = OUTER visible width, Fabric wrap target = inner =
+          // outer - 2*pad.
+          const pad = TEXT_PADDING;
+          const outerW = json.width || 160;
           const { styles: _s, left: _l, top: _t, angle: _a, ...rest } = json;
           textObj = new fabric.Textbox(json.text || '', {
             ...rest,
             type: 'textbox',
-            left: BBOX_PADDING,
-            top: BBOX_PADDING,
+            left: BBOX_PADDING + pad,
+            top: BBOX_PADDING + pad,
             angle: 0,
-            width: json.width || 160,
+            width: Math.max(8, outerW - 2 * pad),
             splitByGrapheme: true,
             fontWeight: json.fontWeight || 'normal',
             styles: {},
@@ -1619,18 +1677,26 @@ const FabricEditCanvas = memo(({
         // Resize canvas to fit actual text BEFORE first render — prevents flash.
         // Height uses max(natural, stored) so a previously-resized-larger textbox
         // does not snap to tight-natural height the instant we re-enter edit mode.
+        //
+        // Plan 15-04 Issue 4 — actualW/H are Fabric's INNER dims. storedH is
+        // OUTER; for compare we convert inner-natural to outer by +2*pad. Then
+        // outer max() covers both the stored size and content growth, and
+        // canvas = outer + 2*BBOX_PADDING. pad is applied uniformly (imports
+        // included) per user UAT feedback.
+        const pad = TEXT_PADDING;
         const actualW = textObj.width * (textObj.scaleX || 1);
-        const naturalH = textObj.calcTextHeight
+        const naturalInnerH = textObj.calcTextHeight
           ? textObj.calcTextHeight()
           : textObj.height * (textObj.scaleY || 1);
-        const storedH = originalAnnotationRef.current?.height || 0;
-        const actualH = Math.max(naturalH, storedH);
+        const storedOuterH = originalAnnotationRef.current?.height || 0;
+        const outerW = actualW + 2 * pad;
+        const outerH = Math.max(naturalInnerH + 2 * pad, storedOuterH);
         const es = canvas.getZoom();
         // Add to canvas WITHOUT rendering yet (renderOnAddRemove: false)
         canvas.add(textObj);
         canvas.setActiveObject(textObj);
-        const neededW = Math.ceil((actualW + BBOX_PADDING * 2) * es);
-        const neededH = Math.ceil((actualH + BBOX_PADDING * 2) * es);
+        const neededW = Math.ceil((outerW + BBOX_PADDING * 2) * es);
+        const neededH = Math.ceil((outerH + BBOX_PADDING * 2) * es);
 
         canvas.setDimensions({ width: neededW, height: neededH });
 
@@ -1675,14 +1741,17 @@ const FabricEditCanvas = memo(({
         // height does not shrink the visual box below what the user chose.
         textObj.on('changed', () => {
           if (!mountedRef.current || !containerRef.current) return;
-          const naturalH = textObj.calcTextHeight();
-          const storedH2 = originalAnnotationRef.current?.height || 0;
-          const effectiveH = Math.max(naturalH, storedH2);
+          // Plan 15-04 Issue 4 — naturalH is INNER; storedOuterH is OUTER.
+          // effectiveOuterH = max(innerGrowth + 2*pad, storedOuter). Canvas
+          // height = effectiveOuterH + 2*BBOX_PADDING. Broadcast OUTER.
+          const naturalInnerH = textObj.calcTextHeight();
+          const storedOuterH2 = originalAnnotationRef.current?.height || 0;
+          const effectiveOuterH = Math.max(naturalInnerH + 2 * pad, storedOuterH2);
           // UX: edit box must stay the same size on first keystroke as on
           // edit-enter — the sibling formula above (line ~1534) has no +8 buffer,
           // so adding one here made the box visibly jump on the first letter and
           // left the connector line anchored inside the (now-taller) outline.
-          const h = (effectiveH + BBOX_PADDING * 2) * es;
+          const h = (effectiveOuterH + BBOX_PADDING * 2) * es;
           const newH = Math.max(Math.round(30 * es), Math.ceil(h));
           canvas.setDimensions({ height: newH });
           containerRef.current.style.height = newH + 'px';
@@ -1699,15 +1768,18 @@ const FabricEditCanvas = memo(({
           // stale pre-edit text during edit because Fabric's text lived only in
           // Canvas 2D until commit).
           if (onLiveTextGrow && bboxOriginRef.current) {
-            const pageW = (textObj.width || 0) * (textObj.scaleX || 1);
+            // Plan 15-04 Issue 4 — broadcast OUTER visible dims. Inner Fabric
+            // width + 2*pad = outer border width seen by renderText.
+            const innerW = (textObj.width || 0) * (textObj.scaleX || 1);
+            const outerW = innerW + 2 * pad;
             const lines = Array.isArray(textObj._textLines)
               ? textObj._textLines.map(l => Array.isArray(l) ? l.join('') : String(l))
               : null;
             const bounds = {
               left: bboxOriginRef.current.left || 0,
               top: bboxOriginRef.current.top || 0,
-              width: pageW,
-              height: effectiveH,
+              width: outerW,
+              height: effectiveOuterH,
               text: textObj.text || '',
               textLines: lines,
               fontSize: textObj.fontSize,
