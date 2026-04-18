@@ -45,6 +45,8 @@ import SVGSelectionOverlay from './SVGSelectionOverlay';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
+import { buildArrowheadRenderSpec } from '../utils/lineRenderHelpers.js';
+import { ARROWHEAD_STYLES } from './Callout/types';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
@@ -1379,17 +1381,84 @@ const SVGAnnotationLayer = memo(({
               vectorEffect="non-scaling-stroke"
               style={{ pointerEvents: 'none' }}
             />
-            <circle
-              cx={atX}
-              cy={atY}
-              r={8}
-              fill="none"
-              stroke="#4a90e2"
-              strokeOpacity={0.45}
-              strokeWidth={3}
-              vectorEffect="non-scaling-stroke"
-              style={{ pointerEvents: 'none' }}
-            />
+            {/* UX: Phase 19 follow-up — arrow-shaped glow that follows
+                the actual triangle/V/circle/etc of the callout's
+                arrowhead style. Reuses buildArrowheadRenderSpec so the
+                glow geometry is exactly the same form-factor as the
+                visible arrowhead. lineThickness comes from the
+                callout's style when available, else the render default
+                used by renderCallout. */}
+            {(() => {
+              const style = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
+              if (style === ARROWHEAD_STYLES.NONE) return null;
+              const lineThickness = callout.style?.lineThickness ?? 2;
+              const angleDeg = (
+                Math.atan2(atY - conn.line2Start.y, atX - conn.line2Start.x)
+                * 180 / Math.PI
+              );
+              const spec = buildArrowheadRenderSpec(style, atX, atY, angleDeg, '#4a90e2', lineThickness);
+              const glowSw = Math.max(3, lineThickness + 2);
+              switch (spec.kind) {
+                case 'solidTriangle':
+                case 'openTriangle':
+                  return (
+                    <polygon
+                      points={spec.polygon.points}
+                      transform={spec.polygon.transform}
+                      fill="none"
+                      stroke="#4a90e2"
+                      strokeOpacity={0.45}
+                      strokeWidth={glowSw}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  );
+                case 'openCircle':
+                  return (
+                    <circle
+                      cx={spec.circle.cx}
+                      cy={spec.circle.cy}
+                      r={spec.circle.r}
+                      fill="none"
+                      stroke="#4a90e2"
+                      strokeOpacity={0.45}
+                      strokeWidth={glowSw}
+                      vectorEffect="non-scaling-stroke"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  );
+                case 'vShape':
+                  return (
+                    <polyline
+                      points={spec.polyline.points}
+                      fill="none"
+                      stroke="#4a90e2"
+                      strokeOpacity={0.45}
+                      strokeWidth={glowSw}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  );
+                case 'horizontalLine':
+                  return (
+                    <line
+                      x1={spec.line.x1} y1={spec.line.y1}
+                      x2={spec.line.x2} y2={spec.line.y2}
+                      stroke="#4a90e2"
+                      strokeOpacity={0.45}
+                      strokeWidth={glowSw}
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  );
+                default:
+                  return null;
+              }
+            })()}
           </>
         )}
         {isSelected && showHandles && (
@@ -1807,6 +1876,12 @@ const SVGAnnotationLayer = memo(({
 
           if (objTypeLower === 'line') {
             const ep = getLineEndpoints(renderObj);
+            const isArrow = renderObj.tool === 'arrow';
+            const arrowStyle = renderObj.data?.arrowheadStyle ?? (isArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE);
+            const arrowAngleDeg = (
+              Math.atan2(ep.y2 - ep.y1, ep.x2 - ep.x1)
+              * 180 / Math.PI
+            );
             return (
               <g>
                 {/* Hover highlight along the line */}
@@ -1821,6 +1896,69 @@ const SVGAnnotationLayer = memo(({
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
+                {/* UX: Phase 19 follow-up — arrow tool gets a glow that
+                    follows the arrowhead's actual shape (triangle / V /
+                    open circle / etc) so the affordance matches the
+                    visible form-factor, not just a thick bar behind it. */}
+                {annotationIsHovered && isArrow && arrowStyle !== ARROWHEAD_STYLES.NONE && (() => {
+                  const spec = buildArrowheadRenderSpec(
+                    arrowStyle, ep.x2, ep.y2, arrowAngleDeg, '#4a90e2',
+                    renderObj.strokeWidth || 2,
+                  );
+                  const glowSw = Math.max(3, (renderObj.strokeWidth || 2) + 2);
+                  switch (spec.kind) {
+                    case 'solidTriangle':
+                    case 'openTriangle':
+                      return (
+                        <polygon
+                          points={spec.polygon.points}
+                          transform={spec.polygon.transform}
+                          fill="none"
+                          stroke="#4a90e2"
+                          strokeOpacity={0.45}
+                          strokeWidth={glowSw}
+                          strokeLinejoin="round"
+                          vectorEffect="non-scaling-stroke"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      );
+                    case 'openCircle':
+                      return (
+                        <circle
+                          cx={spec.circle.cx} cy={spec.circle.cy} r={spec.circle.r}
+                          fill="none" stroke="#4a90e2" strokeOpacity={0.45}
+                          strokeWidth={glowSw}
+                          vectorEffect="non-scaling-stroke"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      );
+                    case 'vShape':
+                      return (
+                        <polyline
+                          points={spec.polyline.points}
+                          fill="none" stroke="#4a90e2" strokeOpacity={0.45}
+                          strokeWidth={glowSw}
+                          strokeLinecap="round" strokeLinejoin="round"
+                          vectorEffect="non-scaling-stroke"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      );
+                    case 'horizontalLine':
+                      return (
+                        <line
+                          x1={spec.line.x1} y1={spec.line.y1}
+                          x2={spec.line.x2} y2={spec.line.y2}
+                          stroke="#4a90e2" strokeOpacity={0.45}
+                          strokeWidth={glowSw}
+                          strokeLinecap="round"
+                          vectorEffect="non-scaling-stroke"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      );
+                    default:
+                      return null;
+                  }
+                })()}
                 {/* Invisible thick line hit area */}
                 <line
                   x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
@@ -2663,18 +2801,23 @@ const SVGAnnotationLayer = memo(({
               const pageH = height;
               for (const callout of callouts) {
                 if (!callout || !effectiveSelectedCalloutIds.has?.(callout.id)) continue;
-                const xs = [
-                  callout.arrowTip?.x ?? 0,
-                  callout.knee?.x ?? 0,
-                  callout.textBoxPosition?.x ?? 0,
-                  (callout.textBoxPosition?.x ?? 0) + (callout.textBoxWidth ?? 0),
-                ].map((n) => n * pageW);
-                const ys = [
-                  callout.arrowTip?.y ?? 0,
-                  callout.knee?.y ?? 0,
-                  callout.textBoxPosition?.y ?? 0,
-                  (callout.textBoxPosition?.y ?? 0) + (callout.textBoxHeight ?? 0),
-                ].map((n) => n * pageH);
+                // UX: Phase 19 follow-up bugfix — the app-wide callouts
+                // array mixes callouts from every PDF page. Without
+                // this page filter, a selection that included callouts
+                // on OTHER pages would balloon this page's outer
+                // dashed box to cover those off-page callouts. Match
+                // the same filter the callout render loop uses.
+                if (callout.pageNumber !== pageNumber) continue;
+                // Defensive: skip callouts with missing anchors so a
+                // malformed record can't drag the bbox toward (0,0).
+                const at = callout.arrowTip;
+                const kn = callout.knee;
+                const tp = callout.textBoxPosition;
+                if (!at || !kn || !tp) continue;
+                const tbW = Number.isFinite(callout.textBoxWidth) ? callout.textBoxWidth : 0;
+                const tbH = Number.isFinite(callout.textBoxHeight) ? callout.textBoxHeight : 0;
+                const xs = [at.x, kn.x, tp.x, tp.x + tbW].map((n) => n * pageW);
+                const ys = [at.y, kn.y, tp.y, tp.y + tbH].map((n) => n * pageH);
                 bboxes.push({
                   left: Math.min(...xs),
                   top: Math.min(...ys),
