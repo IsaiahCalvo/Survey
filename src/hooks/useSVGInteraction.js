@@ -597,6 +597,11 @@ export function useSVGInteraction({
         endX: svgPoint.x,
         endY: svgPoint.y,
         shiftHeld: !!e.shiftKey,
+        // UX: Phase 19 follow-up — Alt held while dragging the marquee
+        // removes hits from the current selection (subtract mode). If
+        // both Shift and Alt are held, Alt wins; the release handler
+        // below decides replace vs union vs subtract.
+        altHeld: !!e.altKey,
         active: false,
         pointerId: e.pointerId,
       });
@@ -1066,12 +1071,13 @@ export function useSVGInteraction({
       if (ds.partType === 'whole') {
         frameSafe = true;
       } else if (ds.partType === 'knee') {
-        // Knee-drag frameSafe uses the user-defined rule: knee outside
-        // the textbox is always OK — the renderer auto-routes the visible
-        // line around the box, so a "crossing" stored knee never produces
-        // a visible line through the textbox. Matches the release-time
-        // rollback rule in handlePointerUp.
-        frameSafe = !kneeInsideBox;
+        // Knee-drag frameSafe mirrors the release-time rule: the frame
+        // counts as "safe" only when the knee is outside the textbox AND
+        // the knee→arrow line doesn't cut through it. Unsafe frames do
+        // not advance lastSafe, so a rollback on invalid release lands
+        // on the last genuinely-valid spot the user swept through.
+        frameSafe = !kneeInsideBox
+          && !segmentCrossesRect(kneePx, atPx, boxLeftPx, boxTopPx, boxRightPx, boxBottomPx);
       } else {
         frameSafe = !arrowInsideBox
           && arrowToBoxDist >= MIN_TEXTBOX_TO_ARROW_DISTANCE
@@ -1157,7 +1163,20 @@ export function useSVGInteraction({
         pageHeight,
       });
 
-      if (mq.shiftHeld) {
+      if (mq.altHeld) {
+        // Subtract: remove marquee hits from the existing selection.
+        // Alt wins over Shift if both held. Empty result is a no-op.
+        if (annotationIndices.length > 0) {
+          setSelectedIds((prev) => {
+            const nextSet = new Set(prev);
+            for (const i of annotationIndices) nextSet.delete(i);
+            return nextSet;
+          });
+        }
+        // Callout subtract: no-op for now — callouts live in App.jsx
+        // state and the hook doesn't hold the current Set to mutate.
+        // Revisit when callout subtract becomes a user-visible need.
+      } else if (mq.shiftHeld) {
         // Union: add marquee hits to the existing selection. Empty result
         // + Shift held is a no-op per 19-CONTEXT.md acceptance criteria.
         if (annotationIndices.length > 0) {
@@ -1519,16 +1538,18 @@ export function useSVGInteraction({
 
           let dropSafe = true;
           if (ds.partType === 'knee') {
-            // UX: Phase 15 UAT-3 (2026-04-18) — per user spec, knee can
-            // be placed anywhere outside the textbox. The renderer's
-            // calculateCalloutConnection auto-routes the visible line to
-            // a midpoint when the knee→arrow segment would cross the box,
-            // so a crossing stored knee never produces a visible line
-            // through the textbox. Only the knee-inside-textbox case is
-            // a true invalid final state (line1 would end inside the
-            // box, nowhere for line2 to leave from cleanly).
+            // UX: Phase 15 UAT-3 (2026-04-18) — knee drag is free during
+            // mouse-down; release checks the final spot. Invalid if the
+            // knee lands inside the textbox, OR if the knee→arrow line
+            // would cut through the textbox interior (knee dropped on
+            // the opposite side of the textbox from the arrow). Line1
+            // starts on the textbox edge by construction so it can't
+            // cross. Rollback restores the last valid frame from the
+            // drag so the knee + both lines return to their previous
+            // safe positions.
             const kneeInside = pointInsideRect(kn, bl, bt, br, bb);
-            dropSafe = !kneeInside;
+            const line2Cuts = segmentCrossesRect(kn, at, bl, bt, br, bb);
+            dropSafe = !kneeInside && !line2Cuts;
           } else {
             // Fallback: prior distance-rule set for arrow + textbox
             // drags. Replaced per partType as we tackle each in turn.
@@ -1546,12 +1567,15 @@ export function useSVGInteraction({
               && dRect(kn, bl, bt, br, bb) >= MIN_KNEE_TO_BOX_EDGE_DISTANCE;
           }
           if (!dropSafe) {
-            // Rollback: restore the last safe snapshot before the
-            // checkpoint so the undo entry captures the good state.
+            // UX: Phase 15 UAT-3 (2026-04-18) — rollback target is the
+            // pre-drag snapshot (the callout's state BEFORE the user
+            // clicked the handle), not an intermediate safe frame from
+            // the drag. Matches user intent: invalid drop → return to
+            // where we started this drag.
             onUpdateCalloutLive(ds.calloutId, {
-              arrowTip: last.arrowTip,
-              knee: last.knee,
-              textBoxPosition: last.textBoxPosition,
+              arrowTip: original.arrowTip,
+              knee: original.knee,
+              textBoxPosition: original.textBoxPosition,
             });
           }
         }

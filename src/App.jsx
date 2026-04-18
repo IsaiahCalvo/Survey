@@ -11246,7 +11246,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
       const hit = resolveAnnotationAt(e);
       if (!hit) return;
-      // Skip callouts (handled elsewhere) and non-annotation hits.
+      // UX: Phase 15 UAT-3 — pan-mode quick-click also picks up callouts,
+      // matching how every other annotation type behaves in pan mode. Same
+      // tool-switch to Select as the plain-annotation branch so followup
+      // drags / edits work naturally.
+      if (hit.kind === 'callout' && hit.calloutId) {
+        setActiveTool('select');
+        setSelectedCalloutIds(new Set([hit.calloutId]));
+        return;
+      }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
       setActiveTool('select');
@@ -26376,13 +26384,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             item('Group', 'group'),
             item('Ungroup', 'ungroup'),
             sep(),
-            item('Properties…', 'properties'),
+            item('Properties', 'properties'),
           ];
         } else if (ctx.kind === 'counter') {
           items = [
             item('Continue Pin', 'continuePin'),
             sep(),
-            item('Properties…', 'properties'),
+            item('Properties', 'properties'),
           ];
         } else if (ctx.kind === 'annotation') {
           items = [
@@ -26494,7 +26502,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             item('Group', 'group'),
             item('Ungroup', 'ungroup'),
             sep(),
-            item('Properties…', 'properties'),
+            item('Properties', 'properties'),
           ];
         } else {
           // Empty canvas / page — only Paste lives here (for annotation paste).
