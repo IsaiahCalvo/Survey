@@ -21,6 +21,25 @@ import {
   applyMidpointToAnnotation,
   clearMidpointFromAnnotation,
 } from '../utils/lineDragMath.js';
+// Phase 19 — AutoCAD Window + Crossing marquee selection.
+// Pure math lives in marqueeSelection.js (unit-tested in
+// tests/marqueeSelection.test.mjs). This hook owns the React state,
+// pointer wiring, and Escape cancel plumbing.
+import {
+  MIN_DRAG_PX as MARQUEE_MIN_DRAG_PX,
+  getMarqueeDirection,
+  getMarqueeRect,
+  resolveMarqueeHits,
+} from '../utils/marqueeSelection.js';
+// Phase 15 UAT-3 Issue 3 (2026-04-17) — distance rules for callout-part drag.
+// Values match combined-tools FabricPDFCanvas collision logic (reference at
+// ~/Desktop/combined-tools/src/lib/calloutGeometry.ts). See isCalloutDragSafe
+// helper below for rule set + rationale.
+import {
+  MIN_KNEE_TO_ARROW_DISTANCE,
+  MIN_KNEE_TO_BOX_EDGE_DISTANCE,
+  MIN_TEXTBOX_TO_ARROW_DISTANCE,
+} from '../utils/calloutGeometry.js';
 
 /**
  * @param {object} options
@@ -55,6 +74,8 @@ export function useSVGInteraction({
   onSelectedCalloutIdsChange,
   onUpdateCalloutLive,
   onUpdateCallout,
+  // Phase 19 — current tool. Marquee only activates when tool === 'select'.
+  activeTool,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -90,8 +111,30 @@ export function useSVGInteraction({
     partType: null,                 // 'arrowTip' | 'knee' | 'textBox' | 'whole'
     calloutId: null,
     originalCalloutPositions: null, // snapshot of arrowTip/knee/textBoxPosition at drag-start
+    // UX: Phase 15 UAT-3 Issue 3 — tracks the most recent callout state that
+    // passed all distance rules. When a frame's proposed positions violate a
+    // rule (arrow entering textbox, knee too close to arrow, knee entering
+    // textbox, etc.) we re-emit this safe snapshot so the visible handles
+    // freeze in place rather than tunneling through the constraint. Updated
+    // each safe frame; seeded from originalCalloutPositions at pointerdown.
+    lastSafeCalloutPositions: null,
   });
   const interactionStateRef = useRef('idle');
+
+  // UX: Phase 19 — AutoCAD marquee state. Separate from dragStateRef so
+  // the marquee rect can drive SVG render without racing annotation
+  // drag / resize / rotate state. Shape when active:
+  //   { startX, startY, endX, endY, shiftHeld, active, pointerId }
+  // `active` flips true once the pointer crosses the 5 px min-drag
+  // threshold (matches dormant reference at
+  // PageAnnotationLayer.jsx:7411-7854). Sub-threshold releases fall
+  // through to plain-click semantics — no rect ever drawn.
+  const [marqueeState, setMarqueeState] = useState(null);
+  const marqueeStateRef = useRef(null);
+  const applyMarqueeState = useCallback((next) => {
+    marqueeStateRef.current = next;
+    setMarqueeState(next);
+  }, []);
 
   // UX: when a drag commits (move or group-move with > 2px delta), stamp
   // this ref with `Date.now()`. The browser's native `dblclick` event fires
@@ -107,6 +150,22 @@ export function useSVGInteraction({
   useEffect(() => {
     interactionStateRef.current = interactionState;
   }, [interactionState]);
+
+  // UX: Phase 19 — Escape cancels an in-progress marquee without
+  // changing the existing selection. Mirrors AutoCAD's behavior where
+  // Esc mid-drag drops the rubber-band box silently. Listener is only
+  // attached while a marquee is tracking, so it does not compete with
+  // the Escape handler for text-edit or shape-edit modes.
+  useEffect(() => {
+    if (!marqueeState) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        applyMarqueeState(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [marqueeState, applyMarqueeState]);
 
   // ---------------------------------------------------------------------------
   // Inverse scale via ResizeObserver (container-aware, NOT zoom percentage)
@@ -370,6 +429,15 @@ export function useSVGInteraction({
       // 14-CONTEXT.md Area 3 drag MVP decision.
       if (partType === 'line1' || partType === 'line2') partType = 'whole';
       if (e.metaKey || e.ctrlKey) partType = 'whole';
+      // UX: Phase 15 UAT-3 (2026-04-17) — callout textbox corner handles
+      // route to a dedicated resize mode. Normalize the data-callout-part
+      // values textBox-tl / tr / bl / br into a single 'textBoxResize' mode
+      // with the corner id captured in dragStateRef.textBoxCorner.
+      let textBoxCorner = null;
+      if (partType && partType.startsWith('textBox-')) {
+        textBoxCorner = partType.slice('textBox-'.length);
+        partType = 'textBoxResize';
+      }
       // UX: clicking the inline text foreignObject is a select action, not a
       // drag — route it to 'textBox' so drag grabs the box frame but a bare
       // click still selects the callout. (Double-click edit entry runs via
@@ -403,15 +471,32 @@ export function useSVGInteraction({
       // Snapshot the callout's normalized coords for whole-move delta math.
       // Integer-clean copy (spread) so downstream pointermove math reads
       // the original positions, not a mutable reference into React state.
+      //
+      // UX: Phase 15 UAT-3 — snapshot also captures textBoxWidth/Height so
+      // the distance-rule validator on pointermove can compute the textbox
+      // rect without a callout array lookup (onUpdateCalloutLive has mutated
+      // React state by then; lookups would drift).
+      const originalSnapshot = {
+        arrowTip: { ...callout.arrowTip },
+        knee: { ...callout.knee },
+        textBoxPosition: { ...callout.textBoxPosition },
+        textBoxWidth: callout.textBoxWidth,
+        textBoxHeight: callout.textBoxHeight,
+      };
       dragStateRef.current = {
         ...dragStateRef.current,
         active: true,
         mode: 'callout-part',
         partType,
+        textBoxCorner,           // 'tl' | 'tr' | 'bl' | 'br' | null
         calloutId,
         startSVGPoint: svgPoint,
         ctmInverse,
-        originalCalloutPositions: {
+        originalCalloutPositions: originalSnapshot,
+        // UX: seed the last-safe snapshot with the drag-start positions so
+        // the first frame that violates a rule rolls back to the known-good
+        // starting state instead of an undefined fallback.
+        lastSafeCalloutPositions: {
           arrowTip: { ...callout.arrowTip },
           knee: { ...callout.knee },
           textBoxPosition: { ...callout.textBoxPosition },
@@ -423,17 +508,64 @@ export function useSVGInteraction({
       return;
     }
 
-    // Not a callout — existing empty-space deselect behavior.
+    // Not a callout — empty-space branch.
+    //
+    // UX: Phase 19 — AutoCAD marquee. When the Select tool is active and
+    // the click originated on the SVG root itself (truly empty space),
+    // start tracking a potential marquee. The rect is NOT drawn until the
+    // pointer crosses the 5 px min-drag threshold in handlePointerMove, so
+    // sub-threshold clicks still behave like plain empty-space clicks and
+    // fall through to the existing deselect-on-release path. Shift is
+    // captured here so the release handler can decide replace vs union.
+    if (e.target === svgRef.current && activeTool === 'select') {
+      const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      applyMarqueeState({
+        startX: svgPoint.x,
+        startY: svgPoint.y,
+        endX: svgPoint.x,
+        endY: svgPoint.y,
+        shiftHeld: !!e.shiftKey,
+        active: false,
+        pointerId: e.pointerId,
+      });
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
+      // Intentionally no deselectAll() here. If the user releases under
+      // the threshold, handlePointerUp runs the click-style deselect.
+      return;
+    }
+
+    // Not select tool (or tool didn't match) — existing deselect behavior.
     if (e.target === svgRef.current) {
       deselectAll();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, activeTool, applyMarqueeState]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
    * Uses CACHED ctmInverse from drag start (per RESEARCH.md Pitfall 1).
    */
   const handlePointerMove = useCallback((e) => {
+    // UX: Phase 19 — marquee update path. When a marquee is tracking,
+    // update the end point, clamp to the page's viewBox (so the rect
+    // can't escape the page), and flip `active` once we cross the 5 px
+    // min-drag threshold. Short-circuits before annotation drag math.
+    const mq = marqueeStateRef.current;
+    if (mq) {
+      const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      const clampedX = Math.max(0, Math.min(pageWidth, pt.x));
+      const clampedY = Math.max(0, Math.min(pageHeight, pt.y));
+      const dx = Math.abs(clampedX - mq.startX);
+      const dy = Math.abs(clampedY - mq.startY);
+      const next = {
+        ...mq,
+        endX: clampedX,
+        endY: clampedY,
+        active: mq.active || dx >= MARQUEE_MIN_DRAG_PX || dy >= MARQUEE_MIN_DRAG_PX,
+      };
+      applyMarqueeState(next);
+      return;
+    }
+
     const ds = dragStateRef.current;
     if (!ds.active) return;
 
@@ -708,50 +840,166 @@ export function useSVGInteraction({
       const original = ds.originalCalloutPositions;
       if (!original) return;
 
-      let patch = null;
+      // UX: Phase 15 UAT-3 Issue 3 — compute the FULL proposed callout state
+      // (all three positions) for every partType so the distance-rule
+      // validator sees a consistent world. Non-dragged positions stay at
+      // their drag-start values; 'whole' translates everything together.
+      const proposed = {
+        arrowTip: { ...original.arrowTip },
+        knee: { ...original.knee },
+        textBoxPosition: { ...original.textBoxPosition },
+      };
       switch (ds.partType) {
         case 'arrowTip':
-          patch = {
-            arrowTip: {
-              x: original.arrowTip.x + dxNorm,
-              y: original.arrowTip.y + dyNorm,
-            },
+          proposed.arrowTip = {
+            x: original.arrowTip.x + dxNorm,
+            y: original.arrowTip.y + dyNorm,
           };
           break;
         case 'knee':
-          patch = {
-            knee: {
-              x: original.knee.x + dxNorm,
-              y: original.knee.y + dyNorm,
-            },
+          proposed.knee = {
+            x: original.knee.x + dxNorm,
+            y: original.knee.y + dyNorm,
           };
           break;
         case 'textBox':
-          patch = {
-            textBoxPosition: {
-              x: original.textBoxPosition.x + dxNorm,
-              y: original.textBoxPosition.y + dyNorm,
-            },
+          proposed.textBoxPosition = {
+            x: original.textBoxPosition.x + dxNorm,
+            y: original.textBoxPosition.y + dyNorm,
           };
           break;
         case 'whole':
+          proposed.arrowTip = {
+            x: original.arrowTip.x + dxNorm,
+            y: original.arrowTip.y + dyNorm,
+          };
+          proposed.knee = {
+            x: original.knee.x + dxNorm,
+            y: original.knee.y + dyNorm,
+          };
+          proposed.textBoxPosition = {
+            x: original.textBoxPosition.x + dxNorm,
+            y: original.textBoxPosition.y + dyNorm,
+          };
+          break;
+        case 'textBoxResize': {
+          // UX: Phase 15 UAT-3 (2026-04-17) — corner-drag resize of the
+          // callout textbox. Fixed-anchor math: the corner OPPOSITE the
+          // grabbed corner stays put, the grabbed corner follows the
+          // pointer. New rect dims fall out of that. Minimum size floor
+          // (20px on each axis) matches the renderCallout min textBox dims.
+          const corner = ds.textBoxCorner || 'br';
+          const origLeft = original.textBoxPosition.x;
+          const origTop = original.textBoxPosition.y;
+          const origRight = origLeft + (original.textBoxWidth || 0);
+          const origBottom = origTop + (original.textBoxHeight || 0);
+          // Anchor point (opposite corner) in normalized coords.
+          let anchorX, anchorY;
+          if (corner === 'tl') { anchorX = origRight;  anchorY = origBottom; }
+          else if (corner === 'tr') { anchorX = origLeft;  anchorY = origBottom; }
+          else if (corner === 'bl') { anchorX = origRight; anchorY = origTop; }
+          else                      { anchorX = origLeft;  anchorY = origTop; }
+          // Moving corner = original corner + drag delta (in normalized).
+          let mvX, mvY;
+          if (corner === 'tl')      { mvX = origLeft + dxNorm;  mvY = origTop + dyNorm; }
+          else if (corner === 'tr') { mvX = origRight + dxNorm; mvY = origTop + dyNorm; }
+          else if (corner === 'bl') { mvX = origLeft + dxNorm;  mvY = origBottom + dyNorm; }
+          else                      { mvX = origRight + dxNorm; mvY = origBottom + dyNorm; }
+          const minW = 20 / W;
+          const minH = 20 / H;
+          const newLeft = Math.min(anchorX, mvX);
+          const newTop = Math.min(anchorY, mvY);
+          const newRight = Math.max(anchorX, mvX);
+          const newBottom = Math.max(anchorY, mvY);
+          const newWidth = Math.max(minW, newRight - newLeft);
+          const newHeight = Math.max(minH, newBottom - newTop);
+          // Emit the resize patch directly — no distance-rule validation
+          // on resize (textbox can shrink/grow freely; rollback handles
+          // dropping the box onto the arrow/knee on release).
+          if (onUpdateCalloutLive && ds.calloutId) {
+            onUpdateCalloutLive(ds.calloutId, {
+              textBoxPosition: { x: newLeft, y: newTop },
+              textBoxWidth: newWidth,
+              textBoxHeight: newHeight,
+            });
+          }
+          setInteractionState('dragging');
+          return;
+        }
+        default:
+          return;
+      }
+
+      // UX: Phase 15 UAT-3 (2026-04-17) — free-drag model. During a drag
+      // the user sees raw pointer-follow on the handle they grabbed — no
+      // mid-drag pin, no mid-drag reroute. The combined-tools reference
+      // behaves the same way: cheap, responsive drag while the mouse is
+      // down, discipline on release. Each frame we also validate the
+      // proposed positions against the four distance rules and stash the
+      // most recent rule-compliant snapshot in lastSafeCalloutPositions —
+      // handlePointerUp uses it to roll back if the drop-point itself fails
+      // the rule check.
+      const atPx = { x: proposed.arrowTip.x * W, y: proposed.arrowTip.y * H };
+      const kneePx = { x: proposed.knee.x * W, y: proposed.knee.y * H };
+      const boxLeftPx = proposed.textBoxPosition.x * W;
+      const boxTopPx = proposed.textBoxPosition.y * H;
+      const boxWPx = (original.textBoxWidth || 0) * W;
+      const boxHPx = (original.textBoxHeight || 0) * H;
+      const boxRightPx = boxLeftPx + boxWPx;
+      const boxBottomPx = boxTopPx + boxHPx;
+
+      const distPointToRect = (p, l, t, r, b) => {
+        const dx = Math.max(0, Math.max(l - p.x, p.x - r));
+        const dy = Math.max(0, Math.max(t - p.y, p.y - b));
+        return Math.sqrt(dx * dx + dy * dy);
+      };
+      const pointInsideRect = (p, l, t, r, b) =>
+        p.x >= l && p.x <= r && p.y >= t && p.y <= b;
+
+      // 'whole' drag preserves all relative distances by construction, so
+      // its proposed frame is trivially safe — always refresh lastSafe.
+      const arrowToBoxDist = distPointToRect(atPx, boxLeftPx, boxTopPx, boxRightPx, boxBottomPx);
+      const arrowInsideBox = pointInsideRect(atPx, boxLeftPx, boxTopPx, boxRightPx, boxBottomPx);
+      const kneeToArrowDist = Math.hypot(kneePx.x - atPx.x, kneePx.y - atPx.y);
+      const kneeToBoxDist = distPointToRect(kneePx, boxLeftPx, boxTopPx, boxRightPx, boxBottomPx);
+      const kneeInsideBox = pointInsideRect(kneePx, boxLeftPx, boxTopPx, boxRightPx, boxBottomPx);
+
+      const frameSafe = ds.partType === 'whole' || (
+        !arrowInsideBox
+        && arrowToBoxDist >= MIN_TEXTBOX_TO_ARROW_DISTANCE
+        && kneeToArrowDist >= MIN_KNEE_TO_ARROW_DISTANCE
+        && !kneeInsideBox
+        && kneeToBoxDist >= MIN_KNEE_TO_BOX_EDGE_DISTANCE
+      );
+      if (frameSafe) {
+        ds.lastSafeCalloutPositions = {
+          arrowTip: { ...proposed.arrowTip },
+          knee: { ...proposed.knee },
+          textBoxPosition: { ...proposed.textBoxPosition },
+        };
+      }
+
+      // Emit the raw proposed patch every frame — handle follows pointer
+      // 1:1. Release-time rollback happens in handlePointerUp.
+      let patch;
+      switch (ds.partType) {
+        case 'arrowTip':
+          patch = { arrowTip: proposed.arrowTip };
+          break;
+        case 'knee':
+          patch = { knee: proposed.knee };
+          break;
+        case 'textBox':
+          patch = { textBoxPosition: proposed.textBoxPosition };
+          break;
+        case 'whole':
           patch = {
-            arrowTip: {
-              x: original.arrowTip.x + dxNorm,
-              y: original.arrowTip.y + dyNorm,
-            },
-            knee: {
-              x: original.knee.x + dxNorm,
-              y: original.knee.y + dyNorm,
-            },
-            textBoxPosition: {
-              x: original.textBoxPosition.x + dxNorm,
-              y: original.textBoxPosition.y + dyNorm,
-            },
+            arrowTip: proposed.arrowTip,
+            knee: proposed.knee,
+            textBoxPosition: proposed.textBoxPosition,
           };
           break;
         default:
-          // Unknown partType — bail defensively.
           return;
       }
 
@@ -764,12 +1012,72 @@ export function useSVGInteraction({
       }
       setInteractionState('dragging');
     }
-  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive]);
+  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
    */
   const handlePointerUp = useCallback((e) => {
+    // UX: Phase 19 — marquee release path. Runs BEFORE annotation drag
+    // release so the marquee owns pointerup whenever it's tracking.
+    //   - Sub-threshold release (no `active` flag set): treat as empty-
+    //     space click; deselect on unmodified click, no-op with Shift.
+    //   - Above-threshold release: resolve hits, apply selection per
+    //     modifier rules, clear marquee state.
+    const mq = marqueeStateRef.current;
+    if (mq) {
+      const wasActive = mq.active;
+      applyMarqueeState(null);
+      try { svgRef.current?.releasePointerCapture?.(mq.pointerId ?? e.pointerId); } catch (_) { /* optional */ }
+
+      if (!wasActive) {
+        if (!mq.shiftHeld) {
+          deselectAll();
+          if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
+        }
+        return;
+      }
+
+      const marqueeRect = getMarqueeRect(mq);
+      const direction = getMarqueeDirection(mq);
+      const { annotationIndices, calloutIds } = resolveMarqueeHits({
+        marqueeRect,
+        direction,
+        annotations,
+        callouts,
+        pageWidth,
+        pageHeight,
+      });
+
+      if (mq.shiftHeld) {
+        // Union: add marquee hits to the existing selection. Empty result
+        // + Shift held is a no-op per 19-CONTEXT.md acceptance criteria.
+        if (annotationIndices.length > 0) {
+          setSelectedIds((prev) => {
+            const nextSet = new Set(prev);
+            for (const i of annotationIndices) nextSet.add(i);
+            return nextSet;
+          });
+        }
+        if (calloutIds.length > 0 && onSelectedCalloutIdsChange) {
+          // NOTE: callouts live in App.jsx state; the hook doesn't hold
+          // the current selected-callout Set. Union against the latest
+          // hits only — App.jsx's setSelectedCalloutIds callback receives
+          // the full next Set. If App.jsx needs true union semantics
+          // across calls, it can do the merge itself in the callback.
+          onSelectedCalloutIdsChange(new Set(calloutIds));
+        }
+      } else {
+        // Replace: marquee hits become the entire selection, including
+        // the "clear everything" case when the result is empty.
+        setSelectedIds(new Set(annotationIndices));
+        if (onSelectedCalloutIdsChange) {
+          onSelectedCalloutIdsChange(new Set(calloutIds));
+        }
+      }
+      return;
+    }
+
     const ds = dragStateRef.current;
     if (!ds.active) return;
 
@@ -1044,6 +1352,57 @@ export function useSVGInteraction({
       // undo checkpoint via onUpdateCallout (which calls addHistoryCheckpoint
       // and does NOT mutate state). One undo entry per drag, matching the
       // Phase 9 per-action undo convention.
+      //
+      // Phase 15 UAT-3 (2026-04-17) — release-time rollback. During drag
+      // the handle follows the pointer freely (no mid-drag pin, matching
+      // combined-tools). Here we check the final-drop state against the
+      // distance rules. If the drop position fails ANY rule we re-emit
+      // lastSafeCalloutPositions (the most recent rule-compliant frame
+      // captured during the drag) so the callout visibly snaps back to
+      // the last good spot. 'whole' drags are trivially safe and skip
+      // the check.
+      if (onUpdateCalloutLive && ds.lastSafeCalloutPositions && ds.partType !== 'whole') {
+        const W = pageWidth || 1;
+        const H = pageHeight || 1;
+        const last = ds.lastSafeCalloutPositions;
+        const original = ds.originalCalloutPositions;
+        // Look up the final committed-during-drag position from the
+        // callouts array — onUpdateCalloutLive has already landed the raw
+        // proposed patch there each frame.
+        const calloutArr = Array.isArray(callouts) ? callouts : [];
+        const current = calloutArr.find((c) => c && c.id === ds.calloutId);
+        if (current && original) {
+          const at = { x: (current.arrowTip?.x ?? 0) * W, y: (current.arrowTip?.y ?? 0) * H };
+          const kn = { x: (current.knee?.x ?? 0) * W, y: (current.knee?.y ?? 0) * H };
+          const bl = (current.textBoxPosition?.x ?? 0) * W;
+          const bt = (current.textBoxPosition?.y ?? 0) * H;
+          const bw = (original.textBoxWidth || 0) * W;
+          const bh = (original.textBoxHeight || 0) * H;
+          const br = bl + bw;
+          const bb = bt + bh;
+          const outside = (p, l, t, r, b) => !(p.x >= l && p.x <= r && p.y >= t && p.y <= b);
+          const dRect = (p, l, t, r, b) => {
+            const dx = Math.max(0, Math.max(l - p.x, p.x - r));
+            const dy = Math.max(0, Math.max(t - p.y, p.y - b));
+            return Math.sqrt(dx * dx + dy * dy);
+          };
+          const dropSafe =
+            outside(at, bl, bt, br, bb)
+            && dRect(at, bl, bt, br, bb) >= MIN_TEXTBOX_TO_ARROW_DISTANCE
+            && Math.hypot(kn.x - at.x, kn.y - at.y) >= MIN_KNEE_TO_ARROW_DISTANCE
+            && outside(kn, bl, bt, br, bb)
+            && dRect(kn, bl, bt, br, bb) >= MIN_KNEE_TO_BOX_EDGE_DISTANCE;
+          if (!dropSafe) {
+            // Rollback: restore the last safe snapshot before the
+            // checkpoint so the undo entry captures the good state.
+            onUpdateCalloutLive(ds.calloutId, {
+              arrowTip: last.arrowTip,
+              knee: last.knee,
+              textBoxPosition: last.textBoxPosition,
+            });
+          }
+        }
+      }
       if (onUpdateCallout) {
         onUpdateCallout(ds.calloutId, {});
       }
@@ -1061,6 +1420,7 @@ export function useSVGInteraction({
       // fields alongside the rest of the drag state so the next drag
       // starts with a clean slate. Miss one and the drag gets stuck.
       partType: null, calloutId: null, originalCalloutPositions: null,
+      lastSafeCalloutPositions: null, textBoxCorner: null,
       // Phase 15 LINE-01/02/03 — four-place invariant for the 'midpoint'
       // drag mode. originalMidpoint is SET at pointerdown (both 'midpoint'
       // AND 'endpoint' dispatch branches set it), READ at pointermove AND
@@ -1070,7 +1430,7 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, deselectAll, onSelectedCalloutIdsChange]);
 
   /**
    * Handle pointer down on a selection handle (resize/rotate).
@@ -1405,5 +1765,11 @@ export function useSVGInteraction({
 
     // Group operations (Plan 03)
     deleteSelected,
+
+    // UX: Phase 19 — AutoCAD marquee render state consumed by
+    // SVGAnnotationLayer. Both are null when no marquee is active or
+    // while the drag is still under the 5 px threshold.
+    marqueeRect: marqueeState && marqueeState.active ? getMarqueeRect(marqueeState) : null,
+    marqueeDirection: marqueeState && marqueeState.active ? getMarqueeDirection(marqueeState) : null,
   };
 }
