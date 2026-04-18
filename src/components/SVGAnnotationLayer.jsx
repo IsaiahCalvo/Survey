@@ -233,6 +233,12 @@ const SVGAnnotationLayer = memo(({
     deselectAll,
     // Pan-mode hover: App.jsx drives hover glow via pendingHover.
     setHoveredId,
+    // UX: Phase 19 — AutoCAD marquee render state. Both null until the
+    // drag crosses the 5 px min-drag threshold. Rendered as a single
+    // <rect> on the root SVG with pointer-events: none so it never
+    // steals events from annotations underneath.
+    marqueeRect,
+    marqueeDirection,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
@@ -246,6 +252,8 @@ const SVGAnnotationLayer = memo(({
     onSelectedCalloutIdsChange,
     onUpdateCalloutLive,
     onUpdateCallout,
+    // UX: Phase 19 — marquee only activates when tool === 'select'.
+    activeTool,
   });
 
   // UX: apply a pan-mode quick-click selection command from App.jsx. Matches
@@ -1229,7 +1237,7 @@ const SVGAnnotationLayer = memo(({
   // the overlay invisible but `pointer-events: all/stroke` makes it
   // clickable. Rendered AFTER the visible chrome (via the wrap <g> in
   // filteredCallouts) so hit targets sit on top.
-  const renderCalloutHitTargets = useCallback((callout, pageSize) => {
+  const renderCalloutHitTargets = useCallback((callout, pageSize, isSelected) => {
     if (!callout || !callout.arrowTip || !callout.knee) return null;
     const { width: W, height: H } = pageSize;
     const atX = callout.arrowTip.x * W;
@@ -1241,12 +1249,16 @@ const SVGAnnotationLayer = memo(({
     const tbW = Math.max(18, (callout.textBoxWidth ?? 0.1) * W);
     const tbH = Math.max(18, (callout.textBoxHeight ?? 0.05) * H);
     // UX: reuse the same connection calculation renderCallout uses so
-    // line1/line2 hit overlays line up with the visible segments.
+    // line1/line2 hit overlays line up with the visible segments. Phase 15
+    // UAT-3 (2026-04-17): borderWidth must be 0 here to match the renderer —
+    // stored textbox dims already = outer visible rect. If we passed
+    // lineThickness the hit lines would drift inward from the visible line
+    // endpoints.
     const conn = calculateCalloutConnection(
       tbX, tbY, tbW, tbH,
       { x: kX, y: kY },
       { x: atX, y: atY },
-      callout.style?.lineThickness || 2
+      0
     );
     return (
       <g
@@ -1292,17 +1304,88 @@ const SVGAnnotationLayer = memo(({
           fill="transparent"
           style={{ cursor: 'grab', pointerEvents: 'all' }}
         />
-        {/* UX: invisible knee hit target — no visible chrome in Phase 14;
-            Phase 17/18 will add visible selection handles that reuse the
-            same data-callout-part='knee' delegation. */}
+        {/* UX: Phase 15 UAT-3 (2026-04-17) — knee hit target tracks the
+            EFFECTIVE knee from calculateCalloutConnection so when the line
+            auto-routes through a midpoint (bad-geometry branch: stored
+            knee inside textbox, or line would cross textbox), the grab
+            zone follows the visible bend. Matches combined-tools where the
+            knee handle snaps to effectiveKnee after each recompute. */}
         <circle
           data-callout-part="knee"
-          cx={kX}
-          cy={kY}
+          cx={conn.effectiveKnee.x}
+          cy={conn.effectiveKnee.y}
           r={12}
           fill="transparent"
           style={{ cursor: 'grab', pointerEvents: 'all' }}
         />
+        {/* UX: Phase 15 UAT-3 (2026-04-17) — visible drag chrome when the
+            callout is selected. Knee + arrow tip use combined-tools'
+            white/blue square look (distinguishes them from shape resize
+            handles). Four textbox corners use the SAME white circle + gray
+            stroke + drop shadow as regular shape corner handles (see
+            SVGSelectionOverlay) so callout resize chrome matches the app's
+            existing muscle memory. Corner circles carry
+            data-callout-part='textBox-tl' / 'tr' / 'bl' / 'br' so the
+            interaction hook can route them to a resize drag mode. */}
+        {isSelected && (
+          <>
+            {/* UX: knee + arrow handles use the same white circle + gray
+                stroke + drop shadow as the textbox corner handles so all
+                callout chrome is visually consistent. Purely cosmetic
+                (pointer-events none); the transparent hit circles above
+                own click behavior. */}
+            <circle
+              cx={conn.effectiveKnee.x}
+              cy={conn.effectiveKnee.y}
+              r={7}
+              fill="#ffffff"
+              stroke="#d1d1d1"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+              style={{
+                filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
+                pointerEvents: 'none',
+              }}
+            />
+            <circle
+              cx={atX}
+              cy={atY}
+              r={7}
+              fill="#ffffff"
+              stroke="#d1d1d1"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+              style={{
+                filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
+                pointerEvents: 'none',
+              }}
+            />
+            {/* Textbox corner handles — 4 corners only, interactive. */}
+            {[
+              { id: 'tl', x: tbX,       y: tbY,       cursor: 'nwse-resize' },
+              { id: 'tr', x: tbX + tbW, y: tbY,       cursor: 'nesw-resize' },
+              { id: 'bl', x: tbX,       y: tbY + tbH, cursor: 'nesw-resize' },
+              { id: 'br', x: tbX + tbW, y: tbY + tbH, cursor: 'nwse-resize' },
+            ].map((p) => (
+              <circle
+                key={`cb-corner-${p.id}`}
+                data-callout-part={`textBox-${p.id}`}
+                cx={p.x}
+                cy={p.y}
+                r={7}
+                fill="#ffffff"
+                stroke="#d1d1d1"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+                style={{
+                  filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
+                  cursor: p.cursor,
+                  pointerEvents: 'all',
+                }}
+              />
+            ))}
+          </>
+        )}
       </g>
     );
   }, []);
@@ -1378,7 +1461,12 @@ const SVGAnnotationLayer = memo(({
       // data-callout-id so useSVGInteraction's pointerdown hit-test can
       // identify which callout was clicked even when the visible chrome
       // is too thin for touch.
-      const hitTargets = renderCalloutHitTargets(callout, pageSize);
+      // UX: Phase 15 UAT-3 — visible handles paint only when this callout
+      // is in the current selection set.
+      const isSelected = effectiveSelectedCalloutIds.has
+        ? effectiveSelectedCalloutIds.has(callout.id)
+        : false;
+      const hitTargets = renderCalloutHitTargets(callout, pageSize, isSelected);
 
       elements.push(
         // UX: wrap visible element + invisible hit targets in a shared
@@ -1399,7 +1487,7 @@ const SVGAnnotationLayer = memo(({
     // module-scope imports — stable. renderCalloutHitTargets is a stable
     // useCallback derived from calculateCalloutConnection (module import).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, editingCalloutId, liveCalloutEditBounds]);
+  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
@@ -2024,6 +2112,12 @@ const SVGAnnotationLayer = memo(({
           // handleSvgPointerDown which dispatches the callout-part drag
           // via useSVGInteraction (Plan 14-03 Task 2).
           if (activeTool === 'callout' && !e.target?.closest?.('[data-callout-id]')) {
+            // UX: Phase 15 UAT-3 — clicking empty space with the callout
+            // tool active also dismisses any currently-selected callout so
+            // starting a new callout doesn't leave stale handles on the
+            // previous one. Matches Select-mode behavior where clicking
+            // empty space deselects.
+            if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
             const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
             setCalloutCreation({ arrowTip: pt, currentPointer: pt });
             e.preventDefault();
@@ -2126,6 +2220,32 @@ const SVGAnnotationLayer = memo(({
             fill="#1e293b"
           />
         </g>
+      )}
+      {/* UX: Phase 19 — AutoCAD marquee rectangle. Blue solid fill when
+          dragging left-to-right (Window mode, selects only fully enclosed
+          annotations). Green dashed when dragging right-to-left (Crossing
+          mode, selects any annotation the box touches). Rendered above
+          annotation content but below the selection/hover overlays below,
+          with pointer-events: none so it never intercepts events headed
+          for annotations underneath. Constants copied verbatim from the
+          dormant Fabric reference (see 19-CONTEXT.md → Visual treatment). */}
+      {marqueeRect && (
+        <rect
+          x={marqueeRect.left}
+          y={marqueeRect.top}
+          width={marqueeRect.width}
+          height={marqueeRect.height}
+          fill={marqueeDirection === 'window'
+            ? 'rgba(0, 100, 255, 0.15)'
+            : 'rgba(0, 200, 100, 0.15)'}
+          stroke={marqueeDirection === 'window'
+            ? 'rgba(0, 100, 255, 0.8)'
+            : 'rgba(0, 200, 100, 0.8)'}
+          strokeWidth={1}
+          strokeDasharray={marqueeDirection === 'window' ? undefined : '5,5'}
+          vectorEffect="non-scaling-stroke"
+          pointerEvents="none"
+        />
       )}
       {/* Selection overlays — rendered on top of all annotations */}
       {/* Single selection: individual bounding box with handles */}
