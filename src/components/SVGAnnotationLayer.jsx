@@ -2049,6 +2049,34 @@ const SVGAnnotationLayer = memo(({
     >
       {wrappedAnnotations}
       {filteredCallouts}
+      {/* UX: Plan 15-04 Issue 2 — new-text creation preview. FabricEditCanvas
+          paints the in-flight textbox transparent during create (same pattern
+          as existing-text edit) and broadcasts live bounds with
+          `isCreating: true`. Here we synthesize a textbox render-obj from the
+          bounds alone (there's no backing annotation yet) and route it
+          through renderText so the SVG is the visible truth from the first
+          frame — no Fabric→SVG swap on commit. */}
+      {liveTextEditBounds?.isCreating && liveTextEditBounds.width > 0 && (
+        <g style={{ pointerEvents: 'none' }}>
+          {renderText({
+            type: 'textbox',
+            left: liveTextEditBounds.left,
+            top: liveTextEditBounds.top,
+            width: liveTextEditBounds.width,
+            height: liveTextEditBounds.height,
+            scaleX: 1,
+            scaleY: 1,
+            angle: 0,
+            fontSize: liveTextEditBounds.fontSize || 16,
+            fontFamily: liveTextEditBounds.fontFamily || 'Helvetica',
+            fill: liveTextEditBounds.fill || '#007AFF',
+            stroke: liveTextEditBounds.stroke || '#000000',
+            strokeWidth: liveTextEditBounds.strokeWidth ?? 1,
+            text: liveTextEditBounds.text || '',
+            opacity: 1,
+          }, 'text-creation-preview', liveTextEditBounds)}
+        </g>
+      )}
       {/* UX: Phase 14 CREATE-01 (callout half) — transient click-drag
           preview. Dashed at 0.6 opacity so the committed callout is
           visually distinct (solid, full opacity). Cleared on pointerup

@@ -995,21 +995,33 @@ const FabricEditCanvas = memo(({
     // re-fit the box. A future per-annotation "Auto-fit on commit" setting will
     // make this configurable (see FEATURE-BACKLOG.md Stage 3).
     if (isNewText && activeObj.type === 'textbox') {
-      let maxLineWidth = 0;
-      if (activeObj.textLines && typeof activeObj._getLineWidth === 'function') {
-        for (let i = 0; i < activeObj.textLines.length; i++) {
-          const w = activeObj._getLineWidth(i) || 0;
-          if (w > maxLineWidth) maxLineWidth = w;
+      // Tight-fit only applies when the user's text is a single line that
+      // fits inside the textbox wrap target (e.g. "aaaaa" in a 400-px drag).
+      // When Fabric has already wrapped into multiple lines, the content is
+      // already using the full wrap width — tightening to maxLineWidth+2
+      // produces a SVG width 1-3 px wider than Fabric's wrap target, which
+      // causes CSS `word-break: break-all` to fit 1 extra char per line
+      // post-commit. The re-wrap visibly shifts line breaks upward ("text
+      // snaps to smaller area" UAT, Plan 15-04 Issue 3, 2026-04-17).
+      const wrappedLineCount = Array.isArray(activeObj._textLines) ? activeObj._textLines.length : 1;
+      if (wrappedLineCount <= 1) {
+        let maxLineWidth = 0;
+        if (activeObj.textLines && typeof activeObj._getLineWidth === 'function') {
+          for (let i = 0; i < activeObj.textLines.length; i++) {
+            const w = activeObj._getLineWidth(i) || 0;
+            if (w > maxLineWidth) maxLineWidth = w;
+          }
+        }
+        if (maxLineWidth === 0 && typeof activeObj.calcTextWidth === 'function') {
+          maxLineWidth = activeObj.calcTextWidth();
+        }
+        if (maxLineWidth > 0) {
+          // 2px breathing room so stroke edge doesn't clip last glyph
+          json.width = Math.ceil(maxLineWidth + 2);
         }
       }
-      // Fallback if per-line measurement unavailable
-      if (maxLineWidth === 0 && typeof activeObj.calcTextWidth === 'function') {
-        maxLineWidth = activeObj.calcTextWidth();
-      }
-      if (maxLineWidth > 0) {
-        // 2px breathing room so stroke edge doesn't clip last glyph
-        json.width = Math.ceil(maxLineWidth + 2);
-      }
+      // When wrappedLineCount > 1, keep json.width = activeObj.width so the
+      // committed SVG wraps to the same lines the user saw live.
     }
 
     // Re-edit path: preserve the user's chosen size, but allow the textbox to
@@ -1369,6 +1381,16 @@ const FabricEditCanvas = memo(({
       // render-before-edit order, sync reveal) to avoid cursor drift
       const es = effectiveScale;
 
+      // Plan 15-04 Issue 2 — new-text creation mirrors existing-text edit:
+      // Fabric glyphs + border paint transparent; the SVG creation preview
+      // (driven from onLiveTextGrow bounds) is the visible truth. Prevents
+      // the jarring Fabric→SVG swap on commit that made freshly-created text
+      // visibly "pop" into SVG form. Intended final colors stash in
+      // originalAnnotationRef so commitAndClose (lines 978-983) restores them
+      // onto the persisted annotation.
+      const intendedFill = strokeColor || '#007AFF';
+      const intendedStroke = '#000000';
+
       const textObj = new fabric.Textbox('', {
         type: 'textbox',
         left: BBOX_PADDING,
@@ -1376,7 +1398,7 @@ const FabricEditCanvas = memo(({
         angle: 0,
         width: textBoxWidth || 160,
         fontSize: 16,
-        fill: strokeColor || '#007AFF',
+        fill: 'rgba(0,0,0,0)',
         fontFamily: DEFAULT_FONT_FAMILY,
         splitByGrapheme: true,
         fontWeight: 'normal',
@@ -1386,7 +1408,9 @@ const FabricEditCanvas = memo(({
         // mode so they read as a distinct "text box" out of the box. Mirrors
         // FabricTextCanvas.jsx default. Future mini-toolbar will let users
         // toggle border / fill / font / alignment per textbox.
-        stroke: '#000000',
+        // Plan 15-04 Issue 2 — stroke painted transparent during edit; the
+        // SVG preview paints the real intendedStroke. Commit restores it.
+        stroke: 'rgba(0,0,0,0)',
         strokeWidth: 1,
         strokeUniform: true,
         editable: true,
@@ -1405,7 +1429,11 @@ const FabricEditCanvas = memo(({
         left: clickPosition?.x ?? 0,
         top: clickPosition?.y ?? 0,
       };
-      originalAnnotationRef.current = null;
+      // Plan 15-04 Issue 2 — stash intended final colors for commitAndClose
+      // fill/stroke restoration (lines 978-983). Existing-text path points
+      // this at the pre-edit annotation; new-text has no pre-edit annotation
+      // so we seed it with the intended final look instead.
+      originalAnnotationRef.current = { fill: intendedFill, stroke: intendedStroke };
       newTextScaleRef.current = null;
 
       // Clear font cache + init dimensions (same as existing text path)
@@ -1446,13 +1474,14 @@ const FabricEditCanvas = memo(({
         c.style.width = neededW + 'px';
         c.style.height = neededH + 'px';
         c.style.visibility = 'visible';
-        c.style.outline = `1px solid ${outlineColor}`;
-        // Inset the outline by BBOX_PADDING*es on each side so it matches the tight
-        // SVG rect position (which draws at textW x textH without any padding).
-        // Wrapper size is (textW+40)*es, outline inset by 20*es = visible outline at
-        // textW*es x textH*es, positioned at (padding*es, padding*es) inside wrapper,
-        // which in viewer coords aligns with (annLeft*es, annTop*es) — same as SVG.
-        c.style.outlineOffset = `-${BBOX_PADDING * es}px`;
+        // Plan 15-04 Issue 2 — new-text creation: the SVG creation preview
+        // already paints the intended border (from intendedStroke), so the
+        // CSS container outline is redundant and renders as a ghost second
+        // box at slightly different dimensions due to CSS-px vs SVG-unit
+        // rounding. Leave the container fully transparent and let SVG own
+        // the border visual.
+        c.style.outline = 'none';
+        c.style.outlineOffset = '0';
         c.style.backgroundColor = 'transparent';
         // Sync React state so future re-renders don't revert visibility
         setContainerStyle(prev => ({
@@ -1460,12 +1489,38 @@ const FabricEditCanvas = memo(({
           width: neededW,
           height: neededH,
           visibility: 'visible',
-          outline: `1px solid ${outlineColor}`,
-          outlineOffset: `-${BBOX_PADDING * es}px`,
+          outline: 'none',
+          outlineOffset: '0',
           backgroundColor: 'transparent',
         }));
         setIsLoading(false);
       });
+
+      // Plan 15-04 Issue 2 — broadcast an initial bounds snapshot so the SVG
+      // creation preview is visible immediately, before the first keystroke.
+      // Mirrors the existing-text broadcast at ~line 1617 but runs pre-typing
+      // so the empty outlined box shows the moment drag-to-create lands.
+      if (onLiveTextGrow && bboxOriginRef.current) {
+        const pageW = (textObj.width || 0) * (textObj.scaleX || 1);
+        const pageH = textObj.calcTextHeight
+          ? textObj.calcTextHeight()
+          : textObj.height * (textObj.scaleY || 1);
+        onLiveTextGrow({
+          left: bboxOriginRef.current.left || 0,
+          top: bboxOriginRef.current.top || 0,
+          width: pageW,
+          height: pageH,
+          text: '',
+          textLines: [],
+          fontSize: textObj.fontSize,
+          lineHeight: textObj.lineHeight,
+          fontFamily: DEFAULT_FONT_FAMILY,
+          fill: intendedFill,
+          stroke: intendedStroke,
+          strokeWidth: textObj.strokeWidth || 1,
+          isCreating: true,
+        });
+      }
 
       // Auto-resize height as text wraps (same as existing text path)
       textObj.on('changed', () => {
@@ -1474,6 +1529,35 @@ const FabricEditCanvas = memo(({
         const newH = Math.max(Math.round(30 * es), Math.ceil(h));
         canvas.setDimensions({ height: newH });
         containerRef.current.style.height = newH + 'px';
+
+        // Plan 15-04 Issue 2 — per-keystroke bounds broadcast so SVG creation
+        // preview repaints live, same contract as existing-text (line 1617).
+        // isCreating:true tells SVGAnnotationLayer to synthesize a preview
+        // annotation from these bounds (no backing annotation exists yet).
+        if (onLiveTextGrow && bboxOriginRef.current) {
+          const pageW = (textObj.width || 0) * (textObj.scaleX || 1);
+          const pageH = textObj.calcTextHeight
+            ? textObj.calcTextHeight()
+            : textObj.height * (textObj.scaleY || 1);
+          const lines = Array.isArray(textObj._textLines)
+            ? textObj._textLines.map(l => Array.isArray(l) ? l.join('') : String(l))
+            : null;
+          onLiveTextGrow({
+            left: bboxOriginRef.current.left || 0,
+            top: bboxOriginRef.current.top || 0,
+            width: pageW,
+            height: pageH,
+            text: textObj.text || '',
+            textLines: lines,
+            fontSize: textObj.fontSize,
+            lineHeight: textObj.lineHeight,
+            fontFamily: DEFAULT_FONT_FAMILY,
+            fill: intendedFill,
+            stroke: intendedStroke,
+            strokeWidth: textObj.strokeWidth || 1,
+            isCreating: true,
+          });
+        }
       });
     } else if (annotationDataRef.current) {
       // Editing existing text annotation
