@@ -1511,7 +1511,14 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   const padLeft = isCalloutIntent ? targetRect.left : targetRect.left - TEXT_PADDING;
   const padTop = isCalloutIntent ? targetRect.top : targetRect.top - TEXT_PADDING;
   const padWidth = isCalloutIntent ? targetRect.width : targetRect.width + 2 * TEXT_PADDING;
-  const padHeight = isCalloutIntent ? targetRect.height : targetRect.height + 2 * TEXT_PADDING;
+  // Extra descender breathing for plain imports — source PDF rects are often
+  // sized to the baseline, so descenders (y, g, p, j) clipped the bottom edge
+  // even after the 6px padding bump. 0.35 * fontSize matches the renderer's
+  // descenderBuffer so the border fully encloses the glyph bounding box.
+  const descenderRoom = isCalloutIntent ? 0 : (fontSize * scale) * 0.35;
+  const padHeight = isCalloutIntent
+    ? targetRect.height
+    : targetRect.height + 2 * TEXT_PADDING + descenderRoom;
 
   return {
     type: 'textbox',
