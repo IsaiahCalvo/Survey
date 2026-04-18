@@ -1335,15 +1335,54 @@ const SVGAnnotationLayer = memo(({
             interaction hook can route them to a resize drag mode. */}
         {showGlow && (
           <>
-            {/* UX: Phase 19 follow-up — callout hover / multi-select glow.
-                Soft blue outline around the textbox and a stroke tint on
-                the connector lines so users get the same "you could click
-                me" affordance annotations have. pointer-events none. */}
+            {/* UX: Phase 19 follow-up — callout hover / multi-select
+                glow. Same blue outline treatment annotations use, but
+                covering the whole callout: textbox border, line1 +
+                line2 connector segments, and a glow ring around the
+                arrow tip. pointer-events none so the glow never
+                intercepts drag / click. */}
             <rect
               x={tbX - 2}
               y={tbY - 2}
               width={tbW + 4}
               height={tbH + 4}
+              fill="none"
+              stroke="#4a90e2"
+              strokeOpacity={0.45}
+              strokeWidth={3}
+              vectorEffect="non-scaling-stroke"
+              style={{ pointerEvents: 'none' }}
+            />
+            {!conn.shouldHideLine1 && (
+              <line
+                x1={conn.line1Start.x}
+                y1={conn.line1Start.y}
+                x2={conn.effectiveKnee.x}
+                y2={conn.effectiveKnee.y}
+                stroke="#4a90e2"
+                strokeOpacity={0.45}
+                strokeWidth={5}
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
+            <line
+              x1={conn.line2Start.x}
+              y1={conn.line2Start.y}
+              x2={atX}
+              y2={atY}
+              stroke="#4a90e2"
+              strokeOpacity={0.45}
+              strokeWidth={5}
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+              style={{ pointerEvents: 'none' }}
+            />
+            <circle
+              cx={atX}
+              cy={atY}
+              r={8}
               fill="none"
               stroke="#4a90e2"
               strokeOpacity={0.45}
@@ -1682,8 +1721,15 @@ const SVGAnnotationLayer = memo(({
     // handles carry the "you have a group selection" affordance, so the
     // inner per-annotation dashed boxes were redundant and noisy. Single-
     // selection (size === 1) keeps its own full overlay with handles.
+    // UX: Phase 19 follow-up — treat combined selection count (annotation
+    // + callout) as the "is this a multi-select?" signal. Using just
+    // selectedIds.size missed the case where the user picked one
+    // annotation plus one callout, which left the annotation still
+    // rendering its own single-shape bounding box with handles.
+    const totalSelectedForHover =
+      (selectedIds?.size || 0) + (effectiveSelectedCalloutIds?.size || 0);
     const annotationIsHovered = (hoveredId === i && !annotationIsSelected)
-      || (annotationIsSelected && selectedIds.size > 1);
+      || (annotationIsSelected && totalSelectedForHover > 1);
 
     // Compute transform attribute based on interaction mode
     const computedTransform = (() => {
@@ -2326,8 +2372,12 @@ const SVGAnnotationLayer = memo(({
         />
       )}
       {/* Selection overlays — rendered on top of all annotations */}
-      {/* Single selection: individual bounding box with handles */}
-      {selectedIds.size === 1 && Array.from(selectedIds).map((selectedIndex) => {
+      {/* Single selection: individual bounding box with handles.
+          UX: Phase 19 follow-up — suppress this when a callout is also
+          selected. With one annotation + one callout the combined count
+          is > 1, which means the outer group union bbox should be the
+          only chrome — same as two annotations. */}
+      {selectedIds.size === 1 && (effectiveSelectedCalloutIds?.size || 0) === 0 && Array.from(selectedIds).map((selectedIndex) => {
         const obj = annotations?.objects?.[selectedIndex];
         if (!obj) return null;
 
