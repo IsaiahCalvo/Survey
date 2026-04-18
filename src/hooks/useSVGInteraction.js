@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45 } from '../utils/svgTransformMath';
-import { getAnnotationBBox, getLineEndpoints, isImportedPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getGroupBBox, getLineEndpoints, isImportedPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
@@ -84,6 +84,12 @@ export function useSVGInteraction({
   const [hoveredId, setHoveredId] = useState(null);
   const [inverseScale, setInverseScale] = useState(1);
   const [interactionState, setInteractionState] = useState('idle'); // 'idle' | 'dragging' | 'resizing' | 'rotating'
+  // UX: Phase 15 UAT-3 (2026-04-18) — which callout part (if any) is being
+  // actively dragged right now. Set at pointerdown, cleared at pointerup.
+  // Consumed by SVGAnnotationLayer's callout chrome so the knee handle
+  // tracks the user's cursor during 'knee' drag instead of snapping to
+  // the renderer's auto-routed midpoint.
+  const [activeCalloutDrag, setActiveCalloutDrag] = useState(null); // { id, partType } | null
 
   // Visual-only transform during drag (Plan 02 populates)
   const [visualTransform, setVisualTransform] = useState(null);
@@ -505,11 +511,77 @@ export function useSVGInteraction({
       try { e.target.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
       e.stopPropagation();
       setInteractionState('dragging');
+      setActiveCalloutDrag({ id: calloutId, partType });
       return;
     }
 
     // Not a callout — empty-space branch.
     //
+    // UX: Phase 19 follow-up — when there is a multi-selection and the
+    // empty-space click lands INSIDE the group union bbox, start a
+    // group-move drag instead of arming a marquee. Users expect to be
+    // able to grab the group from anywhere inside its outer dashed box,
+    // not only by clicking a specific member. Shift-click on empty space
+    // keeps marquee semantics (union-adding a new region). Clicks outside
+    // the union bbox fall through to the marquee branch below.
+    if (
+      e.target === svgRef.current &&
+      activeTool === 'select' &&
+      !e.shiftKey &&
+      selectedIds.size > 1 &&
+      annotations?.objects
+    ) {
+      const bboxes = [];
+      for (const selIdx of selectedIds) {
+        const selObj = annotations.objects[selIdx];
+        if (selObj) bboxes.push(getAnnotationBBox(selObj));
+      }
+      if (bboxes.length > 0) {
+        const groupBBox = getGroupBBox(bboxes);
+        const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+        const insideGroup =
+          svgPoint.x >= groupBBox.left &&
+          svgPoint.x <= groupBBox.left + groupBBox.width &&
+          svgPoint.y >= groupBBox.top &&
+          svgPoint.y <= groupBBox.top + groupBBox.height;
+        if (insideGroup) {
+          const ctm = svgRef.current?.getScreenCTM();
+          const ctmInverse = ctm ? ctm.inverse() : null;
+          const originals = {};
+          for (const selIdx of selectedIds) {
+            const selObj = annotations.objects[selIdx];
+            if (!selObj) continue;
+            if (isImportedPath(selObj)) {
+              const selBBox = getAnnotationBBox(selObj);
+              originals[selIdx] = { left: selBBox.left, top: selBBox.top };
+            } else {
+              originals[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0 };
+            }
+          }
+          dragStateRef.current = {
+            active: true,
+            mode: 'group-move',
+            handleId: null,
+            startSVGPoint: svgPoint,
+            originalProps: null,
+            annotationIndex: null,
+            ctmInverse,
+            anchorX: null,
+            anchorY: null,
+            centerX: null,
+            centerY: null,
+            currentResize: null,
+            currentAngle: undefined,
+            groupOriginals: originals,
+          };
+          try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
+          setInteractionState('dragging');
+          e.stopPropagation();
+          return;
+        }
+      }
+    }
+
     // UX: Phase 19 — AutoCAD marquee. When the Select tool is active and
     // the click originated on the SVG root itself (truly empty space),
     // start tracking a potential marquee. The rect is NOT drawn until the
@@ -538,7 +610,7 @@ export function useSVGInteraction({
     if (e.target === svgRef.current) {
       deselectAll();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, activeTool, applyMarqueeState]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, activeTool, applyMarqueeState, selectedIds, annotations]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -964,13 +1036,49 @@ export function useSVGInteraction({
       const kneeToBoxDist = distPointToRect(kneePx, boxLeftPx, boxTopPx, boxRightPx, boxBottomPx);
       const kneeInsideBox = pointInsideRect(kneePx, boxLeftPx, boxTopPx, boxRightPx, boxBottomPx);
 
-      const frameSafe = ds.partType === 'whole' || (
-        !arrowInsideBox
-        && arrowToBoxDist >= MIN_TEXTBOX_TO_ARROW_DISTANCE
-        && kneeToArrowDist >= MIN_KNEE_TO_ARROW_DISTANCE
-        && !kneeInsideBox
-        && kneeToBoxDist >= MIN_KNEE_TO_BOX_EDGE_DISTANCE
-      );
+      // UX: Phase 15 UAT-3 (2026-04-18) — Liang-Barsky segment-through-rect
+      // check used by the knee-drag rule set. Returns true when the
+      // knee→arrow segment cuts through the textbox interior.
+      const segmentCrossesRect = (p1, p2, l, t, r, b) => {
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        let t0 = 0, t1 = 1;
+        const pp = [-dx, dx, -dy, dy];
+        const qq = [p1.x - l, r - p1.x, p1.y - t, b - p1.y];
+        for (let i = 0; i < 4; i++) {
+          if (pp[i] === 0) {
+            if (qq[i] < 0) return false;
+          } else {
+            const rr = qq[i] / pp[i];
+            if (pp[i] < 0) {
+              if (rr > t1) return false;
+              if (rr > t0) t0 = rr;
+            } else {
+              if (rr < t0) return false;
+              if (rr < t1) t1 = rr;
+            }
+          }
+        }
+        return t0 < t1 && t1 > 0.0001 && t0 < 0.9999;
+      };
+
+      let frameSafe;
+      if (ds.partType === 'whole') {
+        frameSafe = true;
+      } else if (ds.partType === 'knee') {
+        // Knee-drag frameSafe uses the user-defined rule: knee outside
+        // the textbox is always OK — the renderer auto-routes the visible
+        // line around the box, so a "crossing" stored knee never produces
+        // a visible line through the textbox. Matches the release-time
+        // rollback rule in handlePointerUp.
+        frameSafe = !kneeInsideBox;
+      } else {
+        frameSafe = !arrowInsideBox
+          && arrowToBoxDist >= MIN_TEXTBOX_TO_ARROW_DISTANCE
+          && kneeToArrowDist >= MIN_KNEE_TO_ARROW_DISTANCE
+          && !kneeInsideBox
+          && kneeToBoxDist >= MIN_KNEE_TO_BOX_EDGE_DISTANCE;
+      }
       if (frameSafe) {
         ds.lastSafeCalloutPositions = {
           arrowTip: { ...proposed.arrowTip },
@@ -1361,7 +1469,7 @@ export function useSVGInteraction({
       // captured during the drag) so the callout visibly snaps back to
       // the last good spot. 'whole' drags are trivially safe and skip
       // the check.
-      if (onUpdateCalloutLive && ds.lastSafeCalloutPositions && ds.partType !== 'whole') {
+      if (onUpdateCalloutLive && ds.lastSafeCalloutPositions && ds.partType !== 'whole' && ds.partType !== 'textBoxResize') {
         const W = pageWidth || 1;
         const H = pageHeight || 1;
         const last = ds.lastSafeCalloutPositions;
@@ -1380,18 +1488,63 @@ export function useSVGInteraction({
           const bh = (original.textBoxHeight || 0) * H;
           const br = bl + bw;
           const bb = bt + bh;
-          const outside = (p, l, t, r, b) => !(p.x >= l && p.x <= r && p.y >= t && p.y <= b);
-          const dRect = (p, l, t, r, b) => {
-            const dx = Math.max(0, Math.max(l - p.x, p.x - r));
-            const dy = Math.max(0, Math.max(t - p.y, p.y - b));
-            return Math.sqrt(dx * dx + dy * dy);
+          const pointInsideRect = (p, l, t, r, b) =>
+            p.x >= l && p.x <= r && p.y >= t && p.y <= b;
+          // UX: Phase 15 UAT-3 (2026-04-18) — segment-rect intersection via
+          // Liang-Barsky. Returns true when the open line segment p1→p2
+          // cuts through the interior of the rect. Endpoints exactly on
+          // the border don't count (line naturally ends there).
+          const segmentCrossesRect = (p1, p2, l, t, r, b) => {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            let t0 = 0, t1 = 1;
+            const pp = [-dx, dx, -dy, dy];
+            const qq = [p1.x - l, r - p1.x, p1.y - t, b - p1.y];
+            for (let i = 0; i < 4; i++) {
+              if (pp[i] === 0) {
+                if (qq[i] < 0) return false;
+              } else {
+                const rr = qq[i] / pp[i];
+                if (pp[i] < 0) {
+                  if (rr > t1) return false;
+                  if (rr > t0) t0 = rr;
+                } else {
+                  if (rr < t0) return false;
+                  if (rr < t1) t1 = rr;
+                }
+              }
+            }
+            return t0 < t1 && t1 > 0.0001 && t0 < 0.9999;
           };
-          const dropSafe =
-            outside(at, bl, bt, br, bb)
-            && dRect(at, bl, bt, br, bb) >= MIN_TEXTBOX_TO_ARROW_DISTANCE
-            && Math.hypot(kn.x - at.x, kn.y - at.y) >= MIN_KNEE_TO_ARROW_DISTANCE
-            && outside(kn, bl, bt, br, bb)
-            && dRect(kn, bl, bt, br, bb) >= MIN_KNEE_TO_BOX_EDGE_DISTANCE;
+
+          let dropSafe = true;
+          if (ds.partType === 'knee') {
+            // UX: Phase 15 UAT-3 (2026-04-18) — per user spec, knee can
+            // be placed anywhere outside the textbox. The renderer's
+            // calculateCalloutConnection auto-routes the visible line to
+            // a midpoint when the knee→arrow segment would cross the box,
+            // so a crossing stored knee never produces a visible line
+            // through the textbox. Only the knee-inside-textbox case is
+            // a true invalid final state (line1 would end inside the
+            // box, nowhere for line2 to leave from cleanly).
+            const kneeInside = pointInsideRect(kn, bl, bt, br, bb);
+            dropSafe = !kneeInside;
+          } else {
+            // Fallback: prior distance-rule set for arrow + textbox
+            // drags. Replaced per partType as we tackle each in turn.
+            const outside = (p, l, t, r, b) => !pointInsideRect(p, l, t, r, b);
+            const dRect = (pp, l, t, r, b) => {
+              const ddx = Math.max(0, Math.max(l - pp.x, pp.x - r));
+              const ddy = Math.max(0, Math.max(t - pp.y, pp.y - b));
+              return Math.sqrt(ddx * ddx + ddy * ddy);
+            };
+            dropSafe =
+              outside(at, bl, bt, br, bb)
+              && dRect(at, bl, bt, br, bb) >= MIN_TEXTBOX_TO_ARROW_DISTANCE
+              && Math.hypot(kn.x - at.x, kn.y - at.y) >= MIN_KNEE_TO_ARROW_DISTANCE
+              && outside(kn, bl, bt, br, bb)
+              && dRect(kn, bl, bt, br, bb) >= MIN_KNEE_TO_BOX_EDGE_DISTANCE;
+          }
           if (!dropSafe) {
             // Rollback: restore the last safe snapshot before the
             // checkpoint so the undo entry captures the good state.
@@ -1407,6 +1560,7 @@ export function useSVGInteraction({
         onUpdateCallout(ds.calloutId, {});
       }
       try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      setActiveCalloutDrag(null);
     }
 
     // Reset drag state
@@ -1742,6 +1896,7 @@ export function useSVGInteraction({
     setHoveredId,
     inverseScale,
     interactionState,
+    activeCalloutDrag,
     visualTransform,
     dragState: dragStateRef,
 
