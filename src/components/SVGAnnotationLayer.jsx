@@ -216,7 +216,7 @@ const SVGAnnotationLayer = memo(({
   // Interaction hook (Phase 9)
   // ---------------------------------------------------------------------------
   const {
-    selectedIds, hoveredId, inverseScale, interactionState, visualTransform,
+    selectedIds, hoveredId, inverseScale, interactionState, activeCalloutDrag, visualTransform,
     handleAnnotationPointerDown, handleAnnotationPointerEnter,
     handleAnnotationPointerLeave, handleAnnotationDoubleClick,
     handleSvgPointerDown, handleHandlePointerDown,
@@ -1237,7 +1237,7 @@ const SVGAnnotationLayer = memo(({
   // the overlay invisible but `pointer-events: all/stroke` makes it
   // clickable. Rendered AFTER the visible chrome (via the wrap <g> in
   // filteredCallouts) so hit targets sit on top.
-  const renderCalloutHitTargets = useCallback((callout, pageSize, isSelected) => {
+  const renderCalloutHitTargets = useCallback((callout, pageSize, isSelected, isKneeDragging) => {
     if (!callout || !callout.arrowTip || !callout.knee) return null;
     const { width: W, height: H } = pageSize;
     const atX = callout.arrowTip.x * W;
@@ -1304,16 +1304,16 @@ const SVGAnnotationLayer = memo(({
           fill="transparent"
           style={{ cursor: 'grab', pointerEvents: 'all' }}
         />
-        {/* UX: Phase 15 UAT-3 (2026-04-17) — knee hit target tracks the
-            EFFECTIVE knee from calculateCalloutConnection so when the line
-            auto-routes through a midpoint (bad-geometry branch: stored
-            knee inside textbox, or line would cross textbox), the grab
-            zone follows the visible bend. Matches combined-tools where the
-            knee handle snaps to effectiveKnee after each recompute. */}
+        {/* UX: Phase 15 UAT-3 (2026-04-18) — knee hit target tracks the
+            AUTO-ROUTED midpoint (effectiveKnee) when idle so users grab
+            the visible bend after the renderer reroutes. BUT during an
+            active knee drag the handle follows the raw stored knee so the
+            handle stays under the cursor and doesn't snap to a computed
+            midpoint mid-drag. */}
         <circle
           data-callout-part="knee"
-          cx={conn.effectiveKnee.x}
-          cy={conn.effectiveKnee.y}
+          cx={isKneeDragging ? kX : conn.effectiveKnee.x}
+          cy={isKneeDragging ? kY : conn.effectiveKnee.y}
           r={12}
           fill="transparent"
           style={{ cursor: 'grab', pointerEvents: 'all' }}
@@ -1335,8 +1335,8 @@ const SVGAnnotationLayer = memo(({
                 (pointer-events none); the transparent hit circles above
                 own click behavior. */}
             <circle
-              cx={conn.effectiveKnee.x}
-              cy={conn.effectiveKnee.y}
+              cx={isKneeDragging ? kX : conn.effectiveKnee.x}
+              cy={isKneeDragging ? kY : conn.effectiveKnee.y}
               r={7}
               fill="#ffffff"
               stroke="#d1d1d1"
@@ -1466,7 +1466,13 @@ const SVGAnnotationLayer = memo(({
       const isSelected = effectiveSelectedCalloutIds.has
         ? effectiveSelectedCalloutIds.has(callout.id)
         : false;
-      const hitTargets = renderCalloutHitTargets(callout, pageSize, isSelected);
+      // UX: Phase 15 UAT-3 (2026-04-18) — during an active knee drag the
+      // knee handle tracks the user's cursor (raw stored knee), not the
+      // auto-routed midpoint. Other drags let the handle follow the bend.
+      const isKneeDragging = !!activeCalloutDrag
+        && activeCalloutDrag.id === callout.id
+        && activeCalloutDrag.partType === 'knee';
+      const hitTargets = renderCalloutHitTargets(callout, pageSize, isSelected, isKneeDragging);
 
       elements.push(
         // UX: wrap visible element + invisible hit targets in a shared
@@ -1487,7 +1493,7 @@ const SVGAnnotationLayer = memo(({
     // module-scope imports — stable. renderCalloutHitTargets is a stable
     // useCallback derived from calculateCalloutConnection (module import).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds]);
+  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
@@ -1605,7 +1611,14 @@ const SVGAnnotationLayer = memo(({
 
     const bbox = getAnnotationBBox(renderObj);
     const annotationIsSelected = selectedIds.has(i);
-    const annotationIsHovered = hoveredId === i && !annotationIsSelected;
+    // UX: Phase 19 follow-up — members of a multi-selection share the
+    // same visual treatment as cursor-hover (blue glow) instead of each
+    // getting their own dashed box. The outer group union box and its
+    // handles carry the "you have a group selection" affordance, so the
+    // inner per-annotation dashed boxes were redundant and noisy. Single-
+    // selection (size === 1) keeps its own full overlay with handles.
+    const annotationIsHovered = (hoveredId === i && !annotationIsSelected)
+      || (annotationIsSelected && selectedIds.size > 1);
 
     // Compute transform attribute based on interaction mode
     const computedTransform = (() => {
@@ -2514,27 +2527,12 @@ const SVGAnnotationLayer = memo(({
       {/* Multi-select: individual dashed boxes (no handles) + group union box with handles */}
       {selectedIds.size > 1 && (
         <>
-          {/* Individual dashed boxes for each selected annotation (no handles) */}
-          {Array.from(selectedIds).map((selectedIndex) => {
-            const obj = annotations?.objects?.[selectedIndex];
-            if (!obj) return null;
-            const bbox = getAnnotationBBox(obj);
-            // Apply group drag transform
-            const groupDragTransform = (visualTransform?.id === 'group' && visualTransform.affectedIds?.has(selectedIndex))
-              ? `translate(${visualTransform.dx}, ${visualTransform.dy})`
-              : undefined;
-            return (
-              <g key={`selection-wrapper-${selectedIndex}`} transform={groupDragTransform}>
-                <SVGSelectionOverlay
-                  key={`selection-${selectedIndex}`}
-                  bbox={bbox}
-                  inverseScale={inverseScale}
-                  onHandleDrag={() => {}}
-                  isGroupSelection={true}
-                />
-              </g>
-            );
-          })}
+          {/* UX: Phase 19 follow-up — individual dashed boxes per member
+              were removed. Each selected annotation now picks up the
+              cursor-hover blue glow via the shared annotationIsHovered
+              branch in the annotation render path above. The outer group
+              union box below is the only selection chrome rendered for
+              a multi-selection. */}
           {/* Group union bounding box with handles */}
           {(() => {
             const bboxes = Array.from(selectedIds)
