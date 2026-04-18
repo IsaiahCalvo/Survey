@@ -39,6 +39,7 @@ import {
   MIN_KNEE_TO_ARROW_DISTANCE,
   MIN_KNEE_TO_BOX_EDGE_DISTANCE,
   MIN_TEXTBOX_TO_ARROW_DISTANCE,
+  calculateCalloutConnection,
 } from '../utils/calloutGeometry.js';
 
 /**
@@ -268,9 +269,23 @@ export function useSVGInteraction({
       return; // Don't initiate drag on shift-click toggle
     }
 
+    const wasAlreadySelected = selectedIds.has(index);
+
     // Select if not already selected
-    if (!selectedIds.has(index)) {
+    if (!wasAlreadySelected) {
       selectAnnotation(index, false);
+    }
+
+    // UX: Phase 19 follow-up — plain click on a NEW annotation must
+    // also clear any selected callouts. Without this, a user who had
+    // a shape + a callout group-selected would click a new shape and
+    // see the callout remain in the selection (outer dashed box
+    // spanning shape + callout). Callout pointerdown already calls
+    // deselectAll() to clear annotations; this is the symmetric side.
+    // Skip when clicking an already-selected annotation — that's a
+    // drag-to-move, not a selection switch (group move stays intact).
+    if (!wasAlreadySelected && onSelectedCalloutIdsChange) {
+      onSelectedCalloutIdsChange(new Set());
     }
 
     // Initiate drag-to-move
@@ -1604,6 +1619,28 @@ export function useSVGInteraction({
               textBoxWidth: original.textBoxWidth,
               textBoxHeight: original.textBoxHeight,
             });
+          } else if (
+            ds.partType === 'arrowTip'
+            || ds.partType === 'textBox'
+            || ds.partType === 'textBoxResize'
+          ) {
+            // UX: Phase 15 UAT-3 (2026-04-18) — when the final state is
+            // valid but required auto-routing (stored knee sits inside
+            // the new textbox, or the stored knee→arrow line crosses
+            // the new textbox), persist the routed midpoint as the new
+            // stored knee so a subsequent click on the visible knee
+            // grabs where the user sees it — not where it used to be.
+            const conn = calculateCalloutConnection(
+              bl, bt, bw, bh, kn, at, 0
+            );
+            const routedX = conn.effectiveKnee.x;
+            const routedY = conn.effectiveKnee.y;
+            const drift = Math.hypot(routedX - kn.x, routedY - kn.y);
+            if (drift > 0.5) {
+              onUpdateCalloutLive(ds.calloutId, {
+                knee: { x: routedX / W, y: routedY / H },
+              });
+            }
           }
         }
       }
