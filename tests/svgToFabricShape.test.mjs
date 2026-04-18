@@ -67,6 +67,26 @@ test('polyline annotation: preserves points array', () => {
   assert.deepEqual(shape.points, points);
 });
 
+test('polygon annotation: retypes to polyline + appends closing edge', () => {
+  const points = [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 20, y: 0 }];
+  const ann = { type: 'polygon', points, strokeWidth: 2 };
+  const shape = toFabricShape(ann);
+  // Dispatcher only knows polyline; polygon must retype so it gets hit-tested.
+  assert.equal(shape.type, 'polyline');
+  // Closing edge = first point appended at the end.
+  assert.equal(shape.points.length, 4);
+  assert.deepEqual(shape.points[0], shape.points[3]);
+  assert.deepEqual(shape.points.slice(0, 3), points);
+});
+
+test('polygon annotation: degenerate (<=2 points) does not duplicate', () => {
+  const points = [{ x: 0, y: 0 }, { x: 10, y: 10 }];
+  const ann = { type: 'polygon', points };
+  const shape = toFabricShape(ann);
+  assert.equal(shape.type, 'polyline');
+  assert.deepEqual(shape.points, points);
+});
+
 test('textbox annotation: preserves width/height', () => {
   const ann = { type: 'textbox', left: 5, top: 5, width: 100, height: 20, text: 'hi' };
   const shape = toFabricShape(ann);

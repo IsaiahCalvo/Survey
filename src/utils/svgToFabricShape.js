@@ -82,8 +82,21 @@ export function toFabricShape(annotation, options = {}) {
       };
 
     case 'polyline':
-    case 'polygon':
       return { ...base, points: a.points ?? [] };
+
+    case 'polygon': {
+      // The hit-test dispatcher only has a 'polyline' case — polygons fall
+      // through to a default bbox fallback that can't hit-test plain JSON
+      // annotations (no getBoundingRect). Map polygon -> polyline and
+      // append the closing edge (first point = last point) so the polygon's
+      // outline is fully represented as connected line segments. Matches
+      // how imported PDF polygon regions should participate in the
+      // AutoCAD crossing marquee — their stroked outline is what the user
+      // sees and expects to hit-test against.
+      const pts = Array.isArray(a.points) ? a.points : [];
+      const closed = pts.length > 2 ? [...pts, pts[0]] : pts.slice();
+      return { ...base, type: 'polyline', points: closed };
+    }
 
     case 'path':
       return {
