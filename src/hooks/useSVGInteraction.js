@@ -82,6 +82,11 @@ export function useSVGInteraction({
   // ---------------------------------------------------------------------------
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [hoveredId, setHoveredId] = useState(null);
+  // UX: Phase 19 follow-up — callouts now get a cursor-hover indicator
+  // and participate in the multi-select hover-glow style. Separate from
+  // hoveredId (annotations) because callout ids are strings and live in
+  // App.jsx state, so mixing the two would require namespaced keys.
+  const [hoveredCalloutId, setHoveredCalloutId] = useState(null);
   const [inverseScale, setInverseScale] = useState(1);
   const [interactionState, setInteractionState] = useState('idle'); // 'idle' | 'dragging' | 'resizing' | 'rotating'
   // UX: Phase 15 UAT-3 (2026-04-18) — which callout part (if any) is being
@@ -356,6 +361,19 @@ export function useSVGInteraction({
    */
   const handleAnnotationPointerLeave = useCallback((e, index) => {
     setHoveredId((prev) => (prev === index ? null : prev));
+  }, []);
+
+  /**
+   * Phase 19 follow-up — callout hover enter / leave. Same contract as
+   * the annotation handlers but keyed by callout id (string). Wired on
+   * the outer data-callout-id group in SVGAnnotationLayer so the whole
+   * callout (textbox + connector + handles) counts as one hover zone.
+   */
+  const handleCalloutPointerEnter = useCallback((id) => {
+    setHoveredCalloutId(id);
+  }, []);
+  const handleCalloutPointerLeave = useCallback((id) => {
+    setHoveredCalloutId((prev) => (prev === id ? null : prev));
   }, []);
 
   /**
@@ -1488,7 +1506,7 @@ export function useSVGInteraction({
       // captured during the drag) so the callout visibly snaps back to
       // the last good spot. 'whole' drags are trivially safe and skip
       // the check.
-      if (onUpdateCalloutLive && ds.lastSafeCalloutPositions && ds.partType !== 'whole' && ds.partType !== 'textBoxResize') {
+      if (onUpdateCalloutLive && ds.lastSafeCalloutPositions && ds.partType !== 'whole') {
         const W = pageWidth || 1;
         const H = pageHeight || 1;
         const last = ds.lastSafeCalloutPositions;
@@ -1503,8 +1521,12 @@ export function useSVGInteraction({
           const kn = { x: (current.knee?.x ?? 0) * W, y: (current.knee?.y ?? 0) * H };
           const bl = (current.textBoxPosition?.x ?? 0) * W;
           const bt = (current.textBoxPosition?.y ?? 0) * H;
-          const bw = (original.textBoxWidth || 0) * W;
-          const bh = (original.textBoxHeight || 0) * H;
+          // UX: resize drag mutates width/height during the drag — read
+          // the current dims from React state so the release-time rect
+          // matches what the user sees. Position-only drags leave dims
+          // untouched, so the original falls through cleanly.
+          const bw = ((current.textBoxWidth ?? original.textBoxWidth) || 0) * W;
+          const bh = ((current.textBoxHeight ?? original.textBoxHeight) || 0) * H;
           const br = bl + bw;
           const bb = bt + bh;
           const pointInsideRect = (p, l, t, r, b) =>
@@ -1537,22 +1559,22 @@ export function useSVGInteraction({
           };
 
           let dropSafe = true;
-          if (ds.partType === 'knee') {
-            // UX: Phase 15 UAT-3 (2026-04-18) — knee drag is free during
-            // mouse-down; release checks the final spot. Invalid if the
-            // knee lands inside the textbox, OR if the knee→arrow line
-            // would cut through the textbox interior (knee dropped on
-            // the opposite side of the textbox from the arrow). Line1
-            // starts on the textbox edge by construction so it can't
-            // cross. Rollback restores the last valid frame from the
-            // drag so the knee + both lines return to their previous
-            // safe positions.
+          if (ds.partType === 'knee' || ds.partType === 'textBox' || ds.partType === 'textBoxResize') {
+            // UX: Phase 15 UAT-3 (2026-04-18) — free drag during mouse
+            // down, release checks the final spot. Invalid if the knee
+            // lands inside the textbox, OR the arrow lands inside the
+            // textbox, OR the knee→arrow line cuts through the textbox
+            // (user dropped the box across that line). Line1 starts on
+            // the textbox edge by construction so it can't cross. On
+            // invalid release we roll back to the pre-drag snapshot:
+            // knee, arrow, textbox, both lines all return together.
             const kneeInside = pointInsideRect(kn, bl, bt, br, bb);
+            const arrowInside = pointInsideRect(at, bl, bt, br, bb);
             const line2Cuts = segmentCrossesRect(kn, at, bl, bt, br, bb);
-            dropSafe = !kneeInside && !line2Cuts;
+            dropSafe = !kneeInside && !arrowInside && !line2Cuts;
           } else {
-            // Fallback: prior distance-rule set for arrow + textbox
-            // drags. Replaced per partType as we tackle each in turn.
+            // Fallback: prior distance-rule set for arrow drag. Replaced
+            // per partType as we tackle each in turn.
             const outside = (p, l, t, r, b) => !pointInsideRect(p, l, t, r, b);
             const dRect = (pp, l, t, r, b) => {
               const ddx = Math.max(0, Math.max(l - pp.x, pp.x - r));
@@ -1576,6 +1598,11 @@ export function useSVGInteraction({
               arrowTip: original.arrowTip,
               knee: original.knee,
               textBoxPosition: original.textBoxPosition,
+              // UX: resize drags also mutate width/height — restore both
+              // so the textbox returns to its pre-drag size, not just
+              // its pre-drag position.
+              textBoxWidth: original.textBoxWidth,
+              textBoxHeight: original.textBoxHeight,
             });
           }
         }
@@ -1928,6 +1955,9 @@ export function useSVGInteraction({
     handleAnnotationPointerDown,
     handleAnnotationPointerEnter,
     handleAnnotationPointerLeave,
+    handleCalloutPointerEnter,
+    handleCalloutPointerLeave,
+    hoveredCalloutId,
     handleAnnotationDoubleClick,
     handleSvgPointerDown,
     handleHandlePointerDown,

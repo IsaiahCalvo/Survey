@@ -217,6 +217,7 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   const {
     selectedIds, hoveredId, inverseScale, interactionState, activeCalloutDrag, visualTransform,
+    hoveredCalloutId, handleCalloutPointerEnter, handleCalloutPointerLeave,
     handleAnnotationPointerDown, handleAnnotationPointerEnter,
     handleAnnotationPointerLeave, handleAnnotationDoubleClick,
     handleSvgPointerDown, handleHandlePointerDown,
@@ -1237,7 +1238,12 @@ const SVGAnnotationLayer = memo(({
   // the overlay invisible but `pointer-events: all/stroke` makes it
   // clickable. Rendered AFTER the visible chrome (via the wrap <g> in
   // filteredCallouts) so hit targets sit on top.
-  const renderCalloutHitTargets = useCallback((callout, pageSize, isSelected, isKneeDragging) => {
+  const renderCalloutHitTargets = useCallback((callout, pageSize, isSelected, isKneeDragging, options = {}) => {
+    // UX: Phase 19 follow-up — in multi-selection, callout handles stay
+    // hidden and a soft blue outline glow replaces them (matching the
+    // annotation hover-glow style). `showGlow` also drives the callout's
+    // cursor-hover indicator for solo callouts.
+    const { showHandles = true, showGlow = false } = options;
     if (!callout || !callout.arrowTip || !callout.knee) return null;
     const { width: W, height: H } = pageSize;
     const atX = callout.arrowTip.x * W;
@@ -1327,7 +1333,27 @@ const SVGAnnotationLayer = memo(({
             existing muscle memory. Corner circles carry
             data-callout-part='textBox-tl' / 'tr' / 'bl' / 'br' so the
             interaction hook can route them to a resize drag mode. */}
-        {isSelected && (
+        {showGlow && (
+          <>
+            {/* UX: Phase 19 follow-up — callout hover / multi-select glow.
+                Soft blue outline around the textbox and a stroke tint on
+                the connector lines so users get the same "you could click
+                me" affordance annotations have. pointer-events none. */}
+            <rect
+              x={tbX - 2}
+              y={tbY - 2}
+              width={tbW + 4}
+              height={tbH + 4}
+              fill="none"
+              stroke="#4a90e2"
+              strokeOpacity={0.45}
+              strokeWidth={3}
+              vectorEffect="non-scaling-stroke"
+              style={{ pointerEvents: 'none' }}
+            />
+          </>
+        )}
+        {isSelected && showHandles && (
           <>
             {/* UX: knee + arrow handles use the same white circle + gray
                 stroke + drop shadow as the textbox corner handles so all
@@ -1450,15 +1476,19 @@ const SVGAnnotationLayer = memo(({
         ? (liveCalloutEditBounds || null)
         : null;
 
-      // UX: Phase 15 UAT-3 (2026-04-18) — during an active knee drag of
-      // THIS callout, renderCallout skips auto-routing so line1/line2
-      // meet at the user's raw cursor position. Release-time rollback
-      // handles invalid drops. Other drags keep the auto-routing path.
-      const isKneeDraggingThis = !!activeCalloutDrag
-        && activeCalloutDrag.id === callout.id
-        && activeCalloutDrag.partType === 'knee';
+      // UX: Phase 15 UAT-3 (2026-04-18) — during an active knee, textbox,
+      // or textbox-resize drag on THIS callout, renderCallout skips the
+      // auto-routing branch so line1/line2 meet at the raw stored knee.
+      // Release-time rollback handles invalid drops. Other drags keep
+      // the auto-routing path.
+      const dragPart = activeCalloutDrag && activeCalloutDrag.id === callout.id
+        ? activeCalloutDrag.partType
+        : null;
+      const skipAutoRoute = dragPart === 'knee'
+        || dragPart === 'textBox'
+        || dragPart === 'textBoxResize';
       // UX: CALL-10 — new signature takes pageSize object, emits data attributes
-      const element = renderCallout(callout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout, isKneeDraggingThis);
+      const element = renderCallout(callout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout, skipAutoRoute);
       if (!element) continue;
 
       // UX: Phase 14 Task 2 — invisible hit-target overlays for callout
@@ -1473,20 +1503,48 @@ const SVGAnnotationLayer = memo(({
       const isSelected = effectiveSelectedCalloutIds.has
         ? effectiveSelectedCalloutIds.has(callout.id)
         : false;
-      // UX: Phase 15 UAT-3 (2026-04-18) — during an active knee drag the
-      // knee handle tracks the user's cursor (raw stored knee), not the
-      // auto-routed midpoint. Other drags let the handle follow the bend.
+      // UX: Phase 15 UAT-3 (2026-04-18) — during knee / textbox / textbox
+      // resize drags the knee handle stays pinned to its stored location
+      // (no auto-routed midpoint drift) so overlapping the knee with the
+      // dragged textbox doesn't make the knee "jump." All recalculation
+      // defers to mouse-up.
       const isKneeDragging = !!activeCalloutDrag
         && activeCalloutDrag.id === callout.id
-        && activeCalloutDrag.partType === 'knee';
-      const hitTargets = renderCalloutHitTargets(callout, pageSize, isSelected, isKneeDragging);
+        && (
+          activeCalloutDrag.partType === 'knee'
+          || activeCalloutDrag.partType === 'textBox'
+          || activeCalloutDrag.partType === 'textBoxResize'
+        );
+      // UX: Phase 19 follow-up — group-selection parity for callouts.
+      // Compute total selection count (annotations + callouts). When
+      // more than one thing is selected overall, the callout's handles
+      // hide and it paints the same hover-glow style as group-member
+      // annotations. Cursor hover on a non-selected callout also paints
+      // the glow so there's a "you can click me" affordance for users.
+      const totalSelected =
+        (selectedIds?.size || 0) + (effectiveSelectedCalloutIds?.size || 0);
+      const isMultiSelect = totalSelected > 1;
+      const isHovered = hoveredCalloutId === callout.id;
+      const showHandles = isSelected && !isMultiSelect;
+      const showGlow = (isSelected && isMultiSelect) || (!isSelected && isHovered);
+      const hitTargets = renderCalloutHitTargets(
+        callout,
+        pageSize,
+        isSelected,
+        isKneeDragging,
+        { showHandles, showGlow },
+      );
 
       elements.push(
         // UX: wrap visible element + invisible hit targets in a shared
         // fragment via an outer <g> so the hit targets render AFTER the
         // visible chrome (on top of it, catching pointer events).
         // eslint-disable-next-line react/jsx-key
-        <g key={`callout-wrap-${callout.id || i}`}>
+        <g
+          key={`callout-wrap-${callout.id || i}`}
+          onPointerEnter={() => handleCalloutPointerEnter(callout.id)}
+          onPointerLeave={() => handleCalloutPointerLeave(callout.id)}
+        >
           {element}
           {hitTargets}
         </g>
@@ -2532,7 +2590,7 @@ const SVGAnnotationLayer = memo(({
         );
       })}
       {/* Multi-select: individual dashed boxes (no handles) + group union box with handles */}
-      {selectedIds.size > 1 && (
+      {(selectedIds.size + (effectiveSelectedCalloutIds?.size || 0)) > 1 && (
         <>
           {/* UX: Phase 19 follow-up — individual dashed boxes per member
               were removed. Each selected annotation now picks up the
@@ -2546,6 +2604,35 @@ const SVGAnnotationLayer = memo(({
               .map(idx => annotations?.objects?.[idx])
               .filter(Boolean)
               .map(obj => getAnnotationBBox(obj));
+            // UX: Phase 19 follow-up — callouts participate in the group
+            // union bbox too. Without this, a selection mixing annotations
+            // and callouts drew an outer box that only covered the
+            // annotations, leaving callouts stranded outside the group.
+            if (effectiveSelectedCalloutIds && callouts && callouts.length > 0) {
+              const pageW = width;
+              const pageH = height;
+              for (const callout of callouts) {
+                if (!callout || !effectiveSelectedCalloutIds.has?.(callout.id)) continue;
+                const xs = [
+                  callout.arrowTip?.x ?? 0,
+                  callout.knee?.x ?? 0,
+                  callout.textBoxPosition?.x ?? 0,
+                  (callout.textBoxPosition?.x ?? 0) + (callout.textBoxWidth ?? 0),
+                ].map((n) => n * pageW);
+                const ys = [
+                  callout.arrowTip?.y ?? 0,
+                  callout.knee?.y ?? 0,
+                  callout.textBoxPosition?.y ?? 0,
+                  (callout.textBoxPosition?.y ?? 0) + (callout.textBoxHeight ?? 0),
+                ].map((n) => n * pageH);
+                bboxes.push({
+                  left: Math.min(...xs),
+                  top: Math.min(...ys),
+                  width: Math.max(...xs) - Math.min(...xs),
+                  height: Math.max(...ys) - Math.min(...ys),
+                });
+              }
+            }
             if (bboxes.length === 0) return null;
             const groupBBox = getGroupBBox(bboxes);
             // Apply group drag transform to union box
