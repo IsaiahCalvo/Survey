@@ -62,6 +62,7 @@ See [`milestones/v2.1-ROADMAP.md`](milestones/v2.1-ROADMAP.md) for full phase de
 - [ ] **Phase 16: Line/Arrow Mini-Toolbar + Curvature Pill + Min-Drag** — Line/arrow "act like regular shapes" with a mini-toolbar matching rect/circle/ellipse lifecycle, a hover-reveal typeable curvature pill mirroring the v2.1 `RotationInputField` + `applyOptimisticRotation` pattern, and a minimum-drag-length threshold on creation.
 - [ ] **Phase 17: Callout Handle Collisions + Rollback + Resize** — 30-px collision constraints between arrowTip/knee/textbox handles, whole-callout snap-back on drop into invalid configurations, and correct corner-resize geometry at all zoom levels (fix four underlying issues enumerated in CURRENT-REPO-AUDIT.md Gap 3).
 - [ ] **Phase 18: Callout Auto-Routing + Hover Affordances + Self-Destruct** — Liang-Barsky auto-routing so the knee wraps around the textbox without the connector lines crossing the interior, hover-reveal knee/arrowTip handles with 50 ms hide delay, selection-preview hover glow, and empty-text self-destruct on edit-mode exit.
+- [ ] **Phase 19: AutoCAD Window + Crossing Selection** — Port the dormant AutoCAD-style marquee selection from the Fabric canvas layer to the SVG selection surface. Drag left-to-right draws a solid blue box that selects only annotations fully enclosed; drag right-to-left draws a dashed green box that selects any annotation the box touches. Reuses existing rectangle-intersection geometry math via a thin adapter — no changes to the geometry library itself.
 
 ## Phase Details
 
