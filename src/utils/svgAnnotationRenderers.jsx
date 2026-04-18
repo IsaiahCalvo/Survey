@@ -673,9 +673,30 @@ export const renderText = (obj, index, liveBounds = null) => {
             fontStyle: obj.fontStyle || 'normal',
             color: obj.fill || '#000',
             textAlign: obj.textAlign || 'left',
-            lineHeight: obj.lineHeight || 1.16,
+            // UX: Fabric 5.x textbox per-line pixel step =
+            // `fontSize × lineHeight × _fontSizeMult` where `_fontSizeMult` is
+            // the hard-coded 1.13 on Fabric.Text.prototype. CSS unitless
+            // line-height on the SVG foreignObject skips that multiplier, so
+            // without compensation the SVG stepped shorter than Fabric and
+            // the caret drifted ~2.88 px further down per wrapped line during
+            // edit. Multiplying by 1.13 here aligns the two rulers so the
+            // caret stays glued to the rendered letters no matter how many
+            // lines wrap. (Plan 15-04 Issue 1, verified 2026-04-17.)
+            lineHeight: (obj.lineHeight || 1.16) * 1.13,
             overflow: 'visible',
             wordWrap: 'break-word',
+            // UX: Fabric Textbox wraps with `splitByGrapheme: true` — break at
+            // any character regardless of word boundaries. CSS `word-wrap:
+            // break-word` alone prefers word boundaries and only breaks inside
+            // a word when the word itself overflows, so dense punctuation like
+            // `.` `;` `'` creates extra break opportunities the browser
+            // exploits and Fabric does not. The count diverges (23 Fabric
+            // lines ↔ 30 SVG lines in the worst case), visual lines spill past
+            // the foreignObject border, and Option+Arrow cursor jumps land on
+            // word boundaries Fabric sees but the user does not. `break-all`
+            // forces CSS to break per-character so wrap points line up 1:1.
+            // (Plan 15-04 Issue 1 follow-up, 2026-04-17.)
+            wordBreak: 'break-all',
             whiteSpace: 'pre-wrap',
             padding: 0,
             WebkitFontSmoothing: 'antialiased',
@@ -881,9 +902,23 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
                 color: callout.style?.fontColor || callout.style?.textColor || '#000',
                 overflow: 'visible',
                 wordWrap: 'break-word',
+                // UX: match renderText — Fabric's `splitByGrapheme: true`
+                // breaks at any character, CSS default prefers word
+                // boundaries + only breaks inside a word on overflow.
+                // `break-all` keeps SVG wrap points aligned with Fabric's,
+                // preventing visual-line-count drift (and the resulting
+                // border overflow) during callout edit.
+                wordBreak: 'break-all',
                 whiteSpace: 'pre-wrap',
                 boxSizing: 'border-box',
                 padding: 0,
+                // UX: match renderText's line-height fix (Plan 15-04 Issue 1).
+                // Fabric textbox per-line step = fontSize * lineHeight *
+                // _fontSizeMult (1.13). Inherited `normal` line-height on the
+                // browser side stepped shorter than Fabric, so the caret
+                // drifted down by ~2.21 px per wrapped line during callout
+                // edit. Explicit 1.16 * 1.13 keeps SVG and Fabric in lockstep.
+                lineHeight: (callout.style?.lineHeight || 1.16) * 1.13,
                 WebkitFontSmoothing: 'antialiased',
                 MozOsxFontSmoothing: 'grayscale',
               }}
