@@ -11178,14 +11178,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // resolves (pageNumber, annotationIndex) from the click target and invokes this
   // — one listener, always on, covers every page without needing PAL to be mounted.
   useEffect(() => {
-    window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, event }) => {
+    window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, groupIndices, event }) => {
       setAnnotationContextMenu({
         x: event.clientX,
         y: event.clientY,
         pageNumber,
         annotationIndex,
         calloutId,
-        kind, // 'page' | 'callout' | 'counter' | 'annotation'
+        kind, // 'page' | 'callout' | 'counter' | 'annotation' | 'group'
+        // UX: Phase 19 follow-up — when kind === 'group', this holds the
+        // array of selected annotation indices so batch handlers (cut,
+        // copy, delete, z-order) can iterate them in one go.
+        groupIndices: Array.isArray(groupIndices) ? groupIndices.slice() : null,
       });
     };
     return () => {
@@ -24462,6 +24466,68 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
     const next = JSON.parse(JSON.stringify(page));
     if (!Array.isArray(next.objects)) next.objects = [];
+    // UX: Phase 19 follow-up — multi-object paste. When clipboard holds
+    // an array of objects (from group copy/cut), translate every item
+    // by the same delta so their relative layout is preserved, then
+    // commit one atomic save. Single-object path falls through to the
+    // existing cursor-centered paste logic below.
+    if (Array.isArray(clipboardAnnotation.objects) && clipboardAnnotation.objects.length > 0) {
+      const clones = clipboardAnnotation.objects.map((obj) => JSON.parse(JSON.stringify(obj)));
+      // Compute the group's top-left from the stored source bbox (falls
+      // back to scanning clones if missing).
+      const srcBBox = clipboardAnnotation.bbox || (() => {
+        let minL = Infinity, minT = Infinity;
+        for (const c of clones) {
+          const l = typeof c.left === 'number' ? c.left : 0;
+          const t = typeof c.top === 'number' ? c.top : 0;
+          if (l < minL) minL = l;
+          if (t < minT) minT = t;
+        }
+        return { left: Number.isFinite(minL) ? minL : 0, top: Number.isFinite(minT) ? minT : 0 };
+      })();
+
+      // Resolve cursor-in-viewbox coords same as the single-paste path.
+      let dx = 20;
+      let dy = 20;
+      try {
+        const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
+        const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
+        const pageDiv = (svgWrap || palRoot)?.closest?.('.e-pv-page-div') || null;
+        const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
+        const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
+        const viewBoxW = vb && vb.length === 4 ? parseFloat(vb[2]) : NaN;
+        const viewBoxH = vb && vb.length === 4 ? parseFloat(vb[3]) : NaN;
+        const pageRect = pageDiv?.getBoundingClientRect?.() || null;
+        const scaleX = (pageDiv?.offsetWidth && viewBoxW) ? pageDiv.offsetWidth / viewBoxW : null;
+        const scaleY = (pageDiv?.offsetHeight && viewBoxH) ? pageDiv.offsetHeight / viewBoxH : null;
+        if (pageRect && scaleX && scaleY) {
+          const cursorX = (clientX - pageRect.left) / scaleX;
+          const cursorY = (clientY - pageRect.top) / scaleY;
+          dx = cursorX - srcBBox.left;
+          dy = cursorY - srcBBox.top;
+        }
+      } catch (_) { /* fallthrough to +20 offset */ }
+
+      for (const c of clones) {
+        c.pdfAnnotationId = `paste-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        if (c.id && typeof c.id === 'string') {
+          c.id = `${c.id}-paste-${Date.now().toString(36)}`;
+        }
+        if (typeof c.left === 'number') c.left += dx;
+        if (typeof c.top === 'number') c.top += dy;
+        next.objects.push(c);
+      }
+      handleSaveAnnotations(pageNumber, next, {
+        source: 'object:modified',
+        action: 'paste',
+        checkpointPolicy: 'normal',
+      });
+      if (clipboardAnnotation.mode === 'cut') {
+        setClipboardAnnotation(null);
+      }
+      return true;
+    }
+
     const pasted = JSON.parse(JSON.stringify(clipboardAnnotation.object));
     // UX: clone needs a fresh id so the SVG renderer and selection path
     // don't treat it as the same shape as the source. Keep `isPdfImported`
@@ -26497,6 +26563,117 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }),
             item('Send to Back', 'sendToBack', () => {
               handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back');
+            }),
+            sep(),
+            item('Group', 'group'),
+            item('Ungroup', 'ungroup'),
+            sep(),
+            item('Properties', 'properties'),
+          ];
+        } else if (ctx.kind === 'group' && Array.isArray(ctx.groupIndices) && ctx.groupIndices.length >= 2) {
+          // UX: Phase 19 follow-up — right-click inside the outer dashed
+          // box of a multi-selection. Cut/Copy/Paste/Delete and the four
+          // z-order items each operate on every selected annotation at
+          // once, sorted descending so splicing doesn't shift indices
+          // mid-loop. Group / Ungroup stay visual-only until the user
+          // gives the go-ahead to wire them (deferred alongside Shift-
+          // add and Alt-subtract parity).
+          const sortedDesc = [...ctx.groupIndices].sort((a, b) => b - a);
+          const sortedAsc = [...ctx.groupIndices].sort((a, b) => a - b);
+
+          const copyAll = () => {
+            const page = annotationsByPageRef.current?.[ctx.pageNumber];
+            if (!page?.objects) return null;
+            const collected = [];
+            let minLeft = Infinity, minTop = Infinity;
+            for (const idx of sortedAsc) {
+              const obj = page.objects[idx];
+              if (!obj) continue;
+              collected.push(JSON.parse(JSON.stringify(obj)));
+              const l = typeof obj.left === 'number' ? obj.left : 0;
+              const t = typeof obj.top === 'number' ? obj.top : 0;
+              if (l < minLeft) minLeft = l;
+              if (t < minTop) minTop = t;
+            }
+            if (collected.length === 0) return null;
+            return {
+              objects: collected,
+              bbox: {
+                left: Number.isFinite(minLeft) ? minLeft : 0,
+                top: Number.isFinite(minTop) ? minTop : 0,
+              },
+              sourcePageNumber: ctx.pageNumber,
+            };
+          };
+
+          items = [
+            item('Cut', 'cut', () => {
+              const copy = copyAll();
+              if (!copy) return;
+              setClipboardAnnotation({ ...copy, mode: 'cut' });
+              const page = annotationsByPageRef.current?.[ctx.pageNumber];
+              if (!page?.objects) return;
+              const next = JSON.parse(JSON.stringify(page));
+              for (const idx of sortedDesc) {
+                if (idx >= 0 && idx < next.objects.length) next.objects.splice(idx, 1);
+              }
+              handleSaveAnnotations(ctx.pageNumber, next, {
+                source: 'object:modified',
+                action: 'cut',
+                checkpointPolicy: 'normal',
+              });
+              setPendingSvgSelection({
+                pageNumber: ctx.pageNumber,
+                annotationIndex: null,
+                tick: Date.now(),
+              });
+            }),
+            item('Copy', 'copy', () => {
+              const copy = copyAll();
+              if (!copy) return;
+              setClipboardAnnotation({ ...copy, mode: 'copy' });
+            }),
+            item('Paste', 'paste', doPasteAnnotation, Boolean(clipboardAnnotation)),
+            item('Delete', 'delete', () => {
+              const page = annotationsByPageRef.current?.[ctx.pageNumber];
+              if (!page?.objects) return;
+              const next = JSON.parse(JSON.stringify(page));
+              for (const idx of sortedDesc) {
+                if (idx >= 0 && idx < next.objects.length) next.objects.splice(idx, 1);
+              }
+              handleSaveAnnotations(ctx.pageNumber, next, {
+                source: 'object:modified',
+                action: 'delete',
+                checkpointPolicy: 'normal',
+              });
+              setPendingSvgSelection({
+                pageNumber: ctx.pageNumber,
+                annotationIndex: null,
+                tick: Date.now(),
+              });
+            }),
+            sep(),
+            item('Bring to Front', 'bringToFront', () => {
+              // Top-most selected ends on top; keep relative order by
+              // processing from topmost (largest index) downward.
+              for (const idx of sortedDesc) {
+                handleReorderAnnotation(ctx.pageNumber, idx, 'front');
+              }
+            }),
+            item('Bring Forward', 'bringForward', () => {
+              for (const idx of sortedDesc) {
+                handleReorderAnnotation(ctx.pageNumber, idx, 'forward');
+              }
+            }),
+            item('Send Backward', 'sendBackward', () => {
+              for (const idx of sortedAsc) {
+                handleReorderAnnotation(ctx.pageNumber, idx, 'backward');
+              }
+            }),
+            item('Send to Back', 'sendToBack', () => {
+              for (const idx of sortedAsc) {
+                handleReorderAnnotation(ctx.pageNumber, idx, 'back');
+              }
             }),
             sep(),
             item('Group', 'group'),

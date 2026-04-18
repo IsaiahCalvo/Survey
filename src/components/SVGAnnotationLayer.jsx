@@ -1450,8 +1450,15 @@ const SVGAnnotationLayer = memo(({
         ? (liveCalloutEditBounds || null)
         : null;
 
+      // UX: Phase 15 UAT-3 (2026-04-18) — during an active knee drag of
+      // THIS callout, renderCallout skips auto-routing so line1/line2
+      // meet at the user's raw cursor position. Release-time rollback
+      // handles invalid drops. Other drags keep the auto-routing path.
+      const isKneeDraggingThis = !!activeCalloutDrag
+        && activeCalloutDrag.id === callout.id
+        && activeCalloutDrag.partType === 'knee';
       // UX: CALL-10 — new signature takes pageSize object, emits data attributes
-      const element = renderCallout(callout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout);
+      const element = renderCallout(callout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout, isKneeDraggingThis);
       if (!element) continue;
 
       // UX: Phase 14 Task 2 — invisible hit-target overlays for callout
@@ -2545,8 +2552,22 @@ const SVGAnnotationLayer = memo(({
             const groupDragTransform = (visualTransform?.id === 'group')
               ? `translate(${visualTransform.dx}, ${visualTransform.dy})`
               : undefined;
+            // UX: Phase 19 follow-up — right-click inside the outer
+            // dashed box should open a group context menu (cut/copy/
+            // paste/delete/z-order all at once). The hit-test resolver
+            // walks data attributes looking for annotations first, then
+            // falls back to this marker so empty space inside the group
+            // box dispatches a 'group' kind instead of 'page'.
+            // Indices are serialized as CSV so the dispatcher can read
+            // them without cross-boundary state sharing.
+            const groupIndicesCsv = Array.from(selectedIds).join(',');
             return (
-              <g key="group-selection-wrapper" transform={groupDragTransform}>
+              <g
+                key="group-selection-wrapper"
+                transform={groupDragTransform}
+                data-group-selection-bbox="true"
+                data-group-selection-indices={groupIndicesCsv}
+              >
                 <SVGSelectionOverlay
                   key="group-selection"
                   bbox={groupBBox}
@@ -2554,6 +2575,20 @@ const SVGAnnotationLayer = memo(({
                   onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
                   isGroupSelection={false}
                   strokeOpacity={0.6}
+                />
+                {/* Invisible hit-test rect so the resolver's
+                    getBoundingClientRect fallback has a concrete
+                    element at the union bbox. pointer-events: none so
+                    it never steals events from annotations underneath. */}
+                <rect
+                  x={groupBBox.left}
+                  y={groupBBox.top}
+                  width={groupBBox.width}
+                  height={groupBBox.height}
+                  fill="none"
+                  stroke="none"
+                  pointerEvents="none"
+                  data-group-selection-hitbox="true"
                 />
               </g>
             );

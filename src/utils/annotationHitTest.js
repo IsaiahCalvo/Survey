@@ -17,6 +17,11 @@ export function resolveAnnotationAt(e) {
   let annotationIndex = null;
   let calloutId = null;
   let isCounter = false;
+  // UX: Phase 19 follow-up — when the click lands on empty space inside
+  // the outer dashed bounding box of a multi-selection, resolve it as
+  // a 'group' kind so the right-click menu can batch cut/copy/delete/
+  // z-order across every selected annotation at once.
+  let groupIndices = null;
   const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
 
   const readFrom = (el) => {
@@ -77,10 +82,40 @@ export function resolveAnnotationAt(e) {
     }
   }
 
+  // Group-selection fallback: when no annotation / callout / counter
+  // matched, check whether the click point is inside any page's outer
+  // dashed group bounding box. The outer box is pointer-events:none so
+  // this direct-DOM lookup is the only way to resolve it.
+  if (annotationIndex == null && !calloutId && !isCounter) {
+    const groupBoxes = document.querySelectorAll('[data-group-selection-bbox="true"]');
+    for (const el of groupBoxes) {
+      const hit = el.querySelector('[data-group-selection-hitbox="true"]') || el;
+      const r = hit.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0
+        && e.clientX >= r.left && e.clientX <= r.right
+        && e.clientY >= r.top && e.clientY <= r.bottom) {
+        // Resolve the page this group lives on by walking up to the
+        // SVG wrapper.
+        const wrapper = el.closest('[data-diag-svg-wrapper]');
+        if (wrapper) {
+          pageNumber = Number(wrapper.getAttribute('data-diag-svg-wrapper'));
+        }
+        const csv = el.getAttribute('data-group-selection-indices') || '';
+        groupIndices = csv
+          .split(',')
+          .map((s) => Number(s))
+          .filter((n) => Number.isFinite(n));
+        if (groupIndices.length >= 2) break;
+        groupIndices = null;
+      }
+    }
+  }
+
   let kind = 'page';
   if (calloutId) kind = 'callout';
   else if (isCounter) kind = 'counter';
   else if (annotationIndex != null) kind = 'annotation';
+  else if (groupIndices && groupIndices.length >= 2) kind = 'group';
 
-  return { pageNumber, annotationIndex, calloutId, kind };
+  return { pageNumber, annotationIndex, calloutId, kind, groupIndices };
 }

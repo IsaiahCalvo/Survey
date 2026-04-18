@@ -83,20 +83,20 @@ import { resolveAnnotationAt } from './annotationHitTest.js';
   document.addEventListener('contextmenu', (e) => {
     logEvent('capture', e);
 
-    const { pageNumber, annotationIndex, calloutId, kind } = resolveAnnotationAt(e);
+    const { pageNumber, annotationIndex, calloutId, kind, groupIndices } = resolveAnnotationAt(e);
     const globalHandler = typeof window.__onAnnotationContextMenu === 'function'
       ? window.__onAnnotationContextMenu
       : null;
     const palHandler = pageNumber != null ? lookupPalHandler(pageNumber) : null;
     const handler = globalHandler || palHandler;
 
-    console.log(`[CTXDIAG dispatch] page=${pageNumber} annoIdx=${annotationIndex} calloutId=${calloutId} kind=${kind} handler=${!!handler} source=${globalHandler ? 'app' : (palHandler ? 'pal' : 'none')} registered=${JSON.stringify(listRegistered())}`);
+    console.log(`[CTXDIAG dispatch] page=${pageNumber} annoIdx=${annotationIndex} calloutId=${calloutId} kind=${kind} groupIndices=${groupIndices ? groupIndices.length : 0} handler=${!!handler} source=${globalHandler ? 'app' : (palHandler ? 'pal' : 'none')} registered=${JSON.stringify(listRegistered())}`);
 
     if (handler) {
       e.preventDefault();
       e.stopPropagation();
       try {
-        handler({ pageNumber, annotationIndex, calloutId, kind, event: e });
+        handler({ pageNumber, annotationIndex, calloutId, kind, groupIndices, event: e });
       } catch (err) {
         console.warn('[CTXDIAG dispatch] handler threw', err?.message || err);
       }
