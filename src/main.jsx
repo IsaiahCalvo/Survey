@@ -30,6 +30,14 @@ import ErrorBoundary from './components/ErrorBoundary';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import { AuthProvider } from './contexts/AuthContext';
 import { MSGraphProvider } from './contexts/MSGraphContext';
+// Fill-bleed diagnostic globals: __shapeSpyOn / __shapeSpyOff / __captureAllShapes
+// + Cmd/Ctrl+Shift+D page dump + Cmd/Ctrl+Shift+click shape capture. Inert until
+// toggled on. See src/utils/shapeBleedDiagnostics.js.
+import './utils/shapeBleedDiagnostics';
+// Right-click context-menu diagnostic — logs every contextmenu event at
+// document level so we can confirm whether right-click reaches PAL's
+// onContextMenu handler. Remove once wiring is fixed.
+import './utils/contextMenuDiagnostics';
 import '@syncfusion/ej2-base/styles/material.css';
 import '@syncfusion/ej2-buttons/styles/material.css';
 import '@syncfusion/ej2-inputs/styles/material.css';

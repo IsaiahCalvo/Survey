@@ -436,8 +436,14 @@ export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, ar
           shouldHideLine1 = false;
         }
       } else {
-        // Knee is outside, but arrow crosses textbox
-        const closestBorderPoint = findClosestBorderPoint(knee, adjustedBoxLeft, adjustedBoxTop, boxRight, boxBottom);
+        // Knee is outside, but the knee→arrow line crosses the textbox.
+        // Phase 15 UAT-3 (2026-04-18) — use the textbox edge closest to
+        // the ARROW, not the knee. Using the closest-to-knee edge lets
+        // line1 start on the far side of the textbox (from the arrow),
+        // which forces the knee midpoint onto a path that cuts through
+        // the box. Closest-to-arrow keeps line1 on the arrow's side so
+        // line1 + line2 never cross the textbox on commit.
+        const closestBorderPoint = findClosestBorderPoint(arrowTip, adjustedBoxLeft, adjustedBoxTop, boxRight, boxBottom);
         const dx = arrowTip.x - closestBorderPoint.x;
         const dy = arrowTip.y - closestBorderPoint.y;
         const distance = Math.sqrt(dx * dx + dy * dy);

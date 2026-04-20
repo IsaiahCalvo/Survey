@@ -8,7 +8,7 @@
  * Each function takes a Fabric.js JSON object and returns a React SVG element.
  */
 import React from 'react';
-import { measureTextBounds } from './svgBoundingBox';
+import { measureTextBounds, getLineEndpoints } from './svgBoundingBox';
 // Phase 14 CALL-10: renderCallout delegates to a pure data-spec builder in
 // calloutEditAdapter.js so the contract can be unit-tested without loading
 // .jsx from Node --test. sanitizeFontFamily strips CSS fallback stacks at
@@ -197,22 +197,36 @@ export const renderRect = (obj, index) => {
 
   if (!inset) return React.cloneElement(rectEl, { key });
 
-  // UX: clipPath mirrors the visible rect exactly so only the inner half of
-  // the stroke paints. Outer half is clipped → border sits flush with the
-  // shape edge, no pink sliver poking past it. See shouldInsetStroke doc.
+  // UX 2026-04-20: draw the inset-stroke rect as a shrunken path with a
+  // centered stroke so the outer edge of the stroke lands exactly at the
+  // original (left, top, effectiveWidth, effectiveHeight) box. The prior
+  // approach clipped a full-size rect against a matching clipPath, which
+  // worked at 0° but shaved miter joins at the corners once rotated
+  // (clipPath + transform composition trimmed the 0.41·sw overhang at each
+  // 90° corner). Shrinking the path by sw/2 per side keeps the mitered
+  // corners inside the visible area, so the full corner paints at every
+  // angle AND the border still sits flush with the shape's edge.
+  const sw = Math.max(0, Number(obj.strokeWidth) || 0);
+  const shrunkL = (obj.left ?? 0) + sw / 2;
+  const shrunkT = (obj.top ?? 0) + sw / 2;
+  const shrunkW = Math.max(0, effectiveWidth - sw);
+  const shrunkH = Math.max(0, effectiveHeight - sw);
   return (
-    <g key={key}>
-      <clipPath id={clipId}>
-        <rect
-          x={obj.left}
-          y={obj.top}
-          width={effectiveWidth}
-          height={effectiveHeight}
-          transform={rotateTransform}
-        />
-      </clipPath>
-      {rectEl}
-    </g>
+    <rect
+      key={key}
+      x={shrunkL}
+      y={shrunkT}
+      width={shrunkW}
+      height={shrunkH}
+      transform={rotateTransform}
+      fill={obj.fill || 'transparent'}
+      stroke={obj.stroke || 'transparent'}
+      strokeWidth={sw}
+      opacity={obj.opacity ?? 1}
+      data-shape-id={shapeId}
+      data-shape-kind="rect"
+      onClick={__shapeClick}
+    />
   );
 };
 
@@ -297,27 +311,56 @@ export const renderLine = (obj, index) => {
   const key = `${isArrow ? 'arrow' : 'line'}-${obj.id || index}`;
   const opacity = obj.opacity ?? 1;
 
+  // UX 2026-04-20: apply obj.angle as a rotation wrapper around the line's
+  // geometric midpoint. Deriving the center from the actual rendered
+  // endpoints (via the spec the renderer is about to draw) handles both
+  // storage conventions — Fabric-constructed lines with left/top/width/
+  // height + offset-from-center x1..y2, AND PDF-imported lines with left/
+  // top/width/height undefined and absolute x1..y2. The prior `obj.left +
+  // obj.width/2` formula collapsed to (0,0) on imported lines, which made
+  // them spin around the page origin and visually disappear on rotate.
+  const angle = obj.angle ?? 0;
+  let rotateTransform;
+  if (angle !== 0) {
+    // UX 2026-04-20: use the RAW endpoint midpoint (pre arrowhead shortening)
+    // as the rotation center so the post-release position exactly matches
+    // the live-preview wrapper, which rotates around the bbox center from
+    // getLineBBox. spec.line.x2 for arrow shapes is shortened to sit at the
+    // arrowhead base — using that midpoint biased the center toward the
+    // tail and caused a subpixel-to-1px jump between drag and commit.
+    const rawEp = getLineEndpoints(obj);
+    const cx = (rawEp.x1 + rawEp.x2) / 2;
+    const cy = (rawEp.y1 + rawEp.y2) / 2;
+    rotateTransform = `rotate(${angle}, ${cx}, ${cy})`;
+  }
+
   if (spec.kind === 'curved') {
     // UX: Curved line/arrow — <path> + optional arrowhead inside <g>.
     // fill='none' on <path> is CRITICAL (Pitfall 5) — otherwise the bezier
     // fills black between the curve and the start-to-end chord. Emitted
     // explicitly by buildLineRenderSpec.
     return (
-      <g key={key} opacity={opacity}>
+      <g key={key} opacity={opacity} transform={rotateTransform}>
         <path {...spec.path} />
         {renderArrowheadFromSpec(spec.arrowhead)}
       </g>
     );
   }
 
-  // Straight branch — byte-identical to pre-Phase-15 when no data.midpoint.
-  // Arrowhead may be 'none' (plain line, no <g> wrapper) or any of the 5
-  // visible styles (line + arrowhead wrapped in <g>).
+  // Straight branch — byte-identical to pre-Phase-15 when no data.midpoint
+  // and no rotation. A rotation wrapper is added whenever obj.angle !== 0.
   if (spec.arrowhead.kind !== 'none') {
     return (
-      <g key={key} opacity={opacity}>
+      <g key={key} opacity={opacity} transform={rotateTransform}>
         <line {...spec.line} />
         {renderArrowheadFromSpec(spec.arrowhead)}
+      </g>
+    );
+  }
+  if (rotateTransform) {
+    return (
+      <g key={key} transform={rotateTransform}>
+        <line {...spec.line} opacity={opacity} />
       </g>
     );
   }
@@ -649,8 +692,14 @@ export const renderText = (obj, index, liveBounds = null) => {
   const innerWidth = Math.max(0, effectiveWidth - 2 * pad);
   const innerHeight = Math.max(0, effectiveHeight - 2 * pad);
   const innerDisplayHeight = innerHeight + descenderBuffer;
+  // UX 2026-04-20: rotate around the textbox's logical center, NOT the
+  // displayHeight center (which adds descenderBuffer / 2 below the logical
+  // center). The live-preview wrapper + selection overlay both pivot around
+  // bbox center (left + width/2, top + height/2), so renderText must too,
+  // otherwise the text snaps vertically/horizontally on release when the
+  // commit angle swaps the outer wrapper rotation for renderText's own.
   const rotateTransform = angle !== 0
-    ? `rotate(${angle}, ${left + effectiveWidth / 2}, ${top + displayHeight / 2})`
+    ? `rotate(${angle}, ${left + effectiveWidth / 2}, ${top + effectiveHeight / 2})`
     : undefined;
 
   return (
@@ -690,8 +739,16 @@ export const renderText = (obj, index, liveBounds = null) => {
         <div
           xmlns="http://www.w3.org/1999/xhtml"
           style={{
-            width: '100%',
-            height: '100%',
+            // UX 2026-04-20: explicit px sizes instead of 100%. SVG
+            // foreignObject does not reliably establish a containing
+            // block for percentage heights across Chromium versions, so
+            // the inner div stayed pinned at its first-render size while
+            // the foreignObject attribute grew during typing. Pinning
+            // the div to innerWidth/innerDisplayHeight keeps CSS layout
+            // in lockstep with the live-broadcast text bounds so newly
+            // typed lines stop disappearing behind the border.
+            width: innerWidth,
+            height: innerDisplayHeight,
             fontSize: `${fontSize}px`,
             fontFamily: obj.fontFamily || 'sans-serif',
             fontWeight: obj.fontWeight || 'normal',
@@ -1023,8 +1080,13 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
               // default — prevents the "text jump" a user saw when entering
               // edit mode under the old +8/+4 offset model.
               style={{
-                width: '100%',
-                height: '100%',
+                // UX 2026-04-20: explicit px sizes so the inner div
+                // tracks the live-growing foreignObject. SVG
+                // foreignObject doesn't reliably resolve percentage
+                // heights during auto-grow, which left new lines
+                // invisible past the imported height.
+                width: Math.max(0, textBox.width - 2 * TEXT_PADDING),
+                height: Math.max(0, boxHeightWithDescenders),
                 // UX: 2026-04-19 — vertically center the text inside the
                 // (descender-padded) box in every state. Fabric's edit-mode
                 // cursor is shifted down by the same center offset so the
@@ -1058,11 +1120,12 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
                 padding: 0,
                 // UX: match renderText's line-height fix (Plan 15-04 Issue 1).
                 // Fabric textbox per-line step = fontSize * lineHeight *
-                // _fontSizeMult (1.13). Inherited `normal` line-height on the
-                // browser side stepped shorter than Fabric, so the caret
-                // drifted down by ~2.21 px per wrapped line during callout
-                // edit. Explicit 1.16 * 1.13 keeps SVG and Fabric in lockstep.
-                lineHeight: (callout.style?.lineHeight || 1.16) * 1.13,
+                // _fontSizeMult (1.13). The callout edit adapter now pins
+                // Fabric lineHeight = 1 so cursor and glyphs use the same
+                // per-line step (fixes 2026-04-20 drift report). Browser
+                // CSS line-height here mirrors that: lineHeight * 1.13 so
+                // view and edit show identical line spacing.
+                lineHeight: (callout.style?.lineHeight || 1) * 1.13,
                 WebkitFontSmoothing: 'antialiased',
                 MozOsxFontSmoothing: 'grayscale',
               }}

@@ -933,6 +933,12 @@ const dumpCursorParity = (phase, source, id, fabricObj, svgEl, canvas, container
       clientWidth: svgEl.clientWidth,
       verticalClip: svgEl.scrollHeight > svgEl.clientHeight + 0.5,
       horizontalClip: svgEl.scrollWidth > svgEl.clientWidth + 0.5,
+      // UX diag 2026-04-20: surface the live SVG text content so the saved
+      // log shows whether new characters are reaching the DOM. Divergence
+      // between fabric.text and this value means the live-bounds broadcast
+      // stalled; match means the bug is visual (z-order / opacity / clip).
+      svgTextContent: (typeof svgEl.textContent === 'string') ? svgEl.textContent : null,
+      svgTextContentLen: (typeof svgEl.textContent === 'string') ? svgEl.textContent.length : null,
     } : null;
     const containerDump = containerEl ? {
       rect: (() => { const r = containerEl.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })(),
@@ -949,6 +955,38 @@ const dumpCursorParity = (phase, source, id, fabricObj, svgEl, canvas, container
       width: canvas.getWidth ? canvas.getWidth() : null,
       height: canvas.getHeight ? canvas.getHeight() : null,
     } : null;
+    // UX diag 2026-04-20: direct screen-position measurement. Computes the
+    // Fabric cursor's absolute screen Y + the first-line SVG glyph's absolute
+    // screen Y and logs the delta. A non-zero delta is the exact pixel gap
+    // the user sees between the blinking cursor and the letters.
+    let cursorVsGlyph = null;
+    try {
+      if (fabricObj && canvas && svgEl && typeof fabricObj.getAbsoluteCoords !== 'function') {
+        const z = canvas.getZoom ? canvas.getZoom() : 1;
+        const canvasEl = canvas.getElement ? canvas.getElement() : null;
+        const canvasRect = canvasEl ? canvasEl.getBoundingClientRect() : null;
+        const lineIndex = fabricObj.get2DCursorLocation ? fabricObj.get2DCursorLocation().lineIndex : 0;
+        const perLine = (fabricObj.getHeightOfLine && Number.isFinite(fabricObj.getHeightOfLine(0)))
+          ? fabricObj.getHeightOfLine(0) : 0;
+        const topOffsetInside = lineIndex * perLine;
+        const cursorScreenY = canvasRect
+          ? canvasRect.top + (fabricObj.top - fabricObj.height / 2) * z
+            + (topOffsetInside + fabricObj.height / 2) * z
+          : null;
+        const svgLineBoxTopY = svgEl.getBoundingClientRect
+          ? svgEl.getBoundingClientRect().top + lineIndex * perLine * z
+          : null;
+        cursorVsGlyph = {
+          lineIndex,
+          perLine,
+          cursorScreenY,
+          svgLineBoxTopY,
+          deltaPx: (cursorScreenY != null && svgLineBoxTopY != null)
+            ? Math.round((cursorScreenY - svgLineBoxTopY) * 100) / 100
+            : null,
+        };
+      }
+    } catch (_e) {}
     console.log('[TextCursorParity]', {
       phase,
       source,
@@ -959,6 +997,7 @@ const dumpCursorParity = (phase, source, id, fabricObj, svgEl, canvas, container
       overflow: overflowDump,
       container: containerDump,
       canvas: canvasDump,
+      cursorVsGlyph,
     });
   } catch (_e) {}
 };
@@ -1852,6 +1891,16 @@ const FabricEditCanvas = memo(({
             // commitAndClose from originalAnnotationRef before persisting.
             fill: 'rgba(0,0,0,0)',
             stroke: 'rgba(0,0,0,0)',
+            // UX 2026-04-20: force strokeWidth to 0 during edit so Fabric's
+            // internal text/cursor layout isn't shifted by half the stroke
+            // thickness. The plain-text annotation edit path uses
+            // strokeWidth: 1; callouts arrive from the adapter with
+            // strokeWidth ≈ 1.4 which offsets the cursor ~0.7 px and drifts
+            // the alignment the user reported. Zero keeps cursor and SVG
+            // glyphs in lockstep; commit restores the visible border via
+            // the SVG layer's rect (adapter-side strokeWidth is preserved
+            // for non-editing paint).
+            strokeWidth: 0,
           });
         }
 
@@ -2009,6 +2058,26 @@ const FabricEditCanvas = memo(({
           const newH = Math.max(Math.round(30 * es), Math.ceil(h));
           canvas.setDimensions({ height: newH });
           containerRef.current.style.height = newH + 'px';
+          // UX 2026-04-20: recompute the callout vertical-center shift on
+          // every keystroke. The edit-entry pass set centerShiftY once
+          // against the imported height, but as the user types past that
+          // the stored-based visibleBoxH became smaller than natural
+          // inner content, leaving Fabric's textbox pinned at a stale
+          // center offset while the SVG view's flex-centered text reflowed
+          // higher. The cursor, which follows Fabric, ended up ~1-2 px
+          // below the letters per line and compounded on wrap. Recomputing
+          // per keystroke keeps Fabric's top in lockstep with the SVG
+          // centering math so the caret and glyphs stay fused.
+          if (reactCalloutId) {
+            const descenderBuffer = (textObj.fontSize || 12) * 0.35;
+            const visibleBoxH = Math.max(storedOuterH2, naturalInnerH) + descenderBuffer;
+            const nextShiftY = Math.max(0, (visibleBoxH - naturalInnerH) / 2);
+            if (Math.abs((textObj.top || 0) - (BBOX_PADDING + padY + nextShiftY)) > 0.01) {
+              textObj.set({ top: BBOX_PADDING + padY + nextShiftY });
+              textObj.setCoords && textObj.setCoords();
+            }
+            calloutCenterShiftYRef.current = nextShiftY;
+          }
           // UX: Phase 15 UAT-2 — broadcast live page-space bounds to App.jsx
           // so callout line1 retracts to the live textbox edge while typing.
           // bboxOriginRef.current holds the page-space origin the textbox was

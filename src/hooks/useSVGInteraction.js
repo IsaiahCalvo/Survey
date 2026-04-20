@@ -254,6 +254,16 @@ export function useSVGInteraction({
    */
   const handleAnnotationPointerDown = useCallback((e, index) => {
     e.stopPropagation();
+    try {
+      const obj = annotations?.objects?.[index];
+      console.log('[BboxScaleDiag] annotation-pointerdown ' + JSON.stringify({
+        ts: new Date().toISOString(), annotationIndex: index,
+        objType: obj?.type, objTool: obj?.tool,
+        shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
+        alreadySelected: selectedIds?.has?.(index),
+        objSnapshot: obj ? { left: obj.left, top: obj.top, width: obj.width, height: obj.height, angle: obj.angle, scaleX: obj.scaleX, scaleY: obj.scaleY, x1: obj.x1, y1: obj.y1, x2: obj.x2, y2: obj.y2 } : null,
+      }));
+    } catch (err) { /* swallow log errors */ }
 
     if (e.shiftKey) {
       // Toggle in selection set (multi-select, Plan 03)
@@ -801,20 +811,40 @@ export function useSVGInteraction({
       const isLeftHandle = ['tl', 'ml', 'bl'].includes(ds.handleId);
       const isTopHandle = ['tl', 'mt', 'tr'].includes(ds.handleId);
 
+      // UX 2026-04-20: rotation-aware resize. For rotated shapes the pointer
+      // must be projected into the shape's LOCAL (un-rotated) frame before
+      // computing the scale, otherwise dragging a side handle on a tilted
+      // shape stretches it along the world X/Y axis instead of along the
+      // shape's own tilted axis — visible as the shape skidding sideways as
+      // it grows. Un-rotate the pointer around the shape's original center
+      // by -angle, then feed the local pointer into the same signed-scale
+      // math. angle=0 reduces to the pre-existing world-aligned behavior.
+      const origAngleDeg = ds.originalProps.angle || 0;
+      const origAngleRad = (origAngleDeg * Math.PI) / 180;
+      const cosA = Math.cos(origAngleRad);
+      const sinA = Math.sin(origAngleRad);
+      // World anchor: stored anchor is in local (un-rotated) frame; rotate it
+      // around the shape's center by angle to get its rendered position.
+      const anchorLocalDx = ds.anchorX - ds.centerX;
+      const anchorLocalDy = ds.anchorY - ds.centerY;
+      const worldAnchorX = ds.centerX + anchorLocalDx * cosA - anchorLocalDy * sinA;
+      const worldAnchorY = ds.centerY + anchorLocalDx * sinA + anchorLocalDy * cosA;
+      // Un-rotate pointer relative to world anchor, into shape's local frame.
+      const ptrDxWorld = svgPoint.x - worldAnchorX;
+      const ptrDyWorld = svgPoint.y - worldAnchorY;
+      const ptrDxLocal = ptrDxWorld * cosA + ptrDyWorld * sinA;
+      const ptrDyLocal = -ptrDxWorld * sinA + ptrDyWorld * cosA;
+
       let newScaleX = ds.originalProps.scaleX;
       let newScaleY = ds.originalProps.scaleY;
 
       if (affectsX && ds.originalProps.width !== 0) {
-        const signedDeltaX = isLeftHandle
-          ? (ds.anchorX - svgPoint.x)   // left handle: anchor = right edge, drag LEFT grows
-          : (svgPoint.x - ds.anchorX);  // right handle: anchor = left edge, drag RIGHT grows
-        newScaleX = signedDeltaX / ds.originalProps.width;
+        const signedLocalDx = isLeftHandle ? -ptrDxLocal : ptrDxLocal;
+        newScaleX = signedLocalDx / ds.originalProps.width;
       }
       if (affectsY && ds.originalProps.height !== 0) {
-        const signedDeltaY = isTopHandle
-          ? (ds.anchorY - svgPoint.y)   // top handle: anchor = bottom edge, drag UP grows
-          : (svgPoint.y - ds.anchorY);  // bottom handle: anchor = top edge, drag DOWN grows
-        newScaleY = signedDeltaY / ds.originalProps.height;
+        const signedLocalDy = isTopHandle ? -ptrDyLocal : ptrDyLocal;
+        newScaleY = signedLocalDy / ds.originalProps.height;
       }
 
       // Shift-lock aspect ratio (per CONTEXT.md: free resize default, Shift
@@ -847,47 +877,77 @@ export function useSVGInteraction({
         if (Math.abs(newScaleY) < 0.01) newScaleY = (newScaleY < 0 ? -1 : 1) * 0.01;
       }
 
-      // Compute new left/top. When scale is positive (normal), the formula
-      // below matches the original behavior. When scale is negative (flipped),
-      // the shape has mirrored across the anchor and its visible left/top
-      // edge snaps to the anchor side; the opposite edge extends PAST the
-      // anchor in the direction the user dragged.
-      //
-      // Renderers (renderRect/renderEllipse in svgAnnotationRenderers.jsx)
-      // and getAnnotationBBox already `Math.abs()` the scale, so a flipped
-      // rect/circle renders correctly using the normalized `newLeft`/`newTop`
-      // as its actual visible top-left corner.
-      let newLeft = ds.originalProps.left;
-      let newTop = ds.originalProps.top;
-
-      if (isLeftHandle) {
-        // Left-side handle: anchor is RIGHT edge. Normal: shape extends LEFT
-        // from anchor. Flipped: shape extends RIGHT from anchor.
-        if (newScaleX >= 0) {
-          newLeft = ds.anchorX - (ds.originalProps.width * newScaleX);
-        } else {
-          newLeft = ds.anchorX;
-        }
-      } else if (['tr', 'mr', 'br'].includes(ds.handleId) && newScaleX < 0) {
-        // Right-side handle flipped: original-left was the anchor; new right
-        // edge is to the LEFT of it. Visible left edge = original left minus
-        // |scale| * original width.
-        newLeft = ds.originalProps.left + (ds.originalProps.width * newScaleX);
+      // UX 2026-04-20: unified newLeft/newTop formula that pins the WORLD
+      // anchor (the rendered position of the opposite handle) in place at
+      // every rotation angle. Compute the new center by adding a locally-
+      // directed center-from-anchor offset, rotated into world, to the world
+      // anchor. Then newLeft/newTop derive from the center minus new half-
+      // dims. At angle=0 this reduces to the prior axis-aligned formula
+      // (verified per handle for positive + flipped scale cases). Renderers
+      // (renderRect/renderEllipse) still `Math.abs()` the scale and rotate
+      // around (newLeft + newWidth/2, newTop + newHeight/2), so a flipped
+      // rect/circle at any angle still lands at the right pivot.
+      const newWidth = ds.originalProps.width * Math.abs(newScaleX);
+      const newHeight = ds.originalProps.height * Math.abs(newScaleY);
+      let offsetFromAnchorX = 0;
+      let offsetFromAnchorY = 0;
+      if (affectsX) {
+        // Left-handle drag: right edge is the anchor, so the center sits to
+        // the LEFT of the anchor in local frame (-newWidth/2). Right-handle
+        // drag: left edge is the anchor, center sits to the RIGHT (+newWidth/2).
+        offsetFromAnchorX = isLeftHandle ? -newWidth / 2 : +newWidth / 2;
+        // Flipped scale mirrors the shape across the anchor, so the center
+        // jumps to the other side.
+        if (newScaleX < 0) offsetFromAnchorX = -offsetFromAnchorX;
       }
-
-      if (isTopHandle) {
-        if (newScaleY >= 0) {
-          newTop = ds.anchorY - (ds.originalProps.height * newScaleY);
-        } else {
-          newTop = ds.anchorY;
-        }
-      } else if (['bl', 'mb', 'br'].includes(ds.handleId) && newScaleY < 0) {
-        newTop = ds.originalProps.top + (ds.originalProps.height * newScaleY);
+      if (affectsY) {
+        offsetFromAnchorY = isTopHandle ? -newHeight / 2 : +newHeight / 2;
+        if (newScaleY < 0) offsetFromAnchorY = -offsetFromAnchorY;
       }
+      // Rotate the local center-from-anchor offset into world frame, then
+      // land the new center relative to the fixed world anchor.
+      const worldOffsetX = offsetFromAnchorX * cosA - offsetFromAnchorY * sinA;
+      const worldOffsetY = offsetFromAnchorX * sinA + offsetFromAnchorY * cosA;
+      const newCenterX = worldAnchorX + worldOffsetX;
+      const newCenterY = worldAnchorY + worldOffsetY;
+      const newLeft = newCenterX - newWidth / 2;
+      const newTop = newCenterY - newHeight / 2;
 
       // Store resize state for commit on pointerup
       dragStateRef.current.currentResize = { newScaleX, newScaleY, newLeft, newTop };
       setInteractionState('resizing');
+
+      // UX 2026-04-19 diag: throttle-logged pointermove during resize so
+      // future-Claude can see scale deltas vs pointer position over time
+      // without flooding the console. Logs first tick + every ~120ms.
+      const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      const lastLog = dragStateRef.current.lastMoveLogAt || 0;
+      if (!lastLog || nowMs - lastLog >= 120) {
+        dragStateRef.current.lastMoveLogAt = nowMs;
+        try {
+          const curObj = annotations?.objects?.[ds.annotationIndex];
+          const movePayload = {
+            ts: new Date().toISOString(),
+            handleId: ds.handleId,
+            annotationIndex: ds.annotationIndex,
+            pointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
+            pointerDelta: { dx: (svgPoint?.x || 0) - (ds.startSVGPoint?.x || 0), dy: (svgPoint?.y || 0) - (ds.startSVGPoint?.y || 0) },
+            computedScale: { newScaleX, newScaleY },
+            computedPos: { newLeft, newTop },
+            originalProps: ds.originalProps,
+            anchor: { x: ds.anchorX, y: ds.anchorY },
+            liveBboxGuess: curObj ? getAnnotationBBox({ ...curObj, scaleX: newScaleX, scaleY: newScaleY, left: newLeft, top: newTop }) : null,
+            curObjSnapshot: curObj ? {
+              objType: curObj.type, tool: curObj.tool,
+              left: curObj.left, top: curObj.top,
+              width: curObj.width, height: curObj.height,
+              scaleX: curObj.scaleX, scaleY: curObj.scaleY,
+              x1: curObj.x1, y1: curObj.y1, x2: curObj.x2, y2: curObj.y2,
+            } : null,
+          };
+          console.log('[BboxScaleDiag] move ' + JSON.stringify(movePayload));
+        } catch (err) { console.warn('[BboxScaleDiag] move log failed', err); }
+      }
 
       // UX: polygon/polyline live preview. SVGAnnotationLayer re-renders the
       // shape by applying these `left`/`top` values through the renderer's
@@ -932,6 +992,41 @@ export function useSVGInteraction({
         dx: 0, dy: 0,
         rotate: { angle: newAngle, deltaAngle, cx: ds.centerX, cy: ds.centerY },
       });
+
+      // UX 2026-04-19 diag: throttled rotate move log — lets future-Claude
+      // compare how rect/circle rotate (renderer honors obj.angle) against
+      // how line/arrow rotate (renderer ignores obj.angle) so the asymmetry
+      // shows up directly in the transcript. 120ms throttle mirrors resize.
+      const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      const lastLog = dragStateRef.current.lastRotateLogAt || 0;
+      if (!lastLog || nowMs - lastLog >= 120) {
+        dragStateRef.current.lastRotateLogAt = nowMs;
+        try {
+          const curObj = annotations?.objects?.[ds.annotationIndex];
+          const rotPayload = {
+            ts: new Date().toISOString(),
+            handleId: ds.handleId,
+            annotationIndex: ds.annotationIndex,
+            pointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
+            center: { x: ds.centerX, y: ds.centerY },
+            newAngleDeg: newAngle,
+            deltaAngleDeg: deltaAngle,
+            originalAngleDeg: ds.originalProps.angle || 0,
+            visualTransformApplied: { angle: newAngle, deltaAngle, cx: ds.centerX, cy: ds.centerY },
+            curObjSnapshot: curObj ? {
+              objType: curObj.type, tool: curObj.tool,
+              left: curObj.left, top: curObj.top,
+              width: curObj.width, height: curObj.height,
+              scaleX: curObj.scaleX, scaleY: curObj.scaleY,
+              angle: curObj.angle,
+              x1: curObj.x1, y1: curObj.y1, x2: curObj.x2, y2: curObj.y2,
+              radius: curObj.radius, rx: curObj.rx, ry: curObj.ry,
+              points: Array.isArray(curObj.points) ? curObj.points.length : undefined,
+            } : null,
+          };
+          console.log('[BboxScaleDiag] rotate-move ' + JSON.stringify(rotPayload));
+        } catch (err) { console.warn('[BboxScaleDiag] rotate-move log failed', err); }
+      }
     } else if (ds.mode === 'callout-part') {
       // UX: Phase 14 CALL-10 — per-drag update of one or more callout
       // positions. Uses cached ctmInverse for consistent screen→page
@@ -1443,7 +1538,40 @@ export function useSVGInteraction({
         obj.path = scalePathData(obj.path, newScaleX, newScaleY, ds.anchorX, ds.anchorY);
       } else {
         const objType = String(obj.type || '').toLowerCase();
-        if (objType === 'textbox' || objType === 'i-text' || objType === 'text') {
+        if (objType === 'line') {
+          // UX 2026-04-19: line / arrow resize commit. Works for both
+          // Fabric-native lines (x1/x2 = offsets from bbox center) and
+          // PDF-imported lines (x1/x2 = absolute page coords, obj.left/width
+          // both zero). getLineEndpoints resolves to absolute endpoints for
+          // either convention. Scale the endpoints around the drag anchor,
+          // then rewrite the annotation in Fabric convention so subsequent
+          // drags see consistent data and the renderer picks up the new
+          // geometry without falling back on the stale obj.width the generic
+          // resize path would have left in place.
+          const ep = getLineEndpoints(obj);
+          const sx = Math.max(0.01, Math.abs(newScaleX));
+          const sy = Math.max(0.01, Math.abs(newScaleY));
+          const newAbsX1 = ds.anchorX + (ep.x1 - ds.anchorX) * sx;
+          const newAbsY1 = ds.anchorY + (ep.y1 - ds.anchorY) * sy;
+          const newAbsX2 = ds.anchorX + (ep.x2 - ds.anchorX) * sx;
+          const newAbsY2 = ds.anchorY + (ep.y2 - ds.anchorY) * sy;
+          const newBoxLeft = Math.min(newAbsX1, newAbsX2);
+          const newBoxTop = Math.min(newAbsY1, newAbsY2);
+          const newBoxW = Math.max(1, Math.abs(newAbsX2 - newAbsX1));
+          const newBoxH = Math.max(1, Math.abs(newAbsY2 - newAbsY1));
+          const newCx = newBoxLeft + newBoxW / 2;
+          const newCy = newBoxTop + newBoxH / 2;
+          obj.left = newBoxLeft;
+          obj.top = newBoxTop;
+          obj.width = newBoxW;
+          obj.height = newBoxH;
+          obj.x1 = newAbsX1 - newCx;
+          obj.y1 = newAbsY1 - newCy;
+          obj.x2 = newAbsX2 - newCx;
+          obj.y2 = newAbsY2 - newCy;
+          obj.scaleX = 1;
+          obj.scaleY = 1;
+        } else if (objType === 'textbox' || objType === 'i-text' || objType === 'text') {
           // Text: absorb scale into width/height so text reflows instead of stretching.
           // Honor the user's chosen size — do NOT re-tighten to fit current text.
           // If the user resized the box oversized, that was deliberate. A future
@@ -1496,15 +1624,79 @@ export function useSVGInteraction({
         action: 'scale',
         checkpointPolicy: 'normal',
       });
+      // UX 2026-04-19 diag: final state on resize commit — what actually
+      // got saved vs what the handler computed. Pair with the [start] and
+      // [move] logs above to reconstruct the full drag in one transcript.
+      try {
+        const committedObj = updatedAnnotations.objects[ds.annotationIndex];
+        const commitPayload = {
+          ts: new Date().toISOString(),
+          handleId: ds.handleId,
+          annotationIndex: ds.annotationIndex,
+          finalScale: { newScaleX, newScaleY },
+          finalPos: { newLeft, newTop },
+          committedObj: {
+            type: committedObj?.type, tool: committedObj?.tool,
+            left: committedObj?.left, top: committedObj?.top,
+            width: committedObj?.width, height: committedObj?.height,
+            scaleX: committedObj?.scaleX, scaleY: committedObj?.scaleY,
+            angle: committedObj?.angle,
+            x1: committedObj?.x1, y1: committedObj?.y1, x2: committedObj?.x2, y2: committedObj?.y2,
+            radius: committedObj?.radius, rx: committedObj?.rx, ry: committedObj?.ry,
+            points: Array.isArray(committedObj?.points) ? committedObj.points.length : undefined,
+            data: committedObj?.data,
+          },
+          committedBbox: committedObj ? getAnnotationBBox(committedObj) : null,
+          originalPropsAtStart: ds.originalProps,
+        };
+        console.log('[BboxScaleDiag] commit resize ' + JSON.stringify(commitPayload));
+      } catch (err) { console.warn('[BboxScaleDiag] commit log failed', err); }
     } else if (ds.mode === 'rotate' && ds.currentAngle !== undefined) {
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
-      updatedAnnotations.objects[ds.annotationIndex].angle = ds.currentAngle;
+      const rotObj = updatedAnnotations.objects[ds.annotationIndex];
+      const rotObjType = String(rotObj?.type || '').toLowerCase();
+      // UX 2026-04-20: every rotatable shape keeps its tilted frame after
+      // release, matching the polygon/polyline behavior the user asked for.
+      // That means we must NOT bake rotation into the shape's geometry on
+      // commit — store obj.angle and let the renderer + selection overlay
+      // read it as a live rotation. The line-specific endpoint-bake branch
+      // that used to live here was reverted on 2026-04-20 after the user
+      // called out that it snapped the selection frame back to vertical.
+      rotObj.angle = ds.currentAngle;
 
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'rotate',
         checkpointPolicy: 'normal',
       });
+      // UX 2026-04-19 diag: rotate commit snapshot. Shows whether the
+      // commit stored the new angle on obj.angle (rect / circle / ellipse
+      // path) or baked it into endpoints (line path). Pair with the [start]
+      // and [rotate-move] entries to see the full rotation transcript.
+      try {
+        const committedRot = updatedAnnotations.objects[ds.annotationIndex];
+        const rotCommitPayload = {
+          ts: new Date().toISOString(),
+          handleId: ds.handleId,
+          annotationIndex: ds.annotationIndex,
+          committedAngleDeg: ds.currentAngle,
+          committedObj: {
+            type: committedRot?.type, tool: committedRot?.tool,
+            left: committedRot?.left, top: committedRot?.top,
+            width: committedRot?.width, height: committedRot?.height,
+            scaleX: committedRot?.scaleX, scaleY: committedRot?.scaleY,
+            angle: committedRot?.angle,
+            x1: committedRot?.x1, y1: committedRot?.y1, x2: committedRot?.x2, y2: committedRot?.y2,
+            radius: committedRot?.radius, rx: committedRot?.rx, ry: committedRot?.ry,
+            points: Array.isArray(committedRot?.points) ? committedRot.points.length : undefined,
+            data: committedRot?.data,
+          },
+          committedBbox: committedRot ? getAnnotationBBox(committedRot) : null,
+          originalPropsAtStart: ds.originalProps,
+          center: { x: ds.centerX, y: ds.centerY },
+        };
+        console.log('[BboxScaleDiag] commit rotate ' + JSON.stringify(rotCommitPayload));
+      } catch (err) { console.warn('[BboxScaleDiag] rotate commit log failed', err); }
     } else if (ds.mode === 'callout-part' && ds.calloutId) {
       // UX: Phase 14 CALL-10 — commit the callout drag. The live-paint
       // branch in handlePointerMove already wrote the final state to the
@@ -1716,12 +1908,28 @@ export function useSVGInteraction({
         annotationIndex: selectedIndex,
         ctmInverse,
       };
+      try {
+        console.log('[BboxScaleDiag] start ' + JSON.stringify({
+          ts: new Date().toISOString(), mode: 'midpoint', handleId, annotationIndex: selectedIndex,
+          objType: obj.type, objTool: obj.tool, startPointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
+          originalEndpoints: ep, originalMidpoint,
+          objSnapshot: { left: obj.left, top: obj.top, width: obj.width, height: obj.height, x1: obj.x1, y1: obj.y1, x2: obj.x2, y2: obj.y2, angle: obj.angle, data: obj.data },
+        }));
+      } catch (err) { console.warn('[BboxScaleDiag] midpoint start log failed', err); }
       return;
     }
 
     // Line/arrow endpoint drag: p1 or p2
     if (handleId === 'p1' || handleId === 'p2') {
       const ep = getLineEndpoints(obj);
+      try {
+        console.log('[BboxScaleDiag] start ' + JSON.stringify({
+          ts: new Date().toISOString(), mode: 'endpoint', handleId, annotationIndex: selectedIndex,
+          objType: obj.type, objTool: obj.tool, startPointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
+          originalEndpoints: ep,
+          objSnapshot: { left: obj.left, top: obj.top, width: obj.width, height: obj.height, x1: obj.x1, y1: obj.y1, x2: obj.x2, y2: obj.y2, angle: obj.angle, data: obj.data },
+        }));
+      } catch (err) { console.warn('[BboxScaleDiag] endpoint start log failed', err); }
       dragStateRef.current = {
         active: true,
         mode: 'endpoint',
@@ -1814,7 +2022,18 @@ export function useSVGInteraction({
     // rx*2. Without this, circle/ellipse fall through to obj.width ?? 0 and
     // the resize math collapses the shape to its anchor corner on first drag.
     let rawWidth, rawHeight;
-    if (imported) {
+    // UX 2026-04-19: PDF-imported lines arrive with obj.width=0 / height=0
+    // and x1..y2 already in absolute page coordinates, so the generic
+    // `obj.width ?? 0` raw-dims fallback produced rawWidth=0 and the resize
+    // formula's `width !== 0` guard silently skipped every scale update —
+    // visible symptom: the line jumps to the anchor because newLeft uses
+    // the raw width as its zero factor. Always use the computed visible
+    // bbox for line/arrow so scale math actually runs.
+    const objTypeForRaw = String(obj.type || '').toLowerCase();
+    if (objTypeForRaw === 'line') {
+      rawWidth = Math.max(1, bbox.width || 0);
+      rawHeight = Math.max(1, bbox.height || 0);
+    } else if (imported) {
       rawWidth = bbox.width;
       rawHeight = bbox.height;
     } else if (isPointsShape) {
@@ -1845,12 +2064,13 @@ export function useSVGInteraction({
       handleId,
       startSVGPoint: svgPoint,
       originalProps: {
-        // Imported + points-based shapes: use visible-bbox left/top so the
-        // resize formula (which produces a new left/top in visible-space)
+        // Imported + points-based + line shapes: use visible-bbox left/top so
+        // the resize formula (which produces a new left/top in visible-space)
         // has a matching reference point. Commit branch translates back to
-        // object-space for polygon/polyline.
-        left: (imported || isPointsShape) ? bbox.left : (obj.left ?? 0),
-        top: (imported || isPointsShape) ? bbox.top : (obj.top ?? 0),
+        // object-space for polygon/polyline. For line, commit rewrites
+        // endpoints directly, so visible-bbox left/top is what we want.
+        left: (imported || isPointsShape || objTypeForRaw === 'line') ? bbox.left : (obj.left ?? 0),
+        top: (imported || isPointsShape || objTypeForRaw === 'line') ? bbox.top : (obj.top ?? 0),
         scaleX: imported ? 1 : (obj.scaleX ?? 1),
         scaleY: imported ? 1 : (obj.scaleY ?? 1),
         angle: obj.angle ?? 0,
@@ -1873,6 +2093,46 @@ export function useSVGInteraction({
       currentResize: null,
       currentAngle: undefined,
     };
+    // UX 2026-04-19 diag: full state dump on resize/rotate start. Lets
+    // future-Claude see (a) which handle was grabbed, (b) the exact shape
+    // JSON at start, (c) the anchor + center + raw dims used for the scale
+    // formula. Used together with the pointermove and commit logs below.
+    try {
+      // UX 2026-04-19: serialize with JSON.stringify so the browser's
+      // "Save as" console export captures the real values (plain console.log
+      // writes "{…}" for object refs, which made the first log pass
+      // useless). 2-space indent keeps the file human-readable.
+      const startPayload = {
+        ts: new Date().toISOString(),
+        mode,
+        handleId,
+        annotationIndex: selectedIndex,
+        objType: obj.type,
+        objTool: obj.tool,
+        isCounter: obj.data?.type === 'counter',
+        isImportedPath: imported,
+        isPointsShape,
+        bboxAtStart: { left: bbox.left, top: bbox.top, width: bbox.width, height: bbox.height, angle: bbox.angle },
+        startPointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
+        anchor,
+        center: { x: cx, y: cy },
+        rawWidth,
+        rawHeight,
+        objSnapshot: {
+          left: obj.left, top: obj.top,
+          width: obj.width, height: obj.height,
+          scaleX: obj.scaleX, scaleY: obj.scaleY,
+          angle: obj.angle,
+          radius: obj.radius, rx: obj.rx, ry: obj.ry,
+          x1: obj.x1, y1: obj.y1, x2: obj.x2, y2: obj.y2,
+          points: Array.isArray(obj.points) ? obj.points.length : undefined,
+          pathLen: Array.isArray(obj.path) ? obj.path.length : undefined,
+          pathOffset: obj.pathOffset,
+          data: obj.data,
+        },
+      };
+      console.log('[BboxScaleDiag] start ' + JSON.stringify(startPayload));
+    } catch (err) { console.warn('[BboxScaleDiag] start log failed', err); }
   }, [selectedIds, annotations, svgRef]);
 
   // ---------------------------------------------------------------------------

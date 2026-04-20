@@ -149,8 +149,21 @@ export function toFabricGroup(reactCallout, pageSize) {
     width: tbW,
     height: tbH,
     fontSize: style.fontSize || 14,
+    // UX 2026-04-20: callout cursor drift fix. Fabric 5.5.2 Textbox uses
+    // lineHeight * _fontSizeMult for cursor y-offset but measured glyph
+    // metrics for text y-offset, producing ~0.23 px drift per wrapped
+    // line at lineHeight=1.16 default. Pinning lineHeight=1 (the same
+    // value the plain-text annotation edit path uses in
+    // FabricEditCanvas.jsx) collapses both formulas to fontSize *
+    // _fontSizeMult so cursor and glyphs step in lockstep through any
+    // number of wrapped lines. The SVG view-mode CSS line-height in
+    // svgAnnotationRenderers.jsx uses the same `lineHeight * 1.13`
+    // formula — updating lineHeight here keeps view and edit in sync.
+    lineHeight: 1,
     // Pitfall 2: single-name fontFamily only — strip fallback stacks
     fontFamily: sanitizeFontFamily(style.fontFamily),
+    // Respect author-specified alignment from imported PDFs.
+    textAlign: style.textAlign || 'left',
     fontWeight: style.bold ? 'bold' : 'normal',
     fill: style.fontColor || '#1e293b',
     text: reactCallout.text || '',

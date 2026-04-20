@@ -83,13 +83,37 @@ export function convertImportedCalloutToCalloutState(importedObj, pageNumber, pa
   if (Number.isFinite(pdfStyle.strokeWidth) && pdfStyle.strokeWidth > 0) {
     style.lineThickness = pdfStyle.strokeWidth;
   }
-  // Transparent background → opacity 0. Non-transparent rgba fills keep the
-  // defaultCalloutStyle fillColor (the renderer doesn't consume rgba directly).
+  // UX: Phase 15 UAT-3 (2026-04-18) — surface the PDF's interior-color
+  // fill. Source PDFs (Acrobat FreeTextCallout) carry the fill as an
+  // rgba string like "rgba(255,255,255,1)" in pdfStyle.backgroundColor.
+  // The callout style expects a hex color + an opacity number. Parse the
+  // rgba and split it; if the string is literal "transparent" zero the
+  // opacity so the fill renders clear.
   if (pdfStyle.backgroundColor === 'transparent') {
     style.fillOpacity = 0;
+  } else if (typeof pdfStyle.backgroundColor === 'string') {
+    const match = pdfStyle.backgroundColor.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/);
+    if (match) {
+      const r = Number(match[1]);
+      const g = Number(match[2]);
+      const b = Number(match[3]);
+      const a = match[4] != null ? Number(match[4]) : 1;
+      const toHex = (n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0');
+      style.fillColor = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+      style.fillOpacity = Number.isFinite(a) ? a : 1;
+    } else if (pdfStyle.backgroundColor.startsWith('#')) {
+      style.fillColor = pdfStyle.backgroundColor;
+    }
   }
   if (Number.isFinite(importedObj.fontSize) && importedObj.fontSize > 0) {
     style.fontSize = importedObj.fontSize;
+  }
+  // UX: 2026-04-19 — carry imported text alignment through so both the
+  // SVG view and the Fabric edit overlay honor what the author picked in
+  // Acrobat (/Q, /DS text-align, /RC inline text-align).
+  const importedAlign = (data.pdfCalloutStyle?.textAlign || importedObj.textAlign);
+  if (importedAlign === 'left' || importedAlign === 'center' || importedAlign === 'right' || importedAlign === 'justify') {
+    style.textAlign = importedAlign;
   }
 
   const idSuffix = importedObj.pdfAnnotationId

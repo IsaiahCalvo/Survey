@@ -1346,6 +1346,79 @@ const SyncfusionPDFContainer = forwardRef(({
     let cancelled = false;
     let retryTimer = null;
 
+    // UX: Phase 15 UAT-3 (2026-04-18) — Syncfusion's PDF form-field parser
+    // crashes with "annotDictionary.has is not a function" on PDFs whose
+    // AcroForm dictionary has an unexpected shape (seen on certain Acrobat-
+    // saved files). Form fields are disabled at the component level, but
+    // the parser still runs internally during page render and aborts the
+    // whole load. When that specific error fires we sanitize the PDF
+    // bytes with pdf-lib (drop the AcroForm entry entirely) and retry
+    // once. On any other failure we bubble up as before.
+    const loadSanitizedBytes = async () => {
+      if (cancelled) return;
+      const viewer = getViewerInstance();
+      if (!viewer?.load) return;
+      try {
+        const { PDFDocument, PDFName, PDFArray, PDFDict, PDFRef } = await import('pdf-lib');
+        const doc = await PDFDocument.load(documentSource, {
+          updateMetadata: false,
+          ignoreEncryption: true,
+        });
+        // UX: Syncfusion's form parser chokes on this PDF's AcroForm entry
+        // shape AND on any remaining /Widget annotations in the pages. We
+        // (a) replace the AcroForm with a valid empty-fields dict so the
+        // getter returns cleanly, and (b) strip every /Widget annotation
+        // from every page so the internal walk has nothing to scan.
+        doc.catalog.set(
+          PDFName.of('AcroForm'),
+          doc.context.obj({ Fields: [] })
+        );
+        const SUBTYPE = PDFName.of('Subtype');
+        const ANNOTS = PDFName.of('Annots');
+        const pages = doc.getPages();
+        const nameOf = (value) => {
+          if (!value) return '';
+          if (typeof value === 'string') return value;
+          if (typeof value.toString === 'function') return value.toString();
+          return '';
+        };
+        for (const page of pages) {
+          const node = page.node;
+          let arr = node.get(ANNOTS);
+          if (!arr) continue;
+          if (arr instanceof PDFRef) {
+            arr = doc.context.lookup(arr);
+          }
+          if (!(arr instanceof PDFArray)) continue;
+          const keep = [];
+          const size = arr.size();
+          for (let i = 0; i < size; i += 1) {
+            const entry = arr.get(i);
+            let dict = entry;
+            if (entry instanceof PDFRef) {
+              dict = doc.context.lookup(entry);
+            }
+            // Only keep entries whose target resolves to a real dict.
+            // Anything else (non-dict, or /Widget-subtype) is what makes
+            // Syncfusion's form parser choke, so drop it here.
+            if (!(dict instanceof PDFDict)) continue;
+            const sub = dict.get(SUBTYPE);
+            if (nameOf(sub) === '/Widget') continue;
+            keep.push(entry);
+          }
+          if (keep.length !== size) {
+            node.set(ANNOTS, doc.context.obj(keep));
+          }
+        }
+        const sanitized = await doc.save({ useObjectStreams: false });
+        if (cancelled) return;
+        viewer.load(sanitized, '');
+      } catch (retryError) {
+        loadedDocumentKeyRef.current = null;
+        onDocumentLoadFailed?.(retryError);
+      }
+    };
+
     const attemptLoad = () => {
       if (cancelled) return;
       const viewer = getViewerInstance();
@@ -1370,6 +1443,11 @@ const SyncfusionPDFContainer = forwardRef(({
       try {
         viewer.load(documentSource, '');
       } catch (error) {
+        const msg = error && error.message ? String(error.message) : '';
+        if (msg.indexOf('annotDictionary.has is not a function') !== -1) {
+          loadSanitizedBytes();
+          return;
+        }
         loadedDocumentKeyRef.current = null;
         onDocumentLoadFailed?.(error);
       }

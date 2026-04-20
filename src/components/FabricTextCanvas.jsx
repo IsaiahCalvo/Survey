@@ -152,6 +152,12 @@ const FabricTextCanvas = memo(({
         fontSize: 16,
         fill: strokeColorRef.current || '#000000',
         fontFamily: DEFAULT_FONT_FAMILY,
+        // Default 1px black border on new user-created textboxes so they
+        // read as a distinct "text box" out of the box. Mini-toolbar (future
+        // phase) will let users toggle border / fill / font / alignment.
+        stroke: '#000000',
+        strokeWidth: 1,
+        strokeUniform: true,
         editable: true,
         selectable: true,
         evented: true,

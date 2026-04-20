@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, memo, useState, useCallback } from 'react';
 import { debugMark } from './utils/debugBridge';
+import * as contextMenuBridge from './utils/contextMenuBridge';
 import { createPortal } from 'react-dom';
 import CalloutOverlay from './components/Callout';
 import Icon from './Icons';
@@ -1227,7 +1228,9 @@ const resolveTextAnchorSide = (anchorPoint, box) => {
 };
 
 const createImportedCalloutFromTextbox = (textboxObj, objData, canvas) => {
-  if (!textboxObj || textboxObj.type !== 'textbox') return null;
+  if (!textboxObj || textboxObj.type !== 'textbox') {
+    return null;
+  }
 
   const calloutPoints = normalizeCalloutPoints(objData?.data?.pdfCalloutPoints);
   if (calloutPoints.length < 2) {
@@ -1295,7 +1298,9 @@ const createImportedCalloutFromTextbox = (textboxObj, objData, canvas) => {
     effectiveStrokeWidth,
     canvas
   );
-  if (!group) return null;
+  if (!group) {
+    return null;
+  }
 
   const line = group.getObjects().find((obj) => obj.name === 'calloutLine');
   const head = group.getObjects().find((obj) => obj.name === 'calloutHead');
@@ -5384,6 +5389,15 @@ const PageAnnotationLayer = memo(({
 
     fabricRef.current = canvas;
     debugMark('pal_mount', { page: pageNumber });
+    console.log(`[PAL-CTX register] page=${pageNumber} (from mount useEffect)`);
+    contextMenuBridge.register(pageNumber, (e, annotationIndex) => {
+      let resolvedTarget = null;
+      if (annotationIndex != null && fabricRef.current?._objects) {
+        resolvedTarget = fabricRef.current._objects[annotationIndex] || null;
+      }
+      console.log(`[PAL-CTX dispatch] page=${pageNumber} annoIdx=${annotationIndex} target=${resolvedTarget?.type || 'null'}`);
+      handleContextMenu(e, resolvedTarget);
+    });
     // Load initial annotations
     loadAnnotations(annotations);
 
@@ -7968,6 +7982,8 @@ const PageAnnotationLayer = memo(({
 
 	    return () => {
 	      debugMark('pal_unmount', { page: pageNumber });
+	      console.log(`[PAL-CTX unregister] page=${pageNumber} (from mount useEffect cleanup)`);
+	      contextMenuBridge.unregister(pageNumber);
 	      window.removeEventListener('keydown', handleKeyDown);
 	      isInitializedRef.current = false;
 	      cancelPendingPaintCommit();
@@ -9078,25 +9094,34 @@ const PageAnnotationLayer = memo(({
     };
   }, [pageNumber, onSaveAnnotations]);
 
+  // UX: Right-click → context menu. Registers a dispatcher on the
+  // contextMenuBridge module-level registry. The document-level listener in
+  // src/utils/contextMenuDiagnostics.js routes each contextmenu event to the
+  // correct PAL by discovering pageNumber from the event path or
+  // elementsFromPoint (Syncfusion's _pageDiv_N id, or our own data-pal-root /
+  // data-diag-svg-wrapper attrs). This avoids the need for a JSX onContextMenu
+  // handler on PAL — right-click targets are in sibling DOM subtrees so JSX
+  // would never see them. Ctrl+click on Mac is already a native contextmenu
+  // trigger, so no separate modifier-click handler is needed.
+  useEffect(() => {
+    console.log(`[PAL-CTX register] page=${pageNumber}`);
+    const dispatch = (e, annotationIndex) => {
+      let resolvedTarget = null;
+      if (annotationIndex != null && fabricRef.current?._objects) {
+        resolvedTarget = fabricRef.current._objects[annotationIndex] || null;
+      }
+      console.log(`[PAL-CTX dispatch] page=${pageNumber} annoIdx=${annotationIndex} target=${resolvedTarget?.type || 'null'}`);
+      handleContextMenu(e, resolvedTarget);
+    };
+    contextMenuBridge.register(pageNumber, dispatch);
+    return () => {
+      console.log(`[PAL-CTX unregister] page=${pageNumber}`);
+      contextMenuBridge.unregister(pageNumber);
+    };
+  }, [pageNumber, handleContextMenu]);
+
   return (
     <div
-      onContextMenu={(e) => {
-        handleContextMenu(e);
-      }}
-      onMouseDown={(e) => {
-        // Detect Command+Click (Mac) or Control+Click (Windows) as context menu trigger
-        // This should fire before Fabric.js processes the event
-        const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-        const isModifierContextClick = e.button === 0 && (
-          isMac ? (e.metaKey && !e.ctrlKey) : (e.ctrlKey && !e.metaKey)
-        );
-
-        if (isModifierContextClick) {
-          e.preventDefault();
-          e.stopPropagation();
-          handleContextMenu(e);
-        }
-      }}
       onClick={(e) => {
         // Don't close context menu if:
         // 1. It's a right-click or Command/Ctrl+click

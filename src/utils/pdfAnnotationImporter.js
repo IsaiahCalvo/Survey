@@ -508,6 +508,37 @@ function parseDefaultAppearanceString(daValue) {
   return Object.keys(result).length > 0 ? result : null;
 }
 
+// Acrobat's /RC rich-content XHTML can recolor specific runs of text via
+// inline <span style="color:#xxxxxx">…</span>. When present, this span
+// color overrides the DA/DS defaults for the text that's actually drawn.
+// We take the color from the innermost (last) span style since that's
+// what the painted text inherits. Also extract text-align so view/edit
+// honor the author's alignment.
+function parseRichContentFirstColor(rcValue) {
+  if (typeof rcValue !== 'string' || rcValue.length === 0) return null;
+
+  const matches = [...rcValue.matchAll(/style\s*=\s*"([^"]*)"/gi)];
+  let lastHex = null;
+  let textAlign = null;
+  for (const m of matches) {
+    const colorMatch = m[1].match(/color\s*:\s*#([0-9a-f]{6})/i);
+    if (colorMatch) lastHex = colorMatch[1];
+    const alignMatch = m[1].match(/text-align\s*:\s*(left|right|center|justify)/i);
+    if (alignMatch) textAlign = alignMatch[1].toLowerCase();
+  }
+
+  const result = {};
+  if (lastHex) {
+    const r = parseInt(lastHex.slice(0, 2), 16) / 255;
+    const g = parseInt(lastHex.slice(2, 4), 16) / 255;
+    const b = parseInt(lastHex.slice(4, 6), 16) / 255;
+    if ([r, g, b].every(Number.isFinite)) result.fontColor = [r, g, b];
+  }
+  if (textAlign) result.textAlign = textAlign;
+
+  return Object.keys(result).length > 0 ? result : null;
+}
+
 function parseDefaultStyleString(dsValue) {
   if (typeof dsValue !== 'string' || dsValue.trim().length === 0) {
     return null;
@@ -538,6 +569,11 @@ function parseDefaultStyleString(dsValue) {
     if (fontName) {
       result.fontName = fontName;
     }
+  }
+
+  const alignMatch = dsValue.match(/text-align\s*:\s*(left|right|center|justify)/i);
+  if (alignMatch) {
+    result.textAlign = alignMatch[1].toLowerCase();
   }
 
   return Object.keys(result).length > 0 ? result : null;
@@ -809,6 +845,7 @@ function parseAppearanceStream(content) {
   let lineJoin = null;
   let hasStroke = false;
   let hasFill = false;
+  const gstateStack = [];
 
   const consumeNumbers = (count) => {
     if (operands.length < count) return null;
@@ -969,6 +1006,28 @@ function parseAppearanceStream(content) {
         hasStroke = true;
         break;
       }
+      case 'q': {
+        // UX: 2026-04-19 — PDF graphics state save. Without this the text
+        // painting sequence inside the rendered textbox ("0 G" for black
+        // stroke before the text) overwrites the earlier real stroke color
+        // set for the callout border, so the border was coming through as
+        // black instead of red.
+        gstateStack.push({ strokeColor, fillColor, strokeWidth, lineCap, lineJoin });
+        operands.length = 0;
+        break;
+      }
+      case 'Q': {
+        const saved = gstateStack.pop();
+        if (saved) {
+          strokeColor = saved.strokeColor;
+          fillColor = saved.fillColor;
+          strokeWidth = saved.strokeWidth;
+          lineCap = saved.lineCap;
+          lineJoin = saved.lineJoin;
+        }
+        operands.length = 0;
+        break;
+      }
       default: {
         // Unknown operator; clear to avoid stale operands leaking into the next op.
         operands.length = 0;
@@ -1055,16 +1114,29 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         const lineCoordinates = readPdfLibNumberArray(dict.get(PDFName.of('L')));
         const vertices = readPdfLibNumberArray(dict.get(PDFName.of('Vertices')));
         const calloutLine = readPdfLibNumberArray(dict.get(PDFName.of('CL')));
+        const rectangleDifferences = readPdfLibNumberArray(dict.get(PDFName.of('RD')));
+        // /Q quadding: 0 left, 1 center, 2 right (PDF spec 12.7.4.3)
+        const quadding = readPdfLibNumber(dict.get(PDFName.of('Q')));
         const iconName = normalizePdfNameToken(readPdfLibText(dict.get(PDFName.of('Name'))));
         const state = readPdfLibText(dict.get(PDFName.of('State')));
         const stateModel = readPdfLibText(dict.get(PDFName.of('StateModel')));
         const daText = readPdfLibText(dict.get(PDFName.of('DA')));
         const dsText = readPdfLibText(dict.get(PDFName.of('DS')));
+        const rcText = readPdfLibText(dict.get(PDFName.of('RC')));
         const contents = readPdfLibText(dict.get(PDFName.of('Contents')));
         const title = readPdfLibText(dict.get(PDFName.of('T')));
+        // UX: 2026-04-19 — DA/DS carry the *default* style; Acrobat embeds
+        // per-span overrides in /RC (XHTML rich text). On this PDF's
+        // "hello" callout DA/DS both say red but the inline <span>
+        // recolors the word to green, which is what Acrobat paints.
+        // Parse any inline color from RC and prefer it over DA/DS.
+        const rcData = parseRichContentFirstColor(rcText);
+        const quadAlign = quadding === 1 ? 'center' : quadding === 2 ? 'right' : quadding === 0 ? 'left' : null;
         const defaultAppearanceData = {
           ...(parseDefaultStyleString(dsText) || {}),
-          ...(parseDefaultAppearanceString(daText) || {})
+          ...(parseDefaultAppearanceString(daText) || {}),
+          ...(quadAlign ? { textAlign: quadAlign } : {}),
+          ...(rcData || {})
         };
 
         let borderWidth = null;
@@ -1112,6 +1184,7 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           ...(lineCoordinates ? { lineCoordinates } : {}),
           ...(vertices ? { vertices } : {}),
           ...(calloutLine ? { calloutLine } : {}),
+          ...(rectangleDifferences ? { rectangleDifferences } : {}),
           ...(iconName ? { iconName } : {}),
           ...(state ? { state } : {}),
           ...(stateModel ? { stateModel } : {}),
@@ -1194,6 +1267,8 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     lineCoordinates: annotation.lineCoordinates || rawMetadata.lineCoordinates || annotation.lineCoordinates,
     vertices: annotation.vertices || rawMetadata.vertices || annotation.vertices,
     calloutLine: annotation.calloutLine || rawMetadata.calloutLine || annotation.calloutLine,
+    rectangleDifferences:
+      annotation.rectangleDifferences || rawMetadata.rectangleDifferences || null,
     intent: annotation.intent || rawMetadata.intent || annotation.intent,
     name: annotation.name || rawMetadata.iconName || annotation.name,
     state: annotation.state || rawMetadata.state || annotation.state,
@@ -1449,19 +1524,82 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     ? extractCalloutTextBoxRectFromAppearance(annotation, viewport, scale)
     : null;
   const targetRect = appearanceTextBoxRect || viewportRect;
+
+  // UX diag (2026-04-18): log the raw PDF values + what we computed for
+  // the callout textbox so the user can compare against Acrobat/Drawboard.
+  // Only fires for callout-intent imports, once per annotation.
+  if (isCalloutIntent) {
+    try {
+      const rawCL = annotation.calloutLine;
+      const rawRect = annotation.rect;
+      console.log('[CalloutImportDiag]', {
+        id: annotation.id,
+        text: (text || '').slice(0, 40),
+        pageWidth: viewport?.width,
+        pageHeight: viewport?.height,
+        viewportScale: scale,
+        rawRectPdf: rawRect,
+        rawCLPdf: rawCL,
+        appearanceTextBoxRectVp: appearanceTextBoxRect,
+        viewportRect,
+        targetRect,
+        calloutPointsVp: calloutPoints,
+        rectangleDifferences:
+          annotation.rectangleDifferences || annotation._raw?.rectangleDifferences || null,
+      });
+    } catch (_e) {}
+  }
+  // UX: Phase 15 UAT-3 (2026-04-18) — TEXT_PADDING hoisted to the top of
+  // the function because it's consumed both when building the data.pdf*
+  // payload below AND when expanding the final top-level rect. Keep this
+  // value in lockstep with svgAnnotationRenderers.TEXT_PADDING.
+  const TEXT_PADDING = 6;
   const defaultAppearanceColor = annotation.defaultAppearanceData?.fontColor;
   const lineColor = annotation.lineColor;
   const lineColorHex = lineColor ? pdfColorToHex(lineColor, annotation) : null;
-  const annotationColorHex = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
+  // UX: Phase 15 UAT-3 (2026-04-18) — only fall through to the black
+  // default when the PDF actually omitted the top-level C entry. Acrobat
+  // FreeTextCallout writes C = border color; losing that to a [0,0,0]
+  // default when it exists would swap red borders to black.
+  const annotationColorHex = annotation.color
+    ? pdfColorToHex(annotation.color, annotation)
+    : null;
   const fallbackAppearanceColor = annotation._appearance?.strokeColor
     ? pdfColorToHex(annotation._appearance.strokeColor, annotation)
     : null;
   const textColor = defaultAppearanceColor
     ? pdfColorToHex(defaultAppearanceColor, annotation)
-    : (lineColorHex || fallbackAppearanceColor || annotationColorHex);
-  let borderColor = lineColorHex || fallbackAppearanceColor || annotationColorHex;
-  if (isCalloutIntent && isNearWhiteHexColor(borderColor) && !isNearWhiteHexColor(textColor)) {
-    borderColor = textColor;
+    : (lineColorHex || annotationColorHex || fallbackAppearanceColor || '#000000');
+  // UX: Phase 15 UAT-3 (2026-04-18) — prefer the spec-defined PDF color
+  // entry (annotation.color = C) over the appearance-stream stroke color
+  // for border. Acrobat sometimes writes both, with the appearance stream
+  // carrying black (the line-drawing op used inside the AP stream
+  // unrelated to the semantic border color). The C entry is authoritative
+  // for the visible border — let it win.
+  // UX: 2026-04-19 — for FreeTextCallouts Acrobat repurposes the /C
+  // (annotation color) entry as the textbox *fill* color, not the border.
+  // The painted stroke color from the appearance stream is authoritative
+  // for the callout's border/arrow/lines. Prefer it when available, and
+  // only fall back to /C when the stream didn't paint any stroke color.
+  // For non-callout FreeText, keep the old precedence (C > AP stroke).
+  let borderColor;
+  if (isCalloutIntent) {
+    borderColor = lineColorHex
+      || fallbackAppearanceColor
+      || annotationColorHex
+      || '#000000';
+  } else {
+    borderColor = lineColorHex
+      || annotationColorHex
+      || fallbackAppearanceColor
+      || '#000000';
+  }
+  if (isCalloutIntent && isNearWhiteHexColor(borderColor)) {
+    if (fallbackAppearanceColor && !isNearWhiteHexColor(fallbackAppearanceColor)) {
+      borderColor = fallbackAppearanceColor;
+    } else if (!isNearWhiteHexColor(textColor)) {
+      borderColor = textColor;
+    }
   }
   const fontSize = annotation.defaultAppearanceData?.fontSize || 12;
   const strokeWidth = getBorderWidth(annotation, 0, { allowExplicitZero: true });
@@ -1478,12 +1616,28 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     ...(calloutPoints.length >= 2 ? { pdfCalloutPoints: calloutPoints } : {}),
     ...(appearanceTextBoxRect
       ? {
-          pdfCalloutBoxRect: {
-            left: appearanceTextBoxRect.left,
-            top: appearanceTextBoxRect.top,
-            width: appearanceTextBoxRect.width,
-            height: appearanceTextBoxRect.height
-          }
+          // UX: 2026-04-19 — store the textbox rect as Acrobat drew it,
+          // but grow the HEIGHT when the text would visibly wrap past
+          // one line. Acrobat sometimes saves a one-line-tall box for
+          // content that it then renders wrapped to 2+ lines; reading
+          // it verbatim would clip the later lines. Width stays exact
+          // so the knee-to-edge gap is preserved.
+          pdfCalloutBoxRect: (() => {
+            const rect = appearanceTextBoxRect;
+            const fs = (annotation.defaultAppearanceData?.fontSize || 12) * scale;
+            const lineH = fs * 1.31; // matches SVG renderer line-height
+            const estCharWidth = fs * 0.55; // rough Helvetica avg
+            const chars = String(text || '').length;
+            const innerWidth = Math.max(1, rect.width);
+            const wrappedLines = Math.max(1, Math.ceil((chars * estCharWidth) / innerWidth));
+            const needed = wrappedLines * lineH;
+            return {
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+              height: Math.max(rect.height, needed),
+            };
+          })(),
         }
       : {}),
     ...(isCalloutIntent
@@ -1492,33 +1646,27 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
             textColor,
             borderColor,
             backgroundColor,
-            strokeWidth: strokeWidth * scale
+            strokeWidth: strokeWidth * scale,
+            textAlign: annotation.defaultAppearanceData?.textAlign || null,
           }
         }
       : {})
   };
 
-  // Plan 15-04 Issue 4 follow-up (2026-04-17): the SVG renderer insets text
-  // content by a 6-pixel gutter inside the border on every side. PDF imports
-  // used to render edge-to-edge, so source-PDF rects were sized exactly to the
-  // text. Without expansion here, the padded content area is 12 px smaller
-  // than the source and the bottom line visibly spilled on first render. Bump
-  // stored dims by 2*6 and shift anchor by -6 so the padded content area ==
-  // original source rect; border grows outward by 6 on each side. Only applies
-  // to plain FreeText; callout-intent imports are routed through renderCallout
-  // elsewhere and already include the right breathing room.
-  const TEXT_PADDING = 6; // keep in sync with svgAnnotationRenderers.TEXT_PADDING
-  const padLeft = isCalloutIntent ? targetRect.left : targetRect.left - TEXT_PADDING;
-  const padTop = isCalloutIntent ? targetRect.top : targetRect.top - TEXT_PADDING;
-  const padWidth = isCalloutIntent ? targetRect.width : targetRect.width + 2 * TEXT_PADDING;
-  // Extra descender breathing for plain imports — source PDF rects are often
-  // sized to the baseline, so descenders (y, g, p, j) clipped the bottom edge
-  // even after the 6px padding bump. 0.35 * fontSize matches the renderer's
-  // descenderBuffer so the border fully encloses the glyph bounding box.
+  // UX: Phase 15 UAT-3 (2026-04-18) — the SVG renderer insets text content
+  // by TEXT_PADDING (hoisted above) on every side. PDF-stored rects are
+  // sized to the text area exactly, so without expansion the padded
+  // content would shrink by 2*PAD and text hugs the bottom. Expand the
+  // stored rect by TEXT_PADDING on all sides so the border grows outward
+  // and the inner text area matches the source. Applies to plain FreeText
+  // AND callout-intent imports (both route through renderers that inset
+  // by TEXT_PADDING). Plain FreeText additionally needs a small descender-
+  // room bump for baseline-tight sources.
+  const padLeft = targetRect.left - TEXT_PADDING;
+  const padTop = targetRect.top - TEXT_PADDING;
+  const padWidth = targetRect.width + 2 * TEXT_PADDING;
   const descenderRoom = isCalloutIntent ? 0 : (fontSize * scale) * 0.35;
-  const padHeight = isCalloutIntent
-    ? targetRect.height
-    : targetRect.height + 2 * TEXT_PADDING + descenderRoom;
+  const padHeight = targetRect.height + 2 * TEXT_PADDING + descenderRoom;
 
   return {
     type: 'textbox',
@@ -2123,7 +2271,11 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
         };
       }
     } catch (error) {
-      console.error(`Error importing annotations from page ${pageNum}:`, error);
+      console.error(
+        `Error importing annotations from page ${pageNum}:`,
+        error && (error.stack || error.message || error),
+        error
+      );
     }
   }
 

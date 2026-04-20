@@ -28500,6 +28500,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         editingAnnotation.pageSize || resolvedPageSize,
                                         editingAnnotation.originalReactCallout
                                       );
+                                      // UX: empty-text self-destruct — if the user commits
+                                      // an edit with no text, remove the callout entirely
+                                      // instead of saving a blank box. Covers the common
+                                      // flow of "draw a callout, click away without typing."
+                                      const calloutText = updatedReactCallout?.text;
+                                      const isBlankText = !calloutText || !String(calloutText).trim();
+                                      if (isBlankText) {
+                                        addHistoryCheckpoint('callouts:delete-blank', {
+                                          calloutId: editingAnnotation.reactCalloutId,
+                                        });
+                                        setCallouts((prev) => prev.filter((c) =>
+                                          c.id !== editingAnnotation.reactCalloutId
+                                        ));
+                                        editModeCooldownRef.current = Date.now();
+                                        setEditingAnnotation(null);
+                                        return;
+                                      }
                                       addHistoryCheckpoint('callouts:edit-commit', {
                                         calloutId: editingAnnotation.reactCalloutId,
                                       });

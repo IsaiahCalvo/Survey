@@ -121,6 +121,16 @@ const SVGAnnotationLayer = memo(({
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
   editingAnnotationIndex, // number | null — index of annotation currently being edited in FabricEditCanvas (hidden in SVG)
+  // UX 2026-04-19: editType of the current edit session ('text' | 'callout' | 'bbox' | null).
+  // 'bbox' means the user double-clicked a counter / line / arrow / polygon / polyline and
+  // wants the uniform resize-and-rotate bounding box chrome instead of the type-specific
+  // single-click handles. When set, the counter rotation-only branch and the line endpoint
+  // branch are skipped so the default SVGSelectionOverlay path renders the uniform chrome.
+  editingAnnotationEditType = null,
+  // UX 2026-04-19: fires when the user dismisses bbox edit mode (clicks empty
+  // space, clicks a different shape, presses escape). App.jsx wires this to
+  // setEditingAnnotation(null) so the next click / double-click starts fresh.
+  onRequestExitEdit = null,
   // Plan 14-02 Task 3 (KBD-01) — callout selection + delete wiring. Plan
   // 14-03 wires these two props at the mount sites in App.jsx; Task 3 only
   // READS them and defensively defaults both so the component stays
@@ -327,11 +337,18 @@ const SVGAnnotationLayer = memo(({
   //
   // See 14-UI-SPEC.md Interaction Contract 1 and 14-RESEARCH.md Pitfall 3
   // (pointerEvents:none blocks crosshair cursor).
-  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select') && editingAnnotationIndex == null;
+  // UX 2026-04-19: bbox edit mode (counter / line / arrow / polygon / polyline
+  // double-click) runs entirely on the SVG layer — no Fabric canvas takes
+  // over. So the select tool must stay "on" during bbox mode so handle
+  // clicks, shape drags, and click-to-dismiss all keep working.
+  const isBboxEditMode = editingAnnotationIndex != null && editingAnnotationEditType === 'bbox';
+  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select') && (editingAnnotationIndex == null || isBboxEditMode);
   // UX: line/arrow/callout tools also get pointerEvents=auto so the crosshair
   // class shows through and callout creation drag can start on the SVG
   // surface. Gated on editingAnnotationIndex == null so the creation surface
-  // disables during edit mode (mirrors isSelectTool's edit-mode guard).
+  // disables during edit mode (mirrors isSelectTool's edit-mode guard). Bbox
+  // mode does NOT re-enable creation tools — the user's in "edit a shape"
+  // mode, not "draw a new shape" mode.
   const isCreationTool = (activeTool === 'line' || activeTool === 'arrow' || activeTool === 'callout') && editingAnnotationIndex == null;
   const isInteractive = isSelectTool || isCreationTool;
 
@@ -505,7 +522,11 @@ const SVGAnnotationLayer = memo(({
   // e.code stays "BracketRight").
   useEffect(() => {
     if (selectedIds.size !== 1) return;
-    if (editingAnnotationIndex != null) return;
+    // UX 2026-04-19: bbox edit mode (counter / line / polygon / polyline
+    // double-click) is still SVG-owned, so copy / cut / z-order hotkeys
+    // should keep working. Only true Fabric-owned edit mode (text /
+    // callout) needs to yield keyboard focus to the inline editor.
+    if (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox') return;
 
     const handleKeyDown = (e) => {
       const isMeta = e.metaKey || e.ctrlKey;
@@ -553,6 +574,32 @@ const SVGAnnotationLayer = memo(({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, editingAnnotationIndex, pageNumber, onCopyAnnotation, onCutAnnotation, onReorderAnnotation]);
+
+  // UX 2026-04-19: bbox edit mode auto-exit. When the user deselects (empty
+  // click, clicks another shape, presses Delete, etc.), the edit session
+  // should end too — otherwise editType stays 'bbox' forever and subsequent
+  // double-clicks on other shapes are ignored by the edit cooldown. Fires
+  // onRequestExitEdit when (a) this page is the one editing, (b) edit type
+  // is 'bbox', and (c) the edited index is no longer in selectedIds. Escape
+  // key also routes through here for a consistent dismiss path.
+  useEffect(() => {
+    if (editingAnnotationIndex == null) return;
+    if (editingAnnotationEditType !== 'bbox') return;
+    if (selectedIds.has(editingAnnotationIndex)) return;
+    if (typeof onRequestExitEdit === 'function') onRequestExitEdit();
+  }, [editingAnnotationIndex, editingAnnotationEditType, selectedIds, onRequestExitEdit]);
+
+  useEffect(() => {
+    if (editingAnnotationIndex == null) return;
+    if (editingAnnotationEditType !== 'bbox') return;
+    const onKey = (e) => {
+      if (e.key === 'Escape' && typeof onRequestExitEdit === 'function') {
+        onRequestExitEdit();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editingAnnotationIndex, editingAnnotationEditType, onRequestExitEdit]);
 
   // ---------------------------------------------------------------------------
   // Phase 14 CREATE-01 (callout half) — window-level pointermove/up while
@@ -640,10 +687,12 @@ const SVGAnnotationLayer = memo(({
     const svgEl = svgRef.current;
     if (!svgEl) return;
 
-    // Edit-mode gate: pill NEVER arms while the user is mid-edit. Un-arms on
-    // edit entry (clears pending open timer and any visible pill). This is the
-    // effect-top short-circuit that closes Gap 3 alongside the delegation fix.
-    if (editingAnnotationIndex != null) {
+    // Edit-mode gate: pill NEVER arms while the user is mid-edit in a
+    // Fabric-owned surface (text / callout). Bbox edit mode, by contrast,
+    // IS the rotation-pill experience — so leave the pill armed when
+    // editingAnnotationEditType === 'bbox' so the user can type an exact
+    // angle into the pill after double-clicking.
+    if (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox') {
       setRotInputVisibleDbg(false, 'in edit mode');
       if (rotInputHoverTimerRef.current) {
         clearTimeout(rotInputHoverTimerRef.current);
@@ -1342,19 +1391,30 @@ const SVGAnnotationLayer = memo(({
                 covering the whole callout: textbox border, line1 +
                 line2 connector segments, and a glow ring around the
                 arrow tip. pointer-events none so the glow never
-                intercepts drag / click. */}
-            <rect
-              x={tbX - 2}
-              y={tbY - 2}
-              width={tbW + 4}
-              height={tbH + 4}
-              fill="none"
-              stroke="#4a90e2"
-              strokeOpacity={0.45}
-              strokeWidth={3}
-              vectorEffect="non-scaling-stroke"
-              style={{ pointerEvents: 'none' }}
-            />
+                intercepts drag / click.
+                2026-04-20: extend glow height by the same descender
+                buffer the renderer uses so the bottom of the glow sits
+                flush with the visible text-box border instead of
+                floating a few pixels above it. */}
+            {(() => {
+              const calloutFs = Number(callout?.style?.fontSize || 12);
+              const descenderBuffer = calloutFs * 0.35;
+              const glowH = tbH + descenderBuffer;
+              return (
+                <rect
+                  x={tbX - 2}
+                  y={tbY - 2}
+                  width={tbW + 4}
+                  height={glowH + 4}
+                  fill="none"
+                  stroke="#4a90e2"
+                  strokeOpacity={0.45}
+                  strokeWidth={3}
+                  vectorEffect="non-scaling-stroke"
+                  style={{ pointerEvents: 'none' }}
+                />
+              );
+            })()}
             {!conn.shouldHideLine1 && (
               <line
                 x1={conn.line1Start.x}
@@ -1494,13 +1554,22 @@ const SVGAnnotationLayer = memo(({
                 pointerEvents: 'none',
               }}
             />
-            {/* Textbox corner handles — 4 corners only, interactive. */}
-            {[
-              { id: 'tl', x: tbX,       y: tbY,       cursor: 'nwse-resize' },
-              { id: 'tr', x: tbX + tbW, y: tbY,       cursor: 'nesw-resize' },
-              { id: 'bl', x: tbX,       y: tbY + tbH, cursor: 'nesw-resize' },
-              { id: 'br', x: tbX + tbW, y: tbY + tbH, cursor: 'nwse-resize' },
-            ].map((p) => (
+            {/* Textbox corner handles — 4 corners only, interactive.
+                2026-04-20: bottom handles shifted down by the same
+                descender buffer the renderer applies, so the two
+                lower dots land exactly on the visible bottom border
+                instead of floating a few pixels above it. */}
+            {(() => {
+              const calloutFs = Number(callout?.style?.fontSize || 12);
+              const descenderBuffer = calloutFs * 0.35;
+              const bottomY = tbY + tbH + descenderBuffer;
+              return [
+                { id: 'tl', x: tbX,       y: tbY,     cursor: 'nwse-resize' },
+                { id: 'tr', x: tbX + tbW, y: tbY,     cursor: 'nesw-resize' },
+                { id: 'bl', x: tbX,       y: bottomY, cursor: 'nesw-resize' },
+                { id: 'br', x: tbX + tbW, y: bottomY, cursor: 'nwse-resize' },
+              ];
+            })().map((p) => (
               <circle
                 key={`cb-corner-${p.id}`}
                 data-callout-part={`textBox-${p.id}`}
@@ -1761,8 +1830,50 @@ const SVGAnnotationLayer = memo(({
         left: visualTransform.resize.left,
         top: visualTransform.resize.top,
       };
-      // Re-render the element with modified props
+      // UX 2026-04-19: lines and arrows don't honor scaleX in the line
+      // renderer (endpoints come straight from left/width/x1/x2), so the
+      // live preview has to bake the scale into those fields directly —
+      // just like the polygon/polyline path bakes it into points + scale.
+      // Resolve the line's current absolute endpoints, scale them around
+      // the drag anchor, then rewrite renderObj with the new endpoint-
+      // derived bbox + offsets. Arrows follow the same path once they
+      // route their line child through the same drag handler (future).
       const objectType = String(renderObj.type || '').toLowerCase();
+      if (objectType === 'line') {
+        const vr = visualTransform.resize;
+        const cx = (obj.left ?? 0) + (obj.width ?? 0) / 2;
+        const cy = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+        const absX1 = cx + (obj.x1 ?? 0);
+        const absY1 = cy + (obj.y1 ?? 0);
+        const absX2 = cx + (obj.x2 ?? 0);
+        const absY2 = cy + (obj.y2 ?? 0);
+        const sx = Math.max(0.01, Math.abs(vr.scaleX));
+        const sy = Math.max(0.01, Math.abs(vr.scaleY));
+        const newAbsX1 = vr.anchorX + (absX1 - vr.anchorX) * sx;
+        const newAbsY1 = vr.anchorY + (absY1 - vr.anchorY) * sy;
+        const newAbsX2 = vr.anchorX + (absX2 - vr.anchorX) * sx;
+        const newAbsY2 = vr.anchorY + (absY2 - vr.anchorY) * sy;
+        const newBoxLeft = Math.min(newAbsX1, newAbsX2);
+        const newBoxTop = Math.min(newAbsY1, newAbsY2);
+        const newBoxW = Math.max(1, Math.abs(newAbsX2 - newAbsX1));
+        const newBoxH = Math.max(1, Math.abs(newAbsY2 - newAbsY1));
+        const newCx = newBoxLeft + newBoxW / 2;
+        const newCy = newBoxTop + newBoxH / 2;
+        renderObj = {
+          ...obj,
+          left: newBoxLeft,
+          top: newBoxTop,
+          width: newBoxW,
+          height: newBoxH,
+          x1: newAbsX1 - newCx,
+          y1: newAbsY1 - newCy,
+          x2: newAbsX2 - newCx,
+          y2: newAbsY2 - newCy,
+          scaleX: 1,
+          scaleY: 1,
+        };
+      }
+      // Re-render the element with modified props
       if (objectType === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
         renderElement = renderPath(renderObj, i);
       } else if (objectType === 'rect') {
@@ -1811,7 +1922,8 @@ const SVGAnnotationLayer = memo(({
             const { scaleX, scaleY, anchorX, anchorY } = visualTransform.resize;
             return `translate(${anchorX}, ${anchorY}) scale(${scaleX}, ${scaleY}) translate(${-anchorX}, ${-anchorY})`;
           }
-          // Standard objects: element is re-rendered at new scale, no transform needed
+          // Standard objects (including lines after 2026-04-19 endpoint bake):
+          // element is re-rendered at new scale, no transform needed.
           return undefined;
         }
         if (visualTransform.rotate) {
@@ -1831,6 +1943,12 @@ const SVGAnnotationLayer = memo(({
     })();
 
     const isBeingEdited = editingAnnotationIndex != null && i === editingAnnotationIndex;
+    // UX 2026-04-19: bbox edit mode (counter / line / arrow / polygon /
+    // polyline double-click) does NOT mount a Fabric edit canvas — the SVG
+    // layer renders the uniform resize + rotate chrome itself. The shape
+    // must stay visible with pointer-events active, otherwise the user sees
+    // a bounding box with no shape inside and no way to dismiss.
+    const isBboxEdit = isBeingEdited && editingAnnotationEditType === 'bbox';
     // Plan 15-04 Step 1: extended "SVG stays visible as the visual truth" pattern
     // from shapes to textbox + i-text + text. Sidesteps the Canvas 2D vs SVG
     // rasterizer divergence documented in CLAUDE.md 2026-04-10 and fixes the
@@ -1841,7 +1959,7 @@ const SVGAnnotationLayer = memo(({
     const EDIT_IN_PLACE_TYPES = ['rect', 'circle', 'ellipse', 'triangle', 'textbox', 'i-text', 'text'];
     const TEXT_EDIT_TYPES = ['textbox', 'i-text', 'text'];
     const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.includes(objTypeForEdit);
-    const hideForEdit = isBeingEdited && !isInPlaceEdit;
+    const hideForEdit = isBeingEdited && !isInPlaceEdit && !isBboxEdit;
 
     // Plan 15-04 Step 3 — when the currently-edited annotation is text, swap
     // in a live-rendered version driven by Fabric's per-keystroke bounds+text
@@ -1860,7 +1978,11 @@ const SVGAnnotationLayer = memo(({
         style={{
           cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
           opacity: hideForEdit ? 0 : undefined,
-          pointerEvents: isBeingEdited ? 'none' : undefined,
+          // UX 2026-04-19: bbox edit mode keeps pointer events live so the
+          // user can click the SVG handles (resize + rotate) and drag the
+          // shape inside the uniform box. Without this, the handles render
+          // but don't react to clicks.
+          pointerEvents: (isBeingEdited && !isBboxEdit) ? 'none' : undefined,
         }}
         transform={computedTransform}
       >
@@ -1882,8 +2004,22 @@ const SVGAnnotationLayer = memo(({
               Math.atan2(ep.y2 - ep.y1, ep.x2 - ep.x1)
               * 180 / Math.PI
             );
+            // UX 2026-04-20: mirror renderLine's rotation wrapper so the
+            // hover glow + hit area rotate with the line. Center comes from
+            // the actual endpoint midpoint so both Fabric-constructed and
+            // PDF-imported lines rotate around the correct pivot — the
+            // `obj.left + obj.width/2` shortcut collapsed to (0,0) on
+            // imported lines (no left/top/width stored) which pushed the hit
+            // zone to the page origin and made rotated lines look like they
+            // disappeared.
+            const lineAngle = renderObj.angle ?? 0;
+            const lineCx = (ep.x1 + ep.x2) / 2;
+            const lineCy = (ep.y1 + ep.y2) / 2;
+            const lineRotate = lineAngle !== 0
+              ? `rotate(${lineAngle}, ${lineCx}, ${lineCy})`
+              : undefined;
             return (
-              <g>
+              <g transform={lineRotate}>
                 {/* Hover highlight along the line */}
                 {annotationIsHovered && (
                   <line
@@ -2069,9 +2205,24 @@ const SVGAnnotationLayer = memo(({
             const shapeSy = renderObj.scaleY ?? 1;
             const shapePathOffsetX = renderObj.pathOffset?.x || 0;
             const shapePathOffsetY = renderObj.pathOffset?.y || 0;
-            // Same transform chain as renderPolygon / renderPolyline.
+            // UX 2026-04-20: match renderPolygon / renderPolyline rotation
+            // center. The previous `rotate(${angle})` with no center spun the
+            // hover glow around the parent group's origin, not the shape
+            // centroid — so the glow flew off to the wrong position the
+            // moment the user rotated a polygon/polyline. Compute the same
+            // rotCenter (scaled, pathOffset-adjusted centroid of the point
+            // array) the shape renderer uses so the glow traces the rotated
+            // shape exactly.
+            const shapePointXs = renderObj.points.map((p) => (typeof p?.x === 'number' ? p.x : 0));
+            const shapePointYs = renderObj.points.map((p) => (typeof p?.y === 'number' ? p.y : 0));
+            const shapeRawCenterX = (Math.min(...shapePointXs) + Math.max(...shapePointXs)) / 2;
+            const shapeRawCenterY = (Math.min(...shapePointYs) + Math.max(...shapePointYs)) / 2;
+            const shapeRotCenterX = shapeSx * (shapeRawCenterX - shapePathOffsetX);
+            const shapeRotCenterY = shapeSy * (shapeRawCenterY - shapePathOffsetY);
             let shapeTransform = `translate(${shapeLeft}, ${shapeTop})`;
-            if (shapeAngle !== 0) shapeTransform += ` rotate(${shapeAngle})`;
+            if (shapeAngle !== 0) {
+              shapeTransform += ` rotate(${shapeAngle}, ${shapeRotCenterX}, ${shapeRotCenterY})`;
+            }
             if (shapeSx !== 1 || shapeSy !== 1) shapeTransform += ` scale(${shapeSx}, ${shapeSy})`;
             shapeTransform += ` translate(${-shapePathOffsetX}, ${-shapePathOffsetY})`;
             const sw = renderObj.strokeWidth || 1;
@@ -2532,20 +2683,22 @@ const SVGAnnotationLayer = memo(({
         const editIsBorderFlush = editObjType === 'text' || editObjType === 'textbox' || editObjType === 'i-text' || editObjType === 'rect';
         const editIsCounter = obj.data?.type === 'counter';
         const isBeingEditedNow = editingAnnotationIndex != null && selectedIndex === editingAnnotationIndex;
-        // UX 2026-04-14: counters in edit mode show the floating mini-toolbar
-        // ONLY — no rotation handle, no bbox, no resize chrome. Any handle in
-        // edit mode is visual noise (the toolbar already provides every action).
-        // Guard is broader than `isBeingEditedNow` to catch state-desync edge
-        // cases where editingAnnotationIndex is set but selectedIndex briefly
-        // doesn't match (e.g. mid-double-click frame).
-        if (editIsCounter && editingAnnotationIndex != null) return null;
+        // UX 2026-04-19: when THIS counter is in bbox edit mode (user
+        // double-clicked it), fall through to the default SVGSelectionOverlay
+        // so the uniform resize + rotate chrome renders. In any other edit
+        // state, hide the SVG chrome — the edit canvas owns the surface.
+        // The broad `editingAnnotationIndex != null` guard catches state-
+        // desync edge cases where editingAnnotationIndex is set but
+        // selectedIndex briefly doesn't match (e.g. mid-double-click frame).
+        const counterInBboxMode = editIsCounter && isBeingEditedNow && editingAnnotationEditType === 'bbox';
+        if (editIsCounter && editingAnnotationIndex != null && !counterInBboxMode) return null;
         if (isBeingEditedNow && editIsBorderFlush) return null;
 
-        // Counter selection (not in edit mode): render only the rotation handle at the
+        // Counter selection (not in bbox edit mode): render only the rotation handle at the
         // nubbin tip. No dashed bbox, no resize handles — Shottr-style minimal chrome.
         // Drag updates `data.pointerAngle` live with checkpointPolicy:'skip', then commits
         // a single normal checkpoint on pointerup so the rotation is one undo entry.
-        if (editIsCounter) {
+        if (editIsCounter && !counterInBboxMode) {
           // Apply visualTransform translate so the rotation handle follows the counter
           // during a live drag (otherwise the handle stays anchored to the stored
           // position while the SVG counter visually moves with visualTransform.dx/dy).
@@ -2658,14 +2811,44 @@ const SVGAnnotationLayer = memo(({
             // During resize: recompute bbox from a transformed copy of the object so
             // type-specific bbox math (e.g. textbox descender buffer) is applied fresh
             // instead of being scaled along with the stored bbox height.
-            const transformedObj = {
-              ...obj,
-              scaleX: visualTransform.resize.scaleX,
-              scaleY: visualTransform.resize.scaleY,
-              left: visualTransform.resize.left,
-              top: visualTransform.resize.top,
-            };
-            bbox = getAnnotationBBox(transformedObj);
+            const resizeObjType = String(obj.type || '').toLowerCase();
+            if (resizeObjType === 'line') {
+              // UX 2026-04-19: line selection bbox during drag mirrors the
+              // render path — scale absolute endpoints around the anchor,
+              // then derive the new bbox from them. Without this the dashed
+              // box + handles stay anchored to the old line size while the
+              // line itself visually resizes, breaking the "handles follow
+              // the shape" invariant that every other resize honors.
+              const vr = visualTransform.resize;
+              const cx = (obj.left ?? 0) + (obj.width ?? 0) / 2;
+              const cy = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+              const absX1 = cx + (obj.x1 ?? 0);
+              const absY1 = cy + (obj.y1 ?? 0);
+              const absX2 = cx + (obj.x2 ?? 0);
+              const absY2 = cy + (obj.y2 ?? 0);
+              const sx = Math.max(0.01, Math.abs(vr.scaleX));
+              const sy = Math.max(0.01, Math.abs(vr.scaleY));
+              const newAbsX1 = vr.anchorX + (absX1 - vr.anchorX) * sx;
+              const newAbsY1 = vr.anchorY + (absY1 - vr.anchorY) * sy;
+              const newAbsX2 = vr.anchorX + (absX2 - vr.anchorX) * sx;
+              const newAbsY2 = vr.anchorY + (absY2 - vr.anchorY) * sy;
+              bbox = {
+                left: Math.min(newAbsX1, newAbsX2),
+                top: Math.min(newAbsY1, newAbsY2),
+                width: Math.max(1, Math.abs(newAbsX2 - newAbsX1)),
+                height: Math.max(1, Math.abs(newAbsY2 - newAbsY1)),
+                angle: 0,
+              };
+            } else {
+              const transformedObj = {
+                ...obj,
+                scaleX: visualTransform.resize.scaleX,
+                scaleY: visualTransform.resize.scaleY,
+                left: visualTransform.resize.left,
+                top: visualTransform.resize.top,
+              };
+              bbox = getAnnotationBBox(transformedObj);
+            }
           } else if (visualTransform.rotate) {
             // During rotate: update angle on bbox
             bbox = { ...bbox, angle: visualTransform.rotate.angle };
@@ -2675,9 +2858,13 @@ const SVGAnnotationLayer = memo(({
           }
         }
 
-        // Line-type annotations: endpoint handles only (no bbox, no dashed outline)
+        // Line-type annotations: endpoint handles only on single-click (no bbox, no dashed outline).
+        // UX 2026-04-19: when the line is in bbox edit mode (user double-clicked
+        // it), fall through to the default SVGSelectionOverlay so the uniform
+        // resize + rotate chrome appears instead of the endpoint handles.
         const isLineType = String(obj.type || '').toLowerCase() === 'line';
-        if (isLineType) {
+        const lineInBboxMode = isLineType && isBeingEditedNow && editingAnnotationEditType === 'bbox';
+        if (isLineType && !lineInBboxMode) {
           const ep = getLineEndpoints(obj);
           const dx = overlayTransform ? (visualTransform?.dx || 0) : 0;
           const dy = overlayTransform ? (visualTransform?.dy || 0) : 0;
@@ -2710,8 +2897,18 @@ const SVGAnnotationLayer = memo(({
           // semantics. Dispatches handleId='midpoint' to the existing hook
           // dispatcher — wired in useSVGInteraction.js Plan 15-03 Task 3.
           const midpointR = 5 * handleIs;
+          // UX 2026-04-20: rotate the endpoint + midpoint handles with the
+          // line so single-click selection chrome tracks the rotated shape
+          // instead of sitting at the pre-rotation endpoints. Center is the
+          // endpoint midpoint to match renderLine's rotation center.
+          const lineSelAngle = obj.angle ?? 0;
+          const lineSelCx = (ep.x1 + ep.x2) / 2 + dx;
+          const lineSelCy = (ep.y1 + ep.y2) / 2 + dy;
+          const lineSelRotate = lineSelAngle !== 0
+            ? `rotate(${lineSelAngle}, ${lineSelCx}, ${lineSelCy})`
+            : undefined;
           return (
-            <g key={`selection-wrapper-${selectedIndex}`}>
+            <g key={`selection-wrapper-${selectedIndex}`} transform={lineSelRotate}>
               {/* Start handle (line start / arrow tail) */}
               <circle
                 cx={ep.x1 + dx} cy={ep.y1 + dy}
@@ -2770,7 +2967,12 @@ const SVGAnnotationLayer = memo(({
               bbox={bbox}
               inverseScale={inverseScale}
               onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
-              isGroupSelection={isBeingEditedNow}
+              // UX 2026-04-19: only mask the overlay handles when the edit
+              // surface is a Fabric canvas (which would render its own
+              // handles). In bbox edit mode the SVG layer IS the edit
+              // surface — it must show the corner + edge + rotate handles
+              // itself, so drop the mask in that case.
+              isGroupSelection={isBeingEditedNow && editingAnnotationEditType !== 'bbox'}
               hideBoundingBox={isBorderFlush}
               padding={isBorderFlush ? 0 : 2}
             />

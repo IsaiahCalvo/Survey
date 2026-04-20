@@ -286,12 +286,16 @@ function getLineBBox(obj) {
   if (width < 10) width = 10;
   if (height < 10) height = 10;
 
+  // UX 2026-04-20: pass through obj.angle so the selection overlay rotates
+  // its dashed frame + handles around the line's center. Rotation is stored
+  // live on the object (not baked into endpoints) so the tilted frame stays
+  // tilted after release — matches polygon/polyline behavior.
   return {
     left: Math.min(x1, x2),
     top: Math.min(y1, y2),
     width,
     height,
-    angle: 0,
+    angle: obj.angle ?? 0,
   };
 }
 
@@ -321,12 +325,14 @@ function getGroupArrowBBox(obj) {
     if (width < 10) width = 10;
     if (height < 10) height = 10;
 
+    // UX 2026-04-20: arrow groups pass through angle, same reasoning as
+    // getLineBBox — keeps the selection frame tilted after rotation.
     return {
       left: Math.min(x1, x2),
       top: Math.min(y1, y2),
       width,
       height,
-      angle: 0,
+      angle: obj.angle ?? 0,
     };
   }
 
